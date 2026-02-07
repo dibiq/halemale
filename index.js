@@ -337,65 +337,82 @@ io.on("connection", (socket) => {
     const room = rooms[socket.roomId];
     if (!room || !room.isGameStarted) return;
 
+    room.turnIndex = getSafeNextIndex(room);
     let currentPlayer = room.players[room.turnIndex];
+
     if (currentPlayer.id !== socket.id) return;
 
-    // 1. 카드 뒤집기
     const card = currentPlayer.myDeck.pop();
     currentPlayer.openCardStack = currentPlayer.openCardStack || [];
     currentPlayer.openCardStack.push(card);
     currentPlayer.openCard = card;
 
-    // 2. 알림 전송 (연출 시작)
     io.to(room.roomId).emit("cardFlipped", {
       playerId: socket.id,
       card: card,
-      nextTurnId: room.players[room.turnIndex].id, // 잠시 유지
+      nextTurnId: room.players[room.turnIndex].id,
       remainingCount: currentPlayer.myDeck.length,
     });
 
-    // 3. 💡 [핵심] 뒤집은 후 바닥 상태 확인
+    // 뒤집은 후 0.8초 뒤에 다음 턴 결정 및 자동 탈락 체크
     setTimeout(() => {
-      const totals = getFruitTotals(room.players);
-      const isFive = Object.values(totals).some((t) => t === 5);
-
-      if (!isFive) {
-        // 바닥이 5가 아니면? 기사회생 기회 없으므로 0장인 사람들은 차례대로 자동 탈락
-        room.turnIndex = (room.turnIndex + 1) % room.players.length;
-        processSkipTurn(room, io);
-      } else {
-        // 바닥이 5라면? 0장인 사람도 종을 쳐야 하므로 턴을 넘기지 않고 대기!
-        // (A는 여기서 종을 쳐서 살아나거나, 누군가 종을 쳐서 5가 사라질 때까지 대기하게 됨)
-        console.log("🔔 바닥이 5입니다! 기사회생 대기 모드...");
-      }
+      room.turnIndex = (room.turnIndex + 1) % room.players.length;
+      processSkipTurn(room, io);
     }, 800);
   });
 
   function processSkipTurn(room, io) {
+    if (!room.isGameStarted) return;
+
+    // 1. 바닥 상태 확인 (5인 경우 기사회생 기회 부여 위해 중단)
+    const totals = getFruitTotals(room.players);
+    const isFive = Object.values(totals).some((t) => t === 5);
+    if (isFive) {
+      console.log("🔔 바닥이 5이므로 탈락 처리를 유예합니다.");
+      return;
+    }
+
+    // 2. 현재 인덱스 보정
+    room.turnIndex = getSafeNextIndex(room);
     let nextPlayer = room.players[room.turnIndex];
 
-    // 다음 사람이 0장이다? -> 바닥도 5가 아니니 기사회생 실패로 간주하고 탈락
-    while (nextPlayer.myDeck.length === 0 && room.isGameStarted) {
-      console.log(`💀 [탈락] ${nextPlayer.nickname}님 기사회생 실패`);
+    // 3. 0장인 유저들 자동 탈락 루프
+    let loopCount = 0;
+    while (
+      nextPlayer &&
+      nextPlayer.myDeck.length === 0 &&
+      loopCount < room.players.length
+    ) {
+      console.log(`💀 [자동 탈락] ${nextPlayer.nickname} 기사회생 실패`);
 
       nextPlayer.openCard = null;
       nextPlayer.openCardStack = [];
 
       room.turnIndex = (room.turnIndex + 1) % room.players.length;
       nextPlayer = room.players[room.turnIndex];
+      loopCount++;
 
       if (checkGameOver(room, io)) return;
     }
 
+    // 4. 최종 턴 변경 알림
     if (room.isGameStarted) {
       io.to(room.roomId).emit("turnChanged", {
-        nextTurnId: nextPlayer.id,
+        nextTurnId: room.players[room.turnIndex].id,
         players: room.players.map((p) => ({
           id: p.id,
           cards: p.myDeck.length,
         })),
       });
     }
+  }
+
+  function getSafeNextIndex(room) {
+    if (typeof room.turnIndex !== "number" || isNaN(room.turnIndex)) {
+      console.log("⚠️ turnIndex가 비정상이라 0으로 복구합니다.");
+      return 0;
+    }
+    return room.turnIndex % room.players.length;
   }
 
   socket.on("ringBell", () => {
