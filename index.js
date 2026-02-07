@@ -266,34 +266,48 @@ io.on("connection", (socket) => {
     });
   });
 
+  // index.js 수정 핵심
+
   socket.on("flipCard", () => {
     const room = rooms[socket.roomId];
     if (!room || !room.isGameStarted) return;
 
+    // 💡 [추가] 중복 클릭 방지 잠금
+    if (room.isFlipping) return;
+
     room.turnIndex = getSafeNextIndex(room);
     let p = room.players[room.turnIndex];
 
+    // 💡 [검증] 실제 자기 차례가 맞는지 ID로 확인
     if (p.id !== socket.id || p.myDeck.length === 0) return;
+
+    // 잠금 시작
+    room.isFlipping = true;
 
     const card = p.myDeck.pop();
     p.openCard = card;
     p.openCardStack.push(card);
 
-    // 연출을 위해 현재 플레이어 정보를 보냄
     io.to(room.roomId).emit("cardFlipped", {
       playerId: socket.id,
       card,
-      nextTurnId: p.id, // 아직은 현재 플레이어 ID를 유지하여 연출 집중
+      nextTurnId: p.id, // 연출 중에는 현재 ID 유지
       remainingCount: p.myDeck.length,
     });
 
-    // 0.8초 후 다음 사람으로 넘길지(스킵할지) 결정
+    // 0.8초 연출 뒤 다음 턴 결정
     setTimeout(() => {
-      if (!room.isGameStarted) return;
-      // 인덱스를 일단 하나 올림
+      if (!room.isGameStarted) {
+        room.isFlipping = false;
+        return;
+      }
+
+      // 인덱스 이동 및 자동 스킵 처리
       room.turnIndex = (room.turnIndex + 1) % room.players.length;
-      // 여기서 5인지 체크해서 자동으로 0장인 사람을 거를지 결정함
       processSkipTurn(room, io);
+
+      // 잠금 해제
+      room.isFlipping = false;
     }, 800);
   });
 

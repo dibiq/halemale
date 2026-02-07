@@ -1655,15 +1655,18 @@ class GameScene extends Phaser.Scene {
       this.isSingle = false; // 멀티플레이임을 명시
       this.isGameStarted = true;
       this.isGameReady = true;
-
-      // 💡 [핵심] 턴 인덱스 강제 초기화!
-      // 모든 클라이언트가 0번(방장)부터 시작하도록 맞춥니다.
       this.turnIndex = 0;
+      this.canClick = false; // 💡 시작 직후엔 클릭 금지
 
       // 2. 모든 플레이어에게 공통 연출 실행
       this.playOpeningAnimation();
       this.time.delayedCall(800, () => {
         this.showReadyGo();
+        // 💡 Ready-Go(약 1.2초)가 완전히 끝난 뒤에 클릭 허용
+        this.time.delayedCall(1500, () => {
+          this.canClick = true;
+          console.log("🎮 이제 카드를 제출할 수 있습니다.");
+        });
       });
 
       // 3. 데이터 갱신 및 테이블 렌더링
@@ -1687,8 +1690,7 @@ class GameScene extends Phaser.Scene {
       );
       if (nextIdx !== -1) {
         this.turnIndex = nextIdx;
-        console.log(`✅ 턴 동기화: ${this.turnIndex}번 (${data.nextTurnId})`);
-        this.renderTable(this.roundData.players); // UI 갱신 (현재 턴 하이라이트 등)
+        this.renderTable(this.roundData.players); // 턴 하이라이트 즉시 갱신
       }
     });
 
@@ -2166,10 +2168,12 @@ class GameScene extends Phaser.Scene {
   handleFlipCard() {
     if (!this.roundData || !this.roundData.players) return;
 
-    // 이 시점에 turnIndex가 undefined면 0으로 복구
-    if (this.turnIndex === undefined || this.turnIndex === null) {
+    // 💡 1. 연출 중이거나 클릭 금지 상태면 무시
+    if (!this.canClick || this.isFlipping) return;
+
+    // 인덱스 안전 보정
+    if (this.turnIndex === undefined || this.turnIndex === null)
       this.turnIndex = 0;
-    }
 
     const currentPlayer = this.roundData.players[this.turnIndex];
     const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
@@ -2179,11 +2183,19 @@ class GameScene extends Phaser.Scene {
       return;
     }
 
+    // 💡 2. 로컬 잠금 (서버 응답 올 때까지 재클릭 방지)
+    this.isFlipping = true;
+
     if (this.isSingle) {
       this.processSingleFlip(myId);
     } else {
       socket.emit("flipCard");
     }
+
+    // 0.8초 후 로컬 잠금 해제 (서버의 setTimeout과 맞춤)
+    this.time.delayedCall(800, () => {
+      this.isFlipping = false;
+    });
   }
 
   // 종 치기 요청 (누구나 언제든 실행 가능)
