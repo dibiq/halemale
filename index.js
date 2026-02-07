@@ -71,21 +71,20 @@ app.get("/health", (req, res) => {
 });
 // 서버 상단에 추가
 function checkGameOver(room, io) {
-  // 실제 덱에 카드가 있는 사람만 필터링
-  const activePlayers = room.players.filter((p) => p.myDeck.length > 0);
+  // 실제 덱에 카드가 남아있는 생존자만 필터링
+  const survivors = room.players.filter((p) => p.myDeck.length > 0);
 
-  // 🏆 승리 조건: 카드를 가진 사람이 딱 1명 남았을 때
-  if (activePlayers.length === 1) {
+  // 🏆 승리 조건: 살아있는 사람이 딱 1명 남았을 때
+  if (survivors.length === 1) {
     room.isGameStarted = false;
-    const winner = activePlayers[0];
+    const winner = survivors[0];
 
-    // 카드 장수 순서대로 정렬해서 결과 전송
     const sorted = [...room.players].sort(
       (a, b) => b.myDeck.length - a.myDeck.length
     );
 
     io.to(room.roomId).emit("gameEnded", {
-      message: `축하합니다! ${winner.nickname}님이 최종 승리하셨습니다!`,
+      message: `게임 종료! ${winner.nickname}님의 최종 승리!`,
       ranking: sorted.map((p) => ({
         id: p.id,
         nickname: p.nickname,
@@ -330,20 +329,19 @@ io.on("connection", (socket) => {
 
     let currentPlayer = room.players[room.turnIndex];
 
-    // 💡 [기존 로직 유지] 기사회생 실패 체크
+    // 💡 [룰 적용] 턴이 왔는데 카드가 0장이면 패배(스킵)
     while (currentPlayer.myDeck.length === 0) {
-      console.log(
-        `💀 [탈락/스킵] ${currentPlayer.nickname}님은 카드가 없어 차례가 넘어갑니다.`
-      );
+      console.log(`💀 [기사회생 실패] ${currentPlayer.nickname}님 탈락`);
       room.turnIndex = (room.turnIndex + 1) % room.players.length;
       currentPlayer = room.players[room.turnIndex];
 
+      // 만약 한 명 빼고 다 0장이라 스킵되다가 게임이 끝나야 하는지 체크
       if (checkGameOver(room, io)) return;
     }
 
     if (currentPlayer.id !== socket.id) return;
 
-    // 1. 카드 뒤집기 (데이터 변경)
+    // 1. 카드 뒤집기 실행
     const card = currentPlayer.myDeck.pop();
     if (!currentPlayer.openCardStack) currentPlayer.openCardStack = [];
     currentPlayer.openCardStack.push(card);
@@ -352,8 +350,7 @@ io.on("connection", (socket) => {
     // 2. 턴 넘기기
     room.turnIndex = (room.turnIndex + 1) % room.players.length;
 
-    // 3. 알림 전송 (클라이언트 연출 시작)
-    // 💡 여기서 remainingCount가 0으로 전달되어 클라이언트 숫자가 먼저 바뀝니다.
+    // 3. 카드 뒤집힘 알림 (클라이언트에 0장인 상태를 먼저 보여줌)
     io.to(room.roomId).emit("cardFlipped", {
       playerId: socket.id,
       card: card,
@@ -361,9 +358,7 @@ io.on("connection", (socket) => {
       remainingCount: currentPlayer.myDeck.length,
     });
 
-    // 4. 💡 [지연 종료 판정]
-    // 연출 시간을 벌어주기 위해 0.8초 후에 승패를 확인합니다.
-    // 기존에 즉시 실행되던 checkGameOver를 setTimeout으로 감싸기만 했습니다.
+    // 4. 💡 [지연 종료 판정] 숫자가 바뀌는 걸 본 뒤에 종료 여부 판단
     setTimeout(() => {
       checkGameOver(room, io);
     }, 800);
@@ -373,7 +368,7 @@ io.on("connection", (socket) => {
     const room = rooms[socket.roomId];
     if (!room || !room.isGameStarted) return;
 
-    // 1. 과일 합계 계산 로직
+    // 1. 과일 합계 계산
     let fruitTotals = { 1: 0, 2: 0, 3: 0, 4: 0 };
     room.players.forEach((p) => {
       if (p.openCard) fruitTotals[p.openCard.fruit] += p.openCard.count;
@@ -381,7 +376,7 @@ io.on("connection", (socket) => {
     const isSuccess = Object.values(fruitTotals).some((total) => total === 5);
 
     if (isSuccess) {
-      // --- 성공 로직: 기존과 동일 ---
+      // --- 성공: 카드 획득 ---
       let collectedCards = [];
       room.players.forEach((p) => {
         if (p.openCardStack && p.openCardStack.length > 0) {
@@ -407,43 +402,35 @@ io.on("connection", (socket) => {
         })),
       });
     } else {
-      // --- 실패 로직: 카드 순차 분배 및 부족 시 패배 ---
+      // --- 실패: 벌칙 분배 ---
       const penaltyPlayer = room.players.find((p) => p.id === socket.id);
-      const otherPlayers = room.players.filter((p) => p.id !== socket.id);
-      const requiredCards = otherPlayers.length; // 상대 플레이어 수
-
       const penaltyIdx = room.players.findIndex((p) => p.id === socket.id);
       const otherPlayersSorted = [
         ...room.players.slice(penaltyIdx + 1),
         ...room.players.slice(0, penaltyIdx),
       ];
+      const requiredCards = otherPlayersSorted.length; // 줘야 할 카드 장수
 
-      console.log(`🔔 [벌칙 발생] ${penaltyPlayer.nickname}님 실수!`);
+      // 💡 [룰 적용] 나눠주기 전, 카드가 부족하면 즉시 패배 판정 대상
+      const isShortage = penaltyPlayer.myDeck.length < requiredCards;
 
-      // 💡 [핵심] 순서대로 나눠주기
+      // 가진 만큼 최대한 순서대로 나눠줌
       for (let i = 0; i < otherPlayersSorted.length; i++) {
         if (penaltyPlayer.myDeck.length > 0) {
-          const card = penaltyPlayer.myDeck.pop();
-          otherPlayersSorted[i].myDeck.unshift(card);
+          otherPlayersSorted[i].myDeck.unshift(penaltyPlayer.myDeck.pop());
         }
       }
 
-      // 💡 [패배 판정] 나눠준 후 내 카드가 없거나, 원래 필요했던 장수보다 부족했다면 실격
-      if (
-        penaltyPlayer.myDeck.length === 0 ||
-        penaltyPlayer.myDeck.length + otherPlayers.length < requiredCards
-      ) {
-        console.log(
-          `💀 [실격] ${penaltyPlayer.nickname}님 카드 부족으로 패배 처리`
-        );
-        penaltyPlayer.myDeck = []; // 확실히 비움
+      if (isShortage) {
+        console.log(`💀 [즉시 패배] ${penaltyPlayer.nickname} 벌칙 카드 부족`);
+        penaltyPlayer.myDeck = []; // 잔여 카드 소멸 및 패배 처리
 
         if (checkGameOver(room, io)) return;
 
         io.to(room.roomId).emit("bellResult", {
           success: false,
           penaltyId: socket.id,
-          message: `${penaltyPlayer.nickname}님 실격! (카드를 모두 나눠주고 패배)`,
+          message: `${penaltyPlayer.nickname}님 실격! (벌칙 카드 부족)`,
           players: room.players.map((p) => ({
             id: p.id,
             nickname: p.nickname,
@@ -451,23 +438,22 @@ io.on("connection", (socket) => {
             openCard: p.openCard,
           })),
         });
-        return;
+      } else {
+        // 정상 벌칙 완료
+        if (checkGameOver(room, io)) return;
+
+        io.to(room.roomId).emit("bellResult", {
+          success: false,
+          penaltyId: socket.id,
+          message: `${penaltyPlayer.nickname}님의 실수! 카드 1장씩 나눔`,
+          players: room.players.map((p) => ({
+            id: p.id,
+            nickname: p.nickname,
+            cards: p.myDeck.length,
+            openCard: p.openCard,
+          })),
+        });
       }
-
-      // 정상적으로 벌칙 수행 완료 (카드가 남은 경우)
-      if (checkGameOver(room, io)) return;
-
-      io.to(room.roomId).emit("bellResult", {
-        success: false,
-        penaltyId: socket.id,
-        message: `${penaltyPlayer.nickname}님의 실수! 카드 1장씩 나눔`,
-        players: room.players.map((p) => ({
-          id: p.id,
-          nickname: p.nickname,
-          cards: p.myDeck.length,
-          openCard: p.openCard,
-        })),
-      });
     }
   });
 
