@@ -2022,7 +2022,7 @@ class GameScene extends Phaser.Scene {
     if (!players || players.length === 0) return;
 
     const { width, height } = this.cameras.main;
-    const currentHostId = this.roundData.hostId;
+    const currentHostId = data.hostId || this.roundData.hostId; // 데이터에서 받은 hostId 우선 사용
     const isHost = socket.id === currentHostId;
 
     // --- 컨테이너 생성 및 초기화 로직 유지 ---
@@ -2037,10 +2037,8 @@ class GameScene extends Phaser.Scene {
     }
 
     const container = this.resultContainer;
-    const myInfo =
-      players.find(
-        (p) => (p.id || p.nickname) === (socket.id || socket.nickname)
-      ) || null;
+    // myInfo를 찾을 때 닉네임 혼용을 피하고 socket.id로만 찾습니다.
+    const myInfo = players.find((p) => p.id === socket.id) || null;
 
     const bg = this.add
       .image(width / 2, height / 2, "resultbg")
