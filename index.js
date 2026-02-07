@@ -71,10 +71,19 @@ app.get("/health", (req, res) => {
 });
 // 서버 상단에 추가
 function checkGameOver(room, io) {
-  // 실제 덱에 카드가 남아있는 생존자만 필터링
-  const survivors = room.players.filter((p) => p.myDeck.length > 0);
+  // 💡 진짜 생존자 판정 로직 수정
+  const survivors = room.players.filter((p) => {
+    // 1. 덱에 카드가 남아있으면 당연히 생존
+    if (p.myDeck.length > 0) return true;
 
-  // 🏆 승리 조건: 살아있는 사람이 딱 1명 남았을 때
+    // 2. 덱이 0장이더라도, 바닥에 내놓은 카드(openCardStack)가 남아있다면
+    // 누군가 종을 쳤을 때 부활할 가능성이 있으므로 생존으로 간주!
+    if (p.openCardStack && p.openCardStack.length > 0) return true;
+
+    return false;
+  });
+
+  // 🏆 진짜로 혼자 남았을 때만 종료
   if (survivors.length === 1) {
     room.isGameStarted = false;
     const winner = survivors[0];
@@ -329,19 +338,25 @@ io.on("connection", (socket) => {
 
     let currentPlayer = room.players[room.turnIndex];
 
-    // 💡 [룰 적용] 턴이 왔는데 카드가 0장이면 패배(스킵)
+    // 💡 턴이 왔는데 덱이 0장이다? -> 이때가 진짜 패배 시점!
+    // 단, 바닥에 카드도 없다면(기사회생 불가) 확실히 스킵.
     while (currentPlayer.myDeck.length === 0) {
-      console.log(`💀 [기사회생 실패] ${currentPlayer.nickname}님 탈락`);
+      console.log(`💀 [기사회생 실패] ${currentPlayer.nickname}님 차례 스킵`);
+
+      // 이 시점에서 바닥 카드까지 다 치워버려야 기사회생 후보에서 완전히 제외됨
+      currentPlayer.openCard = null;
+      currentPlayer.openCardStack = [];
+
       room.turnIndex = (room.turnIndex + 1) % room.players.length;
       currentPlayer = room.players[room.turnIndex];
 
-      // 만약 한 명 빼고 다 0장이라 스킵되다가 게임이 끝나야 하는지 체크
+      // 스킵되는 동안 최종 승자가 결정되는지 확인
       if (checkGameOver(room, io)) return;
     }
 
     if (currentPlayer.id !== socket.id) return;
 
-    // 1. 카드 뒤집기 실행
+    // 1. 카드 뒤집기
     const card = currentPlayer.myDeck.pop();
     if (!currentPlayer.openCardStack) currentPlayer.openCardStack = [];
     currentPlayer.openCardStack.push(card);
@@ -350,7 +365,7 @@ io.on("connection", (socket) => {
     // 2. 턴 넘기기
     room.turnIndex = (room.turnIndex + 1) % room.players.length;
 
-    // 3. 카드 뒤집힘 알림 (클라이언트에 0장인 상태를 먼저 보여줌)
+    // 3. 알림 전송
     io.to(room.roomId).emit("cardFlipped", {
       playerId: socket.id,
       card: card,
@@ -358,7 +373,7 @@ io.on("connection", (socket) => {
       remainingCount: currentPlayer.myDeck.length,
     });
 
-    // 4. 💡 [지연 종료 판정] 숫자가 바뀌는 걸 본 뒤에 종료 여부 판단
+    // 💡 마지막 카드 제출 후 연출 대기
     setTimeout(() => {
       checkGameOver(room, io);
     }, 800);
