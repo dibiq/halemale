@@ -276,6 +276,76 @@ io.on("connection", (socket) => {
   });
 
   // ... (나머지 disconnect 등은 기존과 동일) ...
+  socket.on("disconnect", () => {
+    const roomId = socket.roomId;
+    const room = rooms[roomId];
+
+    if (room) {
+      // 1. 나가는 유저 정보 찾기 및 제거
+      const leavingPlayerIndex = room.players.findIndex(
+        (p) => p.id === socket.id
+      );
+      const leavingPlayer = room.players[leavingPlayerIndex];
+      const nickname = leavingPlayer ? leavingPlayer.nickname : "누군가";
+
+      const wasHost = room.host === socket.id;
+
+      // 기존 filter 부분 수정
+      room.players = room.players.filter((p) => p.id !== socket.id);
+
+      // ================= [추가된 최적화 로직] =================
+      if (room.isGameStarted) {
+        // 나간 사람이 현재 턴이었거나, 턴 인덱스가 줄어든 명수보다 클 때 조정
+        if (room.turnIndex >= room.players.length) {
+          room.turnIndex = 0; // 안전하게 첫 번째 사람으로 초기화
+        }
+
+        // 만약 나간 사람 때문에 턴이 꼬일 것 같으면 현재 턴 정보를 다시 전송
+        io.to(roomId).emit("turnAdjusted", {
+          nextTurnId: room.players[room.turnIndex]?.id,
+          players: room.players,
+        });
+      }
+      // ======================================================
+      // 2. 방에 아무도 없으면 삭제
+      if (room.players.length === 0) {
+        delete rooms[roomId];
+        console.log(`[Room ${roomId}] 방 삭제`);
+      } else {
+        if (wasHost) {
+          // ---------------------------------------------------------
+          // A. 방장이 나간 경우
+          // ---------------------------------------------------------
+          room.host = room.players[0].id;
+
+          io.to(roomId).emit("hostChanged", {
+            roomId: roomId,
+            hostId: room.host,
+            players: room.players,
+          });
+
+          // (선택사항) 게임 중일 때를 위해 유지해도 좋지만,
+          io.to(roomId).emit("updateScores", room.players);
+        } else {
+          // ---------------------------------------------------------
+          // B. 일반 유저가 나간 경우: 기존대로 playerLeft 보냄
+          // ---------------------------------------------------------
+          io.to(roomId).emit("playerLeft", {
+            id: socket.id,
+            nickname: nickname,
+            players: room.players,
+            max: room.maxPlayers,
+            hostId: room.host,
+          });
+        }
+
+        console.log(
+          `[Room ${roomId}] ${nickname} 퇴장. 남은 인원: ${room.players.length}`
+        );
+      }
+    }
+    socket.roomId = null;
+  });
 });
 
 const PORT = process.env.PORT || 8080;
