@@ -1680,32 +1680,26 @@ class GameScene extends Phaser.Scene {
       this.renderTable(this.roundData.players);
     });
 
+    // gameStart 리스너 근처에 추가하세요.
+    socket.off("turnChanged").on("turnChanged", (data) => {
+      const nextIdx = this.roundData.players.findIndex(
+        (p) => p.id === data.nextTurnId
+      );
+      if (nextIdx !== -1) {
+        this.turnIndex = nextIdx;
+        console.log(`✅ 턴 동기화: ${this.turnIndex}번 (${data.nextTurnId})`);
+        this.renderTable(this.roundData.players); // UI 갱신 (현재 턴 하이라이트 등)
+      }
+    });
+
     socket.off("cardFlipped").on("cardFlipped", (data) => {
       if (this.isSingle) return;
 
-      // 1. [데이터 갱신] 서버는 'remainingCount'라는 이름을 사용함
+      // 1. 데이터 갱신
       const player = this.roundData.players.find((p) => p.id === data.playerId);
       if (player) {
         player.openCard = data.card;
-        // 서버에서 준 숫자 반영 (data.remainingCount)
-        player.cards =
-          data.remainingCount !== undefined
-            ? data.remainingCount
-            : player.cards;
-        player.remainingCards = player.cards;
-      }
-
-      // 2. [인덱스 동기화] 서버는 'nextTurnId'를 보내줌
-      if (data.nextTurnId) {
-        const nextIdx = this.roundData.players.findIndex(
-          (p) => p.id === data.nextTurnId
-        );
-        if (nextIdx !== -1) {
-          this.turnIndex = nextIdx;
-          console.log(
-            `✅ 다음 차례 동기화: ${this.turnIndex} (${data.nextTurnId})`
-          );
-        }
+        player.cards = data.remainingCount ?? player.cards;
       }
 
       // 3. 애니메이션 및 테이블 갱신
@@ -2172,22 +2166,13 @@ class GameScene extends Phaser.Scene {
   handleFlipCard() {
     if (!this.roundData || !this.roundData.players) return;
 
-    // 💡 NaN 또는 undefined 즉시 복구
-    if (
-      isNaN(this.turnIndex) ||
-      this.turnIndex === undefined ||
-      this.turnIndex === null
-    ) {
-      console.warn("🚨 turnIndex가 정상 숫자가 아니어서 0으로 초기화합니다.");
+    // 이 시점에 turnIndex가 undefined면 0으로 복구
+    if (this.turnIndex === undefined || this.turnIndex === null) {
       this.turnIndex = 0;
     }
 
     const currentPlayer = this.roundData.players[this.turnIndex];
     const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
-
-    console.log(
-      `[검사] 현재인덱스: ${this.turnIndex} / ID: ${currentPlayer?.id} / 내ID: ${myId}`
-    );
 
     if (!currentPlayer || currentPlayer.id !== myId) {
       this.showToast("당신의 차례가 아닙니다!", "#e74c3c");

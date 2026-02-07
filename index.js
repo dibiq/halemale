@@ -96,7 +96,8 @@ function processSkipTurn(room, io) {
   const isFive = Object.values(totals).some((t) => t === 5);
 
   if (isFive) {
-    console.log("🔔 바닥이 5입니다. 기사회생 대기...");
+    console.log("🔔 바닥이 5입니다. 0장 유저의 기사회생을 기다립니다.");
+    // 5인 상태를 유지하며 턴을 넘기지 않음
     return;
   }
 
@@ -110,9 +111,9 @@ function processSkipTurn(room, io) {
       currentPlayer.myDeck &&
       currentPlayer.myDeck.length > 0
     ) {
-      break;
+      break; // 카드가 있는 사람 발견!
     } else if (currentPlayer) {
-      console.log(`💀 [탈락] ${currentPlayer.nickname} 기사회생 실패`);
+      // 0장인데 바닥이 5도 아니니 탈락 처리
       currentPlayer.openCard = null;
       currentPlayer.openCardStack = [];
       room.turnIndex = (room.turnIndex + 1) % room.players.length;
@@ -121,6 +122,7 @@ function processSkipTurn(room, io) {
     }
   }
 
+  // 최종 확정된 다음 턴 정보를 모든 클라이언트에 강제 동기화
   io.to(room.roomId).emit("turnChanged", {
     nextTurnId: room.players[room.turnIndex].id,
     players: room.players.map((p) => ({
@@ -267,6 +269,7 @@ io.on("connection", (socket) => {
   socket.on("flipCard", () => {
     const room = rooms[socket.roomId];
     if (!room || !room.isGameStarted) return;
+
     room.turnIndex = getSafeNextIndex(room);
     let p = room.players[room.turnIndex];
 
@@ -276,16 +279,20 @@ io.on("connection", (socket) => {
     p.openCard = card;
     p.openCardStack.push(card);
 
+    // 연출을 위해 현재 플레이어 정보를 보냄
     io.to(room.roomId).emit("cardFlipped", {
       playerId: socket.id,
       card,
-      nextTurnId: p.id,
+      nextTurnId: p.id, // 아직은 현재 플레이어 ID를 유지하여 연출 집중
       remainingCount: p.myDeck.length,
     });
 
+    // 0.8초 후 다음 사람으로 넘길지(스킵할지) 결정
     setTimeout(() => {
       if (!room.isGameStarted) return;
+      // 인덱스를 일단 하나 올림
       room.turnIndex = (room.turnIndex + 1) % room.players.length;
+      // 여기서 5인지 체크해서 자동으로 0장인 사람을 거를지 결정함
       processSkipTurn(room, io);
     }, 800);
   });
