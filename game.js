@@ -1589,8 +1589,14 @@ class KushiScene extends Phaser.Scene {
         this.showToast(`${data.winnerNickname}님이 카드를 획득! 🔔`, "#f1c40f");
         this.renderTable(data.players);
       } else {
-        // 실패 시에도 테이블을 갱신해야 카드 수가 줄어든 게 반영됩니다.
-        if (data.players) this.renderTable(data.players);
+        // 실패 연출 실행!
+        this.playFeedback(false, data.message);
+
+        // 💡 아래 함수를 호출 (서버 데이터에 penaltyId가 포함되어야 함)
+        this.playPenaltyAnimation({
+          penaltyId: data.winnerId || data.playerId, // 서버에서 보낸 틀린 사람 ID
+          players: data.players,
+        });
       }
     });
 
@@ -1705,6 +1711,62 @@ class KushiScene extends Phaser.Scene {
     const fruitNames = { 1: "strawberry", 2: "banana", 3: "lime", 4: "plum" };
     const fruitName = fruitNames[card.fruit] || "strawberry";
     return `${fruitName}_${card.count}`;
+  }
+
+  playPenaltyAnimation(data) {
+    const { width, height } = this.cameras.main;
+    const players = this.roundData.players;
+
+    // 1. 벌칙자(종 잘못 친 사람)와 내 인덱스 찾기
+    const penaltyIdx = players.findIndex((p) => p.id === data.penaltyId); // 서버에서 틀린 사람 ID를 보내줘야 함
+    const myIndex = players.findIndex((p) => p.id === socket.id);
+
+    if (penaltyIdx === -1) return;
+
+    // 2. 플레이어별 화면상 위치 좌표 (pos 배열은 기존과 동일)
+    const pos = [
+      { x: width * 0.5, y: height * 0.75 }, // 하단 (나)
+      { x: width * 0.18, y: height * 0.45 }, // 좌측
+      { x: width * 0.5, y: height * 0.18 }, // 상단
+      { x: width * 0.82, y: height * 0.45 }, // 우측
+    ];
+
+    // 벌칙자의 상대적 위치 계산
+    const relPenaltyIdx =
+      (penaltyIdx - myIndex + players.length) % players.length;
+    const startPos = pos[relPenaltyIdx];
+
+    // 3. 다른 모든 플레이어에게 카드 날리기
+    players.forEach((player, i) => {
+      if (player.id === data.penaltyId) return; // 본인 제외
+
+      const relTargetIdx = (i - myIndex + players.length) % players.length;
+      const targetPos = pos[relTargetIdx];
+
+      // 날아갈 임시 카드 생성
+      const flyCard = this.add
+        .image(startPos.x, startPos.y, "card_back")
+        .setDisplaySize(width * 0.1, width * 0.15)
+        .setDepth(2000);
+
+      // 슈슉! 애니메이션
+      this.tweens.add({
+        targets: flyCard,
+        x: targetPos.x,
+        y: targetPos.y,
+        duration: 500,
+        ease: "Back.out",
+        delay: Math.random() * 200, // 동시에 날아가되 약간의 시차로 생동감 부여
+        onStart: () => {
+          this.sound.play("pop", { volume: 0.1, detune: 500 }); // 약간 높은 톤의 소리
+        },
+        onComplete: () => {
+          flyCard.destroy();
+          // 모든 애니메이션이 끝날 즈음 테이블 갱신
+          if (i === players.length - 1) this.renderTable(data.players);
+        },
+      });
+    });
   }
 
   playCardFlipAnimation(data) {

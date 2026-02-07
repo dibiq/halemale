@@ -375,6 +375,7 @@ io.on("connection", (socket) => {
       // 💡 수정됨: 이벤트명을 bellResult로 통일하고 방 전체에 알림
       io.to(room.roomId).emit("bellResult", {
         success: false,
+        penaltyId: socket.id, // 👈 이 줄을 꼭 추가하세요!
         message: `${penaltyPlayer.nickname}님의 실수! 카드 1장씩 나눔`,
         players: room.players.map((p) => ({
           id: p.id,
@@ -383,8 +384,6 @@ io.on("connection", (socket) => {
           openCard: p.openCard,
         })),
       });
-
-      // 기존에 쓰시던 updateScores는 유지하셔도 되지만 bellResult에서 이미 players를 보내므로 생략 가능합니다.
     }
   });
 
