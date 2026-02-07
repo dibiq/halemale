@@ -272,12 +272,21 @@ io.on("connection", (socket) => {
     room.turnIndex = 0; // 누구 차례인지
 
     const totalPlayers = room.players.length;
+
+    // 💡 테스트용: 전체 덱에서 필요한 만큼만 미리 자릅니다.
+    // 인원수 * 5장 만큼만 사용합니다.
+    const testDeck = deck.slice(0, totalPlayers * 5);
+
     room.players.forEach((p, idx) => {
       p.isReady = false;
       p.score = 0;
+
+      //test
+      p.myDeck = testDeck.filter((_, i) => i % totalPlayers === idx);
       // 플레이어마다 개인 덱 할당
-      p.myDeck = deck.filter((_, i) => i % totalPlayers === idx);
+      //p.myDeck = deck.filter((_, i) => i % totalPlayers === idx);
       p.openCard = null; // 현재 바닥에 보여지는 이 플레이어의 카드
+      p.openCardStack = []; // 💡 이 줄을 추가해서 쌓아둘 더미 공간을 만듭니다.
     });
 
     io.to(room.roomId).emit("gameStart", {
@@ -292,22 +301,46 @@ io.on("connection", (socket) => {
     if (!room || !room.isGameStarted) return;
 
     const currentPlayer = room.players[room.turnIndex];
-    if (currentPlayer.id !== socket.id) return; // 내 차례가 아니면 무시
+    if (currentPlayer.id !== socket.id) return;
 
-    if (currentPlayer.myDeck.length > 0) {
-      const card = currentPlayer.myDeck.pop();
-      currentPlayer.openCard = card;
+    // 💡 패배 판정: 뒤집을 카드가 없다면 게임 종료
+    if (currentPlayer.myDeck.length === 0) {
+      room.isGameStarted = false; // 게임 중지
 
-      // 다음 사람 턴으로
-      room.turnIndex = (room.turnIndex + 1) % room.players.length;
+      // 카드 많은 순으로 랭킹 정렬
+      const sorted = [...room.players].sort(
+        (a, b) => b.myDeck.length - a.myDeck.length
+      );
 
-      io.to(room.roomId).emit("cardFlipped", {
-        playerId: socket.id,
-        card: card,
-        nextTurnId: room.players[room.turnIndex].id,
-        remainingCount: currentPlayer.myDeck.length,
+      io.to(room.roomId).emit("gameEnded", {
+        message: `${currentPlayer.nickname}님의 카드가 없어 게임이 종료되었습니다!`,
+        ranking: sorted.map((p) => ({
+          nickname: p.nickname,
+          cards: p.myDeck.length,
+        })),
+        winner: sorted[0].nickname,
       });
+      return;
     }
+
+    // 정상 뒤집기 로직
+    const card = currentPlayer.myDeck.pop();
+
+    // 💡 수정: 뽑은 카드를 바구니에 차곡차곡 쌓습니다.
+    if (!currentPlayer.openCardStack) currentPlayer.openCardStack = [];
+    currentPlayer.openCardStack.push(card);
+
+    currentPlayer.openCard = card;
+
+    // 다음 사람 턴으로 (다음 사람도 카드가 0장일 수 있으므로 주의가 필요하지만, 일단 기본 로직)
+    room.turnIndex = (room.turnIndex + 1) % room.players.length;
+
+    io.to(room.roomId).emit("cardFlipped", {
+      playerId: socket.id,
+      card: card,
+      nextTurnId: room.players[room.turnIndex].id,
+      remainingCount: currentPlayer.myDeck.length,
+    });
   });
 
   socket.on("ringBell", () => {
@@ -328,21 +361,30 @@ io.on("connection", (socket) => {
     if (isSuccess) {
       // 성공: 바닥의 모든 카드를 종 친 사람이 가져감
       let collectedCards = [];
+
       room.players.forEach((p) => {
-        if (p.openCard) {
-          collectedCards.push(p.openCard);
-          p.openCard = null;
+        // 💡 수정: 보이고 있는 한 장이 아니라, 그 밑에 깔린 더미 전체를 수거합니다.
+        if (p.openCardStack && p.openCardStack.length > 0) {
+          collectedCards = [...collectedCards, ...p.openCardStack]; // 전체 복사
+          p.openCardStack = []; // 바닥 비우기
+          p.openCard = null; // 화면 표시 지우기
         }
       });
 
       const winner = room.players.find((p) => p.id === socket.id);
+
       winner.myDeck = [...collectedCards, ...winner.myDeck]; // 내 덱 아래로 넣기
 
       io.to(room.roomId).emit("bellResult", {
         success: true,
         winnerId: socket.id,
         winnerNickname: winner.nickname,
-        players: room.players, // 갱신된 카드 숫자 전송
+        players: room.players.map((p) => ({
+          id: p.id,
+          nickname: p.nickname,
+          cards: p.myDeck.length,
+          openCard: p.openCard,
+        })),
       });
 
       // ringBell 성공 로직 내부에서 승자 판정 후
@@ -401,8 +443,8 @@ io.on("connection", (socket) => {
 
       const wasHost = room.host === socket.id;
 
-      // 플레이어 제거
-      room.players = room.players.filter((p) => p.id === socket.id);
+      // 기존 filter 부분 수정
+      room.players = room.players.filter((p) => p.id !== socket.id);
 
       // ================= [추가된 최적화 로직] =================
       if (room.isGameStarted) {

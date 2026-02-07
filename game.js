@@ -381,7 +381,7 @@ class LobbyScene extends Phaser.Scene {
             ),
           };
 
-          this.scene.start("KushiScene", singleGameData);
+          this.scene.start("GameScene", singleGameData);
         },
       });
     });
@@ -602,7 +602,7 @@ class LobbyScene extends Phaser.Scene {
       // 로딩창이 혹시 떠 있다면 닫아줍니다.
       this.hideLoading();
 
-      this.scene.start("KushiScene", data);
+      this.scene.start("GameScene", data);
     });
 
     // LobbyScene의 create() 내부
@@ -1475,9 +1475,9 @@ class LobbyScene extends Phaser.Scene {
   }
 }
 
-class KushiScene extends Phaser.Scene {
+class GameScene extends Phaser.Scene {
   constructor() {
-    super("KushiScene");
+    super("GameScene");
   }
   init(data) {
     this.roundData = {
@@ -1568,10 +1568,18 @@ class KushiScene extends Phaser.Scene {
     // ============================================
     socket.off("gameStart").on("gameStart", (data) => {
       if (this.resultContainer) this.resultContainer.destroy();
-      this.roundData.players = data.players;
+
+      // 💡 수정: 서버의 myDeck.length를 cards 속성으로 매핑
+      this.roundData.players = data.players.map((p) => ({
+        ...p,
+        cards: p.cards || (p.myDeck ? p.myDeck.length : 0),
+        openCard: null, // 시작 시 바닥 카드는 비움
+      }));
+
       this.roundData.isGameStarted = true;
-      this.isGameReady = true; // 💡 게임 시작 시 조작 가능하게 플래그 ON
-      this.renderTable(data.players);
+      this.isGameReady = true;
+
+      this.renderTable(this.roundData.players); // 갱신된 roundData 사용
     });
 
     socket.off("cardFlipped").on("cardFlipped", (data) => {
@@ -1579,23 +1587,30 @@ class KushiScene extends Phaser.Scene {
     });
 
     socket.off("bellResult").on("bellResult", (data) => {
-      // 로그를 찍어서 데이터가 어떻게 오는지 확인해보세요!
-      console.log("[BellResult] 수신 데이터:", data);
-
-      // playFeedback 실행
       this.playFeedback(data.success, data.message);
 
       if (data.success) {
+        // 성공 로직 (기존과 동일)
+        this.roundData.players = data.players.map((p) => ({
+          ...p,
+          cards: p.cards || (p.myDeck ? p.myDeck.length : 0),
+          openCard: null,
+        }));
         this.showToast(`${data.winnerNickname}님이 카드를 획득! 🔔`, "#f1c40f");
-        this.renderTable(data.players);
+        this.time.delayedCall(500, () => {
+          this.renderTable(this.roundData.players);
+        });
       } else {
-        // 실패 연출 실행!
-        this.playFeedback(false, data.message);
+        // 💡 실패 시: 먼저 내 로컬 데이터를 서버 데이터로 동기화!
+        this.roundData.players = data.players.map((p) => ({
+          ...p,
+          cards: p.cards || (p.myDeck ? p.myDeck.length : 0),
+        }));
 
-        // 💡 아래 함수를 호출 (서버 데이터에 penaltyId가 포함되어야 함)
+        // 그 다음 애니메이션 실행 (애니메이션이 끝나면 갱신된 데이터를 그리도록 함)
         this.playPenaltyAnimation({
-          penaltyId: data.winnerId || data.playerId, // 서버에서 보낸 틀린 사람 ID
-          players: data.players,
+          penaltyId: data.penaltyId,
+          players: this.roundData.players, // 갱신된 데이터 전달
         });
       }
     });
@@ -1642,6 +1657,7 @@ class KushiScene extends Phaser.Scene {
       socket.off("startBlocked");
     });
   }
+
   createHaliGaliButtons(height) {
     const { width } = this.cameras.main;
 
@@ -1717,53 +1733,58 @@ class KushiScene extends Phaser.Scene {
     const { width, height } = this.cameras.main;
     const players = this.roundData.players;
 
-    // 1. 벌칙자(종 잘못 친 사람)와 내 인덱스 찾기
-    const penaltyIdx = players.findIndex((p) => p.id === data.penaltyId); // 서버에서 틀린 사람 ID를 보내줘야 함
+    const penaltyIdx = players.findIndex((p) => p.id === data.penaltyId);
     const myIndex = players.findIndex((p) => p.id === socket.id);
 
     if (penaltyIdx === -1) return;
 
-    // 2. 플레이어별 화면상 위치 좌표 (pos 배열은 기존과 동일)
     const pos = [
-      { x: width * 0.5, y: height * 0.75 }, // 하단 (나)
-      { x: width * 0.18, y: height * 0.45 }, // 좌측
-      { x: width * 0.5, y: height * 0.18 }, // 상단
-      { x: width * 0.82, y: height * 0.45 }, // 우측
+      { x: width * 0.5, y: height * 0.75 },
+      { x: width * 0.18, y: height * 0.45 },
+      { x: width * 0.5, y: height * 0.18 },
+      { x: width * 0.82, y: height * 0.45 },
     ];
 
-    // 벌칙자의 상대적 위치 계산
     const relPenaltyIdx =
       (penaltyIdx - myIndex + players.length) % players.length;
     const startPos = pos[relPenaltyIdx];
 
-    // 3. 다른 모든 플레이어에게 카드 날리기
-    players.forEach((player, i) => {
-      if (player.id === data.penaltyId) return; // 본인 제외
+    // 💡 수정한 부분 1: 날려야 할 총 카드 개수 계산
+    const targetPlayers = players.filter((p) => p.id !== data.penaltyId);
+    const totalCardsToFly = targetPlayers.length;
+    let finishedCount = 0;
 
-      const relTargetIdx = (i - myIndex + players.length) % players.length;
+    targetPlayers.forEach((player) => {
+      // player 객체에서 실제 전체 인덱스를 다시 찾음 (좌표용)
+      const realIdx = players.findIndex((p) => p.id === player.id);
+      const relTargetIdx =
+        (realIdx - myIndex + players.length) % players.length;
       const targetPos = pos[relTargetIdx];
 
-      // 날아갈 임시 카드 생성
       const flyCard = this.add
         .image(startPos.x, startPos.y, "card_back")
         .setDisplaySize(width * 0.1, width * 0.15)
         .setDepth(2000);
 
-      // 슈슉! 애니메이션
       this.tweens.add({
         targets: flyCard,
         x: targetPos.x,
         y: targetPos.y,
         duration: 500,
-        ease: "Back.out",
-        delay: Math.random() * 200, // 동시에 날아가되 약간의 시차로 생동감 부여
+        ease: "Cubic.out", // Back.out 보다 깔끔하게 꽂히는 Cubic.out 추천
+        delay: Math.random() * 200,
         onStart: () => {
-          this.sound.play("pop", { volume: 0.1, detune: 500 }); // 약간 높은 톤의 소리
+          this.sound.play("pop", { volume: 0.1, detune: 500 });
         },
         onComplete: () => {
           flyCard.destroy();
-          // 모든 애니메이션이 끝날 즈음 테이블 갱신
-          if (i === players.length - 1) this.renderTable(data.players);
+          finishedCount++;
+
+          // 💡 수정한 부분 2: 모든 카드가 도착했을 때만 딱 한 번 실행
+          if (finishedCount === totalCardsToFly) {
+            console.log("모든 패널티 카드 도착! 테이블 갱신");
+            this.renderTable(data.players);
+          }
         },
       });
     });
@@ -1861,13 +1882,16 @@ class KushiScene extends Phaser.Scene {
   drawPlayerInfo(p, layout) {
     const { width } = this.cameras.main;
     const isMe = p.id === socket.id;
-    const offset = 80; // 닉네임 위치 조정
 
-    // 닉네임 텍스트
+    // 위치 계산을 위한 오프셋
+    const nameOffset = 80; // 닉네임 위치
+    const cardOffset = 110; // 카드 숫자 위치 (닉네임보다 조금 더 아래)
+
+    // 1. 닉네임 텍스트
     const nameTxt = this.add
       .text(
         layout.x,
-        layout.y + (layout.rotation === 180 ? -offset : offset),
+        layout.y + (layout.rotation === 180 ? -nameOffset : nameOffset),
         p.nickname,
         {
           fontFamily: GAME_FONTS.main,
@@ -1880,7 +1904,30 @@ class KushiScene extends Phaser.Scene {
       )
       .setOrigin(0.5);
 
+    // 2. 카드 숫자 텍스트 추가
+    // p.cards가 없으면 0으로 표시 (위에서 만든 매핑 로직 덕분에 숫자가 들어올 거예요)
+    const cardCount =
+      p.cards !== undefined ? p.cards : p.myDeck ? p.myDeck.length : 0;
+
+    const cardTxt = this.add
+      .text(
+        layout.x,
+        layout.y + (layout.rotation === 180 ? -cardOffset : cardOffset),
+        `🂠 ${cardCount}`,
+        {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.03}px`,
+          color: "#f1c40f", // 황금색 계열로 강조
+          fontWeight: "bold",
+          stroke: "#000",
+          strokeThickness: 2,
+        }
+      )
+      .setOrigin(0.5);
+
+    // 그룹에 추가하여 관리
     this.playerTableGroup.add(nameTxt);
+    this.playerTableGroup.add(cardTxt);
   }
 
   drawPlayerDeck(p, layout) {
@@ -2556,7 +2603,7 @@ const config = {
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
   dom: { createContainer: true }, // ✅ 여기를 추가
-  scene: [LobbyScene, KushiScene],
+  scene: [LobbyScene, GameScene],
 };
 
 new Phaser.Game(config);
