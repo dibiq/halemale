@@ -71,26 +71,31 @@ app.get("/health", (req, res) => {
 });
 // 서버 상단에 추가
 function checkGameOver(room, io) {
-  const nextPlayer = room.players[room.turnIndex];
+  // 실제 덱에 카드가 있는 사람만 필터링
+  const activePlayers = room.players.filter((p) => p.myDeck.length > 0);
 
-  // 다음 차례인 사람의 카드가 0장이면 즉시 종료
-  if (nextPlayer.myDeck.length === 0) {
+  // 🏆 승리 조건: 카드를 가진 사람이 딱 1명 남았을 때
+  if (activePlayers.length === 1) {
     room.isGameStarted = false;
+    const winner = activePlayers[0];
+
+    // 카드 장수 순서대로 정렬해서 결과 전송
     const sorted = [...room.players].sort(
       (a, b) => b.myDeck.length - a.myDeck.length
     );
 
     io.to(room.roomId).emit("gameEnded", {
-      message: `${nextPlayer.nickname}님의 카드가 없어 게임이 종료되었습니다!`,
+      message: `축하합니다! ${winner.nickname}님이 최종 승리하셨습니다!`,
       ranking: sorted.map((p) => ({
+        id: p.id,
         nickname: p.nickname,
         cards: p.myDeck.length,
       })),
-      winner: sorted[0].nickname,
+      winner: winner.nickname,
     });
-    return true; // 게임 종료됨
+    return true;
   }
-  return false; // 게임 계속 진행
+  return false;
 }
 
 // ============================================
@@ -323,10 +328,25 @@ io.on("connection", (socket) => {
     const room = rooms[socket.roomId];
     if (!room || !room.isGameStarted) return;
 
-    const currentPlayer = room.players[room.turnIndex];
+    let currentPlayer = room.players[room.turnIndex];
+
+    // 💡 [핵심 룰 적용] 내 차례가 왔는데 카드가 0장이다? -> 기사회생 실패!
+    // 카드가 있는 사람이 나올 때까지 턴을 넘깁니다.
+    while (currentPlayer.myDeck.length === 0) {
+      console.log(
+        `💀 [탈락/스킵] ${currentPlayer.nickname}님은 카드가 없어 차례가 넘어갑니다.`
+      );
+      room.turnIndex = (room.turnIndex + 1) % room.players.length;
+      currentPlayer = room.players[room.turnIndex];
+
+      // 만약 한 바퀴 돌았는데 아무도 카드가 없다면 (이론상 불가능하지만 안전장치)
+      if (checkGameOver(room, io)) return;
+    }
+
+    // 이제 currentPlayer는 반드시 카드를 가진 사람임
     if (currentPlayer.id !== socket.id) return;
 
-    // 1. 카드 뒤집기 로직
+    // 1. 카드 뒤집기
     const card = currentPlayer.myDeck.pop();
     if (!currentPlayer.openCardStack) currentPlayer.openCardStack = [];
     currentPlayer.openCardStack.push(card);
@@ -335,10 +355,8 @@ io.on("connection", (socket) => {
     // 2. 턴 넘기기
     room.turnIndex = (room.turnIndex + 1) % room.players.length;
 
-    // 3. 💡 핵심: 턴 넘기자마자 다음 사람 카드가 0장이면 자동 종료
-    if (checkGameOver(room, io)) return;
-
-    // 4. 게임이 계속된다면 뒤집기 알림
+    // 3. 알림 전송 (다음 차례가 카드가 0장인 사람이라도 일단 ID를 보냄)
+    // 그 사람이 종을 칠 기회는 줘야 하니까요!
     io.to(room.roomId).emit("cardFlipped", {
       playerId: socket.id,
       card: card,
@@ -351,16 +369,15 @@ io.on("connection", (socket) => {
     const room = rooms[socket.roomId];
     if (!room || !room.isGameStarted) return;
 
+    // 1. 과일 합계 계산 로직
     let fruitTotals = { 1: 0, 2: 0, 3: 0, 4: 0 };
     room.players.forEach((p) => {
-      if (p.openCard) {
-        fruitTotals[p.openCard.fruit] += p.openCard.count;
-      }
+      if (p.openCard) fruitTotals[p.openCard.fruit] += p.openCard.count;
     });
-
     const isSuccess = Object.values(fruitTotals).some((total) => total === 5);
 
     if (isSuccess) {
+      // --- 성공 로직: 기존과 동일 ---
       let collectedCards = [];
       room.players.forEach((p) => {
         if (p.openCardStack && p.openCardStack.length > 0) {
@@ -369,13 +386,9 @@ io.on("connection", (socket) => {
           p.openCard = null;
         }
       });
-
       const winner = room.players.find((p) => p.id === socket.id);
       winner.myDeck = [...collectedCards, ...winner.myDeck];
 
-      // 💡 핵심: 카드를 가져간 직후, 현재 턴인 사람이 카드가 0장인지 체크
-      // (방금 카드를 가져온 사람이 0장이었다가 다시 생겼을 수도 있고,
-      // 다음 뒤집을 사람이 0장인 채로 남아있을 수도 있음)
       if (checkGameOver(room, io)) return;
 
       io.to(room.roomId).emit("bellResult", {
@@ -390,32 +403,54 @@ io.on("connection", (socket) => {
         })),
       });
     } else {
+      // --- 실패 로직: 카드 순차 분배 및 부족 시 패배 ---
       const penaltyPlayer = room.players.find((p) => p.id === socket.id);
-      const requiredCards = room.players.length - 1;
+      const otherPlayers = room.players.filter((p) => p.id !== socket.id);
+      const requiredCards = otherPlayers.length; // 상대 플레이어 수
 
-      if (penaltyPlayer.myDeck.length < requiredCards) {
-        room.isGameStarted = false;
-        const sorted = [...room.players].sort(
-          (a, b) => b.myDeck.length - a.myDeck.length
+      const penaltyIdx = room.players.findIndex((p) => p.id === socket.id);
+      const otherPlayersSorted = [
+        ...room.players.slice(penaltyIdx + 1),
+        ...room.players.slice(0, penaltyIdx),
+      ];
+
+      console.log(`🔔 [벌칙 발생] ${penaltyPlayer.nickname}님 실수!`);
+
+      // 💡 [핵심] 순서대로 나눠주기
+      for (let i = 0; i < otherPlayersSorted.length; i++) {
+        if (penaltyPlayer.myDeck.length > 0) {
+          const card = penaltyPlayer.myDeck.pop();
+          otherPlayersSorted[i].myDeck.unshift(card);
+        }
+      }
+
+      // 💡 [패배 판정] 나눠준 후 내 카드가 없거나, 원래 필요했던 장수보다 부족했다면 실격
+      if (
+        penaltyPlayer.myDeck.length === 0 ||
+        penaltyPlayer.myDeck.length + otherPlayers.length < requiredCards
+      ) {
+        console.log(
+          `💀 [실격] ${penaltyPlayer.nickname}님 카드 부족으로 패배 처리`
         );
-        io.to(room.roomId).emit("gameEnded", {
-          message: `${penaltyPlayer.nickname}님이 벌칙으로 줄 카드가 부족하여 게임이 종료되었습니다!`,
-          ranking: sorted.map((p) => ({
+        penaltyPlayer.myDeck = []; // 확실히 비움
+
+        if (checkGameOver(room, io)) return;
+
+        io.to(room.roomId).emit("bellResult", {
+          success: false,
+          penaltyId: socket.id,
+          message: `${penaltyPlayer.nickname}님 실격! (카드를 모두 나눠주고 패배)`,
+          players: room.players.map((p) => ({
+            id: p.id,
             nickname: p.nickname,
             cards: p.myDeck.length,
+            openCard: p.openCard,
           })),
-          winner: sorted[0].nickname,
         });
         return;
       }
 
-      room.players.forEach((p) => {
-        if (p.id !== socket.id && penaltyPlayer.myDeck.length > 0) {
-          p.myDeck.unshift(penaltyPlayer.myDeck.pop());
-        }
-      });
-
-      // 💡 핵심: 벌칙으로 카드를 나눠준 직후, 다음 뒤집을 사람 카드가 0장이면 종료
+      // 정상적으로 벌칙 수행 완료 (카드가 남은 경우)
       if (checkGameOver(room, io)) return;
 
       io.to(room.roomId).emit("bellResult", {

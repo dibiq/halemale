@@ -4,7 +4,7 @@ import { title } from "process";
 import { App } from "@capacitor/app";
 import { Network } from "@capacitor/network";
 
-async function handleGetUserKey() {
+/*async function handleGetUserKey() {
   const result = await getUserKeyForGame();
 
   if (!result) {
@@ -16,6 +16,19 @@ async function handleGetUserKey() {
   } else if (result.type === "HASH") {
     console.log("사용자 키:", result.hash);
     // 여기에서 사용자 키를 사용해 게임 데이터를 관리할 수 있어요.
+  }
+}*/
+
+function handleGetUserKey() {
+  // ReactNativeWebView가 있는지 먼저 확인
+  if (typeof ReactNativeWebView !== "undefined") {
+    ReactNativeWebView.postMessage(JSON.stringify({ type: "GET_USER_KEY" }));
+  } else {
+    // 브라우저 환경일 경우 임시 키 발급 또는 에러 방지 처리
+    console.warn(
+      "ReactNativeWebView를 찾을 수 없습니다. 브라우저 모드로 동작합니다."
+    );
+    return "GUEST_USER";
   }
 }
 
@@ -349,36 +362,60 @@ class LobbyScene extends Phaser.Scene {
 
     singleBtnImg.on("pointerdown", () => {
       this.sound.play("pop", { volume: 0.1 });
-      console.log("single");
       this.tweens.add({
         targets: [singleBtnImg, singleBtn.list[1]],
         scaleX: "*=0.95",
         scaleY: "*=0.95",
         duration: 50,
         yoyo: true,
+        // LobbyScene.js 의 싱글플레이 버튼 내부
         onComplete: () => {
+          // socket.id가 없으면 고정 ID 사용 (싱글플레이 전용)
+          const myId = socket.id || "PLAYER_ME";
+          const myNickname = localStorage.getItem("nickname") || "나";
+
           const singleGameData = {
             roomId: "SINGLE",
-            maxPlayers: 1,
+            maxPlayers: 4,
             isSingle: true,
-            // 🔹 중요: roundData 객체로 감싸서 멀티플레이와 구조를 통일합니다.
+            hostId: myId, // 내가 방장
 
+            // 나를 항상 0번 인덱스에 배치
             players: [
               {
-                id: socket.id || "local-player",
-                nickname: localStorage.getItem("nickname") || "나",
-                score: 0,
+                id: myId,
+                nickname: myNickname,
+                cards: 14,
+                isReady: true,
+                openCard: null,
+                openCardStack: [],
+              },
+              {
+                id: "AI_1",
+                nickname: "🤖 초보 요리사",
+                cards: 14,
+                isReady: true,
+                openCard: null,
+                openCardStack: [],
+              },
+              {
+                id: "AI_2",
+                nickname: "🤖 중급 요리사",
+                cards: 14,
+                isReady: true,
+                openCard: null,
+                openCardStack: [],
+              },
+              {
+                id: "AI_3",
+                nickname: "🤖 천재 요리사",
+                cards: 14,
+                isReady: true,
+                openCard: null,
+                openCardStack: [],
               },
             ],
-            hostId: socket.id || "local-player",
-
-            // 🔹 recipes는 그대로 최상위에 두어도 create에서 this.targetRecipes로 잘 받을 겁니다.
-            recipes: Array.from({ length: 3 }, () =>
-              Array.from({ length: 3 }, () => ({
-                id: Math.floor(Math.random() * 5) + 1,
-                angle: [0, 90, 180, 270][Math.floor(Math.random() * 4)],
-              }))
-            ),
+            // ... 나머지 recipes 로직
           };
 
           this.scene.start("GameScene", singleGameData);
@@ -1498,6 +1535,37 @@ class GameScene extends Phaser.Scene {
   }
 
   create() {
+    // GameScene의 init 혹은 create 상단에 추가
+    this.aiSettings = [
+      {
+        id: "AI_1",
+        nickname: "초보",
+        reactionTime: 2500,
+        flipDelay: 1500,
+      }, // 느림
+      {
+        id: "AI_2",
+        nickname: "중급",
+        reactionTime: 1800,
+        flipDelay: 1200,
+      }, // 보통
+      {
+        id: "AI_3",
+        nickname: "천재",
+        reactionTime: 1200,
+        flipDelay: 1000,
+      }, // 빠름
+    ];
+
+    if (this.isSingle) {
+      // 싱글플레이면 소켓 ID가 아닌 "PLAYER_ME" 혹은 players[0].id를 내 ID로 강제 지정
+      this.myId = this.roundData.players[0].id;
+      this.turnIndex = 0; // 내 차례부터 시작
+      this.isGameStarted = true;
+    } else {
+      this.myId = socket.id;
+    }
+
     this.isPopupOpen = false;
     this.currentJoinPopupCloseHandler = null;
 
@@ -1554,8 +1622,10 @@ class GameScene extends Phaser.Scene {
     socket.off("readyStatusUpdated").on("readyStatusUpdated", (data) => {
       this.roundData.players = data.players;
       this.roundData.hostId = data.hostId;
+
       if (this.resultContainer && this.resultContainer.active) {
-        this.showResultOverlay(data.players, true);
+        // 💡 수정: 세 번째 인자로 data를 통째로 넘겨줍니다.
+        this.showResultOverlay(data.players, true, data);
       }
     });
 
@@ -1567,22 +1637,78 @@ class GameScene extends Phaser.Scene {
     // 2. 할리갈리 전용 소켓 리스너
     // ============================================
     socket.off("gameStart").on("gameStart", (data) => {
-      if (this.resultContainer) this.resultContainer.destroy();
+      // 1. 결과창이 떠 있다면 위로 치우며 제거
+      if (this.resultContainer) {
+        this.tweens.add({
+          targets: this.resultContainer,
+          y: -height,
+          duration: 500,
+          ease: "Back.easeIn",
+          onComplete: () => {
+            this.resultContainer.destroy();
+            this.resultContainer = null;
+          },
+        });
+      }
 
-      // 💡 수정: 서버의 myDeck.length를 cards 속성으로 매핑
+      // 2. [추가] 게임 상태 및 모드 동기화
+      this.isSingle = false; // 멀티플레이임을 명시
+      this.isGameStarted = true;
+      this.isGameReady = true;
+
+      // 💡 [핵심] 턴 인덱스 강제 초기화!
+      // 모든 클라이언트가 0번(방장)부터 시작하도록 맞춥니다.
+      this.turnIndex = 0;
+
+      // 2. 모든 플레이어에게 공통 연출 실행
+      this.playOpeningAnimation();
+      this.time.delayedCall(800, () => {
+        this.showReadyGo();
+      });
+
+      // 3. 데이터 갱신 및 테이블 렌더링
       this.roundData.players = data.players.map((p) => ({
         ...p,
         cards: p.cards || (p.myDeck ? p.myDeck.length : 0),
-        openCard: null, // 시작 시 바닥 카드는 비움
+        openCard: null,
       }));
-
+      this.roundData.hostId = data.hostId; // 방장 정보 동기화
       this.roundData.isGameStarted = true;
       this.isGameReady = true;
 
-      this.renderTable(this.roundData.players); // 갱신된 roundData 사용
+      // 연출 시작 시점에 맞춰 테이블 갱신
+      this.renderTable(this.roundData.players);
     });
 
     socket.off("cardFlipped").on("cardFlipped", (data) => {
+      if (this.isSingle) return;
+
+      // 1. [데이터 갱신] 서버는 'remainingCount'라는 이름을 사용함
+      const player = this.roundData.players.find((p) => p.id === data.playerId);
+      if (player) {
+        player.openCard = data.card;
+        // 서버에서 준 숫자 반영 (data.remainingCount)
+        player.cards =
+          data.remainingCount !== undefined
+            ? data.remainingCount
+            : player.cards;
+        player.remainingCards = player.cards;
+      }
+
+      // 2. [인덱스 동기화] 서버는 'nextTurnId'를 보내줌
+      if (data.nextTurnId) {
+        const nextIdx = this.roundData.players.findIndex(
+          (p) => p.id === data.nextTurnId
+        );
+        if (nextIdx !== -1) {
+          this.turnIndex = nextIdx;
+          console.log(
+            `✅ 다음 차례 동기화: ${this.turnIndex} (${data.nextTurnId})`
+          );
+        }
+      }
+
+      // 3. 애니메이션 및 테이블 갱신
       this.playCardFlipAnimation(data);
     });
 
@@ -1617,7 +1743,7 @@ class GameScene extends Phaser.Scene {
 
     socket.off("gameEnded").on("gameEnded", (data) => {
       this.playFinishAnimation(() => {
-        this.showResultOverlay(data.ranking);
+        this.showResultOverlay(data.ranking, false, data);
       });
     });
 
@@ -1684,21 +1810,29 @@ class GameScene extends Phaser.Scene {
       .setOrigin(0.5);
   }
 
+  getCardKey(card) {
+    const fruitNames = { 1: "strawberry", 2: "banana", 3: "lime", 4: "plum" };
+    const fruitName = fruitNames[card.fruit] || "strawberry";
+    return `${fruitName}_${card.count}`;
+  }
+
   renderTable(players) {
+    if (!players || !this.playerTableGroup) return;
     this.playerTableGroup.removeAll(true);
     const { width, height } = this.cameras.main;
 
-    // 1. 플레이어 위치 계산 (내 기준 상대적 배치)
-    // socket.id를 기준으로 본인을 항상 하단(0번)에 배치하는 로직이 추가되면 좋습니다.
-    const myIndex = players.findIndex((p) => p.id === socket.id);
-    const safeIndex = myIndex === -1 ? 0 : myIndex;
+    // 싱글/멀티 통합 ID 판정
+    const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
+
+    // 내 위치 인덱스 찾기
+    let myIndex = players.findIndex((p) => p.id === myId);
+    if (myIndex === -1) myIndex = 0;
 
     const sortedPlayers = [
       ...players.slice(myIndex),
       ...players.slice(0, myIndex),
     ];
 
-    // 4인 기준 좌표 (0:하단, 1:좌측, 2:상단, 3:우측)
     const pos = [
       { x: width * 0.5, y: height * 0.75, rotation: 0 },
       { x: width * 0.18, y: height * 0.45, rotation: 90 },
@@ -1707,26 +1841,200 @@ class GameScene extends Phaser.Scene {
     ];
 
     sortedPlayers.forEach((p, i) => {
+      if (!p || !pos[i]) return;
       const layout = pos[i];
-      if (!layout) return;
 
-      // 플레이어 정보 표시 (닉네임, 남은 카드 수)
       this.drawPlayerInfo(p, layout);
+      this.drawPlayerDeck(p, layout); // 💡 여기서 숫자가 그려짐
 
-      // 2. 플레이어 카드 덱 (뒷면) 그리기
-      this.drawPlayerDeck(p, layout);
-
-      // 3. 바닥에 오픈된 카드 그리기
       if (p.openCard) {
         this.drawOpenCard(p.openCard, layout);
       }
     });
   }
 
-  getCardKey(card) {
-    const fruitNames = { 1: "strawberry", 2: "banana", 3: "lime", 4: "plum" };
+  playCardFlipAnimation(data) {
+    if (!data || !this.roundData.players) return;
+    const { width, height } = this.cameras.main;
+    const cardKey = this.getCardKey(data.card);
+
+    // 데이터 최신화 확인
+    const player = this.roundData.players.find((p) => p.id === data.playerId);
+    if (player) {
+      player.openCard = data.card;
+      // 💡 서버 변수명 반영
+      if (data.remainingCount !== undefined) {
+        player.cards = data.remainingCount;
+      }
+    }
+
+    // 2. 내 위치 기반 상대적 위치 계산
+    const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
+    const myIndex = this.roundData.players.findIndex((p) => p.id === myId);
+    const playerIdx = this.roundData.players.findIndex(
+      (p) => p.id === data.playerId
+    );
+
+    const safeMyIndex = myIndex === -1 ? 0 : myIndex;
+    const relativeIdx =
+      (playerIdx - safeMyIndex + this.roundData.players.length) %
+      this.roundData.players.length;
+
+    const pos = [
+      { x: width * 0.5, y: height * 0.75, rotation: 0 },
+      { x: width * 0.18, y: height * 0.45, rotation: 90 },
+      { x: width * 0.5, y: height * 0.18, rotation: 180 },
+      { x: width * 0.82, y: height * 0.45, rotation: -90 },
+    ];
+
+    const startPos = pos[relativeIdx];
+    if (!startPos) return;
+
+    const tempCard = this.add
+      .image(startPos.x, startPos.y, "card_back")
+      .setDisplaySize(width * 0.15, width * 0.22)
+      .setAngle(startPos.rotation)
+      .setDepth(1000);
+
+    const dist = width * 0.25;
+    const rad = Phaser.Math.DegToRad(startPos.rotation - 90);
+
+    this.tweens.add({
+      targets: tempCard,
+      x: startPos.x + Math.cos(rad) * dist,
+      y: startPos.y + Math.sin(rad) * dist,
+      duration: 300,
+      ease: "Cubic.out",
+      onUpdate: (tween) => {
+        if (tween.progress > 0.5 && tempCard.texture.key === "card_back") {
+          if (this.textures.exists(cardKey)) tempCard.setTexture(cardKey);
+        }
+      },
+      onComplete: () => {
+        tempCard.destroy();
+        // 💡 데이터가 이미 위에서 수정되었으므로, 다시 그리면 숫자가 바뀝니다.
+        this.renderTable(this.roundData.players);
+      },
+    });
+  }
+
+  drawPlayerInfo(p, layout) {
+    const { width } = this.cameras.main;
+
+    // 💡 수정: 싱글플레이/멀티플레이 통합 ID 판정
+    const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
+    const isMe = p.id === myId;
+
+    // 위치 계산을 위한 오프셋
+    const nameOffset = 80;
+    const cardOffset = 110;
+
+    // 1. 닉네임 텍스트
+    const nameTxt = this.add
+      .text(
+        layout.x,
+        layout.y + (layout.rotation === 180 ? -nameOffset : nameOffset),
+        p.nickname,
+        {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.035}px`,
+          color: isMe ? "#22c55e" : "#ffffff",
+          fontWeight: "bold",
+          stroke: "#000",
+          strokeThickness: 3,
+        }
+      )
+      .setOrigin(0.5);
+
+    // 2. 💡 카드 숫자 로직 근본 해결
+    // p.cards 우선 -> 그 다음 p.remainingCards (서버용) -> 그 다음 p.myDeck (백업) 순서로 참조
+    const cardCount =
+      p.cards !== undefined
+        ? p.cards
+        : p.remainingCards !== undefined
+        ? p.remainingCards
+        : p.myDeck
+        ? p.myDeck.length
+        : 0;
+
+    const cardTxt = this.add
+      .text(
+        layout.x,
+        layout.y + (layout.rotation === 180 ? -cardOffset : cardOffset),
+        `🂠 ${cardCount}`,
+        {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.03}px`,
+          color: "#f1c40f",
+          fontWeight: "bold",
+          stroke: "#000",
+          strokeThickness: 2,
+        }
+      )
+      .setOrigin(0.5);
+
+    this.playerTableGroup.add(nameTxt);
+    this.playerTableGroup.add(cardTxt);
+  }
+
+  drawPlayerDeck(p, layout) {
+    const { width } = this.cameras.main;
+
+    // 💡 카드 장수 결정 로직 통일
+    const cardCount = p.cards !== undefined ? p.cards : p.remainingCards || 0;
+
+    const deck = this.add
+      .image(layout.x, layout.y, "card_back")
+      .setDisplaySize(width * 0.15, width * 0.22)
+      .setAngle(layout.rotation);
+
+    // 💡 카드 장수 표시 (p.cards 데이터 반영)
+    const countTxt = this.add
+      .text(layout.x, layout.y, cardCount, {
+        fontFamily: GAME_FONTS.main,
+        fontSize: "22px", // 가독성을 위해 살짝 키움
+        color: "#ffffff",
+        fontWeight: "bold",
+        stroke: "#000",
+        strokeThickness: 3,
+      })
+      .setOrigin(0.5)
+      .setDepth(10); // 카드보다 위에 보이게 설정
+
+    this.playerTableGroup.add([deck, countTxt]);
+  }
+
+  drawOpenCard(card, layout) {
+    const { width } = this.cameras.main;
+
+    // 1. 서버의 숫자(1~4)를 클라이언트 이미지 키(문자)로 변환
+    const fruitNames = {
+      1: "strawberry",
+      2: "banana",
+      3: "lime",
+      4: "plum",
+    };
     const fruitName = fruitNames[card.fruit] || "strawberry";
-    return `${fruitName}_${card.count}`;
+    const cardKey = `${fruitName}_${card.count}`;
+
+    // 2. 좌표 계산
+    const dist = width * 0.25;
+    const rad = Phaser.Math.DegToRad(layout.rotation - 90);
+    const ox = layout.x + Math.cos(rad) * dist;
+    const oy = layout.y + Math.sin(rad) * dist;
+
+    // 3. 이미지 생성 (키가 존재하는지 확인)
+    if (this.textures.exists(cardKey)) {
+      const openCardImg = this.add
+        .image(ox, oy, cardKey)
+        .setDisplaySize(width * 0.18, width * 0.25)
+        .setAngle(layout.rotation)
+        .setDepth(150);
+
+      this.playerTableGroup.add(openCardImg);
+    } else {
+      console.error(`🚨 drawOpenCard 에러: 키를 찾을 수 없음 - ${cardKey}`);
+    }
   }
 
   playPenaltyAnimation(data) {
@@ -1734,7 +2042,9 @@ class GameScene extends Phaser.Scene {
     const players = this.roundData.players;
 
     const penaltyIdx = players.findIndex((p) => p.id === data.penaltyId);
-    const myIndex = players.findIndex((p) => p.id === socket.id);
+    // 💡 다른 함수들처럼 싱글/멀티 통합 ID 판정 적용
+    const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
+    const myIndex = players.findIndex((p) => p.id === myId);
 
     if (penaltyIdx === -1) return;
 
@@ -1790,197 +2100,133 @@ class GameScene extends Phaser.Scene {
     });
   }
 
-  playCardFlipAnimation(data) {
-    // 1. 데이터가 없으면 실행 중단
-    if (!data || !this.roundData.players) return;
+  endSingleGame(result) {
+    this.isGameStarted = false;
+    this.isGameReady = false;
 
-    const { width, height } = this.cameras.main;
-
-    // 2. 서버의 숫자(1~4)를 클라이언트 이미지 키(문자)로 변환 (매핑)
-    // 서버 설정에 따라 숫자 순서를 맞춰주세요 (1:딸기, 2:바나나, 3:라임, 4:자두)
-    const fruitNames = {
-      1: "strawberry",
-      2: "banana",
-      3: "lime",
-      4: "plum",
-    };
-
-    const fruitName = fruitNames[data.card.fruit] || "strawberry";
-    const cardKey = this.getCardKey(data.card);
-
-    // [디버깅용 로그] 엑스박스가 뜨면 이 로그를 확인하세요
-    console.log(
-      `[CardFlip] 서버전달:${data.card.fruit} -> 매핑된이름:${fruitName} -> 최종키:${cardKey}`
-    );
-
-    // 3. 현재 메모리의 플레이어 데이터 업데이트 (도착 후 상태 반영용)
-    const playerIdx = this.roundData.players.findIndex(
-      (p) => p.id === data.playerId
-    );
-    const myIndex = this.roundData.players.findIndex((p) => p.id === socket.id);
-
-    if (playerIdx !== -1) {
-      this.roundData.players[playerIdx].openCard = data.card; // 바닥 카드 정보 업데이트
-      this.roundData.players[playerIdx].cards = data.remainingCount; // 남은 카드 수 업데이트
+    if (result === "WIN") {
+      this.showToast("축하합니다! 최종 승리하셨습니다! 🎉", "#2ecc71");
+    } else {
+      this.showToast("패배하셨습니다. 다시 도전해보세요! 💀", "#e74c3c");
     }
 
-    // 4. 애니메이션 출발/도착 위치 계산
-    const relativeIdx =
-      (playerIdx - myIndex + this.roundData.players.length) %
-      this.roundData.players.length;
-    const pos = [
-      { x: width * 0.5, y: height * 0.75, rotation: 0 },
-      { x: width * 0.18, y: height * 0.45, rotation: 90 },
-      { x: width * 0.5, y: height * 0.18, rotation: 180 },
-      { x: width * 0.82, y: height * 0.45, rotation: -90 },
-    ];
-
-    const startPos = pos[relativeIdx];
-    if (!startPos) return this.renderTable(this.roundData.players);
-
-    // 5. 애니메이션용 임시 카드 생성 (처음엔 뒷면)
-    const tempCard = this.add
-      .image(startPos.x, startPos.y, "card_back")
-      .setDisplaySize(width * 0.15, width * 0.22)
-      .setAngle(startPos.rotation)
-      .setDepth(1000);
-
-    const dist = width * 0.25;
-    const rad = Phaser.Math.DegToRad(startPos.rotation - 90);
-    const targetX = startPos.x + Math.cos(rad) * dist;
-    const targetY = startPos.y + Math.sin(rad) * dist;
-
-    // 6. 트윈 애니메이션
-    this.tweens.add({
-      targets: tempCard,
-      x: targetX,
-      y: targetY,
-      duration: 300,
-      ease: "Cubic.out",
-      onStart: () => {
-        this.sound.play("pop", { volume: 0.1 });
-      },
-      onUpdate: (tween) => {
-        // 50% 진행 시점에 앞면 텍스처로 교체 (뒤집기 효과)
-        if (tween.progress > 0.5 && tempCard.texture.key === "card_back") {
-          // 이미지가 로드되어 있는지 확인 후 적용
-          if (this.textures.exists(cardKey)) {
-            tempCard.setTexture(cardKey);
-            tempCard.setDisplaySize(width * 0.18, width * 0.25);
-          } else {
-            console.error(`🚨 텍스처를 찾을 수 없습니다: ${cardKey}`);
-          }
-        }
-      },
-      onComplete: () => {
-        tempCard.destroy(); // 임시 카드 제거
-        this.renderTable(this.roundData.players); // 최종 상태로 테이블 다시 그리기
-      },
+    // 2초 대기 후 이동
+    this.time.delayedCall(3000, () => {
+      // 방법 A: 씬 전환 (위의 LobbyScene 에러를 수정했다면 정상 작동)
+      //this.scene.start("LobbyScene");
+      window.location.reload();
+      // 방법 B: 만약 씬 전환이 계속 에러 난다면 페이지 새로고침 (가장 확실함)
+      // window.location.reload();
     });
   }
 
-  drawPlayerInfo(p, layout) {
-    const { width } = this.cameras.main;
-    const isMe = p.id === socket.id;
+  nextTurn() {
+    if (!this.isSingle || !this.isGameStarted) return;
 
-    // 위치 계산을 위한 오프셋
-    const nameOffset = 80; // 닉네임 위치
-    const cardOffset = 110; // 카드 숫자 위치 (닉네임보다 조금 더 아래)
+    const myId = this.myId || "PLAYER_ME";
 
-    // 1. 닉네임 텍스트
-    const nameTxt = this.add
-      .text(
-        layout.x,
-        layout.y + (layout.rotation === 180 ? -nameOffset : nameOffset),
-        p.nickname,
-        {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.035}px`,
-          color: isMe ? "#22c55e" : "#ffffff",
-          fontWeight: "bold",
-          stroke: "#000",
-          strokeThickness: 3,
+    // 1. 현재 카드가 1장이라도 있는 '실제 생존자' 명단 추출
+    const survivors = this.roundData.players.filter(
+      (p) => (Number(p.cards) || 0) > 0
+    );
+    const isMeAlive = survivors.some((p) => p.id === myId);
+
+    // 2. 🏆 [승리 조건] 나만 살아있고 나머지 AI는 모두 0장일 때
+    if (survivors.length === 1 && isMeAlive) {
+      this.endSingleGame("WIN");
+      return;
+    }
+
+    // 3. 턴 인덱스 이동
+    this.turnIndex = (this.turnIndex + 1) % this.roundData.players.length;
+    let nextPlayer = this.roundData.players[this.turnIndex];
+
+    // 4. 💀 [패배 조건] 다음 차례가 나인데, 내 카드가 0장이라면 (기사회생 실패)
+    if (nextPlayer.id === myId && (Number(nextPlayer.cards) || 0) <= 0) {
+      this.endSingleGame("LOSE");
+      return;
+    }
+
+    // 5. [AI 스킵] 다음 차례 AI가 카드가 없다면 다음 사람으로 스킵
+    if (nextPlayer.id !== myId && (Number(nextPlayer.cards) || 0) <= 0) {
+      // 💡 주의: 무한 루프 방지를 위해 생존자가 있을 때만 재귀 호출
+      if (survivors.length > 0) {
+        this.nextTurn();
+      }
+      return;
+    }
+
+    // 6. 다음 차례가 AI라면 카드 뒤집기 예약
+    if (nextPlayer.id.startsWith("AI_")) {
+      this.time.delayedCall(1500, () => {
+        if (this.isGameStarted) {
+          this.processSingleFlip(nextPlayer.id);
         }
-      )
-      .setOrigin(0.5);
-
-    // 2. 카드 숫자 텍스트 추가
-    // p.cards가 없으면 0으로 표시 (위에서 만든 매핑 로직 덕분에 숫자가 들어올 거예요)
-    const cardCount =
-      p.cards !== undefined ? p.cards : p.myDeck ? p.myDeck.length : 0;
-
-    const cardTxt = this.add
-      .text(
-        layout.x,
-        layout.y + (layout.rotation === 180 ? -cardOffset : cardOffset),
-        `🂠 ${cardCount}`,
-        {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.03}px`,
-          color: "#f1c40f", // 황금색 계열로 강조
-          fontWeight: "bold",
-          stroke: "#000",
-          strokeThickness: 2,
-        }
-      )
-      .setOrigin(0.5);
-
-    // 그룹에 추가하여 관리
-    this.playerTableGroup.add(nameTxt);
-    this.playerTableGroup.add(cardTxt);
+      });
+    }
   }
 
-  drawPlayerDeck(p, layout) {
-    const { width } = this.cameras.main;
-    // 카드 덱 이미지는 preload에서 'card_back'으로 로드했다고 가정
-    const deck = this.add
-      .image(layout.x, layout.y, "card_back")
-      .setDisplaySize(width * 0.15, width * 0.22)
-      .setAngle(layout.rotation);
+  handleFlipCard() {
+    if (!this.roundData || !this.roundData.players) return;
 
-    // 남은 카드 장수 표시
-    const countTxt = this.add
-      .text(layout.x, layout.y, p.cards || "0", {
-        fontFamily: GAME_FONTS.main,
-        fontSize: "20px",
-        color: "#ffffff",
-        fontWeight: "bold",
-      })
-      .setOrigin(0.5);
+    // 💡 NaN 또는 undefined 즉시 복구
+    if (
+      isNaN(this.turnIndex) ||
+      this.turnIndex === undefined ||
+      this.turnIndex === null
+    ) {
+      console.warn("🚨 turnIndex가 정상 숫자가 아니어서 0으로 초기화합니다.");
+      this.turnIndex = 0;
+    }
 
-    this.playerTableGroup.add([deck, countTxt]);
-  }
+    const currentPlayer = this.roundData.players[this.turnIndex];
+    const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
 
-  drawOpenCard(card, layout) {
-    const { width } = this.cameras.main;
+    console.log(
+      `[검사] 현재인덱스: ${this.turnIndex} / ID: ${currentPlayer?.id} / 내ID: ${myId}`
+    );
 
-    // 1. 서버의 숫자(1~4)를 클라이언트 이미지 키(문자)로 변환
-    const fruitNames = {
-      1: "strawberry",
-      2: "banana",
-      3: "lime",
-      4: "plum",
-    };
-    const fruitName = fruitNames[card.fruit] || "strawberry";
-    const cardKey = `${fruitName}_${card.count}`;
+    if (!currentPlayer || currentPlayer.id !== myId) {
+      this.showToast("당신의 차례가 아닙니다!", "#e74c3c");
+      return;
+    }
 
-    // 2. 좌표 계산
-    const dist = width * 0.25;
-    const rad = Phaser.Math.DegToRad(layout.rotation - 90);
-    const ox = layout.x + Math.cos(rad) * dist;
-    const oy = layout.y + Math.sin(rad) * dist;
-
-    // 3. 이미지 생성 (키가 존재하는지 확인)
-    if (this.textures.exists(cardKey)) {
-      const openCardImg = this.add
-        .image(ox, oy, cardKey)
-        .setDisplaySize(width * 0.18, width * 0.25)
-        .setAngle(layout.rotation)
-        .setDepth(150);
-
-      this.playerTableGroup.add(openCardImg);
+    if (this.isSingle) {
+      this.processSingleFlip(myId);
     } else {
-      console.error(`🚨 drawOpenCard 에러: 키를 찾을 수 없음 - ${cardKey}`);
+      socket.emit("flipCard");
+    }
+  }
+
+  // 종 치기 요청 (누구나 언제든 실행 가능)
+  handleRingBell() {
+    // 1. 게임 준비 상태 확인
+    if (!this.isGameReady) return;
+
+    // 2. 종 애니메이션 (반응 속도감을 위해 공통 실행)
+    if (this.bellImage) {
+      this.tweens.add({
+        targets: this.bellImage,
+        scale: 0.8, // 원래 스케일에 맞춰 조절 (기존 0.8 유지)
+        duration: 50,
+        yoyo: true,
+        ease: "Quad.easeInOut",
+      });
+    }
+
+    if (this.isSingle) {
+      const totals = this.calculateTotalFruits();
+      const isFive = Object.values(totals).some((count) => count === 5);
+
+      if (isFive) {
+        // 성공 시
+        this.processSingleBell(this.myId || "PLAYER_ME");
+      } else {
+        // 💡 실패 시 페널티 로직 실행
+        this.processPenaltySingle(this.myId || "PLAYER_ME");
+      }
+    } else {
+      socket.emit("ringBell");
     }
   }
 
@@ -1995,30 +2241,262 @@ class GameScene extends Phaser.Scene {
     this.bellImage.on("pointerdown", () => this.handleRingBell());
   }
 
-  // 카드 뒤집기 요청 (내 차례일 때 실행)
-  handleFlipCard() {
-    if (!this.isGameReady) return;
-    socket.emit("flipCard");
-    this.sound.play("pop", { volume: 0.1 }); // 카드 넘기는 소리
-  }
-  // 종 치기 요청 (누구나 언제든 실행 가능)
-  handleRingBell() {
-    if (!this.isGameReady) return;
-    socket.emit("ringBell");
+  checkAITurn(nextTurnId) {
+    if (!this.isSingle) return; // 싱글플레이가 아니면 무시
 
-    // 클라이언트에서 즉시 종 애니메이션 (반응 속도감을 위해)
-    if (this.bellImage) {
-      this.tweens.add({
-        targets: this.bellImage,
-        scale: 0.8,
-        duration: 50,
-        yoyo: true,
-        ease: "Quad.easeInOut",
+    const aiPlayer = this.aiSettings.find((ai) => ai.id === nextTurnId);
+    if (aiPlayer) {
+      // AI의 flipDelay만큼 기다린 후 카드 뒤집기
+      this.time.delayedCall(aiPlayer.flipDelay, () => {
+        // 실제 서버가 없으므로 로컬에서 flipCard 로직 수행
+        this.handleAiFlip(aiPlayer.id);
       });
     }
   }
-  showResultOverlay(players, isUpdate = false) {
-    if (!this.roundData) return;
+
+  checkFruitCountForAI() {
+    if (!this.isSingle) return;
+
+    const totals = this.calculateTotalFruits();
+    const isFive = Object.values(totals).some((count) => count === 5);
+
+    if (isFive) {
+      this.aiSettings.forEach((ai) => {
+        const aiData = this.roundData.players.find((p) => p.id === ai.id);
+        // 카드가 있는 AI만 종을 침
+        if (aiData && aiData.cards >= 0) {
+          // 기존 예약된 타이머가 있다면 취소하거나 겹치지 않게 관리
+          const delay = ai.reactionTime + Math.random() * 1000;
+          this.time.delayedCall(delay, () => {
+            this.handleAiRingBell(ai.id);
+          });
+        }
+      });
+    }
+  }
+
+  processSingleFlip(playerId) {
+    const myId = this.myId || "PLAYER_ME";
+    const player = this.roundData.players.find((p) => p.id === playerId);
+    if (!player) return;
+
+    // 1. 현재 카드 수 확인
+    let currentCards = Number(player.cards) || 0;
+
+    // 💡 [수정] 내 차례인데 카드가 0장인 경우:
+    // 여기서는 endSingleGame을 호출하지 않습니다.
+    // 대신 아무것도 하지 않고 nextTurn으로 넘겨서,
+    // nextTurn 내부에 있는 패배 판정 로직(내 차례인데 0장인지)이 실행되게 합니다.
+    if (currentCards <= 0) {
+      this.nextTurn();
+      return;
+    }
+
+    // 2. 카드 차감 로직 시작
+    player.cards = currentCards - 1;
+    player.remainingCards = player.cards;
+
+    // 바닥에 쌓인 카드 개수 증가
+    if (player.openStackCount === undefined) player.openStackCount = 0;
+    player.openStackCount += 1;
+
+    // 3. 랜덤 카드 생성 및 데이터 설정
+    const randomCard = {
+      fruit: Math.floor(Math.random() * 4) + 1,
+      count: Math.floor(Math.random() * 5) + 1,
+    };
+    player.openCard = randomCard;
+
+    const animationData = {
+      playerId: playerId,
+      card: randomCard,
+      remainingCards: player.cards,
+    };
+
+    // 4. 애니메이션 및 UI 갱신
+    this.playCardFlipAnimation(animationData);
+    this.renderTable(this.roundData.players);
+
+    // 5. 💡 마지막 카드를 낸 순간 알림 (기사회생 독려)
+    if (playerId === myId && player.cards === 0) {
+      this.showToast(
+        "마지막 카드를 제출했습니다! 종을 쳐서 카드를 획득하세요!",
+        "#f39c12"
+      );
+    }
+
+    // 6. 다음 턴으로 진행
+    this.nextTurn();
+    this.checkFruitCountForAI();
+  }
+  // AI가 종을 치는 로직
+  handleAiRingBell(aiId) {
+    if (!this.isSingle || !this.isGameStarted) return;
+
+    // 1. 과일이 여전히 5개인지 다시 확인 (이미 플레이어가 쳤을 수 있음)
+    const totals = this.calculateTotalFruits();
+    const isFive = Object.values(totals).some((count) => count === 5);
+    if (!isFive) return;
+
+    // 2. 사운드 재생 (캐시 확인 포함)
+    if (this.cache.audio.exists("bell")) {
+      this.sound.play("bell", { volume: 0.2 });
+    } else if (this.cache.audio.exists("pop")) {
+      this.sound.play("pop", { volume: 0.2 });
+    }
+
+    // 3. 승리 처리
+    this.processSingleBell(aiId);
+  }
+
+  processPenaltySingle(failedPlayerId) {
+    if (!this.isSingle || !this.isGameStarted) return;
+
+    const players = this.roundData.players;
+    const loser = players.find((p) => p.id === failedPlayerId);
+
+    // 1. 페널티를 줄 카드가 없으면 중단
+    if (!loser || (Number(loser.cards) || 0) <= 0) return;
+
+    // 2. 카드를 받을 '진짜 생존자' 찾기 (나 제외, 카드 1장 이상)
+    // 💡 여기서 '0'보다 큰 생존자만 필터링해서 탈락자에게 카드가 가는 걸 막습니다.
+    const recipients = players.filter(
+      (p) => p.id !== failedPlayerId && (Number(p.cards) || 0) > 0
+    );
+
+    // 3. 페널티 실행 (받을 사람이 없어도 내 카드는 깎여야 규칙에 맞음)
+    const penaltyAmount = recipients.length; // 생존자 수만큼 차감
+    const myCurrentCards = Number(loser.cards) || 0;
+
+    if (penaltyAmount > 0) {
+      // 생존자들에게 줄 카드가 충분할 때
+      if (myCurrentCards >= penaltyAmount) {
+        loser.cards = myCurrentCards - penaltyAmount;
+        recipients.forEach((p) => {
+          p.cards = (Number(p.cards) || 0) + 1;
+          p.remainingCards = p.cards;
+        });
+      } else {
+        // 카드가 부족하면 가진 걸 다 줌 (0장이 됨)
+        let cardsToGive = myCurrentCards;
+        loser.cards = 0;
+        // 한 장씩 순서대로 배분
+        for (let i = 0; i < cardsToGive; i++) {
+          if (recipients[i]) recipients[i].cards += 1;
+        }
+      }
+      this.showToast("실수! 생존자들에게 카드를 나눠줍니다. 💸", "#e74c3c");
+    } else {
+      // 만약 나 빼고 다 탈락한 상태라면? 1장만 버리게 하거나 유지
+      this.showToast("잘못 누르셨습니다! (배분할 상대 없음)", "#e74c3c");
+    }
+
+    // 4. 데이터 동기화 및 UI 갱신
+    loser.remainingCards = loser.cards;
+    this.renderTable(players);
+
+    // 5. 내 카드가 0이 되었다면 패배 판정을 위해 턴 체크
+    if (loser.id === (this.myId || "PLAYER_ME") && loser.cards <= 0) {
+      this.nextTurn();
+    }
+  }
+
+  processSingleBell(winnerId) {
+    if (!this.isSingle) return;
+
+    // 1. 💡 바닥에 실제로 쌓인 카드 장수 모두 합산
+    let totalCollected = 0;
+    this.roundData.players.forEach((p) => {
+      // 플레이어가 바닥에 쌓아둔 장수가 있다면 합산
+      if (p.openStackCount && p.openStackCount > 0) {
+        totalCollected += p.openStackCount;
+        p.openStackCount = 0; // 가져갔으므로 초기화
+      }
+      p.openCard = null; // 현재 보여지는 카드 이미지 정보 초기화
+    });
+
+    // 가져갈 카드가 없으면 리턴 (중복 실행 방지)
+    if (totalCollected === 0) return;
+
+    // 2. 승자에게 합산된 장수만큼 추가
+    const winner = this.roundData.players.find((p) => p.id === winnerId);
+    if (winner) {
+      const currentCards = Number(winner.cards) || 0;
+      winner.cards = currentCards + totalCollected;
+      winner.remainingCards = winner.cards;
+
+      this.showToast(
+        `${winner.nickname}님이 바닥의 카드 ${totalCollected}장을 획득! 🔔`,
+        "#f1c40f"
+      );
+    }
+
+    // 3. UI 갱신
+    this.renderTable(this.roundData.players);
+  }
+
+  // 과일 개수 계산 보조 함수
+  calculateTotalFruits() {
+    const totals = { 1: 0, 2: 0, 3: 0, 4: 0 };
+    this.roundData.players.forEach((p) => {
+      if (p.openCard) {
+        totals[p.openCard.fruit] += p.openCard.count;
+      }
+    });
+    return totals;
+  }
+
+  // 닉네임 가져오기 보조 함수
+  getNicknameById(id) {
+    const player = this.roundData.players.find((p) => p.id === id);
+    return player ? player.nickname : "AI";
+  }
+  // 카드 뒤집기 버튼을 눌렀을 때 실행되는 함수
+
+  // GameScene 클래스 내부 어딘가 (showResultOverlay 아래 추천)
+  playReadyGoSequence(onComplete) {
+    const { width, height } = this.cameras.main;
+
+    const readyTxt = this.add
+      .text(width / 2, height / 2, "READY", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.15}px`,
+        color: "#f1c40f",
+        stroke: "#000000",
+        strokeThickness: 8,
+      })
+      .setOrigin(0.5)
+      .setDepth(5000)
+      .setScale(0);
+
+    this.tweens.add({
+      targets: readyTxt,
+      scale: 1,
+      duration: 500,
+      ease: "Back.out",
+      onComplete: () => {
+        this.time.delayedCall(500, () => {
+          readyTxt.setText("GO!");
+          readyTxt.setColor("#2ecc71");
+          this.sound.play("pop", { volume: 0.2 });
+
+          this.tweens.add({
+            targets: readyTxt,
+            scale: 1.5,
+            alpha: 0,
+            duration: 500,
+            onComplete: () => {
+              readyTxt.destroy();
+              if (onComplete) onComplete();
+            },
+          });
+        });
+      },
+    });
+  }
+
+  showResultOverlay(players, isUpdate = false, data = null) {
+    // 💡 data 인자 추가    if (!this.roundData) return;
     if (!players || players.length === 0) return;
 
     const { width, height } = this.cameras.main;
@@ -2046,21 +2524,19 @@ class GameScene extends Phaser.Scene {
     container.add(bg);
 
     // --- 플레이어 리스트 매핑 (할리갈리 버전) ---
+    // --- 플레이어 리스트 매핑 부분 ---
     players.forEach((p, i) => {
       const y = height * 0.35 + i * (height * 0.08);
       const row = this.add.container(width / 2, y);
 
-      // 서버 응답 데이터 구조에 따른 방어 코드 (p.id가 없을 경우 p.nickname 사용)
       const isThisPlayerHost = p.id === currentHostId;
+      const isMe = p.id === socket.id; // 💡 내가 누구인지 명확히 판별
+
       let displayName = p.nickname;
+      if (isThisPlayerHost) displayName = `${displayName} 👑`;
+      if (isMe) displayName = `${displayName} (나)`;
 
-      if (isThisPlayerHost) {
-        displayName = `● ${displayName} 👑`;
-      } else {
-        // 결과창에서는 준비 상태 대신 카드 장수를 보여주는 것이 좋습니다.
-        displayName = `● ${displayName}`;
-      }
-
+      // 1. 순위 텍스트
       const rankTxt = this.add
         .text(-width * 0.25, 0, `${i + 1}위`, {
           fontFamily: GAME_FONTS.main,
@@ -2069,16 +2545,21 @@ class GameScene extends Phaser.Scene {
         })
         .setOrigin(0.5);
 
+      // 2. 닉네임 텍스트 (색상 로직 수정)
+      let nameColor = "#0f172a"; // 기본 검정색 계열
+      if (isThisPlayerHost) nameColor = "#e67e22"; // 방장은 주황색
+      else if (p.isReady) nameColor = "#2ecc71"; // 준비 완료면 초록색 (방장 아닐 때만)
+
       const nameTxt = this.add
         .text(-width * 0.1, 0, displayName, {
           fontFamily: GAME_FONTS.main,
           fontSize: `${width * 0.05}px`,
-          fill: isThisPlayerHost ? "#e67e22" : "#0f172a",
-          fontWeight: "bold",
+          fill: nameColor, // 💡 여기서 결정된 색상을 적용
+          fontWeight: isMe ? "bold" : "normal", // 내 이름은 굵게
         })
         .setOrigin(0, 0.5);
 
-      // 할리갈리 전용: 남은 카드 수 표시
+      // 3. 점수/카드 장수 텍스트
       const scoreValue = p.cards !== undefined ? `${p.cards}장` : "";
       const scoreTxt = this.add
         .text(width * 0.25, 0, scoreValue, {
@@ -2117,9 +2598,11 @@ class GameScene extends Phaser.Scene {
         startBtn.disableInteractive();
         startBtn.setAlpha(0.5);
 
-        // 할리갈리 서버의 게임 시작 요청 이벤트
+        // 💡 기존의 playReadyGoSequence 호출을 지우고 서버에 요청만 보냅니다.
+        // 연출은 서버 응답(gameStart)을 받은 모든 플레이어 화면에서 동시에 실행됩니다.
         socket.emit("startGameRequest");
       });
+
       container.add([startBtn, startTxt]);
     } else {
       const isReady = myInfo ? myInfo.isReady : false;
