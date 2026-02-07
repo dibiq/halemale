@@ -22,16 +22,30 @@ function getAllowedOrigins() {
   ];
 }
 
-app.use(cors({ origin: getAllowedOrigins(), credentials: true }));
-app.use(express.static(path.join(__dirname, "public")));
+// HTTP 요청용 CORS
+app.use(
+  cors({
+    origin: getAllowedOrigins(),
+    credentials: true,
+    allowedHeaders: ["Content-Type"],
+    methods: ["GET", "POST", "OPTIONS"],
+  })
+);
 
+// 정적 파일 설정
+const staticDir = path.join(__dirname, "public");
+app.use(express.static(staticDir));
+
+// ============================================
+// 2. Socket.IO 설정 (CORS 설정을 함수와 동기화)
+// ============================================
 const io = new Server(server, {
   cors: {
-    origin: getAllowedOrigins(),
+    origin: getAllowedOrigins(), // '*' 대신 실제 허용 리스트 사용 권장
     methods: ["GET", "POST"],
     credentials: true,
   },
-  transports: ["polling", "websocket"],
+  transports: ["polling", "websocket"], // 💡 이 줄을 추가하세요!
   allowEIO3: true,
 });
 
