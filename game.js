@@ -1743,8 +1743,7 @@ class GameScene extends Phaser.Scene {
 
     socket.off("gameEnded").on("gameEnded", (data) => {
       // 💡 즉시 띄우지 않고 1~1.5초 정도 여유를 줌
-      // 마지막 카드가 날아가는 애니메이션과 숫자가 변하는 것을 유저가 볼 수 있게 함
-      this.time.delayedCall(1200, () => {
+      this.time.delayedCall(1000, () => {
         this.playFinishAnimation(() => {
           this.showResultOverlay(data.ranking, false, data);
         });
