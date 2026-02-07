@@ -1660,8 +1660,10 @@ class GameScene extends Phaser.Scene {
 
       // 2. 모든 플레이어에게 공통 연출 실행
       this.playOpeningAnimation();
+
       this.time.delayedCall(800, () => {
         this.showReadyGo();
+
         // 💡 Ready-Go(약 1.2초)가 완전히 끝난 뒤에 클릭 허용
         this.time.delayedCall(1500, () => {
           this.canClick = true;
@@ -2168,12 +2170,17 @@ class GameScene extends Phaser.Scene {
   handleFlipCard() {
     if (!this.roundData || !this.roundData.players) return;
 
-    // 💡 1. 연출 중이거나 클릭 금지 상태면 무시
-    if (!this.canClick || this.isFlipping) return;
+    // 💡 1. 게임 시작 연출 중이면 무시
+    if (this.canClick === false) {
+      console.log("⏳ 아직 시작 연출 중입니다.");
+      return;
+    }
 
-    // 인덱스 안전 보정
-    if (this.turnIndex === undefined || this.turnIndex === null)
-      this.turnIndex = 0;
+    // 💡 2. 이미 뒤집는 중이면 무시 (연타 방지)
+    if (this.isFlipping === true) return;
+
+    // 턴 인덱스 보정 (undefined 방지)
+    if (typeof this.turnIndex !== "number") this.turnIndex = 0;
 
     const currentPlayer = this.roundData.players[this.turnIndex];
     const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
@@ -2183,7 +2190,7 @@ class GameScene extends Phaser.Scene {
       return;
     }
 
-    // 💡 2. 로컬 잠금 (서버 응답 올 때까지 재클릭 방지)
+    // --- 클라이언트 잠금 ---
     this.isFlipping = true;
 
     if (this.isSingle) {
@@ -2192,8 +2199,8 @@ class GameScene extends Phaser.Scene {
       socket.emit("flipCard");
     }
 
-    // 0.8초 후 로컬 잠금 해제 (서버의 setTimeout과 맞춤)
-    this.time.delayedCall(800, () => {
+    // 서버 응답이 오지 않더라도 1초 뒤에는 잠금을 강제로 풀어줌 (안전장치)
+    this.time.delayedCall(1000, () => {
       this.isFlipping = false;
     });
   }

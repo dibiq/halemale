@@ -268,20 +268,23 @@ io.on("connection", (socket) => {
 
   // index.js 수정 핵심
 
+  // [index.js] flipCard 이벤트 부분 수정
   socket.on("flipCard", () => {
     const room = rooms[socket.roomId];
     if (!room || !room.isGameStarted) return;
 
-    // 💡 [추가] 중복 클릭 방지 잠금
-    if (room.isFlipping) return;
+    // 💡 잠금 변수가 없으면 false로 간주하고, true인 경우에만 차단
+    if (room.isFlipping === true) {
+      console.log("🚫 서버: 아직 연출 중이라 클릭을 무시합니다.");
+      return;
+    }
 
     room.turnIndex = getSafeNextIndex(room);
     let p = room.players[room.turnIndex];
 
-    // 💡 [검증] 실제 자기 차례가 맞는지 ID로 확인
-    if (p.id !== socket.id || p.myDeck.length === 0) return;
+    if (!p || p.id !== socket.id || p.myDeck.length === 0) return;
 
-    // 잠금 시작
+    // --- 잠금 시작 ---
     room.isFlipping = true;
 
     const card = p.myDeck.pop();
@@ -291,22 +294,19 @@ io.on("connection", (socket) => {
     io.to(room.roomId).emit("cardFlipped", {
       playerId: socket.id,
       card,
-      nextTurnId: p.id, // 연출 중에는 현재 ID 유지
+      nextTurnId: p.id,
       remainingCount: p.myDeck.length,
     });
 
-    // 0.8초 연출 뒤 다음 턴 결정
     setTimeout(() => {
-      if (!room.isGameStarted) {
-        room.isFlipping = false;
+      if (!room || !room.isGameStarted) {
+        if (room) room.isFlipping = false;
         return;
       }
-
-      // 인덱스 이동 및 자동 스킵 처리
       room.turnIndex = (room.turnIndex + 1) % room.players.length;
       processSkipTurn(room, io);
 
-      // 잠금 해제
+      // --- 0.8초 후 잠금 해제 ---
       room.isFlipping = false;
     }, 800);
   });
