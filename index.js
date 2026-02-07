@@ -407,6 +407,30 @@ io.on("connection", (socket) => {
       // 실패: 종 잘못 친 사람이 다른 플레이어들에게 카드 1장씩 나눠줌 (벌칙)
       const penaltyPlayer = room.players.find((p) => p.id === socket.id);
 
+      // 💡 [추가] 벌칙 패배 판정: 남들에게 줄 카드가 부족하면 즉시 게임 종료
+      // 필요한 카드 수 = (전체 인원 - 나)
+      const requiredCards = room.players.length - 1;
+
+      if (penaltyPlayer.myDeck.length < requiredCards) {
+        room.isGameStarted = false; // 게임 상태 변경
+
+        // 카드 많은 순으로 랭킹 정렬
+        const sorted = [...room.players].sort(
+          (a, b) => b.myDeck.length - a.myDeck.length
+        );
+
+        io.to(room.roomId).emit("gameEnded", {
+          message: `${penaltyPlayer.nickname}님이 벌칙으로 줄 카드가 부족하여 게임이 종료되었습니다!`,
+          ranking: sorted.map((p) => ({
+            nickname: p.nickname,
+            cards: p.myDeck.length,
+          })),
+          winner: sorted[0].nickname,
+        });
+        return; // 여기서 함수 종료 (아래 벌칙 로직 실행 안 함)
+      }
+
+      // 💡 카드가 충분할 때만 아래 벌칙 로직 실행
       room.players.forEach((p) => {
         if (p.id !== socket.id && penaltyPlayer.myDeck.length > 0) {
           // penaltyPlayer의 덱에서 하나 빼서 다른 사람 덱에 추가
@@ -414,10 +438,9 @@ io.on("connection", (socket) => {
         }
       });
 
-      // 💡 수정됨: 이벤트명을 bellResult로 통일하고 방 전체에 알림
       io.to(room.roomId).emit("bellResult", {
         success: false,
-        penaltyId: socket.id, // 👈 이 줄을 꼭 추가하세요!
+        penaltyId: socket.id,
         message: `${penaltyPlayer.nickname}님의 실수! 카드 1장씩 나눔`,
         players: room.players.map((p) => ({
           id: p.id,
