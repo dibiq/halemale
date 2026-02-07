@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">전설의꼬치왕</string>
+    <string name="title_activity_main">전설의꼬치왕</string>
+    <string name="package_name">com.topstudio.skewermaster</string>
+    <string name="custom_url_scheme">com.topstudio.skewermaster</string>
+</resources>

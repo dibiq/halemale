@@ -1,0 +1,25 @@
+{
+  "name": "kushi-game-server",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "build": "granite build",
+    "dev": "node index.js"
+  },
+  "dependencies": {
+    "@apps-in-toss/web-framework": "^1.9.1",
+    "@capacitor/android": "^8.0.2",
+    "@capacitor/app": "^8.0.0",
+    "@capacitor/cli": "^8.0.2",
+    "@capacitor/core": "^8.0.2",
+    "@capacitor/network": "^8.0.0",
+    "cors": "^2.8.5",
+    "express": "^4.22.1",
+    "path": "^0.12.7",
+    "socket.io": "^4.8.3"
+  },
+  "devDependencies": {
+    "vite": "^7.3.1"
+  }
+}
