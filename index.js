@@ -70,24 +70,18 @@ app.get("/health", (req, res) => {
   res.status(200).json({ status: "ok" });
 });
 // 서버 상단에 추가
+
 function checkGameOver(room, io) {
-  // 💡 진짜 생존자 판정 로직 수정
+  // 💡 생존자: 덱이 있거나, 아직 자기 턴이 안 와서 기회가 남은(0장이지만 바닥카드가 있는) 사람
   const survivors = room.players.filter((p) => {
-    // 1. 덱에 카드가 남아있으면 당연히 생존
-    if (p.myDeck.length > 0) return true;
-
-    // 2. 덱이 0장이더라도, 바닥에 내놓은 카드(openCardStack)가 남아있다면
-    // 누군가 종을 쳤을 때 부활할 가능성이 있으므로 생존으로 간주!
-    if (p.openCardStack && p.openCardStack.length > 0) return true;
-
-    return false;
+    const hasDeck = p.myDeck.length > 0;
+    const hasChance = p.openCardStack && p.openCardStack.length > 0;
+    return hasDeck || hasChance;
   });
 
-  // 🏆 진짜로 혼자 남았을 때만 종료
   if (survivors.length === 1) {
     room.isGameStarted = false;
     const winner = survivors[0];
-
     const sorted = [...room.players].sort(
       (a, b) => b.myDeck.length - a.myDeck.length
     );
@@ -105,7 +99,6 @@ function checkGameOver(room, io) {
   }
   return false;
 }
-
 // ============================================
 // 4. 소켓 로직 (변경 없음)
 // ============================================
@@ -332,52 +325,78 @@ io.on("connection", (socket) => {
     });
   });
 
+  function getFruitTotals(players) {
+    let totals = { 1: 0, 2: 0, 3: 0, 4: 0 };
+    players.forEach((p) => {
+      if (p.openCard) totals[p.openCard.fruit] += p.openCard.count;
+    });
+    return totals;
+  }
+
   socket.on("flipCard", () => {
     const room = rooms[socket.roomId];
     if (!room || !room.isGameStarted) return;
 
     let currentPlayer = room.players[room.turnIndex];
-
-    // 💡 턴이 왔는데 덱이 0장이다? -> 이때가 진짜 패배 시점!
-    // 단, 바닥에 카드도 없다면(기사회생 불가) 확실히 스킵.
-    while (currentPlayer.myDeck.length === 0) {
-      console.log(`💀 [기사회생 실패] ${currentPlayer.nickname}님 차례 스킵`);
-
-      // 이 시점에서 바닥 카드까지 다 치워버려야 기사회생 후보에서 완전히 제외됨
-      currentPlayer.openCard = null;
-      currentPlayer.openCardStack = [];
-
-      room.turnIndex = (room.turnIndex + 1) % room.players.length;
-      currentPlayer = room.players[room.turnIndex];
-
-      // 스킵되는 동안 최종 승자가 결정되는지 확인
-      if (checkGameOver(room, io)) return;
-    }
-
     if (currentPlayer.id !== socket.id) return;
 
     // 1. 카드 뒤집기
     const card = currentPlayer.myDeck.pop();
-    if (!currentPlayer.openCardStack) currentPlayer.openCardStack = [];
+    currentPlayer.openCardStack = currentPlayer.openCardStack || [];
     currentPlayer.openCardStack.push(card);
     currentPlayer.openCard = card;
 
-    // 2. 턴 넘기기
-    room.turnIndex = (room.turnIndex + 1) % room.players.length;
-
-    // 3. 알림 전송
+    // 2. 알림 전송 (연출 시작)
     io.to(room.roomId).emit("cardFlipped", {
       playerId: socket.id,
       card: card,
-      nextTurnId: room.players[room.turnIndex].id,
+      nextTurnId: room.players[room.turnIndex].id, // 잠시 유지
       remainingCount: currentPlayer.myDeck.length,
     });
 
-    // 💡 마지막 카드 제출 후 연출 대기
+    // 3. 💡 [핵심] 뒤집은 후 바닥 상태 확인
     setTimeout(() => {
-      checkGameOver(room, io);
+      const totals = getFruitTotals(room.players);
+      const isFive = Object.values(totals).some((t) => t === 5);
+
+      if (!isFive) {
+        // 바닥이 5가 아니면? 기사회생 기회 없으므로 0장인 사람들은 차례대로 자동 탈락
+        room.turnIndex = (room.turnIndex + 1) % room.players.length;
+        processSkipTurn(room, io);
+      } else {
+        // 바닥이 5라면? 0장인 사람도 종을 쳐야 하므로 턴을 넘기지 않고 대기!
+        // (A는 여기서 종을 쳐서 살아나거나, 누군가 종을 쳐서 5가 사라질 때까지 대기하게 됨)
+        console.log("🔔 바닥이 5입니다! 기사회생 대기 모드...");
+      }
     }, 800);
   });
+
+  function processSkipTurn(room, io) {
+    let nextPlayer = room.players[room.turnIndex];
+
+    // 다음 사람이 0장이다? -> 바닥도 5가 아니니 기사회생 실패로 간주하고 탈락
+    while (nextPlayer.myDeck.length === 0 && room.isGameStarted) {
+      console.log(`💀 [탈락] ${nextPlayer.nickname}님 기사회생 실패`);
+
+      nextPlayer.openCard = null;
+      nextPlayer.openCardStack = [];
+
+      room.turnIndex = (room.turnIndex + 1) % room.players.length;
+      nextPlayer = room.players[room.turnIndex];
+
+      if (checkGameOver(room, io)) return;
+    }
+
+    if (room.isGameStarted) {
+      io.to(room.roomId).emit("turnChanged", {
+        nextTurnId: nextPlayer.id,
+        players: room.players.map((p) => ({
+          id: p.id,
+          cards: p.myDeck.length,
+        })),
+      });
+    }
+  }
 
   socket.on("ringBell", () => {
     const room = rooms[socket.roomId];
@@ -416,6 +435,8 @@ io.on("connection", (socket) => {
           openCard: p.openCard,
         })),
       });
+
+      processSkipTurn(room, io);
     } else {
       // --- 실패: 벌칙 분배 ---
       const penaltyPlayer = room.players.find((p) => p.id === socket.id);
