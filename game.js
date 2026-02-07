@@ -141,12 +141,30 @@ class LobbyScene extends Phaser.Scene {
     this.load.image("popupbg", `${ASSET_SERVER}/images/popupbg2.png${VERSION}`);
     this.load.image("home", `${ASSET_SERVER}/images/home.png${VERSION}`);
 
-    for (let i = 1; i <= 5; i++) {
-      this.load.image(
-        `ingre${i}`,
-        `${ASSET_SERVER}/images/m${i}.png${VERSION}`
-      );
-    }
+    // ============================================
+    // 1. 할리갈리 카드 에셋 로드 (반복문)
+    // ============================================
+    const fruits = ["strawberry", "banana", "lime", "plum"];
+    fruits.forEach((fruit) => {
+      for (let count = 1; count <= 5; count++) {
+        // 키 형식: strawberry_1, banana_5 등
+        this.load.image(
+          `${fruit}_${count}`,
+          `${ASSET_SERVER}/images/cards/${fruit}_${count}.png${VERSION}`
+        );
+      }
+    });
+
+    // 카드 뒷면 로드
+    this.load.image(
+      "card_back",
+      `${ASSET_SERVER}/images/cards/card_back.png${VERSION}`
+    );
+
+    // ============================================
+    // 2. 할리갈리 UI 에셋 로드
+    // ============================================
+    this.load.image("bell", `${ASSET_SERVER}/images/bell.png${VERSION}`);
 
     this.load.audio("bgm", `${ASSET_SERVER}/sounds/bg.mp3${VERSION}`);
     this.load.audio("pop", `${ASSET_SERVER}/sounds/pop.wav${VERSION}`);
@@ -611,41 +629,6 @@ class LobbyScene extends Phaser.Scene {
     const loadingContainer = this.add
       .container(centerX, centerY)
       .setDepth(1001);
-
-    const ingreKeys = ["ingre1", "ingre2", "ingre3", "ingre4", "ingre5"];
-    const ingreSize = width * 0.08;
-    const rotateRadius = width * 0.1; // 식재료들이 도는 원의 반지름
-
-    const ingreSprites = [];
-
-    ingreKeys.forEach((key, index) => {
-      const angle = (360 / ingreKeys.length) * index; // 초기 각도 배치
-      const rad = Phaser.Math.DegToRad(angle);
-
-      const x = rotateRadius * Math.cos(rad);
-      const y = rotateRadius * Math.sin(rad);
-
-      const ingre = this.add
-        .image(x, y, key)
-        .setDisplaySize(ingreSize, ingreSize)
-        .setAlpha(0); // 처음엔 숨김
-
-      loadingContainer.add(ingre);
-      ingreSprites.push(ingre);
-
-      // 각 식재료의 등장 및 회전 애니메이션
-      this.tweens.timeline({
-        targets: ingre,
-        ease: "Sine.easeInOut",
-        loop: -1, // 무한 반복
-        delay: index * 200, // 순차적으로 등장
-        tweens: [
-          { alpha: 1, duration: 300 }, // 등장
-          { y: y - 10, duration: 500, yoyo: true, repeat: -1, offset: 0 }, // 위아래로 살짝 움직임
-          { angle: 360, duration: 3000, repeat: -1, offset: 0, ease: "Linear" }, // 제자리 회전
-        ],
-      });
-    });
 
     const loadingText = this.add
       .text(0, rotateRadius + ingreSize / 2 + 40, message, {
@@ -1596,10 +1579,18 @@ class KushiScene extends Phaser.Scene {
     });
 
     socket.off("bellResult").on("bellResult", (data) => {
+      // 로그를 찍어서 데이터가 어떻게 오는지 확인해보세요!
+      console.log("[BellResult] 수신 데이터:", data);
+
+      // playFeedback 실행
       this.playFeedback(data.success, data.message);
+
       if (data.success) {
         this.showToast(`${data.winnerNickname}님이 카드를 획득! 🔔`, "#f1c40f");
         this.renderTable(data.players);
+      } else {
+        // 실패 시에도 테이블을 갱신해야 카드 수가 줄어든 게 반영됩니다.
+        if (data.players) this.renderTable(data.players);
       }
     });
 
@@ -1710,6 +1701,101 @@ class KushiScene extends Phaser.Scene {
     });
   }
 
+  getCardKey(card) {
+    const fruitNames = { 1: "strawberry", 2: "banana", 3: "lime", 4: "plum" };
+    const fruitName = fruitNames[card.fruit] || "strawberry";
+    return `${fruitName}_${card.count}`;
+  }
+
+  playCardFlipAnimation(data) {
+    // 1. 데이터가 없으면 실행 중단
+    if (!data || !this.roundData.players) return;
+
+    const { width, height } = this.cameras.main;
+
+    // 2. 서버의 숫자(1~4)를 클라이언트 이미지 키(문자)로 변환 (매핑)
+    // 서버 설정에 따라 숫자 순서를 맞춰주세요 (1:딸기, 2:바나나, 3:라임, 4:자두)
+    const fruitNames = {
+      1: "strawberry",
+      2: "banana",
+      3: "lime",
+      4: "plum",
+    };
+
+    const fruitName = fruitNames[data.card.fruit] || "strawberry";
+    const cardKey = this.getCardKey(data.card);
+
+    // [디버깅용 로그] 엑스박스가 뜨면 이 로그를 확인하세요
+    console.log(
+      `[CardFlip] 서버전달:${data.card.fruit} -> 매핑된이름:${fruitName} -> 최종키:${cardKey}`
+    );
+
+    // 3. 현재 메모리의 플레이어 데이터 업데이트 (도착 후 상태 반영용)
+    const playerIdx = this.roundData.players.findIndex(
+      (p) => p.id === data.playerId
+    );
+    const myIndex = this.roundData.players.findIndex((p) => p.id === socket.id);
+
+    if (playerIdx !== -1) {
+      this.roundData.players[playerIdx].openCard = data.card; // 바닥 카드 정보 업데이트
+      this.roundData.players[playerIdx].cards = data.remainingCount; // 남은 카드 수 업데이트
+    }
+
+    // 4. 애니메이션 출발/도착 위치 계산
+    const relativeIdx =
+      (playerIdx - myIndex + this.roundData.players.length) %
+      this.roundData.players.length;
+    const pos = [
+      { x: width * 0.5, y: height * 0.75, rotation: 0 },
+      { x: width * 0.18, y: height * 0.45, rotation: 90 },
+      { x: width * 0.5, y: height * 0.18, rotation: 180 },
+      { x: width * 0.82, y: height * 0.45, rotation: -90 },
+    ];
+
+    const startPos = pos[relativeIdx];
+    if (!startPos) return this.renderTable(this.roundData.players);
+
+    // 5. 애니메이션용 임시 카드 생성 (처음엔 뒷면)
+    const tempCard = this.add
+      .image(startPos.x, startPos.y, "card_back")
+      .setDisplaySize(width * 0.15, width * 0.22)
+      .setAngle(startPos.rotation)
+      .setDepth(1000);
+
+    const dist = width * 0.25;
+    const rad = Phaser.Math.DegToRad(startPos.rotation - 90);
+    const targetX = startPos.x + Math.cos(rad) * dist;
+    const targetY = startPos.y + Math.sin(rad) * dist;
+
+    // 6. 트윈 애니메이션
+    this.tweens.add({
+      targets: tempCard,
+      x: targetX,
+      y: targetY,
+      duration: 300,
+      ease: "Cubic.out",
+      onStart: () => {
+        this.sound.play("pop", { volume: 0.1 });
+      },
+      onUpdate: (tween) => {
+        // 50% 진행 시점에 앞면 텍스처로 교체 (뒤집기 효과)
+        if (tween.progress > 0.5 && tempCard.texture.key === "card_back") {
+          // 이미지가 로드되어 있는지 확인 후 적용
+          if (this.textures.exists(cardKey)) {
+            tempCard.setTexture(cardKey);
+            tempCard.setDisplaySize(width * 0.18, width * 0.25);
+          } else {
+            console.error(`🚨 텍스처를 찾을 수 없습니다: ${cardKey}`);
+          }
+        }
+      },
+      onComplete: () => {
+        tempCard.destroy(); // 임시 카드 제거
+        this.renderTable(this.roundData.players); // 최종 상태로 테이블 다시 그리기
+      },
+    });
+  }
+
   drawPlayerInfo(p, layout) {
     const { width } = this.cameras.main;
     const isMe = p.id === socket.id;
@@ -1758,20 +1844,35 @@ class KushiScene extends Phaser.Scene {
 
   drawOpenCard(card, layout) {
     const { width } = this.cameras.main;
-    // 오픈 카드를 덱보다 중앙으로 더 당김
+
+    // 1. 서버의 숫자(1~4)를 클라이언트 이미지 키(문자)로 변환
+    const fruitNames = {
+      1: "strawberry",
+      2: "banana",
+      3: "lime",
+      4: "plum",
+    };
+    const fruitName = fruitNames[card.fruit] || "strawberry";
+    const cardKey = `${fruitName}_${card.count}`;
+
+    // 2. 좌표 계산
     const dist = width * 0.25;
     const rad = Phaser.Math.DegToRad(layout.rotation - 90);
     const ox = layout.x + Math.cos(rad) * dist;
     const oy = layout.y + Math.sin(rad) * dist;
 
-    const cardKey = `${card.fruit}_${card.count}`;
-    const openCardImg = this.add
-      .image(ox, oy, cardKey)
-      .setDisplaySize(width * 0.18, width * 0.25) // 덱보다 약간 크게 하면 더 잘 보입니다
-      .setAngle(layout.rotation)
-      .setDepth(150); // 덱(뒷면)보다 위, 종(200)보다 아래
+    // 3. 이미지 생성 (키가 존재하는지 확인)
+    if (this.textures.exists(cardKey)) {
+      const openCardImg = this.add
+        .image(ox, oy, cardKey)
+        .setDisplaySize(width * 0.18, width * 0.25)
+        .setAngle(layout.rotation)
+        .setDepth(150);
 
-    this.playerTableGroup.add(openCardImg);
+      this.playerTableGroup.add(openCardImg);
+    } else {
+      console.error(`🚨 drawOpenCard 에러: 키를 찾을 수 없음 - ${cardKey}`);
+    }
   }
 
   drawBell(x, y) {
@@ -2034,6 +2135,7 @@ class KushiScene extends Phaser.Scene {
         },
       });
     } else {
+      console.log("실패 연출 실행 시작"); // 디버깅용
       // 실패 피드백: 빨간색 화면 반짝임 + 화면 흔들림
       this.sound.play("yare", { volume: 0.2 });
 

@@ -364,17 +364,27 @@ io.on("connection", (socket) => {
     } else {
       // 실패: 종 잘못 친 사람이 다른 플레이어들에게 카드 1장씩 나눠줌 (벌칙)
       const penaltyPlayer = room.players.find((p) => p.id === socket.id);
+
       room.players.forEach((p) => {
         if (p.id !== socket.id && penaltyPlayer.myDeck.length > 0) {
+          // penaltyPlayer의 덱에서 하나 빼서 다른 사람 덱에 추가
           p.myDeck.unshift(penaltyPlayer.myDeck.pop());
         }
       });
 
-      socket.emit("result", {
+      // 💡 수정됨: 이벤트명을 bellResult로 통일하고 방 전체에 알림
+      io.to(room.roomId).emit("bellResult", {
         success: false,
-        message: "실패! 카드 1장씩 나눔",
+        message: `${penaltyPlayer.nickname}님의 실수! 카드 1장씩 나눔`,
+        players: room.players.map((p) => ({
+          id: p.id,
+          nickname: p.nickname,
+          cards: p.myDeck.length,
+          openCard: p.openCard,
+        })),
       });
-      io.to(room.roomId).emit("updateScores", room.players);
+
+      // 기존에 쓰시던 updateScores는 유지하셔도 되지만 bellResult에서 이미 players를 보내므로 생략 가능합니다.
     }
   });
 
