@@ -330,8 +330,7 @@ io.on("connection", (socket) => {
 
     let currentPlayer = room.players[room.turnIndex];
 
-    // 💡 [핵심 룰 적용] 내 차례가 왔는데 카드가 0장이다? -> 기사회생 실패!
-    // 카드가 있는 사람이 나올 때까지 턴을 넘깁니다.
+    // 💡 [기존 로직 유지] 기사회생 실패 체크
     while (currentPlayer.myDeck.length === 0) {
       console.log(
         `💀 [탈락/스킵] ${currentPlayer.nickname}님은 카드가 없어 차례가 넘어갑니다.`
@@ -339,14 +338,12 @@ io.on("connection", (socket) => {
       room.turnIndex = (room.turnIndex + 1) % room.players.length;
       currentPlayer = room.players[room.turnIndex];
 
-      // 만약 한 바퀴 돌았는데 아무도 카드가 없다면 (이론상 불가능하지만 안전장치)
       if (checkGameOver(room, io)) return;
     }
 
-    // 이제 currentPlayer는 반드시 카드를 가진 사람임
     if (currentPlayer.id !== socket.id) return;
 
-    // 1. 카드 뒤집기
+    // 1. 카드 뒤집기 (데이터 변경)
     const card = currentPlayer.myDeck.pop();
     if (!currentPlayer.openCardStack) currentPlayer.openCardStack = [];
     currentPlayer.openCardStack.push(card);
@@ -355,14 +352,21 @@ io.on("connection", (socket) => {
     // 2. 턴 넘기기
     room.turnIndex = (room.turnIndex + 1) % room.players.length;
 
-    // 3. 알림 전송 (다음 차례가 카드가 0장인 사람이라도 일단 ID를 보냄)
-    // 그 사람이 종을 칠 기회는 줘야 하니까요!
+    // 3. 알림 전송 (클라이언트 연출 시작)
+    // 💡 여기서 remainingCount가 0으로 전달되어 클라이언트 숫자가 먼저 바뀝니다.
     io.to(room.roomId).emit("cardFlipped", {
       playerId: socket.id,
       card: card,
       nextTurnId: room.players[room.turnIndex].id,
       remainingCount: currentPlayer.myDeck.length,
     });
+
+    // 4. 💡 [지연 종료 판정]
+    // 연출 시간을 벌어주기 위해 0.8초 후에 승패를 확인합니다.
+    // 기존에 즉시 실행되던 checkGameOver를 setTimeout으로 감싸기만 했습니다.
+    setTimeout(() => {
+      checkGameOver(room, io);
+    }, 800);
   });
 
   socket.on("ringBell", () => {
