@@ -62,7 +62,7 @@ let rooms = {};
 // 3. HTTP 라우트 (헬스체크)
 // ============================================
 app.get("/", (req, res) => {
-  res.status(200).send("서버가 정상적으로 살아있습니다! 꼬치왕 화이팅!");
+  res.status(200).send("서버가 정상적으로 살아있습니다! 할래말래 화이팅!");
 });
 
 // 헬스체크용 (Cloud Run 권장)
@@ -131,10 +131,10 @@ io.on("connection", (socket) => {
     // 방장 본인을 방에 추가 (이때 nickname이 undefined면 안 됨!)
     const hostPlayer = {
       id: socket.id,
-      nickname: socket.nickname, // "요리사" 또는 실제 이름
-      score: 0,
-      currentProgress: 0,
-      isReady: false, // ⭐ 추가
+      nickname,
+      myDeck: [], // 카드 더미
+      openCard: null, // 현재 공개된 카드
+      isReady: false,
     };
     rooms[roomId].players.push(hostPlayer);
 
@@ -221,9 +221,9 @@ io.on("connection", (socket) => {
       room.players.push({
         id: socket.id,
         nickname,
-        score: 0,
-        currentProgress: 0,
-        isReady: false, // ⭐ 추가
+        myDeck: [], // 추가
+        openCard: null, // 추가
+        isReady: false,
       });
     }
 
@@ -240,153 +240,141 @@ io.on("connection", (socket) => {
     });
   }
 
-  socket.on("requestNextRecipe", () => {
+  socket.on("startGameRequest", () => {
     const room = rooms[socket.roomId];
     if (!room || room.host !== socket.id) return;
 
-    // 1. 방장을 제외한 게스트 목록 추출
     const guests = room.players.filter((p) => p.id !== room.host);
-
-    // 2. [추가된 핵심 로직] 게스트가 없으면(혼자라면) 시작 차단
     if (guests.length === 0) {
-      socket.emit("startBlocked", "함께 할 유저가 최소 한 명 필요합니다!");
-      return;
+      return socket.emit("startBlocked", "최소 2명이 필요합니다!");
     }
 
-    // 3. 게스트들이 모두 준비했는지 확인 (인원이 몇 명이든 상관없음)
     const allReady = guests.every((p) => p.isReady);
-
     if (!allReady) {
-      socket.emit("startBlocked", "모든 참가자가 준비해야 시작할 수 있습니다.");
-      return;
+      return socket.emit("startBlocked", "모든 참가자가 준비해야 합니다.");
     }
 
-    // 게임 시작 시 ready 초기화 및 상태 변경
-    room.players.forEach((p) => (p.isReady = false));
-    room.isGameStarted = true;
-    generateNewRecipe(room);
-  });
+    // 1. 카드 덱 생성 (과일 4종 x [1개짜리 5장, 2개짜리 3장, 3개짜리 3장, 4개짜리 2장, 5개짜리 1장])
+    let deck = [];
+    const fruits = [1, 2, 3, 4]; // 딸기, 바나나, 라임, 자두
+    const counts = [1, 1, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 5];
 
-  function generateNewRecipe(room) {
-    const roomId = room.roomId;
-
-    room.submitCount = 0;
-    room.isGameStarted = true; // 💡 게임 시작 상태로 변경
-
-    room.players.forEach((p) => {
-      p.isReady = false; // 안전빵
-      p.lastResult = "요리 중...";
-      p.currentProgress = 0;
-      p.currentSkewer = [];
-      p.completedSkewers = [];
+    fruits.forEach((f) => {
+      counts.forEach((c) => deck.push({ fruit: f, count: c }));
     });
 
-    const INGREDIENTS = [1, 2, 3, 4, 5];
-    const ROTATIONS = [0, 90, 180, 270];
-    const recipeCount = 3;
-    room.recipes = [];
+    // 2. 셔플 (랜덤 섞기)
+    deck.sort(() => Math.random() - 0.5);
 
-    for (let i = 0; i < recipeCount; i++) {
-      const materialCount = Math.floor(Math.random() * 4) + 1;
-      const singleRecipe = [];
-      for (let j = 0; j < materialCount; j++) {
-        singleRecipe.push({
-          id: INGREDIENTS[Math.floor(Math.random() * INGREDIENTS.length)],
-          angle: ROTATIONS[Math.floor(Math.random() * ROTATIONS.length)],
-        });
-      }
-      room.recipes.push(singleRecipe);
-    }
+    // 3. 인원별로 카드 배분
+    room.isGameStarted = true;
+    room.centerCards = []; // 바닥에 깔린 카드들
+    room.turnIndex = 0; // 누구 차례인지
 
-    io.to(roomId).emit("gameStart", {
-      roomId: roomId,
-      recipes: room.recipes,
+    const totalPlayers = room.players.length;
+    room.players.forEach((p, idx) => {
+      p.isReady = false;
+      p.score = 0;
+      // 플레이어마다 개인 덱 할당
+      p.myDeck = deck.filter((_, i) => i % totalPlayers === idx);
+      p.openCard = null; // 현재 바닥에 보여지는 이 플레이어의 카드
+    });
+
+    io.to(room.roomId).emit("gameStart", {
+      roomId: room.roomId,
       players: room.players,
       hostId: room.host,
-      isSingle: false,
     });
-  }
-
-  socket.on("syncMySkewer", (currentSkewerData) => {
-    const room = rooms[socket.roomId];
-    if (!room) return;
-    const player = room.players.find((p) => p.id === socket.id);
-    if (player) {
-      player.currentSkewer = currentSkewerData;
-      io.to(socket.roomId).emit("updateScores", room.players);
-    }
   });
 
-  socket.on("updateProgress", (data) => {
-    const room = rooms[socket.roomId];
-    if (!room) return;
-    const player = room.players.find((p) => p.id === socket.id);
-    if (player) {
-      player.completedSkewers = data.completedList;
-      player.currentProgress = data.count;
-      player.currentSkewer = [];
-      io.to(socket.roomId).emit("updateScores", room.players);
-    }
-  });
-
-  socket.on("submit", (userData) => {
+  socket.on("flipCard", () => {
     const room = rooms[socket.roomId];
     if (!room || !room.isGameStarted) return;
-    const player = room.players.find((p) => p.id === socket.id);
-    if (!player || player.lastResult === "성공!") return;
 
-    let isAllCorrect = true;
-    if (userData.length !== room.recipes.length) isAllCorrect = false;
-    else {
-      for (let i = 0; i < room.recipes.length; i++) {
-        const target = room.recipes[i];
-        const submitted = userData[i];
-        if (!submitted || target.length !== submitted.length) {
-          isAllCorrect = false;
-          break;
-        }
-        for (let j = 0; j < target.length; j++) {
-          const norm = (a) => ((Math.round(a) % 360) + 360) % 360;
-          if (
-            String(target[j].id) !== String(submitted[j].id) ||
-            norm(target[j].angle) !== norm(submitted[j].angle)
-          ) {
-            isAllCorrect = false;
-            break;
-          }
-        }
-        if (!isAllCorrect) break;
-      }
+    const currentPlayer = room.players[room.turnIndex];
+    if (currentPlayer.id !== socket.id) return; // 내 차례가 아니면 무시
+
+    if (currentPlayer.myDeck.length > 0) {
+      const card = currentPlayer.myDeck.pop();
+      currentPlayer.openCard = card;
+
+      // 다음 사람 턴으로
+      room.turnIndex = (room.turnIndex + 1) % room.players.length;
+
+      io.to(room.roomId).emit("cardFlipped", {
+        playerId: socket.id,
+        card: card,
+        nextTurnId: room.players[room.turnIndex].id,
+        remainingCount: currentPlayer.myDeck.length,
+      });
     }
+  });
 
-    if (isAllCorrect) {
-      socket.emit("result", { success: true });
-      room.submitCount++;
-      player.score += room.submitCount === 1 ? 100 : 80;
-      player.lastResult = "성공!";
-      player.completedSkewers = [...room.recipes];
-      player.currentProgress = room.recipes.length;
-      player.currentSkewer = [];
+  socket.on("ringBell", () => {
+    const room = rooms[socket.roomId];
+    if (!room || !room.isGameStarted) return;
 
-      io.to(socket.roomId).emit("updateScores", room.players);
+    // 1. 바닥에 공개된 카드들 중 과일별 합계 계산
+    let fruitTotals = { 1: 0, 2: 0, 3: 0, 4: 0 };
+    room.players.forEach((p) => {
+      if (p.openCard) {
+        fruitTotals[p.openCard.fruit] += p.openCard.count;
+      }
+    });
 
-      const targetFinishCount =
-        room.players.length > 1 ? room.players.length - 1 : 1;
+    // 2. 어떤 과일이라도 합계가 정확히 5인지 확인
+    const isSuccess = Object.values(fruitTotals).some((total) => total === 5);
 
-      if (room.submitCount >= targetFinishCount) {
-        setTimeout(() => {
-          if (!room.isGameStarted) return;
-          room.isGameStarted = false;
+    if (isSuccess) {
+      // 성공: 바닥의 모든 카드를 종 친 사람이 가져감
+      let collectedCards = [];
+      room.players.forEach((p) => {
+        if (p.openCard) {
+          collectedCards.push(p.openCard);
+          p.openCard = null;
+        }
+      });
 
-          const sortedPlayers = room.players.sort((a, b) => b.score - a.score);
-          io.to(socket.roomId).emit("recipeEnded", {
-            players: sortedPlayers,
-            hostId: room.host, // 이 값이 꼭 필요합니다!
-          });
-        }, 1500);
+      const winner = room.players.find((p) => p.id === socket.id);
+      winner.myDeck = [...collectedCards, ...winner.myDeck]; // 내 덱 아래로 넣기
+
+      io.to(room.roomId).emit("bellResult", {
+        success: true,
+        winnerId: socket.id,
+        winnerNickname: winner.nickname,
+        players: room.players, // 갱신된 카드 숫자 전송
+      });
+
+      // ringBell 성공 로직 내부에서 승자 판정 후
+      const loser = room.players.find((p) => p.myDeck.length === 0);
+      if (loser) {
+        // 모든 바닥 카드 정리 후 가장 카드가 많은 사람이 승리하는 식으로 종료 알림
+        const sorted = room.players.sort(
+          (a, b) => b.myDeck.length - a.myDeck.length
+        );
+        io.to(room.roomId).emit("gameEnded", {
+          ranking: sorted.map((p) => ({
+            nickname: p.nickname,
+            cards: p.myDeck.length,
+          })),
+          winner: sorted[0].nickname,
+        });
+        room.isGameStarted = false;
       }
     } else {
-      socket.emit("result", { success: false });
+      // 실패: 종 잘못 친 사람이 다른 플레이어들에게 카드 1장씩 나눠줌 (벌칙)
+      const penaltyPlayer = room.players.find((p) => p.id === socket.id);
+      room.players.forEach((p) => {
+        if (p.id !== socket.id && penaltyPlayer.myDeck.length > 0) {
+          p.myDeck.unshift(penaltyPlayer.myDeck.pop());
+        }
+      });
+
+      socket.emit("result", {
+        success: false,
+        message: "실패! 카드 1장씩 나눔",
+      });
+      io.to(room.roomId).emit("updateScores", room.players);
     }
   });
 
@@ -395,13 +383,32 @@ io.on("connection", (socket) => {
     const room = rooms[roomId];
 
     if (room) {
-      // 1. 나가는 유저 정보 찾기
-      const leavingPlayer = room.players.find((p) => p.id === socket.id);
+      // 1. 나가는 유저 정보 찾기 및 제거
+      const leavingPlayerIndex = room.players.findIndex(
+        (p) => p.id === socket.id
+      );
+      const leavingPlayer = room.players[leavingPlayerIndex];
       const nickname = leavingPlayer ? leavingPlayer.nickname : "누군가";
 
       const wasHost = room.host === socket.id;
-      room.players = room.players.filter((p) => p.id !== socket.id);
 
+      // 플레이어 제거
+      room.players = room.players.filter((p) => p.id === socket.id);
+
+      // ================= [추가된 최적화 로직] =================
+      if (room.isGameStarted) {
+        // 나간 사람이 현재 턴이었거나, 턴 인덱스가 줄어든 명수보다 클 때 조정
+        if (room.turnIndex >= room.players.length) {
+          room.turnIndex = 0; // 안전하게 첫 번째 사람으로 초기화
+        }
+
+        // 만약 나간 사람 때문에 턴이 꼬일 것 같으면 현재 턴 정보를 다시 전송
+        io.to(roomId).emit("turnAdjusted", {
+          nextTurnId: room.players[room.turnIndex]?.id,
+          players: room.players,
+        });
+      }
+      // ======================================================
       // 2. 방에 아무도 없으면 삭제
       if (room.players.length === 0) {
         delete rooms[roomId];

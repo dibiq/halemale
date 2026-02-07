@@ -19,7 +19,7 @@ async function handleGetUserKey() {
   }
 }
 
-const SERVER_URL = "https://skewer-master.onrender.com";
+const SERVER_URL = "https://halemale.onrender.com";
 
 const socket = io(SERVER_URL, {
   transports: ["websocket", "polling"], // 웹소켓 우선 사용
@@ -839,184 +839,6 @@ class LobbyScene extends Phaser.Scene {
     });
   }
 
-  /*showJoinCodePopup(callback) {
-    this.isJoinPopupOpen = true;
-
-    const { width, height } = this.cameras.main;
-    const centerX = width / 2;
-    const popupY = height * 0.3;
-
-    // 1. 전용 컨테이너 생성 (Scene에 변수로 저장하여 외부에서 접근 가능하게 함)
-    // 기존에 존재한다면 먼저 지우고 새로 생성 (중복 방지)
-    if (this.joinPopupContainer) this.joinPopupContainer.destroy();
-    this.joinPopupContainer = this.add.container(0, 0).setDepth(200);
-
-    // 2. 반투명 배경
-    const overlay = this.add
-      .rectangle(centerX, height * 0.5, width, height, 0x000000, 0.5)
-      .setInteractive();
-
-    // 3. 팝업 배경 이미지
-    const popupBg = this.add
-      .image(centerX, popupY, "popupbg")
-      .setDisplaySize(width * 0.75, height * 0.35);
-
-    // 4. 안내 텍스트
-    const titleText = this.add
-      .text(centerX, popupY - 90, "방 코드를 입력하세요.", {
-        fontFamily: "Jua",
-        fontSize: `${width * 0.05}px`,
-        color: "#ffffff",
-        align: "center",
-        stroke: "#000000",
-        strokeThickness: 3,
-      })
-      .setOrigin(0.5);
-
-    // 5. Phaser DOM Input (DOM은 컨테이너에 담기지 않으므로 개별 관리 필요)
-    this.joinInputElement = this.add
-      .dom(centerX - 25, popupY - 25, "input")
-      .setDepth(201); // 컨테이너보다 살짝 높게
-
-    const el = this.joinInputElement.node;
-    el.placeholder = "코드 입력";
-    Object.assign(el.style, {
-      width: `${width * 0.5}px`,
-      height: "45px",
-      fontSize: "24px",
-      fontFamily: "'Jua', sans-serif",
-      textAlign: "center",
-      border: "3px solid #5d4037",
-      borderRadius: "10px",
-      backgroundColor: "#ffffff",
-      outline: "none",
-      color: "#000",
-    });
-
-    el.addEventListener("input", () => {
-      el.value = el.value
-        .replace(/[^a-zA-Z0-9]/g, "")
-        .toUpperCase()
-        .substring(0, 6);
-    });
-
-    // 버튼 설정
-    const btnY = popupY + 95;
-    const btnGap = width * 0.18;
-
-    const cancelBtnImg = this.add
-      .image(centerX - btnGap, btnY, "uibtn")
-      .setDisplaySize(width * 0.3, height * 0.08)
-      .setInteractive({ useHandCursor: true })
-      .setTint(0xffaaaa);
-    const cancelBtnText = this.add
-      .text(centerX - btnGap, btnY, "취소", {
-        fontFamily: "Jua",
-        fontSize: `${width * 0.055}px`,
-        color: "#ffffff",
-      })
-      .setOrigin(0.5);
-
-    const confirmBtnImg = this.add
-      .image(centerX + btnGap, btnY, "uibtn")
-      .setDisplaySize(width * 0.3, height * 0.08)
-      .setInteractive({ useHandCursor: true });
-    const confirmBtnText = this.add
-      .text(centerX + btnGap, btnY, "입장", {
-        fontFamily: "Jua",
-        fontSize: `${width * 0.055}px`,
-        color: "#ffffff",
-        fontWeight: "bold",
-      })
-      .setOrigin(0.5);
-
-    // 🔥 [핵심] DOM 요소를 제외한 모든 Phaser 객체를 컨테이너에 담기
-    this.joinPopupContainer.add([
-      overlay,
-      popupBg,
-      titleText,
-      cancelBtnImg,
-      cancelBtnText,
-      confirmBtnImg,
-      confirmBtnText,
-    ]);
-
-    // 제거 함수
-    const closePopup = () => {
-      if (this.joinPopupContainer) {
-        this.joinPopupContainer.destroy();
-        this.joinPopupContainer = null;
-      }
-      if (this.joinInputElement) {
-        this.joinInputElement.destroy();
-        this.joinInputElement = null;
-      }
-
-      this.isJoinPopupOpen = false;
-    };
-
-    cancelBtnImg.on("pointerdown", () => {
-      // 1. 효과음 재생
-      this.sound.play("pop", { volume: 0.1 });
-
-      // 2. 햅틱 피드백 (기존 코드 유지)
-      if (window.ReactNativeWebView) {
-        generateHapticFeedback({ type: "impactLight" }).catch(() => {});
-      }
-
-      // 3. 클릭 연출 (이미지와 텍스트 동시 적용)
-      this.tweens.add({
-        targets: [cancelBtnImg, cancelBtnText],
-        scaleX: "*=0.95",
-        scaleY: "*=0.95",
-        duration: 50,
-        yoyo: true,
-        onComplete: () => {
-          // 4. 연출이 끝난 후 팝업 닫기
-          closePopup();
-        },
-      });
-    });
-
-    // showJoinCodePopup 내부 confirmBtnImg 로직
-    confirmBtnImg.on("pointerdown", () => {
-      const code = el.value.trim();
-
-      // 1. 클릭 효과음
-      this.sound.play("pop", { volume: 0.1 });
-
-      // 2. 클릭 연출 (이미지와 텍스트 동시 적용)
-      this.tweens.add({
-        targets: [confirmBtnImg, confirmBtnText],
-        scaleX: "*=0.95",
-        scaleY: "*=0.95",
-        duration: 50,
-        yoyo: true,
-        onComplete: () => {
-          // 3. 연출이 끝난 후 로직 실행
-          if (code) {
-            const myNickname = localStorage.getItem("nickname") || "요리사";
-
-            if (callback) {
-              // 🔹 먼저 로딩창을 띄우고
-              this.showLoading("방 입장 중...");
-
-              // 🔹 서버에 입장 요청 전송
-              callback({
-                roomId: code.toUpperCase(),
-                nickname: myNickname,
-              });
-            }
-            // 팝업 입력창 닫기
-            closePopup();
-          } else {
-            this.showToast("방 코드를 입력해주세요!");
-          }
-        },
-      });
-    });
-  }*/
-
   showJoinCodePopup(callback) {
     this.isJoinPopupOpen = true;
 
@@ -1470,8 +1292,6 @@ class LobbyScene extends Phaser.Scene {
 
           if (isHost) {
             const currentCount = this.currentPlayers.length;
-            const maxCount = this.currentMax;
-
             // 1. 방장 혼자 있을 때 (가장 먼저 체크)
             if (currentCount <= 1) {
               this.showToast(
@@ -1482,7 +1302,8 @@ class LobbyScene extends Phaser.Scene {
             }
             // 3. 모든 조건 만족 시 게임 시작
             else {
-              socket.emit("requestNextRecipe");
+              //socket.emit("requestNextRecipe"); 이건 쿠시용
+              socket.emit("startGameRequest");
               console.log("게임 시작 요청 전송");
             }
           } else {
@@ -1676,36 +1497,30 @@ class KushiScene extends Phaser.Scene {
     super("KushiScene");
   }
   init(data) {
-    // data가 아예 없을 때를 대비
-    console.log("1. init에서 받은 raw data:", data);
-
     this.roundData = {
       players: data.players || [],
       hostId: data.hostId || null,
       roomId: data.roomId,
+      turnIndex: 0,
+      isGameStarted: false,
     };
 
-    this.targetRecipes = data.recipes || [];
     this.isSingle = !!data.isSingle;
-
-    this.allSkewerSubmission = [];
-    this.currentSkewer = [];
-    this.isAlreadySubmitted = false;
     this.isGameReady = false;
     this.resultContainer = null;
+
+    // 할리갈리 전용 데이터
+    this.myCards = []; // 내 덱
+    this.openCards = {}; // 각 플레이어별 바닥에 오픈된 카드 { playerId: card }
   }
 
   create() {
     this.isPopupOpen = false;
     this.currentJoinPopupCloseHandler = null;
 
-    // 만약 init에서 안 했다면 여기서라도 강제로 생성
     if (!this.roundData) {
-      console.log("no data in creat");
-      //this.roundData = { players: [], hostId: null };
+      this.roundData = { players: [], hostId: null };
     }
-
-    console.log("player length in create ", this.roundData.players.length);
 
     bgmEnabled = localStorage.getItem("bgmEnabled") !== "false";
 
@@ -1713,191 +1528,674 @@ class KushiScene extends Phaser.Scene {
     const centerX = width / 2;
     const centerY = height / 2;
 
-    //this.add.rectangle(centerX, centerY, width, height, COLORS.bg);
+    // 배경 설정
     this.add
       .image(centerX, centerY - 90, "mybg")
-      .setDisplaySize(width, height * 1)
-      .setDepth(-1) // 레이어 순서를 가장 뒤로
-      .setAlpha(0.6); // 게임 화면은 집중을 위해 약간 어둡게 처리(선택사항)
+      .setDisplaySize(width, height)
+      .setDepth(-1)
+      .setAlpha(0.6);
 
+    // 플레이어/카드들을 담을 그룹
     this.playerTableGroup = this.add.container(0, 0).setDepth(100);
 
-    // 1. 천막 애니메이션 실행
+    // 연출 실행
     this.playOpeningAnimation();
-
-    // 2. 카운트다운 연출 함수 호출
-    // 천막이 절반쯤 열렸을 때(약 0.8초 후) READY GO 시작
     this.time.delayedCall(800, () => {
       this.showReadyGo();
     });
 
-    // 1. 플레이어 입장
+    // ============================================
+    // 1. 공통 소켓 리스너 (방 관리)
+    // ============================================
     socket.off("playerJoined").on("playerJoined", (data) => {
-      // 입장 효과음
       this.sound.play("pop", { volume: 0.2 });
       this.showToast(`${data.nickname}님이 입장했습니다!`, "#2ecc71");
-      console.log("players 숫자 :", data.players.length);
-
       this.roundData.players = data.players;
-      if (this.renderTable) this.renderTable(data.players);
+      this.renderTable(data.players);
     });
 
-    // 2. 플레이어 퇴장 (추가됨)
     socket.off("playerLeft").on("playerLeft", (data) => {
-      // 퇴장 효과음 (약간 낮은 톤이나 짧은 소리)
       this.sound.play("btn", { volume: 0.2 });
       this.showToast(`${data.nickname}님이 나갔습니다.`, "#e74c3c");
-
       this.roundData.players = data.players;
-      if (this.renderTable) this.renderTable(data.players);
+      this.renderTable(data.players);
     });
 
-    // 3. 방장 변경
     socket.off("hostChanged").on("hostChanged", (data) => {
       this.roundData.hostId = data.hostId;
-
-      // 방장 변경 알림 (중요한 정보이므로 화려한 소리)
       this.sound.play("irassai", { volume: 0.1 });
-
-      // 서버가 보내준 통합 메시지가 있으면 그걸 쓰고, 없으면 기본 문구 출력
-      const toastMsg = data.message || "방장이 변경되었습니다.";
-      this.showToast(toastMsg, "#f1c40f");
-
-      if (this.resultContainer) {
-        this.showResultOverlay(
-          this.lastResultPlayers || this.roundData.players
-        );
-      }
+      this.showToast(data.message || "방장이 변경되었습니다.", "#f1c40f");
+      if (this.resultContainer) this.showResultOverlay(data.players, true);
     });
 
-    socket.on("startBlocked", (msg) => {
-      this.showToast(
-        msg || "아직 준비되지 않은 플레이어가 있습니다!",
-        "#e74c3c"
-      );
-    });
-
-    // KushiScene.js의 readyStatusUpdated 리스너 수정
     socket.off("readyStatusUpdated").on("readyStatusUpdated", (data) => {
-      if (!data || !data.players) return;
-
       this.roundData.players = data.players;
       this.roundData.hostId = data.hostId;
-
-      // 결과창이 이미 떠 있다면 애니메이션 없이 데이터만 갱신
       if (this.resultContainer && this.resultContainer.active) {
-        // 💡 true 인자를 넘겨서 '갱신 모드'임을 알림
         this.showResultOverlay(data.players, true);
       }
     });
 
-    // 4. 다음 게임 시작 리스너 (방장이 '계속하기' 눌렀을 때 서버가 보내는 신호)
-    socket.off("gameStart").on("gameStart", (data) => {
-      if (this.resultContainer) this.resultContainer.destroy();
-      console.log(" gameStart ", data.players.length);
-
-      this.scene.restart({
-        roundData: { players: data.players, hostId: data.hostId },
-        recipes: data.recipes,
-        isSingle: data.isSingle,
-      });
+    socket.on("startBlocked", (msg) => {
+      this.showToast(msg, "#e74c3c");
     });
 
-    App.addListener("backButton", () => {
-      if (this.isPopupOpen) {
-        this.currentJoinPopupCloseHandler();
-      } else {
-        this.showCustomAlert("로비로 이동합니다!", () => {
-          window.location.reload();
-        });
+    // ============================================
+    // 2. 할리갈리 전용 소켓 리스너
+    // ============================================
+    socket.off("gameStart").on("gameStart", (data) => {
+      if (this.resultContainer) this.resultContainer.destroy();
+      this.roundData.players = data.players;
+      this.roundData.isGameStarted = true;
+      this.isGameReady = true; // 💡 게임 시작 시 조작 가능하게 플래그 ON
+      this.renderTable(data.players);
+    });
+
+    socket.off("cardFlipped").on("cardFlipped", (data) => {
+      this.playCardFlipAnimation(data);
+    });
+
+    socket.off("bellResult").on("bellResult", (data) => {
+      this.playFeedback(data.success, data.message);
+      if (data.success) {
+        this.showToast(`${data.winnerNickname}님이 카드를 획득! 🔔`, "#f1c40f");
+        this.renderTable(data.players);
       }
     });
 
-    this.showOrdersDisplay(height * 0.185);
-    this.createInputArea(height - height * 0.1);
-    this.createControlButtons(height - height * 0.2);
+    socket.off("gameEnded").on("gameEnded", (data) => {
+      this.playFinishAnimation(() => {
+        this.showResultOverlay(data.ranking);
+      });
+    });
 
-    const margin = width * 0.87;
-    const btnX = width - margin;
-    const btnY = height * 0.077;
+    // ============================================
+    // 3. UI 및 버튼 배치
+    // ============================================
 
-    // 2. 홈 이미지 버튼 생성
+    // [대체함] 할리갈리용 버튼 배치
+    this.createHaliGaliButtons(height);
+
+    // 홈 버튼 (나가기)
     const exitBtn = this.add
-      .image(btnX, btnY, "home") // 미리 preload에서 'home'으로 로드했다고 가정
-      .setDisplaySize(width * 0.07, width * 0.07) // 가로세로 비율 유지 (정사각형 권장)
+      .image(width * 0.13, height * 0.077, "home")
+      .setDisplaySize(width * 0.07, width * 0.07)
       .setInteractive({ useHandCursor: true })
       .setDepth(100);
 
-    // 4. 클릭 이벤트 및 햅틱 피드백
     exitBtn.on("pointerdown", () => {
-      // 버튼이 눌리는 듯한 연출 (살짝 작아졌다가 커짐)
-      this.tweens.add({
-        targets: exitBtn,
-        scale: exitBtn.scale * 0.9,
-        duration: 50,
-        yoyo: true,
-      });
-
-      // 토스 햅틱 추가 (가벼운 클릭감)
-      if (window.ReactNativeWebView) {
-        generateHapticFeedback({ type: "impactLight" }).catch(() => {});
-      }
-
-      // 나가기 확인
       this.showCustomAlert("로비로 이동합니다!", () => {
         window.location.reload();
       });
     });
 
-    socket.off("result").on("result", (data) => {
-      this.playFeedback(data.success);
-      if (data.success) {
-        this.allSkewerSubmission = [];
-        this.currentSkewer = [];
-      }
-    });
-
-    socket.off("updateScores").on("updateScores", (p) => {
-      this.roundData.players = p;
-      // 결과창이 떠 있는 상태라면 결과창만 다시 그림
-      if (this.resultContainer && this.resultContainer.active) {
-        this.showResultOverlay(p);
-      }
-      this.renderTable(p);
-    });
-
-    socket.off("recipeEnded").on("recipeEnded", (data) => {
-      // 서버가 { players, hostId } 형태로 보내므로 맞춰서 저장
-      const players = data.players || data;
-      if (data.hostId) {
-        this.roundData.hostId = data.hostId;
-      }
-
-      this.lastResultPlayers = players;
-
-      if (this.resultContainer) return;
-
-      this.playFinishAnimation(() => {
-        this.showResultOverlay(players);
-      });
-    });
-
+    // 초기 테이블 렌더링
     this.renderTable(this.roundData.players);
 
+    // 셧다운 시 리스너 해제
     this.events.once("shutdown", () => {
       socket.off("playerJoined");
       socket.off("playerLeft");
       socket.off("hostChanged");
       socket.off("readyStatusUpdated");
-      socket.off("gameStart"); // 추가
-      socket.off("result");
-      socket.off("updateScores");
-      socket.off("recipeEnded");
-      socket.off("startBlocked"); // 추가
+      socket.off("gameStart");
+      socket.off("cardFlipped");
+      socket.off("bellResult");
+      socket.off("gameEnded");
+      socket.off("startBlocked");
+    });
+  }
+  createHaliGaliButtons(height) {
+    const { width } = this.cameras.main;
+
+    // 1. 중앙 종 (Bell)
+    this.bellImage = this.add
+      .image(width / 2, height / 2, "bell") // bell 이미지가 있다고 가정
+      .setDisplaySize(width * 0.25, width * 0.25)
+      .setInteractive({ useHandCursor: true })
+      .on("pointerdown", () => this.handleRingBell());
+
+    // 2. 카드 뒤집기 버튼 (하단)
+    const flipBtn = this.add
+      .image(width / 2, height * 0.85, "uibtn")
+      .setDisplaySize(width * 0.5, height * 0.08)
+      .setInteractive({ useHandCursor: true })
+      .on("pointerdown", () => this.handleFlipCard());
+
+    this.add
+      .text(width / 2, height * 0.85, "카드 뒤집기", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: "22px",
+        color: "#ffffff",
+      })
+      .setOrigin(0.5);
+  }
+
+  renderTable(players) {
+    this.playerTableGroup.removeAll(true);
+    const { width, height } = this.cameras.main;
+
+    // 1. 플레이어 위치 계산 (내 기준 상대적 배치)
+    // socket.id를 기준으로 본인을 항상 하단(0번)에 배치하는 로직이 추가되면 좋습니다.
+    const myIndex = players.findIndex((p) => p.id === socket.id);
+    const safeIndex = myIndex === -1 ? 0 : myIndex;
+
+    const sortedPlayers = [
+      ...players.slice(myIndex),
+      ...players.slice(0, myIndex),
+    ];
+
+    // 4인 기준 좌표 (0:하단, 1:좌측, 2:상단, 3:우측)
+    const pos = [
+      { x: width * 0.5, y: height * 0.75, rotation: 0 },
+      { x: width * 0.18, y: height * 0.45, rotation: 90 },
+      { x: width * 0.5, y: height * 0.18, rotation: 180 },
+      { x: width * 0.82, y: height * 0.45, rotation: -90 },
+    ];
+
+    sortedPlayers.forEach((p, i) => {
+      const layout = pos[i];
+      if (!layout) return;
+
+      // 플레이어 정보 표시 (닉네임, 남은 카드 수)
+      this.drawPlayerInfo(p, layout);
+
+      // 2. 플레이어 카드 덱 (뒷면) 그리기
+      this.drawPlayerDeck(p, layout);
+
+      // 3. 바닥에 오픈된 카드 그리기
+      if (p.openCard) {
+        this.drawOpenCard(p.openCard, layout);
+      }
     });
   }
 
-  // KushiScene 클래스 내부에 추가
+  drawPlayerInfo(p, layout) {
+    const { width } = this.cameras.main;
+    const isMe = p.id === socket.id;
+    const offset = 80; // 닉네임 위치 조정
+
+    // 닉네임 텍스트
+    const nameTxt = this.add
+      .text(
+        layout.x,
+        layout.y + (layout.rotation === 180 ? -offset : offset),
+        p.nickname,
+        {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.035}px`,
+          color: isMe ? "#22c55e" : "#ffffff",
+          fontWeight: "bold",
+          stroke: "#000",
+          strokeThickness: 3,
+        }
+      )
+      .setOrigin(0.5);
+
+    this.playerTableGroup.add(nameTxt);
+  }
+
+  drawPlayerDeck(p, layout) {
+    const { width } = this.cameras.main;
+    // 카드 덱 이미지는 preload에서 'card_back'으로 로드했다고 가정
+    const deck = this.add
+      .image(layout.x, layout.y, "card_back")
+      .setDisplaySize(width * 0.15, width * 0.22)
+      .setAngle(layout.rotation);
+
+    // 남은 카드 장수 표시
+    const countTxt = this.add
+      .text(layout.x, layout.y, p.cards || "0", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: "20px",
+        color: "#ffffff",
+        fontWeight: "bold",
+      })
+      .setOrigin(0.5);
+
+    this.playerTableGroup.add([deck, countTxt]);
+  }
+
+  drawOpenCard(card, layout) {
+    const { width } = this.cameras.main;
+    // 오픈 카드를 덱보다 중앙으로 더 당김
+    const dist = width * 0.25;
+    const rad = Phaser.Math.DegToRad(layout.rotation - 90);
+    const ox = layout.x + Math.cos(rad) * dist;
+    const oy = layout.y + Math.sin(rad) * dist;
+
+    const cardKey = `${card.fruit}_${card.count}`;
+    const openCardImg = this.add
+      .image(ox, oy, cardKey)
+      .setDisplaySize(width * 0.18, width * 0.25) // 덱보다 약간 크게 하면 더 잘 보입니다
+      .setAngle(layout.rotation)
+      .setDepth(150); // 덱(뒷면)보다 위, 종(200)보다 아래
+
+    this.playerTableGroup.add(openCardImg);
+  }
+
+  drawBell(x, y) {
+    const { width } = this.cameras.main;
+    this.bellImage = this.add
+      .image(x, y, "bell")
+      .setDisplaySize(width * 0.25, width * 0.25)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(200);
+
+    this.bellImage.on("pointerdown", () => this.handleRingBell());
+  }
+
+  // 카드 뒤집기 요청 (내 차례일 때 실행)
+  handleFlipCard() {
+    if (!this.isGameReady) return;
+    socket.emit("flipCard");
+    this.sound.play("pop", { volume: 0.1 }); // 카드 넘기는 소리
+  }
+  // 종 치기 요청 (누구나 언제든 실행 가능)
+  handleRingBell() {
+    if (!this.isGameReady) return;
+    socket.emit("ringBell");
+
+    // 클라이언트에서 즉시 종 애니메이션 (반응 속도감을 위해)
+    if (this.bellImage) {
+      this.tweens.add({
+        targets: this.bellImage,
+        scale: 0.8,
+        duration: 50,
+        yoyo: true,
+        ease: "Quad.easeInOut",
+      });
+    }
+  }
+  showResultOverlay(players, isUpdate = false) {
+    if (!this.roundData) return;
+    if (!players || players.length === 0) return;
+
+    const { width, height } = this.cameras.main;
+    const currentHostId = this.roundData.hostId;
+    const isHost = socket.id === currentHostId;
+
+    // --- 컨테이너 생성 및 초기화 로직 유지 ---
+    if (this.resultContainer) {
+      const prevY = this.resultContainer.y;
+      this.resultContainer.destroy();
+      this.resultContainer = this.add
+        .container(0, isUpdate ? prevY : -height)
+        .setDepth(3000);
+    } else {
+      this.resultContainer = this.add.container(0, -height).setDepth(3000);
+    }
+
+    const container = this.resultContainer;
+    const myInfo =
+      players.find(
+        (p) => (p.id || p.nickname) === (socket.id || socket.nickname)
+      ) || null;
+
+    const bg = this.add
+      .image(width / 2, height / 2, "resultbg")
+      .setDisplaySize(width * 1.2, height * 1.4);
+    container.add(bg);
+
+    // --- 플레이어 리스트 매핑 (할리갈리 버전) ---
+    players.forEach((p, i) => {
+      const y = height * 0.35 + i * (height * 0.08);
+      const row = this.add.container(width / 2, y);
+
+      // 서버 응답 데이터 구조에 따른 방어 코드 (p.id가 없을 경우 p.nickname 사용)
+      const isThisPlayerHost = p.id === currentHostId;
+      let displayName = p.nickname;
+
+      if (isThisPlayerHost) {
+        displayName = `● ${displayName} 👑`;
+      } else {
+        // 결과창에서는 준비 상태 대신 카드 장수를 보여주는 것이 좋습니다.
+        displayName = `● ${displayName}`;
+      }
+
+      const rankTxt = this.add
+        .text(-width * 0.25, 0, `${i + 1}위`, {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.05}px`,
+          fill: "#334155",
+        })
+        .setOrigin(0.5);
+
+      const nameTxt = this.add
+        .text(-width * 0.1, 0, displayName, {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.05}px`,
+          fill: isThisPlayerHost ? "#e67e22" : "#0f172a",
+          fontWeight: "bold",
+        })
+        .setOrigin(0, 0.5);
+
+      // 할리갈리 전용: 남은 카드 수 표시
+      const scoreValue = p.cards !== undefined ? `${p.cards}장` : "";
+      const scoreTxt = this.add
+        .text(width * 0.25, 0, scoreValue, {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.05}px`,
+          fill: "#2563eb",
+          fontWeight: "bold",
+        })
+        .setOrigin(0.5);
+
+      row.add([rankTxt, nameTxt, scoreTxt]);
+      container.add(row);
+    });
+
+    const btnY = height * 0.75;
+    const exitBtnY = height * 0.84;
+
+    // --- 방장/일반유저 버튼 로직 ---
+    if (isHost) {
+      const startBtn = this.add
+        .image(width / 2, btnY, "uibtn")
+        .setDisplaySize(width * 0.5, height * 0.08)
+        .setTint(0xe67e22)
+        .setInteractive({ useHandCursor: true });
+      const startTxt = this.add
+        .text(width / 2, btnY, "다시 시작", {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.055}px`,
+          color: "#ffffff",
+          fontWeight: "bold",
+        })
+        .setOrigin(0.5);
+
+      startBtn.on("pointerdown", () => {
+        this.sound.play("btn", { volume: 0.1 });
+        startBtn.disableInteractive();
+        startBtn.setAlpha(0.5);
+
+        // 할리갈리 서버의 게임 시작 요청 이벤트
+        socket.emit("startGameRequest");
+      });
+      container.add([startBtn, startTxt]);
+    } else {
+      const isReady = myInfo ? myInfo.isReady : false;
+      const readyBtn = this.add
+        .image(width / 2, btnY, "uibtn")
+        .setDisplaySize(width * 0.5, height * 0.08)
+        .setTint(isReady ? 0x2ecc71 : 0x94a3b8)
+        .setInteractive({ useHandCursor: true });
+      const readyTxt = this.add
+        .text(width / 2, btnY, isReady ? "준비완료!" : "준비하기", {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.055}px`,
+          color: "#ffffff",
+        })
+        .setOrigin(0.5);
+
+      readyBtn.on("pointerdown", () => {
+        this.sound.play("btn", { volume: 0.1 });
+        this.tweens.add({
+          targets: readyBtn,
+          scaleX: "*=0.95",
+          scaleY: "*=0.95",
+          duration: 50,
+          yoyo: true,
+          onComplete: () => {
+            socket.emit("toggleReady");
+          },
+        });
+      });
+      container.add([readyBtn, readyTxt]);
+    }
+
+    // --- 나가기 버튼 ---
+    const exitBtnImg = this.add
+      .image(width / 2, exitBtnY, "uibtn")
+      .setDisplaySize(width * 0.5, height * 0.08)
+      .setInteractive({ useHandCursor: true });
+    const exitBtnText = this.add
+      .text(width / 2, exitBtnY, "나가기", {
+        fontFamily: GAME_FONTS.main,
+        color: "#ffffff",
+        fontWeight: "bold",
+        fontSize: `${width * 0.055}px`,
+      })
+      .setOrigin(0.5);
+
+    exitBtnImg.on("pointerdown", () => {
+      this.sound.play("btn", { volume: 0.1 });
+      this.showCustomAlert("로비로 이동합니다!", () => {
+        window.location.reload();
+      });
+    });
+
+    container.add([exitBtnImg, exitBtnText]);
+
+    if (!isUpdate) {
+      this.tweens.add({
+        targets: container,
+        y: 0,
+        duration: 800,
+        ease: "Back.easeOut",
+      });
+    } else {
+      container.y = 0;
+    }
+  }
+  playFeedback(isSuccess, message = "") {
+    const { width, height } = this.cameras.main;
+    const centerX = width / 2;
+    const centerY = height / 2;
+
+    if (isSuccess) {
+      // 성공 피드백: 초록색 화면 반짝임 + PERFECT!
+      try {
+        if (window.ReactNativeWebView) {
+          generateHapticFeedback({ type: "impactHeavy" }).catch(() => {});
+        }
+      } catch (e) {}
+
+      const rect = this.add
+        .rectangle(centerX, centerY, width, height, 0x22c55e, 0.3)
+        .setDepth(5000);
+      this.tweens.add({
+        targets: rect,
+        alpha: 0,
+        duration: 500,
+        onComplete: () => rect.destroy(),
+      });
+
+      this.sound.play("yosi", { volume: 0.2 });
+
+      const feedbackText = this.add
+        .text(centerX, centerY, "SUCCESS!", {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.15}px`,
+          fill: "#ffffff",
+          fontWeight: "bold",
+          stroke: "#22c55e",
+          strokeThickness: 8,
+        })
+        .setOrigin(0.5)
+        .setDepth(5001)
+        .setScale(0);
+
+      this.tweens.add({
+        targets: feedbackText,
+        scale: 1,
+        duration: 500,
+        ease: "Back.easeOut",
+        onComplete: () => {
+          this.time.delayedCall(1000, () => {
+            this.tweens.add({
+              targets: feedbackText,
+              alpha: 0,
+              scale: 1.5,
+              duration: 300,
+              onComplete: () => feedbackText.destroy(),
+            });
+          });
+        },
+      });
+    } else {
+      // 실패 피드백: 빨간색 화면 반짝임 + 화면 흔들림
+      this.sound.play("yare", { volume: 0.2 });
+
+      const rect = this.add
+        .rectangle(centerX, centerY, width, height, 0xef4444, 0.4)
+        .setDepth(5000);
+      this.tweens.add({
+        targets: rect,
+        alpha: 0,
+        duration: 400,
+        onComplete: () => rect.destroy(),
+      });
+
+      this.cameras.main.shake(250, 0.015);
+
+      // 실패 메시지 토스트 (예: "실패! 카드 1장씩 나눔")
+      if (message) this.showToast(message, "#ef4444");
+    }
+  }
+
+  playFinishAnimation(callback) {
+    const { width, height } = this.cameras.main;
+    const centerX = width / 2;
+    const centerY = height / 2;
+
+    // 게임 조작 차단
+    this.isGameReady = false;
+
+    // "FINISH!" 텍스트 연출
+    const finishText = this.add
+      .text(centerX, centerY, "게임종료!", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.18}px`,
+        fill: "#ef4444", // danger 색상
+        fontWeight: "bold",
+        stroke: "#ffffff",
+        strokeThickness: 10,
+      })
+      .setOrigin(0.5)
+      .setDepth(3000)
+      .setScale(5)
+      .setAlpha(0);
+
+    // 쾅! 하고 나타나는 애니메이션
+    this.tweens.add({
+      targets: finishText,
+      scale: 1,
+      alpha: 1,
+      duration: 400,
+      ease: "Bounce.easeOut",
+      onComplete: () => {
+        // 1초 뒤에 위로 사라지며 콜백 실행
+        this.time.delayedCall(1000, () => {
+          this.tweens.add({
+            targets: finishText,
+            y: -100,
+            alpha: 0,
+            duration: 500,
+            ease: "Power2",
+            onComplete: () => {
+              finishText.destroy();
+              if (callback) callback(); // 애니메이션 끝나고 결과창 띄우기
+            },
+          });
+        });
+      },
+    });
+
+    // 화면 전체 살짝 어둡게 암전 효과
+    const overlay = this.add
+      .rectangle(centerX, centerY, width, height, 0x000000, 0)
+      .setDepth(2500);
+    this.tweens.add({ targets: overlay, alpha: 0.5, duration: 400 });
+  }
+
+  playOpeningAnimation() {
+    const { width, height } = this.cameras.main;
+
+    // 1. 왼쪽 천막 생성 및 배치
+    const leftCurtain = this.add
+      .image(0, 0, "slide")
+      .setOrigin(0, 0)
+      .setDisplaySize(width / 2, height) // 화면 절반 너비로 설정
+      .setDepth(2000);
+
+    // 2. 오른쪽 천막 생성 및 배치
+    const rightCurtain = this.add
+      .image(width / 2, 0, "slide")
+      .setOrigin(0, 0)
+      .setDisplaySize(width / 2, height) // 화면 절반 너비로 설정
+      .setDepth(2000)
+      .setFlipX(true); // 오른쪽은 대칭(반전)시켜서 자연스럽게 표현 (선택사항)
+
+    // 3. 문이 열리는 애니메이션 (Tween)
+    this.tweens.add({
+      targets: leftCurtain,
+      x: -width / 2, // 왼쪽 밖으로 이동
+      duration: 1200,
+      ease: "Cubic.easeInOut",
+    });
+
+    this.tweens.add({
+      targets: rightCurtain,
+      x: width, // 오른쪽 밖으로 이동
+      duration: 1200,
+      ease: "Cubic.easeInOut",
+      onComplete: () => {
+        leftCurtain.destroy();
+        rightCurtain.destroy();
+      },
+    });
+  }
+
+  showReadyGo() {
+    const { width, height } = this.cameras.main;
+    const centerX = width / 2;
+    const centerY = height / 2;
+
+    this.sound.play("readygo", { volume: 0.2 });
+
+    // "레디" 텍스트 생성
+    const readyText = this.add
+      .text(centerX, centerY, "READY", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.15}px`,
+        fill: "#f59e0b", // warning 색상 계열
+        fontWeight: "bold",
+        stroke: "#000",
+        strokeThickness: 8,
+      })
+      .setOrigin(0.5)
+      .setDepth(1000)
+      .setScale(0);
+
+    // 연출 시퀀스
+    this.tweens.add({
+      targets: readyText,
+      scale: 1,
+      duration: 300,
+      ease: "Back.easeOut",
+      onComplete: () => {
+        // 1초 대기 후 "고!"로 변경
+        this.time.delayedCall(400, () => {
+          readyText.setText("GO!");
+          readyText.setFill("#22c55e"); // success 색상 계열
+
+          this.tweens.add({
+            targets: readyText,
+            scale: 1.5,
+            alpha: 0,
+            duration: 300,
+            ease: "Power2",
+            onComplete: () => {
+              readyText.destroy();
+              this.isGameReady = true; // 이제부터 조작 가능
+            },
+          });
+        });
+      },
+    });
+  }
+
   showToast(message, color = "#ffffff") {
     const { width } = this.cameras.main;
 
@@ -2080,998 +2378,6 @@ class KushiScene extends Phaser.Scene {
         },
       });
     });
-  }
-
-  // 1. 결과창을 보여주기 전, 종료 선언 애니메이션
-  playFinishAnimation(callback) {
-    const { width, height } = this.cameras.main;
-    const centerX = width / 2;
-    const centerY = height / 2;
-
-    // 게임 조작 차단
-    this.isGameReady = false;
-
-    // "FINISH!" 텍스트 연출
-    const finishText = this.add
-      .text(centerX, centerY, "게임종료!", {
-        fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.18}px`,
-        fill: "#ef4444", // danger 색상
-        fontWeight: "bold",
-        stroke: "#ffffff",
-        strokeThickness: 10,
-      })
-      .setOrigin(0.5)
-      .setDepth(3000)
-      .setScale(5)
-      .setAlpha(0);
-
-    // 쾅! 하고 나타나는 애니메이션
-    this.tweens.add({
-      targets: finishText,
-      scale: 1,
-      alpha: 1,
-      duration: 400,
-      ease: "Bounce.easeOut",
-      onComplete: () => {
-        // 1초 뒤에 위로 사라지며 콜백 실행
-        this.time.delayedCall(1000, () => {
-          this.tweens.add({
-            targets: finishText,
-            y: -100,
-            alpha: 0,
-            duration: 500,
-            ease: "Power2",
-            onComplete: () => {
-              finishText.destroy();
-              if (callback) callback(); // 애니메이션 끝나고 결과창 띄우기
-            },
-          });
-        });
-      },
-    });
-
-    // 화면 전체 살짝 어둡게 암전 효과
-    const overlay = this.add
-      .rectangle(centerX, centerY, width, height, 0x000000, 0)
-      .setDepth(2500);
-    this.tweens.add({ targets: overlay, alpha: 0.5, duration: 400 });
-  }
-
-  playOpeningAnimation() {
-    const { width, height } = this.cameras.main;
-
-    // 1. 왼쪽 천막 생성 및 배치
-    const leftCurtain = this.add
-      .image(0, 0, "slide")
-      .setOrigin(0, 0)
-      .setDisplaySize(width / 2, height) // 화면 절반 너비로 설정
-      .setDepth(2000);
-
-    // 2. 오른쪽 천막 생성 및 배치
-    const rightCurtain = this.add
-      .image(width / 2, 0, "slide")
-      .setOrigin(0, 0)
-      .setDisplaySize(width / 2, height) // 화면 절반 너비로 설정
-      .setDepth(2000)
-      .setFlipX(true); // 오른쪽은 대칭(반전)시켜서 자연스럽게 표현 (선택사항)
-
-    // 3. 문이 열리는 애니메이션 (Tween)
-    this.tweens.add({
-      targets: leftCurtain,
-      x: -width / 2, // 왼쪽 밖으로 이동
-      duration: 1200,
-      ease: "Cubic.easeInOut",
-    });
-
-    this.tweens.add({
-      targets: rightCurtain,
-      x: width, // 오른쪽 밖으로 이동
-      duration: 1200,
-      ease: "Cubic.easeInOut",
-      onComplete: () => {
-        leftCurtain.destroy();
-        rightCurtain.destroy();
-      },
-    });
-  }
-
-  showReadyGo() {
-    const { width, height } = this.cameras.main;
-    const centerX = width / 2;
-    const centerY = height / 2;
-
-    this.sound.play("readygo", { volume: 0.2 });
-
-    // "레디" 텍스트 생성
-    const readyText = this.add
-      .text(centerX, centerY, "READY", {
-        fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.15}px`,
-        fill: "#f59e0b", // warning 색상 계열
-        fontWeight: "bold",
-        stroke: "#000",
-        strokeThickness: 8,
-      })
-      .setOrigin(0.5)
-      .setDepth(1000)
-      .setScale(0);
-
-    // 연출 시퀀스
-    this.tweens.add({
-      targets: readyText,
-      scale: 1,
-      duration: 300,
-      ease: "Back.easeOut",
-      onComplete: () => {
-        // 1초 대기 후 "고!"로 변경
-        this.time.delayedCall(400, () => {
-          readyText.setText("GO!");
-          readyText.setFill("#22c55e"); // success 색상 계열
-
-          this.tweens.add({
-            targets: readyText,
-            scale: 1.5,
-            alpha: 0,
-            duration: 300,
-            ease: "Power2",
-            onComplete: () => {
-              readyText.destroy();
-              this.isGameReady = true; // 이제부터 조작 가능
-            },
-          });
-        });
-      },
-    });
-  }
-
-  showOrdersDisplay(yPos) {
-    const { width, height } = this.cameras.main;
-    const cardW = width * 0.2;
-    const cardH = height * 0.2;
-    const spacing = width * 0.22;
-    const startX = width / 2 - (spacing * (this.targetRecipes.length - 1)) / 2;
-
-    this.targetRecipes.forEach((recipe, i) => {
-      const x = startX + i * spacing;
-      const count = recipe.length;
-
-      this.add
-        .text(x, yPos * 0.57, `주문 ${i + 1}`, {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.035}px`,
-          color: "#ffffff",
-          fontWeight: "bold",
-        })
-        .setDepth(5)
-        .setOrigin(0.5);
-
-      this.add
-        .sprite(x, yPos + 10, "itembg") // 위치를 약간 조정
-        .setDisplaySize(cardW, cardH) // 굵기를 얇게 조절
-        .setAlpha(1)
-        .setDepth(1);
-
-      this.add
-        .sprite(x, yPos + 15, "bar") // 위치를 약간 조정
-        .setDisplaySize(cardW * 0.1, cardH * 0.8) // 굵기를 얇게 조절
-        .setAlpha(0.9)
-        .setDepth(1);
-
-      recipe.forEach((ingre, j) => {
-        const startY = yPos + 12 + (count - 1) * (cardH * 0.08);
-        const iy = startY - j * (cardH * 0.185);
-        this.add
-          .sprite(x, iy, `ingre${ingre.id}`)
-          .setDisplaySize(cardW * 0.5, cardW * 0.5)
-          .setAngle(ingre.angle)
-          .setDepth(2);
-      });
-    });
-  }
-
-  renderTable(players) {
-    if (!players || !Array.isArray(players)) {
-      //console.warn("renderTable: players 데이터가 없거나 배열이 아닙니다!");
-      //return;
-    }
-
-    this.playerTableGroup.removeAll(true);
-
-    const { width, height } = this.cameras.main;
-    const myId = socket.id;
-
-    const others = players.filter((pl) => pl.id !== myId);
-    if (others.length > 3) others.length = 3;
-    console.log("[DEBUG] others 수:", others.length);
-    console.log(
-      "others IDs:",
-      others.map((p) => p.id)
-    );
-
-    const zones = [width * 0.25, width * 0.5, width * 0.75];
-    const otherY = height * 0.38;
-
-    players.forEach((p) => {
-      const isMe = p.id === myId;
-
-      // ❌ p 수정 금지
-      const renderPlayer = {
-        ...p,
-        currentSkewer: isMe ? this.currentSkewer : p.currentSkewer || [],
-        completedSkewers: isMe
-          ? this.allSkewerSubmission
-          : p.completedSkewers || [],
-      };
-
-      if (isMe || this.isSingle) {
-        this.drawPlayerSkewers(
-          renderPlayer,
-          { x: width / 2, y: height * 0.57, scale: 0.95 },
-          true
-        );
-      } else {
-        const otherIdx = others.findIndex((pl) => pl.id === p.id);
-        if (otherIdx < 3) {
-          const panelW = width * 0.25;
-          const panelH = height * 0.14;
-
-          this.playerTableGroup.add(
-            this.add
-              .rectangle(
-                zones[otherIdx],
-                otherY,
-                panelW,
-                panelH,
-                0xffffff,
-                0.03
-              )
-              .setStrokeStyle(1, 0x475569, 0.5)
-          );
-
-          this.drawPlayerSkewers(
-            renderPlayer,
-            { x: zones[otherIdx], y: otherY, scale: 0.45 },
-            false
-          );
-        }
-      }
-    });
-  }
-
-  drawPlayerSkewers(p, layout, isMe) {
-    const { width, height } = this.cameras.main;
-    const { x, y, scale } = layout;
-    const nameColor = isMe ? "#22c55e" : "#ffffff";
-
-    if (isMe || this.isSingle) {
-      console.log(" → 내 꼬치 그리기");
-      const mainStickH = height * 0.28 * scale;
-
-      const stick = this.add
-        .sprite(x, y + 30, "bar")
-        .setDisplaySize(width * 0.05 * scale, mainStickH * 1.15) // 너비는 적절히 조절
-        .setOrigin(0.5)
-        .setDepth(101); // 재료보다 뒤에 위치시키기 위해 낮은 depth 설정
-
-      console.log("막대기 객체 생성 완료:", stick.x, stick.y);
-
-      this.playerTableGroup.add(stick);
-
-      this.currentSkewer.forEach((item, j) => {
-        const iy = y + mainStickH * 0.4 - j * (height * 0.06 * scale);
-        const img = this.add
-          .sprite(x, iy, `ingre${item.id}`)
-          .setDisplaySize(width * 0.18 * scale, width * 0.18 * scale)
-          .setAngle(item.angle)
-          .setDepth(102); // 재료는 막대기보다 위로
-
-        img
-          .setInteractive({ useHandCursor: true })
-          .on("pointerdown", (ptr, lx, ly, ev) => {
-            ev.stopPropagation();
-            this.sound.play("spin", { volume: 0.2 });
-            item.angle = (item.angle + 90) % 360;
-            img.setAngle(item.angle);
-            this.sync();
-
-            // --- 추가: 회전할 때마다 마지막 꼬치 정답인지 체크 ---
-            const currentOrderIdx = this.allSkewerSubmission.length;
-            if (currentOrderIdx === this.targetRecipes.length - 1) {
-              if (
-                this.isSkewerCorrect(
-                  this.targetRecipes[currentOrderIdx],
-                  this.currentSkewer
-                )
-              ) {
-                console.log("🎯 회전으로 마지막 정답 완성! (힌트만)");
-                this.playSubmitHint(); // 효과음 코드는 여기서 삭제됨
-              }
-            }
-          });
-        this.playerTableGroup.add(img);
-      });
-
-      // 내가 완성한 것들은 왼쪽으로 나열
-      if (p.completedSkewers) {
-        p.completedSkewers.forEach((old, sIdx) => {
-          const ox = x - width * 0.12 * (p.completedSkewers.length - sIdx);
-
-          this.playerTableGroup.add(
-            this.add
-              .sprite(ox, y, "bar")
-              .setDisplaySize(width * 0.04, height * 0.15)
-              .setAlpha(0.9)
-              .setDepth(1)
-          );
-
-          old.forEach((item, j) => {
-            const iy = y + height * 0.04 - j * (height * 0.03);
-            this.playerTableGroup.add(
-              this.add
-                .sprite(ox, iy, `ingre${item.id}`)
-                .setDisplaySize(width * 0.08, width * 0.08)
-                .setAngle(item.angle)
-                .setAlpha(0.9)
-            );
-          });
-        });
-      }
-    } else {
-      // --- [상대방 UI: 패널 & 3막대 고정 시스템 유지] ---
-      const stickGap = width * 0.07 * scale;
-      const stickH = height * 0.25 * scale;
-      console.log(" → 상대방 패널 그리기 시작");
-      console.log("[DEBUG] 상대방 좌표 & 스케일", {
-        x,
-        y,
-        scale,
-        stickGap,
-        stickH,
-      });
-
-      // 상대방은 누가 누구인지 알아야 하므로 이름 유지
-      this.playerTableGroup.add(
-        this.add
-          .text(x, y - stickH * 0.65, p.nickname, {
-            fontFamily: GAME_FONTS.main,
-            fontSize: `${width * 0.035}px`,
-            fill: nameColor,
-            fontWeight: "bold",
-          })
-          .setOrigin(0.5)
-      );
-
-      for (let i = 0; i < 3; i++) {
-        const sx = x + (i - 1) * stickGap;
-        console.log(`  막대 ${i + 1} 생성 위치: sx=${sx}, y=${y}`);
-        const stick = this.add
-          .sprite(sx, y, "bar")
-          .setDisplaySize(width * 0.03 * scale, stickH)
-          .setOrigin(0.5)
-          .setDepth(1);
-        this.playerTableGroup.add(stick);
-
-        let skewerData = [];
-        let isAlpha = 1;
-
-        if (p.completedSkewers && p.completedSkewers[i]) {
-          skewerData = p.completedSkewers[i];
-          isAlpha = 0.9;
-          stick.setAlpha(0.9); // 완성된 꼬치는 막대기도 반투명하게
-        } else if ((p.completedSkewers ? p.completedSkewers.length : 0) === i) {
-          skewerData = p.currentSkewer || [];
-          isAlpha = 1;
-        }
-
-        skewerData.forEach((item, j) => {
-          const iy = y + stickH * 0.35 - j * (height * 0.045 * scale);
-          const img = this.add
-            .sprite(sx, iy, `ingre${item.id}`)
-            .setDisplaySize(width * 0.09 * scale, width * 0.09 * scale)
-            .setAngle(item.angle)
-            .setAlpha(isAlpha)
-            .setDepth(2);
-          this.playerTableGroup.add(img);
-        });
-      }
-    }
-  }
-
-  createInputArea(yPos) {
-    const { width, height } = this.cameras.main;
-    const areaH = height * 0.15;
-    this.add.rectangle(width / 2, yPos, width, areaH, 0x1e293b);
-
-    this.add
-      .image(width / 2, yPos, "itembg")
-      .setDisplaySize(width, height * 0.2)
-      .setDepth(0) // 레이어 순서를 가장 뒤로
-      .setAlpha(0.8); // 게임 화면은 집중을 위해 약간 어둡게 처리(선택사항)
-
-    [1, 2, 3, 4, 5].forEach((id, i) => {
-      const x = (width / 6) * (i + 1);
-
-      this.add
-        .circle(x, yPos, width * 0.07, 0x334155)
-        .setStrokeStyle(3, COLORS.primary);
-
-      const btn = this.add
-        .sprite(x, yPos, `ingre${id}`)
-        .setDisplaySize(width * 0.16, width * 0.16)
-        .setInteractive();
-
-      btn.on("pointerdown", () => {
-        if (!this.isGameReady || this.isAlreadySubmitted) return;
-
-        if (this.currentSkewer.length < 4) {
-          this.sound.play("btn", { volume: 0.1 });
-          this.currentSkewer.push({ id, angle: 0 });
-          this.sync();
-
-          const currentOrderIdx = this.allSkewerSubmission.length;
-          const isLastRecipe =
-            currentOrderIdx === this.targetRecipes.length - 1;
-
-          if (isLastRecipe) {
-            const target = this.targetRecipes[currentOrderIdx];
-            // 현재 꽂힌 개수가 목표 개수와 같을 때만 검사
-            if (this.currentSkewer.length === target.length) {
-              if (this.isSkewerCorrect(target, this.currentSkewer)) {
-                console.log("🎯 마지막 정답 일치!");
-                this.playSubmitHint();
-              } else {
-                console.log("❌ 마지막 꼬치 진행 중 (아직 정답 아님)");
-              }
-            }
-          }
-        }
-      });
-    });
-  }
-
-  createControlButtons(btnY) {
-    const { width, height } = this.cameras.main;
-    const centerX = width / 2;
-    const btnW = width * 0.18;
-    const btnH = height * 0.055;
-    const btnGap = width * 0.23;
-
-    const btnData = [
-      {
-        txt: "취소",
-        col: COLORS.danger,
-        x: centerX - btnGap * 1.4,
-        act: () => {
-          if (this.currentSkewer.length === 0) return;
-
-          this.currentSkewer.pop();
-          this.sync();
-        },
-      },
-      {
-        txt: "초기화",
-        col: COLORS.warning,
-        x: centerX - btnGap * 0.5,
-        act: () => {
-          if (confirm("초기화?")) {
-            this.allSkewerSubmission = [];
-            this.currentSkewer = [];
-            socket.emit("updateProgress", { count: 0, completedList: [] });
-            this.sync();
-          }
-        },
-      },
-      {
-        txt: "다음",
-        col: COLORS.primary,
-        x: centerX + btnGap * 0.5,
-        act: () => this.handleNext(),
-      },
-      {
-        txt: "제출",
-        col: COLORS.success,
-        x: centerX + btnGap * 1.4,
-        act: () => this.handleSubmit(),
-        isSubmit: true, // 제출 버튼임을 표시하는 플래그 추가
-      },
-    ];
-
-    btnData.forEach((b) => {
-      // 1. 버튼 배경 이미지 생성 및 색상 적용
-      const img = this.add
-        .image(b.x, btnY, "uibtn")
-        .setDisplaySize(btnW, btnH)
-        .setInteractive()
-        .setTint(b.col);
-
-      // 2. 버튼 텍스트 생성 (애니메이션을 위해 변수에 할당)
-      const txt = this.add
-        .text(b.x, btnY, b.txt, {
-          fontFamily: GAME_FONTS.main,
-          color: "#fff",
-          fontWeight: "bold",
-          fontSize: `${width * 0.035}px`,
-        })
-        .setOrigin(0.5);
-
-      if (b.txt === "제출") {
-        this.submitBtnImg = img;
-        this.submitBtnText = txt;
-      }
-
-      // 3. 클릭 이벤트 + 연출 적용
-      img.on("pointerdown", () => {
-        // 게임 준비 전이거나 이미 제출했다면 무시
-        if (!this.isGameReady || this.isAlreadySubmitted) return;
-
-        // 효과음 재생
-        this.sound.play("pop", { volume: 0.1 });
-
-        // 버튼과 텍스트가 함께 눌리는 연출 (Tween)
-        this.tweens.add({
-          targets: [img, txt], // 이미지와 텍스트 둘 다 선택
-          scaleX: "*=0.92", // 현재 크기에서 약 8% 축소
-          scaleY: "*=0.92",
-          duration: 50,
-          yoyo: true, // 다시 원래대로
-          onComplete: () => {
-            // 연출이 살짝 보인 후 실제 기능 실행
-            b.act();
-          },
-        });
-      });
-    });
-  }
-
-  playSubmitHint() {
-    if (!this.submitBtnImg || !this.submitBtnText || this.isHintPlaying) return;
-    this.isHintPlaying = true;
-
-    const startX = this.submitBtnImg.x;
-
-    this.tweens.add({
-      targets: [this.submitBtnImg, this.submitBtnText],
-      x: startX + 5, // 오른쪽으로 5px 이동
-      duration: 40, // 아주 빠르게
-      yoyo: true, // 다시 왼쪽으로
-      repeat: 7, // 총 8번 흔들림
-      ease: "Sine.easeInOut",
-      onComplete: () => {
-        this.isHintPlaying = false;
-        this.submitBtnImg.x = startX; // 위치 원상복구
-        this.submitBtnText.x = startX;
-      },
-    });
-  }
-
-  handleNext() {
-    const currentOrderIdx = this.allSkewerSubmission.length;
-
-    // 마지막 주문(3번째)인데 '다음'을 누른 경우
-    if (currentOrderIdx === this.targetRecipes.length - 1) {
-      // 효과음 하나 재생해주고
-      this.sound.play("btn", { volume: 0.1 });
-
-      // 안내 메시지 (알럿 대신 텍스트 연출을 추천하지만, 우선 확실한 알럿으로)
-      alert("마지막 꼬치입니다! 완성 후 바로 '제출' 버튼을 눌러주세요! 🍢");
-      return;
-    }
-
-    // 이미 모든 주문을 리스트에 넣었는데 또 누른 경우
-    if (currentOrderIdx >= this.targetRecipes.length) {
-      return alert("모든 주문이 완료되었습니다. '제출'을 눌러주세요!");
-    }
-
-    if (this.currentSkewer.length === 0) return;
-
-    // (기존 정답 확인 및 리스트 이동 로직...)
-    if (
-      this.isSkewerCorrect(
-        this.targetRecipes[currentOrderIdx],
-        this.currentSkewer
-      )
-    ) {
-      this.playFeedback(true);
-      this.allSkewerSubmission.push([...this.currentSkewer]);
-      socket.emit("updateProgress", {
-        count: this.allSkewerSubmission.length,
-        completedList: this.allSkewerSubmission,
-      });
-      this.currentSkewer = [];
-      this.sync();
-    } else {
-      this.playFeedback(false);
-    }
-  }
-
-  handleSubmit() {
-    if (this.isAlreadySubmitted) return;
-
-    let final = [...this.allSkewerSubmission];
-    if (this.currentSkewer.length > 0) final.push([...this.currentSkewer]);
-
-    // 1. 개수 체크
-    if (final.length < this.targetRecipes.length) {
-      return alert("주문이 남았습니다!");
-    }
-
-    // 2. 마지막 꼬치 정답 여부 최종 확인
-    const lastIdx = this.targetRecipes.length - 1;
-    const lastTarget = this.targetRecipes[lastIdx];
-    const lastSubmitted = this.currentSkewer;
-
-    if (this.isSkewerCorrect(lastTarget, lastSubmitted)) {
-      // ✅ 모든 것이 완벽할 때만 이랏샤이!
-      this.time.delayedCall(300, () => {
-        this.sound.play("irassai", { volume: 0.1 });
-      });
-      // ✅ 2. 주방장 이미지 연출 (빵! 나타나기)
-      const { width, height } = this.cameras.main;
-      const chef = this.add
-        .image(width / 2, height / 2, "chef") // preload에 등록한 키값
-        .setDepth(5000) // 최상단 레이어
-        .setScale(0) // 처음엔 안보임
-        .setAlpha(0);
-
-      this.tweens.add({
-        targets: chef,
-        scale: 1, // 원래 크기로
-        alpha: 1, // 선명하게
-        duration: 300,
-        ease: "Back.easeOut", // 팍! 튀어나오는 느낌
-        onComplete: () => {
-          // 0.8초 동안 보여줬다가 사라짐
-          this.time.delayedCall(800, () => {
-            this.tweens.add({
-              targets: chef,
-              scale: 1.5, // 커지면서
-              alpha: 0, // 투명해짐
-              duration: 300,
-              onComplete: () => chef.destroy(),
-            });
-          });
-        },
-      });
-
-      console.log("🎊 최종 제출 성공! 이랏샤이!");
-    } else {
-      // 마지막 꼬치가 틀렸다면
-      this.playFeedback(false);
-      return;
-    }
-
-    // 3. 분기 처리 (싱글 vs 멀티)
-    this.isAlreadySubmitted = true;
-
-    if (this.isSingle) {
-      // -------------------------------------------
-      // 🔹 싱글모드: 즉시 결과 화면으로 이동
-      // -------------------------------------------
-      // 2. 약간의 딜레이를 주어 여운을 남김 (1500ms = 1.5초)
-      this.time.delayedCall(1500, () => {
-        this.playFinishAnimation(() => {
-          // 내 점수 업데이트 (보이지는 않지만 데이터 관리를 위해)
-          this.roundData.players[0].score += 500;
-
-          // 최종 결과창 호출
-          this.showResultOverlay(this.roundData.players);
-        });
-      });
-    } else {
-      // -------------------------------------------
-      // 🔹 멀티모드: 기존 서버 전송
-      // -------------------------------------------
-      socket.emit("submit", final);
-    }
-  }
-
-  sync() {
-    // 1. 싱글 모드일 때: 서버에 보내지 않고 내 화면만 즉시 갱신
-    if (this.isSingle) {
-      this.renderTable(this.roundData.players);
-      console.log("싱글 모드: 로컬 화면 갱신 완료");
-    }
-    // 2. 멀티 모드일 때: 기존처럼 서버에 데이터 전송
-    else {
-      socket.emit("syncMySkewer", this.currentSkewer);
-    }
-  }
-
-  showResultOverlay(players, isUpdate = false) {
-    if (!this.roundData) return;
-    if (!players || players.length === 0) return;
-
-    const { width, height } = this.cameras.main;
-    const currentHostId = this.roundData.hostId;
-    const isHost = socket.id === currentHostId;
-
-    // --- ⬇️ 컨테이너 생성 로직 최적화 ⬇️ ---
-    if (this.resultContainer) {
-      const prevY = this.resultContainer.y; // 현재 위치 기억
-      this.resultContainer.destroy();
-      // 업데이트 중이면 현재 위치(0)에, 새로 만드는 거면 화면 위(-height)에 생성
-      this.resultContainer = this.add
-        .container(0, isUpdate ? prevY : -height)
-        .setDepth(3000);
-    } else {
-      this.resultContainer = this.add.container(0, -height).setDepth(3000);
-    }
-
-    const container = this.resultContainer;
-    const myInfo = players.find((p) => p.id === socket.id) || null;
-
-    const bg = this.add
-      .image(width / 2, height / 2, "resultbg")
-      .setDisplaySize(width * 1.2, height * 1.4);
-    container.add(bg);
-
-    players.forEach((p, i) => {
-      const y = height * 0.35 + i * (height * 0.08);
-      const row = this.add.container(width / 2, y);
-      const isThisPlayerHost = p.id === this.roundData.hostId;
-      let displayName = p.nickname;
-
-      if (isThisPlayerHost) {
-        displayName = `● ${displayName} 👑`;
-      } else {
-        displayName = p.isReady ? `● ${displayName}` : `○ ${displayName}`;
-      }
-
-      const rankTxt = this.add
-        .text(-width * 0.2, 0, `${i + 1}위`, {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.05}px`,
-          fill: "#334155",
-        })
-        .setOrigin(0.5);
-
-      const nameTxt = this.add
-        .text(-width * 0.1, 0, displayName, {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.05}px`,
-          fill: !isThisPlayerHost && p.isReady ? "#2ecc71" : "#0f172a",
-          fontWeight: "bold",
-        })
-        .setOrigin(0, 0.5);
-
-      row.add([rankTxt, nameTxt]);
-      container.add(row);
-    });
-
-    const btnY = height * 0.72;
-    const exitBtnY = height * 0.81;
-
-    if (isHost || this.isSingle) {
-      console.log("방장 UI 생성");
-
-      const startBtn = this.add
-        .image(width / 2, btnY, "uibtn")
-        .setDisplaySize(width * 0.5, height * 0.08)
-        .setTint(0xe67e22)
-        .setInteractive({ useHandCursor: true });
-      const startTxt = this.add
-        .text(width / 2, btnY, "계속하기", {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.055}px`,
-          color: "#ffffff",
-          fontWeight: "bold",
-        })
-        .setOrigin(0.5);
-
-      startBtn.on("pointerdown", () => {
-        this.sound.play("btn", { volume: 0.1 });
-
-        // 💡 중복 클릭 방지: 시작 요청 후 버튼 비활성화
-        startBtn.disableInteractive();
-        startBtn.setAlpha(0.5);
-
-        if (this.isSingle) {
-          const nextData = {
-            ...this.roundData,
-            recipes: this.generateRandomRecipes(),
-            isSingle: true,
-          };
-          this.scene.restart(nextData);
-        } else {
-          socket.emit("requestNextRecipe");
-        }
-      });
-      container.add([startBtn, startTxt]);
-    } else {
-      console.log("일반 유저 UI 생성");
-      // 💡 myInfo가 없을 경우 기본값 false 처리
-      const isReady = myInfo ? myInfo.isReady : false;
-      const readyBtn = this.add
-        .image(width / 2, btnY, "uibtn")
-        .setDisplaySize(width * 0.5, height * 0.08)
-        .setTint(isReady ? 0x2ecc71 : 0x94a3b8)
-        .setInteractive({ useHandCursor: true });
-      const readyTxt = this.add
-        .text(width / 2, btnY, isReady ? "준비완료!" : "준비하기", {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.055}px`,
-          color: "#ffffff",
-        })
-        .setOrigin(0.5);
-
-      readyBtn.on("pointerdown", () => {
-        // 1. 효과음 재생
-        this.sound.play("btn", { volume: 0.1 });
-
-        // 2. 클릭 연출 (readyBtn과 그 위의 텍스트가 있다면 함께 적용)
-        // 만약 텍스트 변수명이 다르다면 배열에 추가해 주세요 (예: [readyBtn, readyBtnText])
-        this.tweens.add({
-          targets: readyBtn,
-          scaleX: "*=0.95",
-          scaleY: "*=0.95",
-          duration: 50,
-          yoyo: true,
-          onComplete: () => {
-            // 3. 연출이 끝난 후 서버에 토글 신호 전송
-            socket.emit("toggleReady");
-            console.log("emit: toggleReady");
-          },
-        });
-      });
-      container.add([readyBtn, readyTxt]);
-    }
-
-    const exitBtnImg = this.add
-      .image(width / 2, exitBtnY, "uibtn")
-      .setDisplaySize(width * 0.5, height * 0.08)
-      .setInteractive({ useHandCursor: true });
-    const exitBtnText = this.add
-      .text(width / 2, exitBtnY, "나가기", {
-        fontFamily: GAME_FONTS.main,
-        color: "#ffffff",
-        fontWeight: "bold",
-        fontSize: `${width * 0.055}px`,
-      })
-      .setOrigin(0.5);
-
-    exitBtnImg.on("pointerdown", () => {
-      // 1. 효과음 재생
-      this.sound.play("btn", { volume: 0.1 });
-
-      // 2. 클릭 연출 (이미지와 텍스트 동시 적용)
-      this.tweens.add({
-        targets: [exitBtnImg, exitBtnText], // 글자도 변수명에 맞춰 함께 움직임
-        scaleX: "*=0.95",
-        scaleY: "*=0.95",
-        duration: 50,
-        yoyo: true,
-        onComplete: () => {
-          // 3. 연출이 끝난 후 커스텀 알림창 띄우기
-          this.showCustomAlert("로비로 이동합니다!", () => {
-            window.location.reload();
-          });
-        },
-      });
-    });
-
-    container.add([exitBtnImg, exitBtnText]);
-
-    // --- ⬇️ 애니메이션 실행 조건 ⬇️ ---
-    if (!isUpdate) {
-      this.tweens.add({
-        targets: container,
-        y: 0,
-        duration: 800,
-        ease: "Back.easeOut",
-      });
-    } else {
-      container.y = 0; // 업데이트 시에는 즉시 위치 고정
-    }
-  }
-
-  // KushiScene 클래스 하단 어딘가에 추가 (싱글모드용)
-  generateRandomRecipes() {
-    // 예시: 랜덤하게 3개의 꼬치 레시피 생성 로직
-    return Array.from({ length: 3 }, () =>
-      Array.from({ length: 4 }, () => ({
-        id: Math.floor(Math.random() * 5) + 1,
-        angle: [0, 90, 180, 270][Math.floor(Math.random() * 4)],
-      }))
-    );
-  }
-
-  isSkewerCorrect(target, submitted) {
-    if (!target || !submitted || target.length !== submitted.length)
-      return false;
-
-    const getNormAngle = (a) => {
-      let angle = Math.round(a) % 360;
-      if (angle < 0) angle += 360;
-      return angle;
-    };
-
-    for (let i = 0; i < target.length; i++) {
-      const tId = String(target[i].id);
-      const sId = String(submitted[i].id);
-      const tAngle = getNormAngle(target[i].angle);
-      const sAngle = getNormAngle(submitted[i].angle);
-
-      if (tId !== sId || tAngle !== sAngle) {
-        return false; // 불일치 시 즉시 종료
-      }
-    }
-    return true;
-  }
-
-  playFeedback(isSuccess) {
-    const { width, height } = this.cameras.main;
-    const centerX = width / 2;
-    const centerY = height / 2;
-
-    if (isSuccess) {
-      try {
-        generateHapticFeedback({ type: "error" });
-        // 또는 가벼운 느낌을 원하면 type: "impactLight"
-      } catch (e) {
-        console.error("Haptic feedback failed", e);
-      }
-
-      const rect = this.add
-        .rectangle(centerX, centerY, width, height, 0x22c55e, 0.3)
-        .setDepth(100);
-      this.tweens.add({
-        targets: rect,
-        alpha: 0,
-        duration: 500,
-        onComplete: () => rect.destroy(),
-      });
-
-      this.sound.play("yosi", { volume: 0.2 });
-
-      // 2. "GOOD!" 텍스트 추가 (새로운 코드)
-      const feedbackText = this.add
-        .text(centerX, centerY, "PERFECT!", {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.12}px`,
-          fill: "#ffffff",
-          fontWeight: "bold",
-          stroke: "#22c55e",
-          strokeThickness: 6,
-        })
-        .setOrigin(0.5)
-        .setDepth(101)
-        .setScale(0); // 처음엔 크기 0
-
-      // 3. 빵! 나타나는 애니메이션
-      this.tweens.add({
-        targets: feedbackText,
-        scale: 1, // 원래 크기로
-        y: centerY - 50, // 살짝 위로 이동
-        duration: 500,
-        ease: "Back.easeOut", // 튀어나오는 느낌
-        onComplete: () => {
-          // 잠시 머물렀다 사라짐
-          this.tweens.add({
-            targets: feedbackText,
-            alpha: 0,
-            duration: 50,
-            delay: 100,
-            onComplete: () => feedbackText.destroy(),
-          });
-        },
-      });
-
-      this.sound.play("btn", { volume: 0.1 });
-    } else {
-      this.sound.play("yare", { volume: 0.2 });
-
-      const rect = this.add
-        .rectangle(centerX, centerY, width, height, 0xef4444, 0.4)
-        .setDepth(100);
-      this.tweens.add({
-        targets: rect,
-        alpha: 0,
-        duration: 400,
-        onComplete: () => rect.destroy(),
-      });
-      this.cameras.main.shake(250, 0.015);
-    }
   }
 }
 
