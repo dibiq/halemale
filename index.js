@@ -319,7 +319,7 @@ io.on("connection", (socket) => {
     }, 150);
   });
 
-  socket.on("ringBell", () => {
+  /*socket.on("ringBell", () => {
     const room = rooms[socket.roomId];
     if (!room || !room.isGameStarted) return;
     const totals = getFruitTotals(room.players);
@@ -391,6 +391,95 @@ io.on("connection", (socket) => {
           players: room.players,
         });
       }
+      processSkipTurn(room, io);
+    }
+  });*/
+
+  socket.on("ringBell", () => {
+    const room = rooms[socket.roomId];
+    if (!room || !room.isGameStarted) return;
+
+    const totals = getFruitTotals(room.players);
+    const isFive = Object.values(totals).some((t) => t === 5);
+
+    if (isFive) {
+      // --- [성공 시나리오] ---
+      let collected = [];
+      room.players.forEach((p) => {
+        collected = [...collected, ...p.openCardStack];
+        p.openCardStack = [];
+        p.openCard = null;
+      });
+
+      const winnerIdx = room.players.findIndex((p) => p.id === socket.id);
+      const winner = room.players[winnerIdx];
+
+      // 카드 획득 및 다음 턴을 승리자로 고정
+      winner.myDeck = [...collected, ...winner.myDeck];
+      room.turnIndex = winnerIdx;
+
+      // 종을 뺏긴 사람들 중 카드가 0장인 사람 확인 (탈락 처리)
+      room.players.forEach((p) => {
+        if (p.id !== winner.id && (!p.myDeck || p.myDeck.length === 0)) {
+          p.openCardStack = [];
+          p.isEliminated = true; // 탈락 상태 명시
+        }
+      });
+
+      if (checkGameOver(room, io)) return;
+
+      io.to(room.roomId).emit("bellResult", {
+        success: true,
+        winnerId: socket.id,
+        winnerNickname: winner.nickname,
+        players: room.players,
+        nextTurnId: winner.id,
+      });
+
+      processSkipTurn(room, io);
+    } else {
+      // --- [패널티 시나리오: 균등 배분 로직] ---
+      const p = room.players.find((pl) => pl.id === socket.id);
+      // 현재 살아있는(탈락하지 않은) 다른 플레이어들만 추출
+      const others = room.players.filter(
+        (pl) => pl.id !== socket.id && !pl.isEliminated && pl.myDeck.length > 0
+      );
+
+      if (others.length > 0) {
+        // 💡 핵심: 벌칙자의 카드가 한 바퀴 돌 때까지 '한 장씩' 순서대로 배분
+        // others.forEach를 한 번만 수행하면 각 플레이어당 최대 1장만 전달됨
+        others.forEach((recipient) => {
+          if (p.myDeck.length > 0) {
+            const card = p.myDeck.pop();
+            recipient.myDeck.unshift(card);
+          }
+        });
+      }
+
+      // 벌칙 후 본인 덱이 0장이면 즉시 탈락 및 게임 종료 체크
+      if (p.myDeck.length === 0) {
+        p.isEliminated = true;
+        console.log(`💀 ${p.nickname} 벌칙으로 인한 카드 소진 탈락`);
+
+        // 만약 2명 중 1명이 벌칙으로 0장이 되면 여기서 게임 종료됨
+        if (checkGameOver(room, io)) return;
+
+        io.to(room.roomId).emit("bellResult", {
+          success: false,
+          penaltyId: socket.id,
+          message: `${p.nickname}님 카드 소진으로 탈락!`,
+          players: room.players,
+        });
+      } else {
+        // 카드가 남은 경우 일반 벌칙 알림
+        io.to(room.roomId).emit("bellResult", {
+          success: false,
+          penaltyId: socket.id,
+          message: `${p.nickname}님 벌칙! 한 장씩 배분`,
+          players: room.players,
+        });
+      }
+
       processSkipTurn(room, io);
     }
   });

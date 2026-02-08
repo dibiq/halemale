@@ -1737,7 +1737,10 @@ class GameScene extends Phaser.Scene {
           cards: p.cards || (p.myDeck ? p.myDeck.length : 0),
           openCard: null,
         }));
-        this.gameLogs(`${data.winnerNickname}님이 카드를 획득! 🔔`, "#f1c40f");
+        this.addGameLog(
+          `${data.winnerNickname}님이 카드를 획득! 🔔`,
+          "#f1c40f"
+        );
         this.time.delayedCall(500, () => {
           this.renderTable(this.roundData.players);
         });
