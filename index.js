@@ -355,25 +355,36 @@ io.on("connection", (socket) => {
       processSkipTurn(room, io);
     } else {
       const p = room.players.find((p) => p.id === socket.id);
-      const others = room.players.filter((pl) => pl.id !== socket.id);
+      //const others = room.players.filter((pl) => pl.id !== socket.id);
+      const others = room.players.filter(
+        (pl) => pl.id !== socket.id && !pl.isEliminated
+      ); // 살아있는 사람에게만 배분
+
       if (p.myDeck.length < others.length) {
         others.forEach((o) => {
           if (p.myDeck.length > 0) o.myDeck.unshift(p.myDeck.pop());
         });
         p.myDeck = [];
         if (checkGameOver(room, io)) return;
+
         io.to(room.roomId).emit("bellResult", {
           success: false,
           penaltyId: socket.id,
-          message: "실격!",
+          message: `${p.nickname}님 카드 소진으로 탈락!`,
           players: room.players,
         });
       } else {
         others.forEach((o) => o.myDeck.unshift(p.myDeck.pop()));
+
+        if (p.myDeck.length === 0) {
+          console.log(`💀 ${p.nickname} 벌칙 배분 후 0장 되어 탈락`);
+          if (checkGameOver(room, io)) return;
+        }
+
         io.to(room.roomId).emit("bellResult", {
           success: false,
           penaltyId: socket.id,
-          message: `${p.nickname}님 패널티!`, // 👈 닉네임을 넣어주면 훨씬 친절합니다.
+          message: `${p.nickname}님 벌칙으로 카드 배분!`,
           players: room.players,
         });
       }
