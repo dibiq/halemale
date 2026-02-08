@@ -52,8 +52,21 @@ function getFruitTotals(players) {
 }
 
 function checkGameOver(room, io) {
-  const survivors = room.players.filter((p) => {
-    return p.myDeck && p.myDeck.length > 0;
+  // 덱이 0장인 사람들을 판별
+  room.players.forEach((p) => {
+    p.isEliminated = !p.myDeck || p.myDeck.length === 0;
+  });
+
+  const survivors = room.players.filter((p) => !p.isEliminated);
+
+  // 실시간으로 플레이어 상태 업데이트 (프론트에서 [탈락] 표시용)
+  io.to(room.roomId).emit("updatePlayerStatus", {
+    players: room.players.map((p) => ({
+      id: p.id,
+      nickname: p.nickname,
+      isEliminated: p.isEliminated,
+      cards: p.myDeck?.length || 0,
+    })),
   });
 
   if (survivors.length <= 1 && room.isGameStarted) {
@@ -360,7 +373,7 @@ io.on("connection", (socket) => {
         io.to(room.roomId).emit("bellResult", {
           success: false,
           penaltyId: socket.id,
-          message: "벌칙!",
+          message: `${p.nickname}님 패널티!`, // 👈 닉네임을 넣어주면 훨씬 친절합니다.
           players: room.players,
         });
       }

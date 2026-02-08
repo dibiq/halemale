@@ -1536,6 +1536,10 @@ class GameScene extends Phaser.Scene {
 
   create() {
     // GameScene의 init 혹은 create 상단에 추가
+    if (this.resultContainer) {
+      this.resultContainer.destroy();
+      this.resultContainer = null;
+    }
     this.aiSettings = [
       {
         id: "AI_1",
@@ -1690,9 +1694,21 @@ class GameScene extends Phaser.Scene {
       const nextIdx = this.roundData.players.findIndex(
         (p) => p.id === data.nextTurnId
       );
+
       if (nextIdx !== -1) {
         this.turnIndex = nextIdx;
-        this.renderTable(this.roundData.players); // 턴 하이라이트 즉시 갱신
+
+        // 💡 내 차례가 왔을 때 띵! 소리나 진동(모바일) 주기
+        if (data.nextTurnId === (this.isSingle ? this.myId : socket.id)) {
+          this.sound.play("pop", { volume: 0.5 }); // 기존에 있는 pop 사운드 활용
+
+          // 모바일이라면 진동 추가 (브라우저 지원 시)
+          if (window.navigator.vibrate) {
+            window.navigator.vibrate(100);
+          }
+        }
+
+        this.renderTable(this.roundData.players);
       }
     });
 
@@ -1720,7 +1736,7 @@ class GameScene extends Phaser.Scene {
           cards: p.cards || (p.myDeck ? p.myDeck.length : 0),
           openCard: null,
         }));
-        this.showToast(`${data.winnerNickname}님이 카드를 획득! 🔔`, "#f1c40f");
+        this.gameLogs(`${data.winnerNickname}님이 카드를 획득! 🔔`, "#f1c40f");
         this.time.delayedCall(500, () => {
           this.renderTable(this.roundData.players);
         });
@@ -1785,6 +1801,47 @@ class GameScene extends Phaser.Scene {
     });
   }
 
+  addGameLog(message, color = "#ffffff") {
+    if (!this.gameLogs) this.gameLogs = [];
+    if (!this.logTexts) this.logTexts = [];
+
+    // 새 메시지 추가
+    this.gameLogs.push({ message, color });
+
+    // 최대 5~7개만 유지 (너무 많으면 화면을 가리니까요)
+    if (this.gameLogs.length > 6) {
+      this.gameLogs.shift();
+    }
+
+    this.updateLogDisplay();
+  }
+
+  // 3. 로그 화면 갱신 함수 (GameScene 클래스 내부에 추가)
+  updateLogDisplay() {
+    const startX = 20; // 왼쪽 여백
+    const startY = 80; // 상단 여백 (상태바 아래)
+    const lineSpacing = 25; // 줄 간격
+
+    // 기존 텍스트 객체 삭제
+    this.logTexts.forEach((txt) => txt.destroy());
+    this.logTexts = [];
+
+    // 저장된 로그를 순회하며 텍스트 생성
+    this.gameLogs.forEach((log, index) => {
+      const logTxt = this.add
+        .text(startX, startY + index * lineSpacing, log.message, {
+          fontFamily: "Jua",
+          fontSize: "18px",
+          color: log.color,
+          stroke: "#000000",
+          strokeThickness: 2,
+          backgroundColor: "#00000044", // 살짝 반투명 배경을 넣어 가독성 확보
+        })
+        .setDepth(5000); // UI 최상단
+
+      this.logTexts.push(logTxt);
+    });
+  }
   createHaliGaliButtons(height) {
     const { width } = this.cameras.main;
 
@@ -1815,43 +1872,6 @@ class GameScene extends Phaser.Scene {
     const fruitNames = { 1: "strawberry", 2: "banana", 3: "lime", 4: "plum" };
     const fruitName = fruitNames[card.fruit] || "strawberry";
     return `${fruitName}_${card.count}`;
-  }
-
-  renderTable(players) {
-    if (!players || !this.playerTableGroup) return;
-    this.playerTableGroup.removeAll(true);
-    const { width, height } = this.cameras.main;
-
-    // 싱글/멀티 통합 ID 판정
-    const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
-
-    // 내 위치 인덱스 찾기
-    let myIndex = players.findIndex((p) => p.id === myId);
-    if (myIndex === -1) myIndex = 0;
-
-    const sortedPlayers = [
-      ...players.slice(myIndex),
-      ...players.slice(0, myIndex),
-    ];
-
-    const pos = [
-      { x: width * 0.5, y: height * 0.75, rotation: 0 },
-      { x: width * 0.18, y: height * 0.45, rotation: 90 },
-      { x: width * 0.5, y: height * 0.18, rotation: 180 },
-      { x: width * 0.82, y: height * 0.45, rotation: -90 },
-    ];
-
-    sortedPlayers.forEach((p, i) => {
-      if (!p || !pos[i]) return;
-      const layout = pos[i];
-
-      this.drawPlayerInfo(p, layout);
-      this.drawPlayerDeck(p, layout); // 💡 여기서 숫자가 그려짐
-
-      if (p.openCard) {
-        this.drawOpenCard(p.openCard, layout);
-      }
-    });
   }
 
   playCardFlipAnimation(data) {
@@ -1919,63 +1939,151 @@ class GameScene extends Phaser.Scene {
     });
   }
 
+  renderTable(players) {
+    if (!players || !this.playerTableGroup) return;
+    this.playerTableGroup.removeAll(true);
+    const { width, height } = this.cameras.main;
+
+    // 싱글/멀티 통합 ID 판정
+    const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
+
+    // 내 위치 인덱스 찾기
+    let myIndex = players.findIndex((p) => p.id === myId);
+    if (myIndex === -1) myIndex = 0;
+
+    const sortedPlayers = [
+      ...players.slice(myIndex),
+      ...players.slice(0, myIndex),
+    ];
+
+    const pos = [
+      { x: width * 0.5, y: height * 0.75, rotation: 0 },
+      { x: width * 0.18, y: height * 0.45, rotation: 90 },
+      { x: width * 0.5, y: height * 0.18, rotation: 180 },
+      { x: width * 0.82, y: height * 0.45, rotation: -90 },
+    ];
+
+    sortedPlayers.forEach((p, i) => {
+      if (!p || !pos[i]) return;
+      const layout = pos[i];
+
+      this.drawPlayerInfo(p, layout);
+      this.drawPlayerDeck(p, layout); // 💡 여기서 숫자가 그려짐
+
+      if (p.openCard) {
+        this.drawOpenCard(p.openCard, layout);
+      }
+    });
+  }
+  // drawPlayerInfo 밖이나 create 하단에 추가
+  updateTurnEffect() {
+    const isMyTurn =
+      this.roundData.players[this.turnIndex]?.id ===
+      (this.isSingle ? this.myId : socket.id);
+
+    if (isMyTurn && this.isGameStarted) {
+      if (!this.turnOverlay) {
+        this.turnOverlay = this.add.graphics();
+        this.turnOverlay.lineStyle(10, 0x22c55e, 1);
+        this.turnOverlay.strokeRect(
+          0,
+          0,
+          this.cameras.main.width,
+          this.cameras.main.height
+        );
+        this.turnOverlay.setDepth(1000);
+
+        // 깜빡이는 효과
+        this.tweens.add({
+          targets: this.turnOverlay,
+          alpha: 0.3,
+          duration: 800,
+          yoyo: true,
+          repeat: -1,
+        });
+      }
+    } else {
+      if (this.turnOverlay) {
+        this.turnOverlay.destroy();
+        this.turnOverlay = null;
+      }
+    }
+  }
+
+  // 이 함수를 renderTable이 호출될 때마다 같이 실행해주세요.
+
   drawPlayerInfo(p, layout) {
     const { width } = this.cameras.main;
-
-    // 💡 수정: 싱글플레이/멀티플레이 통합 ID 판정
     const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
     const isMe = p.id === myId;
 
-    // 위치 계산을 위한 오프셋
-    const nameOffset = 80;
-    const cardOffset = 110;
+    // 현재 방 데이터에서 턴 인덱스에 해당하는 플레이어인지 확인
+    const isMyTurn = this.roundData.players[this.turnIndex]?.id === p.id;
 
-    // 1. 닉네임 텍스트
+    const cardCount = p.cards ?? (p.myDeck ? p.myDeck.length : 0);
+    const isEliminated = cardCount === 0;
+
+    const nameOffset = 80;
+
+    // 1. 닉네임 텍스트 설정
+    let displayNickname = p.nickname;
+    let nameColor = isMe ? "#22c55e" : "#ffffff";
+
+    // 차례인 사람 강조 색상 (노란색 계열)
+    if (!isEliminated && isMyTurn) {
+      nameColor = "#f1c40f";
+    }
+    if (isEliminated) {
+      displayNickname = `[탈락] ${p.nickname}`;
+      nameColor = "#999999";
+    }
+
     const nameTxt = this.add
       .text(
         layout.x,
         layout.y + (layout.rotation === 180 ? -nameOffset : nameOffset),
-        p.nickname,
+        displayNickname,
         {
           fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.035}px`,
-          color: isMe ? "#22c55e" : "#ffffff",
+          fontSize:
+            isMyTurn && !isEliminated
+              ? `${width * 0.045}px`
+              : `${width * 0.035}px`, // 차례면 글자 크기 키움
+          color: nameColor,
           fontWeight: "bold",
-          stroke: "#000",
-          strokeThickness: 3,
+          stroke: isMyTurn && !isEliminated ? "#ffffff" : "#000", // 차례면 흰색 테두리로 강조
+          strokeThickness: isMyTurn && !isEliminated ? 5 : 3,
         }
       )
       .setOrigin(0.5);
 
-    // 2. 💡 카드 숫자 로직 근본 해결
-    // p.cards 우선 -> 그 다음 p.remainingCards (서버용) -> 그 다음 p.myDeck (백업) 순서로 참조
-    const cardCount =
-      p.cards !== undefined
-        ? p.cards
-        : p.remainingCards !== undefined
-        ? p.remainingCards
-        : p.myDeck
-        ? p.myDeck.length
-        : 0;
+    // 2. 💡 [차례 연출] 텍스트가 위아래로 통통 튀는 애니메이션 추가
+    if (isMyTurn && !isEliminated) {
+      this.tweens.add({
+        targets: nameTxt,
+        y: nameTxt.y - 10, // 10픽셀 위로
+        duration: 500,
+        yoyo: true, // 다시 돌아옴
+        repeat: -1, // 무한 반복
+        ease: "Sine.easeInOut",
+      });
 
-    const cardTxt = this.add
-      .text(
-        layout.x,
-        layout.y + (layout.rotation === 180 ? -cardOffset : cardOffset),
-        `🂠 ${cardCount}`,
-        {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.03}px`,
-          color: "#f1c40f",
-          fontWeight: "bold",
-          stroke: "#000",
-          strokeThickness: 2,
-        }
-      )
-      .setOrigin(0.5);
+      // 차례인 사람 뒤에 강조 배경(Halo) 효과 추가 (선택 사항)
+      const halo = this.add
+        .circle(layout.x, nameTxt.y, 40, 0xf1c40f, 0.2)
+        .setDepth(nameTxt.depth - 1);
+      this.playerTableGroup.add(halo);
+
+      this.tweens.add({
+        targets: halo,
+        scale: 1.5,
+        alpha: 0,
+        duration: 1000,
+        repeat: -1,
+      });
+    }
 
     this.playerTableGroup.add(nameTxt);
-    this.playerTableGroup.add(cardTxt);
   }
 
   drawPlayerDeck(p, layout) {
@@ -2392,10 +2500,10 @@ class GameScene extends Phaser.Scene {
           if (recipients[i]) recipients[i].cards += 1;
         }
       }
-      this.showToast("실수! 생존자들에게 카드를 나눠줍니다. 💸", "#e74c3c");
+      this.addGameLog("실수! 생존자들에게 카드를 나눠줍니다. 💸", "#e74c3c");
     } else {
       // 만약 나 빼고 다 탈락한 상태라면? 1장만 버리게 하거나 유지
-      this.showToast("잘못 누르셨습니다! (배분할 상대 없음)", "#e74c3c");
+      this.addGameLog("실수! 생존자들에게 카드를 나눠줍니다. 💸", "#e74c3c");
     }
 
     // 4. 데이터 동기화 및 UI 갱신
@@ -2432,7 +2540,7 @@ class GameScene extends Phaser.Scene {
       winner.cards = currentCards + totalCollected;
       winner.remainingCards = winner.cards;
 
-      this.showToast(
+      this.addGameLog(
         `${winner.nickname}님이 바닥의 카드 ${totalCollected}장을 획득! 🔔`,
         "#f1c40f"
       );
@@ -2749,7 +2857,10 @@ class GameScene extends Phaser.Scene {
       this.cameras.main.shake(250, 0.015);
 
       // 실패 메시지 토스트 (예: "실패! 카드 1장씩 나눔")
-      if (message) this.showToast(message, "#ef4444");
+      if (message) {
+        //this.showToast(message, "#ef4444");
+        this.addGameLog(message, "#ef4444");
+      }
     }
   }
 
