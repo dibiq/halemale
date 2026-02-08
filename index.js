@@ -92,18 +92,10 @@ function getSafeNextIndex(room) {
 function processSkipTurn(room, io) {
   if (!room.isGameStarted) return;
 
-  const totals = getFruitTotals(room.players);
-  const isFive = Object.values(totals).some((t) => t === 5);
-
-  if (isFive) {
-    console.log("🔔 바닥이 5입니다. 0장 유저의 기사회생을 기다립니다.");
-    // 5인 상태를 유지하며 턴을 넘기지 않음
-    return;
-  }
-
   let loopCount = 0;
   room.turnIndex = getSafeNextIndex(room);
 
+  // 단순히 덱이 있는 다음 플레이어를 찾습니다.
   while (loopCount < room.players.length) {
     let currentPlayer = room.players[room.turnIndex];
     if (
@@ -111,25 +103,25 @@ function processSkipTurn(room, io) {
       currentPlayer.myDeck &&
       currentPlayer.myDeck.length > 0
     ) {
-      break; // 카드가 있는 사람 발견!
-    } else if (currentPlayer) {
-      // 0장인데 바닥이 5도 아니니 탈락 처리
-      currentPlayer.openCard = null;
-      currentPlayer.openCardStack = [];
+      break;
+    } else {
+      // 덱이 없으면 무조건 다음 사람으로 (이미 위에서 탈락 처리가 됨)
       room.turnIndex = (room.turnIndex + 1) % room.players.length;
       loopCount++;
-      if (checkGameOver(room, io)) return;
     }
   }
 
-  // 최종 확정된 다음 턴 정보를 모든 클라이언트에 강제 동기화
-  io.to(room.roomId).emit("turnChanged", {
-    nextTurnId: room.players[room.turnIndex].id,
-    players: room.players.map((p) => ({
-      id: p.id,
-      cards: p.myDeck?.length || 0,
-    })),
-  });
+  // 생존자 확인 후 턴 알림
+  const activePlayer = room.players[room.turnIndex];
+  if (activePlayer) {
+    io.to(room.roomId).emit("turnChanged", {
+      nextTurnId: activePlayer.id,
+      players: room.players.map((p) => ({
+        id: p.id,
+        cards: p.myDeck?.length || 0,
+      })),
+    });
+  }
 }
 
 // 2. 소켓 로직
@@ -266,31 +258,24 @@ io.on("connection", (socket) => {
     });
   });
 
-  // index.js 수정 핵심
-
-  // [index.js] flipCard 이벤트 부분 수정
   socket.on("flipCard", () => {
     const room = rooms[socket.roomId];
-    if (!room || !room.isGameStarted) return;
-
-    // 💡 잠금 변수가 없으면 false로 간주하고, true인 경우에만 차단
-    if (room.isFlipping === true) {
-      console.log("🚫 서버: 아직 연출 중이라 클릭을 무시합니다.");
-      return;
-    }
+    if (!room || !room.isGameStarted || room.isFlipping) return;
 
     room.turnIndex = getSafeNextIndex(room);
     let p = room.players[room.turnIndex];
 
+    // 카드가 없는 사람은 이미 탈락자이므로 요청 무시
     if (!p || p.id !== socket.id || p.myDeck.length === 0) return;
 
-    // --- 잠금 시작 ---
     room.isFlipping = true;
 
+    // 카드 한 장을 뒤집음
     const card = p.myDeck.pop();
     p.openCard = card;
     p.openCardStack.push(card);
 
+    // [변경점] 카드를 뒤집은 직후 클라이언트에 알림
     io.to(room.roomId).emit("cardFlipped", {
       playerId: socket.id,
       card,
@@ -298,15 +283,27 @@ io.on("connection", (socket) => {
       remainingCount: p.myDeck.length,
     });
 
+    // 💡 [핵심] 마지막 카드를 제출하는 순간 즉시 탈락 처리
+    if (p.myDeck.length === 0) {
+      console.log(`💀 ${p.nickname} 즉시 탈락: 마지막 카드 제출 완료`);
+
+      // 2명 플레이 시 A가 마지막 카드를 내면 survivors는 B 한 명만 남음 -> 즉시 종료
+      if (checkGameOver(room, io)) {
+        room.isFlipping = false;
+        return; // 게임이 종료되었으므로 아래 타이머 실행 안 함
+      }
+    }
+
+    // 아직 게임이 끝나지 않았다면 (3명 이상 플레이 중일 때)
     setTimeout(() => {
       if (!room || !room.isGameStarted) {
         if (room) room.isFlipping = false;
         return;
       }
+
+      // 다음 턴으로 넘김 (탈락자는 processSkipTurn에서 자동으로 건너뜀)
       room.turnIndex = (room.turnIndex + 1) % room.players.length;
       processSkipTurn(room, io);
-
-      // --- 0.8초 후 잠금 해제 ---
       room.isFlipping = false;
     }, 800);
   });
@@ -314,20 +311,30 @@ io.on("connection", (socket) => {
   socket.on("ringBell", () => {
     const room = rooms[socket.roomId];
     if (!room || !room.isGameStarted) return;
-    const isSuccess = Object.values(getFruitTotals(room.players)).some(
-      (t) => t === 5
-    );
+    const totals = getFruitTotals(room.players);
+    const isFive = Object.values(totals).some((t) => t === 5);
 
-    if (isSuccess) {
+    if (isFive) {
       let collected = [];
       room.players.forEach((p) => {
         collected = [...collected, ...p.openCardStack];
         p.openCardStack = [];
         p.openCard = null;
       });
+
       const winner = room.players.find((p) => p.id === socket.id);
       winner.myDeck = [...collected, ...winner.myDeck];
+
+      // 보완: 종을 친 'winner' 본인은 제외하고 덱이 0장인 사람만 진짜 탈락
+      room.players.forEach((p) => {
+        if (p.id !== winner.id && p.myDeck.length === 0) {
+          console.log(`💀 ${p.nickname} 탈락: 5가 되었으나 종을 뺏김`);
+          p.openCardStack = []; // 이제 바닥에서도 완전히 제거
+        }
+      });
+
       if (checkGameOver(room, io)) return;
+
       io.to(room.roomId).emit("bellResult", {
         success: true,
         winnerId: socket.id,
