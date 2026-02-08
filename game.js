@@ -1761,6 +1761,7 @@ class GameScene extends Phaser.Scene {
         // 그 다음 애니메이션 실행 (애니메이션이 끝나면 갱신된 데이터를 그리도록 함)
         this.playPenaltyAnimation({
           penaltyId: data.penaltyId,
+          recipients: data.recipients, // 이 부분이 누락되어 있었습니다.
           players: this.roundData.players, // 갱신된 데이터 전달
         });
       }
@@ -2224,7 +2225,7 @@ class GameScene extends Phaser.Scene {
 
           if (finishedCount === totalCardsToFly) {
             // 애니메이션이 완전히 끝난 후 테이블 갱신 (서버 데이터 반영)
-            this.renderTable(data.players);
+            this.renderTable(this.roundData.players);
           }
         },
       });
