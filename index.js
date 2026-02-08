@@ -316,7 +316,7 @@ io.on("connection", (socket) => {
       room.turnIndex = (room.turnIndex + 1) % room.players.length;
       processSkipTurn(room, io);
       room.isFlipping = false;
-    }, 800);
+    }, 150);
   });
 
   socket.on("ringBell", () => {
@@ -333,8 +333,11 @@ io.on("connection", (socket) => {
         p.openCard = null;
       });
 
+      const winnerIdx = room.players.findIndex((p) => p.id === socket.id);
       const winner = room.players.find((p) => p.id === socket.id);
       winner.myDeck = [...collected, ...winner.myDeck];
+
+      room.turnIndex = winnerIdx;
 
       // 보완: 종을 친 'winner' 본인은 제외하고 덱이 0장인 사람만 진짜 탈락
       room.players.forEach((p) => {

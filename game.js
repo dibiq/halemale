@@ -1669,7 +1669,7 @@ class GameScene extends Phaser.Scene {
         this.showReadyGo();
 
         // 💡 Ready-Go(약 1.2초)가 완전히 끝난 뒤에 클릭 허용
-        this.time.delayedCall(1500, () => {
+        this.time.delayedCall(2000, () => {
           this.canClick = true;
           console.log("🎮 이제 카드를 제출할 수 있습니다.");
         });
@@ -1700,6 +1700,7 @@ class GameScene extends Phaser.Scene {
 
         // 💡 내 차례가 왔을 때 띵! 소리나 진동(모바일) 주기
         if (data.nextTurnId === (this.isSingle ? this.myId : socket.id)) {
+          this.canClick = true;
           this.sound.play("pop", { volume: 0.5 }); // 기존에 있는 pop 사운드 활용
 
           // 모바일이라면 진동 추가 (브라우저 지원 시)
@@ -2284,6 +2285,7 @@ class GameScene extends Phaser.Scene {
       return;
     }
 
+    this.canClick = false;
     // 💡 2. 이미 뒤집는 중이면 무시 (연타 방지)
     if (this.isFlipping === true) return;
 
