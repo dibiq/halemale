@@ -257,9 +257,11 @@ io.on("connection", (socket) => {
 
     room.players.forEach((p, idx) => {
       p.myDeck = gameDeck.filter((_, i) => i % total === idx);
+      p.cards = p.myDeck.length; // 💡 이 줄을 추가해서 개수를 명시적으로 저장
       p.openCard = null;
       p.openCardStack = [];
       p.isReady = false;
+      p.isEliminated = false; // 시작할 때 초기화
     });
 
     io.to(room.roomId).emit("gameStart", {
@@ -319,82 +321,6 @@ io.on("connection", (socket) => {
     }, 150);
   });
 
-  /*socket.on("ringBell", () => {
-    const room = rooms[socket.roomId];
-    if (!room || !room.isGameStarted) return;
-    const totals = getFruitTotals(room.players);
-    const isFive = Object.values(totals).some((t) => t === 5);
-
-    if (isFive) {
-      let collected = [];
-      room.players.forEach((p) => {
-        collected = [...collected, ...p.openCardStack];
-        p.openCardStack = [];
-        p.openCard = null;
-      });
-
-      const winnerIdx = room.players.findIndex((p) => p.id === socket.id);
-      const winner = room.players.find((p) => p.id === socket.id);
-      winner.myDeck = [...collected, ...winner.myDeck];
-
-      room.turnIndex = winnerIdx;
-
-      // 보완: 종을 친 'winner' 본인은 제외하고 덱이 0장인 사람만 진짜 탈락
-      room.players.forEach((p) => {
-        if (p.id !== winner.id && p.myDeck.length === 0) {
-          console.log(`💀 ${p.nickname} 탈락: 5가 되었으나 종을 뺏김`);
-          p.openCardStack = []; // 이제 바닥에서도 완전히 제거
-        }
-      });
-
-      if (checkGameOver(room, io)) return;
-
-      io.to(room.roomId).emit("bellResult", {
-        success: true,
-        winnerId: socket.id,
-        winnerNickname: winner.nickname,
-        players: room.players,
-      });
-      processSkipTurn(room, io);
-    } else {
-      const p = room.players.find((p) => p.id === socket.id);
-      //const others = room.players.filter((pl) => pl.id !== socket.id);
-      const others = room.players.filter(
-        (pl) => pl.id !== socket.id && !pl.isEliminated
-      ); // 살아있는 사람에게만 배분
-
-      if (p.myDeck.length < others.length) {
-        others.forEach((o) => {
-          if (p.myDeck.length > 0) o.myDeck.unshift(p.myDeck.pop());
-        });
-        p.myDeck = [];
-        if (checkGameOver(room, io)) return;
-
-        io.to(room.roomId).emit("bellResult", {
-          success: false,
-          penaltyId: socket.id,
-          message: `${p.nickname}님 카드 소진으로 탈락!`,
-          players: room.players,
-        });
-      } else {
-        others.forEach((o) => o.myDeck.unshift(p.myDeck.pop()));
-
-        if (p.myDeck.length === 0) {
-          console.log(`💀 ${p.nickname} 벌칙 배분 후 0장 되어 탈락`);
-          if (checkGameOver(room, io)) return;
-        }
-
-        io.to(room.roomId).emit("bellResult", {
-          success: false,
-          penaltyId: socket.id,
-          message: `${p.nickname}님 벌칙으로 카드 배분!`,
-          players: room.players,
-        });
-      }
-      processSkipTurn(room, io);
-    }
-  });*/
-
   socket.on("ringBell", () => {
     const room = rooms[socket.roomId];
     if (!room || !room.isGameStarted) return;
@@ -445,13 +371,14 @@ io.on("connection", (socket) => {
         (pl) => pl.id !== socket.id && !pl.isEliminated && pl.myDeck.length > 0
       );
 
+      const recipients = []; // 💡 카드를 실제 받은 사람 ID를 담을 배열
+
       if (others.length > 0) {
-        // 💡 핵심: 벌칙자의 카드가 한 바퀴 돌 때까지 '한 장씩' 순서대로 배분
-        // others.forEach를 한 번만 수행하면 각 플레이어당 최대 1장만 전달됨
         others.forEach((recipient) => {
           if (p.myDeck.length > 0) {
             const card = p.myDeck.pop();
             recipient.myDeck.unshift(card);
+            recipients.push(recipient.id); // 💡 실제로 준 사람만 추가
           }
         });
       }
@@ -459,9 +386,7 @@ io.on("connection", (socket) => {
       // 벌칙 후 본인 덱이 0장이면 즉시 탈락 및 게임 종료 체크
       if (p.myDeck.length === 0) {
         p.isEliminated = true;
-        console.log(`💀 ${p.nickname} 벌칙으로 인한 카드 소진 탈락`);
 
-        // 만약 2명 중 1명이 벌칙으로 0장이 되면 여기서 게임 종료됨
         if (checkGameOver(room, io)) return;
 
         io.to(room.roomId).emit("bellResult", {

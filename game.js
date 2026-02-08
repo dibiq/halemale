@@ -1675,12 +1675,19 @@ class GameScene extends Phaser.Scene {
         });
       });
 
-      // 3. 데이터 갱신 및 테이블 렌더링
-      this.roundData.players = data.players.map((p) => ({
-        ...p,
-        cards: p.cards || (p.myDeck ? p.myDeck.length : 0),
-        openCard: null,
-      }));
+      // 3. 💡 [핵심 수정] 데이터 갱신 로직 강화
+      this.roundData.players = data.players.map((p) => {
+        // 서버에서 p.myDeck이 올 때 그 길이를 cards로 강제 할당
+        const initialCards = p.cards ?? (p.myDeck ? p.myDeck.length : 0);
+
+        return {
+          ...p,
+          cards: initialCards, // 여기서 숫자가 0이 되지 않도록 보장
+          openCard: null,
+          isEliminated: false, // 시작 시 탈락 상태 초기화
+        };
+      });
+
       this.roundData.hostId = data.hostId; // 방장 정보 동기화
       this.roundData.isGameStarted = true;
       this.isGameReady = true;
@@ -2155,7 +2162,6 @@ class GameScene extends Phaser.Scene {
     const players = this.roundData.players;
 
     const penaltyIdx = players.findIndex((p) => p.id === data.penaltyId);
-    // 💡 다른 함수들처럼 싱글/멀티 통합 ID 판정 적용
     const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
     const myIndex = players.findIndex((p) => p.id === myId);
 
@@ -2172,13 +2178,26 @@ class GameScene extends Phaser.Scene {
       (penaltyIdx - myIndex + players.length) % players.length;
     const startPos = pos[relPenaltyIdx];
 
-    // 💡 수정한 부분 1: 날려야 할 총 카드 개수 계산
-    const targetPlayers = players.filter((p) => p.id !== data.penaltyId);
+    // 💡 [수정] 서버에서 보내준 recipients가 있다면 그 사람들만, 없으면 살아있는 사람들만 대상으로 함
+    let targetPlayers = [];
+    if (data.recipients && data.recipients.length > 0) {
+      targetPlayers = players.filter((p) => data.recipients.includes(p.id));
+    } else {
+      // 백업용: data.recipients가 없을 경우 최소한 탈락자는 제외
+      targetPlayers = players.filter(
+        (p) => p.id !== data.penaltyId && p.cards > 0
+      );
+    }
+
     const totalCardsToFly = targetPlayers.length;
+    if (totalCardsToFly === 0) {
+      this.renderTable(data.players);
+      return;
+    }
+
     let finishedCount = 0;
 
     targetPlayers.forEach((player) => {
-      // player 객체에서 실제 전체 인덱스를 다시 찾음 (좌표용)
       const realIdx = players.findIndex((p) => p.id === player.id);
       const relTargetIdx =
         (realIdx - myIndex + players.length) % players.length;
@@ -2194,8 +2213,8 @@ class GameScene extends Phaser.Scene {
         x: targetPos.x,
         y: targetPos.y,
         duration: 500,
-        ease: "Cubic.out", // Back.out 보다 깔끔하게 꽂히는 Cubic.out 추천
-        delay: Math.random() * 200,
+        ease: "Cubic.out",
+        // delay: 0, // 💡 한 장씩 확실히 빠지는걸 보여주려면 딜레이를 없애거나 짧게 조절
         onStart: () => {
           this.sound.play("pop", { volume: 0.1, detune: 500 });
         },
@@ -2203,9 +2222,8 @@ class GameScene extends Phaser.Scene {
           flyCard.destroy();
           finishedCount++;
 
-          // 💡 수정한 부분 2: 모든 카드가 도착했을 때만 딱 한 번 실행
           if (finishedCount === totalCardsToFly) {
-            console.log("모든 패널티 카드 도착! 테이블 갱신");
+            // 애니메이션이 완전히 끝난 후 테이블 갱신 (서버 데이터 반영)
             this.renderTable(data.players);
           }
         },
