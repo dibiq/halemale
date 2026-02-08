@@ -53,9 +53,7 @@ function getFruitTotals(players) {
 
 function checkGameOver(room, io) {
   const survivors = room.players.filter((p) => {
-    const hasDeck = p.myDeck && p.myDeck.length > 0;
-    const hasChance = p.openCardStack && p.openCardStack.length > 0;
-    return hasDeck || hasChance;
+    return p.myDeck && p.myDeck.length > 0;
   });
 
   if (survivors.length <= 1 && room.isGameStarted) {
