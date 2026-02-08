@@ -1737,13 +1737,18 @@ class GameScene extends Phaser.Scene {
     socket.off("bellResult").on("bellResult", (data) => {
       this.playFeedback(data.success, data.message);
 
+      // 1. 서버 데이터를 즉시 내 로컬 데이터에 반영 (Deep Copy 성격)
+      const updatedPlayers = data.players.map((p) => ({
+        ...p,
+        cards: p.cards ?? (p.myDeck ? p.myDeck.length : 0),
+        // 바닥 카드가 사라진 경우(성공 시)를 대비해 openCard 정보도 갱신
+        openCard: p.openCard || null,
+      }));
+
+      // 멤버 변수 업데이트
+      this.roundData.players = updatedPlayers;
+
       if (data.success) {
-        // 성공 로직 (기존과 동일)
-        this.roundData.players = data.players.map((p) => ({
-          ...p,
-          cards: p.cards || (p.myDeck ? p.myDeck.length : 0),
-          openCard: null,
-        }));
         this.addGameLog(
           `${data.winnerNickname}님이 카드를 획득! 🔔`,
           "#f1c40f"
@@ -1752,17 +1757,11 @@ class GameScene extends Phaser.Scene {
           this.renderTable(this.roundData.players);
         });
       } else {
-        // 💡 실패 시: 먼저 내 로컬 데이터를 서버 데이터로 동기화!
-        this.roundData.players = data.players.map((p) => ({
-          ...p,
-          cards: p.cards || (p.myDeck ? p.myDeck.length : 0),
-        }));
-
-        // 그 다음 애니메이션 실행 (애니메이션이 끝나면 갱신된 데이터를 그리도록 함)
+        // 2. 💡 패널티 애니메이션 호출 시 '이미 업데이트된' 데이터를 직접 넘김
         this.playPenaltyAnimation({
           penaltyId: data.penaltyId,
-          recipients: data.recipients, // 이 부분이 누락되어 있었습니다.
-          players: this.roundData.players, // 갱신된 데이터 전달
+          recipients: data.recipients,
+          players: updatedPlayers, // 👈 중요!
         });
       }
     });
@@ -2160,7 +2159,8 @@ class GameScene extends Phaser.Scene {
 
   playPenaltyAnimation(data) {
     const { width, height } = this.cameras.main;
-    const players = this.roundData.players;
+
+    const players = data.players;
 
     const penaltyIdx = players.findIndex((p) => p.id === data.penaltyId);
     const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
@@ -2184,7 +2184,6 @@ class GameScene extends Phaser.Scene {
     if (data.recipients && data.recipients.length > 0) {
       targetPlayers = players.filter((p) => data.recipients.includes(p.id));
     } else {
-      // 백업용: data.recipients가 없을 경우 최소한 탈락자는 제외
       targetPlayers = players.filter(
         (p) => p.id !== data.penaltyId && p.cards > 0
       );
@@ -2225,7 +2224,7 @@ class GameScene extends Phaser.Scene {
 
           if (finishedCount === totalCardsToFly) {
             // 애니메이션이 완전히 끝난 후 테이블 갱신 (서버 데이터 반영)
-            this.renderTable(this.roundData.players);
+            this.renderTable(players);
           }
         },
       });

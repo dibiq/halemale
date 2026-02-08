@@ -364,11 +364,9 @@ io.on("connection", (socket) => {
 
       processSkipTurn(room, io);
     } else {
-      // --- [패널티 시나리오: 균등 배분 로직] ---
       const p = room.players.find((pl) => pl.id === socket.id);
-      // 현재 살아있는(탈락하지 않은) 다른 플레이어들만 추출
       const others = room.players.filter(
-        (pl) => pl.id !== socket.id && !pl.isEliminated && pl.myDeck.length > 0
+        (pl) => pl.id !== socket.id && !pl.isEliminated
       );
 
       const recipients = []; // 💡 카드를 실제 받은 사람 ID를 담을 배열
@@ -382,6 +380,11 @@ io.on("connection", (socket) => {
           }
         });
       }
+
+      // 💡 [중요 추가] 모든 플레이어의 cards 속성을 현재 덱 길이에 맞춰 갱신
+      room.players.forEach((player) => {
+        player.cards = player.myDeck.length;
+      });
 
       // 벌칙 후 본인 덱이 0장이면 즉시 탈락 및 게임 종료 체크
       if (p.myDeck.length === 0) {
