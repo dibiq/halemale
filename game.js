@@ -531,8 +531,9 @@ class LobbyScene extends Phaser.Scene {
 
     // 3. 플레이어 퇴장 리스너
     socket.off("playerLeft").on("playerLeft", (data) => {
+      const nickname = data.leftPlayerNickname || "알 수 없는 요리사";
       this.refreshLobbyUI(data);
-      this.showToast(`${data.nickname}님이 나갔습니다.`, "#e74c3c");
+      this.showToast(`${nickname}님이 나갔습니다.`, "#e74c3c");
     });
 
     socket.on("startBlocked", (msg) => {

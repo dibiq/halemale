@@ -444,7 +444,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("disconnect", () => {
+  /*socket.on("disconnect", () => {
     const room = rooms[socket.roomId];
     if (room) {
       room.players = room.players.filter((p) => p.id !== socket.id);
@@ -455,6 +455,33 @@ io.on("connection", (socket) => {
           players: room.players,
           hostId: room.host,
         });
+        if (room.isGameStarted) processSkipTurn(room, io);
+      }
+    }
+  });*/
+  socket.on("disconnect", () => {
+    const room = rooms[socket.roomId];
+    if (room) {
+      // 1. 💡 나가는 사람의 닉네임을 소켓 객체에서 미리 가져옵니다.
+      // (setNickname 등에서 socket.nickname을 저장했다면 가능합니다)
+      const leftPlayerNickname = socket.nickname || "누군가";
+
+      // 2. 플레이어 제거
+      room.players = room.players.filter((p) => p.id !== socket.id);
+
+      if (room.players.length === 0) {
+        delete rooms[socket.roomId];
+      } else {
+        // 호스트 위임 로직
+        if (room.host === socket.id) room.host = room.players[0].id;
+
+        // 3. 💡 이벤트를 보낼 때 나간 사람의 닉네임을 명시적으로 포함!
+        io.to(socket.roomId).emit("playerLeft", {
+          players: room.players,
+          hostId: room.host,
+          leftPlayerNickname: leftPlayerNickname, // 이 값을 추가하세요
+        });
+
         if (room.isGameStarted) processSkipTurn(room, io);
       }
     }
