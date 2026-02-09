@@ -1750,7 +1750,7 @@ class GameScene extends Phaser.Scene {
 
       if (data.success) {
         const message = `${data.winnerNickname}님 카드 ${data.collectedCount}장 획득 (${data.reactionTime}초) 🔔`;
-        this.addGameLog(`${message}🔔`, "#f1c40f");
+        this.addGameLog(`${message}`, "#f1c40f");
         this.time.delayedCall(500, () => {
           this.renderTable(this.roundData.players);
         });
@@ -1851,6 +1851,7 @@ class GameScene extends Phaser.Scene {
       this.logTexts.push(logTxt);
     });
   }
+
   createHaliGaliButtons(height) {
     const { width } = this.cameras.main;
 
@@ -2632,6 +2633,15 @@ class GameScene extends Phaser.Scene {
   }
 
   showResultOverlay(players, isUpdate = false, data = null) {
+    // 1. 💡 기존 게임 로그 데이터 및 텍스트 객체 완전 제거
+    if (this.logTexts) {
+      this.logTexts.forEach((txt) => txt.destroy());
+      this.logTexts = [];
+    }
+    if (this.gameLogs) {
+      this.gameLogs = []; // 데이터 배열도 비워야 나중에 다시 그려지지 않습니다.
+    }
+
     // 💡 data 인자 추가    if (!this.roundData) return;
     if (!players || players.length === 0) return;
 

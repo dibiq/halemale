@@ -291,6 +291,10 @@ io.on("connection", (socket) => {
     p.openCard = card;
     p.openCardStack.push(card);
 
+    // 💡 5 완성 여부 확인
+    const totals = getFruitTotals(room.players);
+    const isFive = Object.values(totals).some((t) => t === 5);
+
     // [변경점] 카드를 뒤집은 직후 클라이언트에 알림
     io.to(room.roomId).emit("cardFlipped", {
       playerId: socket.id,
@@ -300,7 +304,7 @@ io.on("connection", (socket) => {
     });
 
     // 💡 [핵심] 마지막 카드를 제출하는 순간 즉시 탈락 처리
-    if (p.myDeck.length === 0) {
+    /*if (p.myDeck.length === 0) {
       console.log(`💀 ${p.nickname} 즉시 탈락: 마지막 카드 제출 완료`);
 
       // 2명 플레이 시 A가 마지막 카드를 내면 survivors는 B 한 명만 남음 -> 즉시 종료
@@ -308,8 +312,23 @@ io.on("connection", (socket) => {
         room.isFlipping = false;
         return; // 게임이 종료되었으므로 아래 타이머 실행 안 함
       }
-    }
+    }*/
+    // 💡 [수정] 탈락 로직 변경
+    if (p.myDeck.length === 0) {
+      if (!isFive) {
+        // 5가 아니면 기사회생의 기회가 없으므로 즉시 탈락
+        console.log(`💀 ${p.nickname} 즉시 탈락 (덱 0 & 5 아님)`);
+        p.isEliminated = true;
 
+        if (checkGameOver(room, io)) {
+          room.isFlipping = false;
+          return;
+        }
+      } else {
+        // 5라면 탈락시키지 않고 종을 칠 때까지 기다려줌 (isEliminated 유지)
+        console.log(`🔔 ${p.nickname} 기사회생 기회 부여 (덱 0 & 5 완성!)`);
+      }
+    }
     // 아직 게임이 끝나지 않았다면 (3명 이상 플레이 중일 때)
     setTimeout(() => {
       if (!room || !room.isGameStarted) {
@@ -359,8 +378,14 @@ io.on("connection", (socket) => {
         p.cards = p.myDeck.length;
 
         // 2. 탈락 여부 체크
-        if (p.id !== winner.id && p.cards === 0) {
+        /*if (p.id !== winner.id && p.cards === 0) {
           p.isEliminated = true;
+        }*/
+        if (p.cards === 0) {
+          p.isEliminated = true;
+        } else {
+          // 카드가 생겼다면(승자 등) 다시 생존 처리
+          p.isEliminated = false;
         }
       });
 
@@ -398,6 +423,9 @@ io.on("connection", (socket) => {
       // 💡 [중요 추가] 모든 플레이어의 cards 속성을 현재 덱 길이에 맞춰 갱신
       room.players.forEach((player) => {
         player.cards = player.myDeck.length;
+        if (player.cards === 0) {
+          player.isEliminated = true;
+        }
       });
 
       // 벌칙 후 본인 덱이 0장이면 즉시 탈락 및 게임 종료 체크
