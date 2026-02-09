@@ -1749,10 +1749,8 @@ class GameScene extends Phaser.Scene {
       this.roundData.players = updatedPlayers;
 
       if (data.success) {
-        this.addGameLog(
-          `${data.winnerNickname}님이 카드를 획득! 🔔`,
-          "#f1c40f"
-        );
+        const message = `${data.winnerNickname}님 카드 ${data.collectedCount}장 획득 (${data.reactionTime}초) 🔔`;
+        this.addGameLog(`${message}🔔`, "#f1c40f");
         this.time.delayedCall(500, () => {
           this.renderTable(this.roundData.players);
         });

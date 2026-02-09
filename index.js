@@ -283,6 +283,9 @@ io.on("connection", (socket) => {
 
     room.isFlipping = true;
 
+    // 💡 [추가] 카드가 뒤집히는 시점의 시간을 기록 (반응 속도 측정 시작)
+    room.lastFlipTime = Date.now();
+
     // 카드 한 장을 뒤집음
     const card = p.myDeck.pop();
     p.openCard = card;
@@ -329,6 +332,12 @@ io.on("connection", (socket) => {
     const isFive = Object.values(totals).some((t) => t === 5);
 
     if (isFive) {
+      // 만약 시작하자마자 종을 누르는 경우를 대비해 기본값 0 설정
+      const reactionTimeMs = room.lastFlipTime
+        ? Date.now() - room.lastFlipTime
+        : 0;
+      const reactionTimeSec = (reactionTimeMs / 1000).toFixed(2);
+
       // --- [성공 시나리오] ---
       let collected = [];
       room.players.forEach((p) => {
@@ -363,6 +372,8 @@ io.on("connection", (socket) => {
         winnerNickname: winner.nickname,
         players: room.players,
         nextTurnId: winner.id,
+        collectedCount: collected.length,
+        reactionTime: reactionTimeSec, // 💡 추가: 반응 속도(초)
       });
 
       processSkipTurn(room, io);
