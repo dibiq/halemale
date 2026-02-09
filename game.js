@@ -1893,6 +1893,7 @@ class GameScene extends Phaser.Scene {
     const player = this.roundData.players.find((p) => p.id === data.playerId);
     if (player) {
       player.openCard = data.card;
+      player.isEliminated = data.isEliminated; // 서버에서 받은 true/false 반영
       // 💡 서버 변수명 반영
       if (data.remainingCount !== undefined) {
         player.cards = data.remainingCount;
@@ -2031,7 +2032,8 @@ class GameScene extends Phaser.Scene {
     const isMyTurn = this.roundData.players[this.turnIndex]?.id === p.id;
 
     const cardCount = p.cards ?? (p.myDeck ? p.myDeck.length : 0);
-    const isEliminated = cardCount === 0;
+    //const isEliminated = cardCount === 0;
+    const isEliminated = p.isEliminated ?? false;
 
     const nameOffset = 80;
 
@@ -3069,7 +3071,7 @@ class GameScene extends Phaser.Scene {
       duration: 500,
       ease: "Back.easeOut",
       onComplete: () => {
-        this.time.delayedCall(2000, () => {
+        this.time.delayedCall(1000, () => {
           // 2초 대기
           this.tweens.add({
             targets: toast,
