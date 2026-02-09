@@ -253,7 +253,7 @@ io.on("connection", (socket) => {
     room.turnIndex = 0;
     const total = room.players.length;
     // 테스트를 위해 덱 크기 조절 가능 (실제 운영 시 deck 사용)
-    const gameDeck = deck.slice(0, total * 5);
+    const gameDeck = deck.slice(0, total * 10);
 
     room.players.forEach((p, idx) => {
       p.myDeck = gameDeck.filter((_, i) => i % total === idx);
