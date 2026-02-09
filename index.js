@@ -346,9 +346,12 @@ io.on("connection", (socket) => {
 
       // 종을 뺏긴 사람들 중 카드가 0장인 사람 확인 (탈락 처리)
       room.players.forEach((p) => {
-        if (p.id !== winner.id && (!p.myDeck || p.myDeck.length === 0)) {
-          p.openCardStack = [];
-          p.isEliminated = true; // 탈락 상태 명시
+        // 1. 실제 덱 길이를 cards 속성에 반영 (이게 없어서 숫자가 리셋됨)
+        p.cards = p.myDeck.length;
+
+        // 2. 탈락 여부 체크
+        if (p.id !== winner.id && p.cards === 0) {
+          p.isEliminated = true;
         }
       });
 

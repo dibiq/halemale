@@ -1925,7 +1925,7 @@ class GameScene extends Phaser.Scene {
     const tempCard = this.add
       .image(startPos.x, startPos.y, "card_back")
       .setDisplaySize(width * 0.15, width * 0.22)
-      .setAngle(startPos.rotation)
+      .setAngle(0)
       .setDepth(1000);
 
     const dist = width * 0.25;
@@ -2105,8 +2105,8 @@ class GameScene extends Phaser.Scene {
 
     const deck = this.add
       .image(layout.x, layout.y, "card_back")
-      .setDisplaySize(width * 0.15, width * 0.22)
-      .setAngle(layout.rotation);
+      .setDisplaySize(width * 0.15, width * 0.22);
+    //.setAngle(layout.rotation);
 
     // 💡 카드 장수 표시 (p.cards 데이터 반영)
     const countTxt = this.add
@@ -2148,7 +2148,7 @@ class GameScene extends Phaser.Scene {
       const openCardImg = this.add
         .image(ox, oy, cardKey)
         .setDisplaySize(width * 0.18, width * 0.25)
-        .setAngle(layout.rotation)
+        .setAngle(0)
         .setDepth(150);
 
       this.playerTableGroup.add(openCardImg);
