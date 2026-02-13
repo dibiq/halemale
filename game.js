@@ -579,10 +579,10 @@ class LobbyScene extends Phaser.Scene {
     // 3️⃣ BGM ON/OFF 버튼
     // ======================================
     const bgmBtn = this.add
-      .image(150, 50, bgmOn ? "soundon" : "soundoff")
+      .image(250, 150, bgmOn ? "soundon" : "soundoff")
       .setOrigin(1, 0)
       .setDepth(10)
-      .setScale(0.8)
+      .setScale(1.4)
       .setInteractive();
 
     // [핵심] 생성한 모든 객체를 메인 컨테이너에 추가
@@ -846,7 +846,7 @@ class LobbyScene extends Phaser.Scene {
 
     const { width, height } = this.cameras.main;
     const centerX = width / 2;
-    const popupY = height * 0.3;
+    const popupY = height * 0.4;
 
     // 1. 전용 컨테이너 생성 (Scene에 변수로 저장하여 외부에서 접근 가능하게 함)
     // 기존에 존재한다면 먼저 지우고 새로 생성 (중복 방지)
@@ -861,11 +861,11 @@ class LobbyScene extends Phaser.Scene {
     // 3. 팝업 배경 이미지
     const popupBg = this.add
       .image(centerX, popupY, "popupbg")
-      .setDisplaySize(width * 0.75, height * 0.35);
+      .setDisplaySize(width * 0.7, height * 0.24);
 
     // 4. 안내 텍스트
     const titleText = this.add
-      .text(centerX, popupY - 90, "방 코드를 입력하세요.", {
+      .text(centerX, popupY - 160, "방 코드를 입력하세요.", {
         fontFamily: "Jua",
         fontSize: `${width * 0.05}px`,
         color: "#ffffff",
@@ -877,15 +877,15 @@ class LobbyScene extends Phaser.Scene {
 
     // 5. Phaser DOM Input (DOM은 컨테이너에 담기지 않으므로 개별 관리 필요)
     this.joinInputElement = this.add
-      .dom(centerX - 25, popupY - 25, "input")
+      .dom(centerX - 200, popupY - 80, "input")
       .setDepth(201); // 컨테이너보다 살짝 높게
 
     const el = this.joinInputElement.node;
     el.placeholder = "코드 입력";
     Object.assign(el.style, {
       width: `${width * 0.5}px`,
-      height: "45px",
-      fontSize: "24px",
+      height: "85px",
+      fontSize: "54px",
       fontFamily: "'Jua', sans-serif",
       textAlign: "center",
       border: "3px solid #5d4037",
@@ -903,12 +903,12 @@ class LobbyScene extends Phaser.Scene {
     });
 
     // 버튼 설정
-    const btnY = popupY + 95;
-    const btnGap = width * 0.18;
+    const btnY = popupY + 120;
+    const btnGap = width * 0.17;
 
     const cancelBtnImg = this.add
       .image(centerX - btnGap, btnY, "uibtn")
-      .setDisplaySize(width * 0.3, height * 0.08)
+      .setDisplaySize(width * 0.3, height * 0.065)
       .setInteractive({ useHandCursor: true })
       .setTint(0xffaaaa);
     const cancelBtnText = this.add
@@ -921,7 +921,7 @@ class LobbyScene extends Phaser.Scene {
 
     const confirmBtnImg = this.add
       .image(centerX + btnGap, btnY, "uibtn")
-      .setDisplaySize(width * 0.3, height * 0.08)
+      .setDisplaySize(width * 0.3, height * 0.065)
       .setInteractive({ useHandCursor: true });
     const confirmBtnText = this.add
       .text(centerX + btnGap, btnY, "입장", {
@@ -1039,7 +1039,7 @@ class LobbyScene extends Phaser.Scene {
   showNicknamePopup(callback) {
     const { width, height } = this.cameras.main;
     const centerX = width / 2;
-    const popupY = height * 0.33;
+    const popupY = height * 0.4;
 
     // 1. 반투명 배경 (Overlay)
     // 컨테이너 밖에 두어야 배경 전체를 덮기 편합니다.
@@ -1054,11 +1054,11 @@ class LobbyScene extends Phaser.Scene {
     // 3. 팝업 배경 이미지 (컨테이너 내부 0, 0 위치)
     const popupBg = this.add
       .image(0, 0, "popupbg")
-      .setDisplaySize(width * 0.7, height * 0.33);
+      .setDisplaySize(width * 0.7, height * 0.28);
 
     // 4. 안내 텍스트 (위로 90px)
     const titleText = this.add
-      .text(0, -80, "아이디를 입력하세요.\n(입력후 변경불가! 최대5글자)", {
+      .text(0, -150, "아이디를 입력하세요.\n(입력후 변경불가! 최대5글자)", {
         fontFamily: "Jua",
         fontSize: `${width * 0.05}px`,
         color: "#ffffff",
@@ -1069,13 +1069,13 @@ class LobbyScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     // 5. Phaser DOM Input (중앙에서 약간 보정)
-    const inputElement = this.add.dom(-25, -10, "input");
+    const inputElement = this.add.dom(-200, -30, "input");
     const el = inputElement.node;
     el.placeholder = "닉네임 입력";
     Object.assign(el.style, {
       width: `${width * 0.5}px`,
-      height: "45px",
-      fontSize: "24px",
+      height: "85px",
+      fontSize: "54px",
       fontFamily: "'Jua', sans-serif",
       textAlign: "center",
       border: "3px solid #5d4037",
@@ -1096,12 +1096,12 @@ class LobbyScene extends Phaser.Scene {
 
     // 6. 확인 버튼 묶음 (아래로 95px)
     const confirmBtnImg = this.add
-      .image(0, 85, "uibtn")
-      .setDisplaySize(width * 0.35, height * 0.08)
+      .image(0, 170, "uibtn")
+      .setDisplaySize(width * 0.35, height * 0.065)
       .setInteractive({ useHandCursor: true });
 
     const confirmBtnText = this.add
-      .text(0, 85, "확인", {
+      .text(0, 170, "확인", {
         fontFamily: "Jua",
         fontSize: `${width * 0.055}px`,
         color: "#ffffff",
@@ -1824,7 +1824,7 @@ class GameScene extends Phaser.Scene {
     this.gameLogs.push({ message, color });
 
     // 최대 5~7개만 유지 (너무 많으면 화면을 가리니까요)
-    if (this.gameLogs.length > 6) {
+    if (this.gameLogs.length > 8) {
       this.gameLogs.shift();
     }
 
@@ -1833,9 +1833,9 @@ class GameScene extends Phaser.Scene {
 
   // 3. 로그 화면 갱신 함수 (GameScene 클래스 내부에 추가)
   updateLogDisplay() {
-    const startX = 10; // 왼쪽 여백
-    const startY = 500; // 상단 여백 (상태바 아래)
-    const lineSpacing = 25; // 줄 간격
+    const startX = 20; // 왼쪽 여백
+    const startY = 300; // 상단 여백 (상태바 아래)
+    const lineSpacing = 47; // 줄 간격
 
     // 기존 텍스트 객체 삭제
     this.logTexts.forEach((txt) => txt.destroy());
@@ -1846,7 +1846,7 @@ class GameScene extends Phaser.Scene {
       const logTxt = this.add
         .text(startX, startY + index * lineSpacing, log.message, {
           fontFamily: "Jua",
-          fontSize: "15px",
+          fontSize: "33px",
           color: log.color,
           stroke: "#000000",
           strokeThickness: 2,
@@ -1953,10 +1953,12 @@ class GameScene extends Phaser.Scene {
       this.myTurnTimer = null;
     }
 
-    const { width } = this.cameras.main;
+    //const { width } = this.cameras.main;
+    const { width, height } = this.cameras.main;
+
     const barWidth = width * 0.2; // 5초이므로 가독성을 위해 조금 더 길게 설정
-    const barHeight = 8;
-    const barY = layout.y + (layout.rotation === 180 ? -120 : 120 - 20);
+    const barHeight = height * 0.01;
+    const barY = layout.y + (layout.rotation === 180 ? -120 : 210);
 
     // 2. Progress Bar 생성 (처음에는 알파값 0으로 안 보이게 시작 가능)
     const bg = this.add
@@ -2022,7 +2024,7 @@ class GameScene extends Phaser.Scene {
     //const isEliminated = cardCount === 0;
     const isEliminated = p.isEliminated ?? false;
 
-    const nameOffset = 70;
+    const nameOffset = 160;
 
     // 1. 닉네임 텍스트 설정
     let displayNickname = p.nickname;
@@ -3480,7 +3482,7 @@ class GameScene extends Phaser.Scene {
 
     const { width, height } = this.cameras.main;
     const centerX = width / 2;
-    const centerY = height / 2;
+    const centerY = height * 0.4;
 
     // 1. 배경 어둡게
     const overlay = this.add
@@ -3492,14 +3494,14 @@ class GameScene extends Phaser.Scene {
     const popupBg = this.add
       .image(centerX, centerY, "popupbg")
       .setDepth(4001)
-      .setDisplaySize(width * 0.75, height * 0.25);
+      .setDisplaySize(width * 0.75, height * 0.2);
 
     // 3. 메시지 텍스트
     const msgText = this.add
-      .text(centerX, centerY - 40, message, {
+      .text(centerX, centerY * 0.87, message, {
         fontFamily:
           typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
-        fontSize: `${width * 0.045}px`,
+        fontSize: `${width * 0.06}px`,
         color: "#ffffff",
         align: "center",
         wordWrap: { width: width * 0.6 },
@@ -3526,7 +3528,7 @@ class GameScene extends Phaser.Scene {
 
     this.currentJoinPopupCloseHandler = closeAlert;
 
-    const btnY = centerY + 50;
+    const btnY = centerY * 1.1;
     const btnGap = width * 0.18;
 
     // --- 취소 버튼 ---
