@@ -432,7 +432,7 @@ io.on("connection", (socket) => {
         io.to(room.roomId).emit("bellResult", {
           success: false,
           penaltyId: socket.id,
-          message: `${p.nickname}님 벌칙! 한 장씩 배분`,
+          message: `${p.nickname}님 틀렸습니다!`,
           players: room.players,
         });
       }
