@@ -368,10 +368,6 @@ io.on("connection", (socket) => {
         // 1. 실제 덱 길이를 cards 속성에 반영 (이게 없어서 숫자가 리셋됨)
         p.cards = p.myDeck.length;
 
-        // 2. 탈락 여부 체크
-        /*if (p.id !== winner.id && p.cards === 0) {
-          p.isEliminated = true;
-        }*/
         if (p.cards === 0) {
           p.isEliminated = true;
         } else {
@@ -423,14 +419,14 @@ io.on("connection", (socket) => {
       if (p.myDeck.length === 0) {
         p.isEliminated = true;
 
-        if (checkGameOver(room, io)) return;
-
         io.to(room.roomId).emit("bellResult", {
           success: false,
           penaltyId: socket.id,
           message: `${p.nickname}님 카드 소진으로 탈락!`,
           players: room.players,
         });
+
+        if (checkGameOver(room, io)) return;
       } else {
         // 카드가 남은 경우 일반 벌칙 알림
         io.to(room.roomId).emit("bellResult", {
@@ -445,21 +441,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  /*socket.on("disconnect", () => {
-    const room = rooms[socket.roomId];
-    if (room) {
-      room.players = room.players.filter((p) => p.id !== socket.id);
-      if (room.players.length === 0) delete rooms[socket.roomId];
-      else {
-        if (room.host === socket.id) room.host = room.players[0].id;
-        io.to(socket.roomId).emit("playerLeft", {
-          players: room.players,
-          hostId: room.host,
-        });
-        if (room.isGameStarted) processSkipTurn(room, io);
-      }
-    }
-  });*/
   socket.on("disconnect", () => {
     const room = rooms[socket.roomId];
     if (room) {

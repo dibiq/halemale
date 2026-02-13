@@ -4,21 +4,6 @@ import { title } from "process";
 import { App } from "@capacitor/app";
 import { Network } from "@capacitor/network";
 
-/*async function handleGetUserKey() {
-  const result = await getUserKeyForGame();
-
-  if (!result) {
-    console.warn("지원하지 않는 앱 버전이에요.");
-  } else if (result === "INVALID_CATEGORY") {
-    console.error("게임 카테고리가 아닌 미니앱이에요.");
-  } else if (result === "ERROR") {
-    console.error("사용자 키 조회 중 오류가 발생했어요.");
-  } else if (result.type === "HASH") {
-    console.log("사용자 키:", result.hash);
-    // 여기에서 사용자 키를 사용해 게임 데이터를 관리할 수 있어요.
-  }
-}*/
-
 function handleGetUserKey() {
   // ReactNativeWebView가 있는지 먼저 확인
   if (typeof ReactNativeWebView !== "undefined") {
@@ -502,8 +487,6 @@ class LobbyScene extends Phaser.Scene {
     });
 
     socket.off("playerJoined").on("playerJoined", (data) => {
-      console.log("players 숫자 :", data.players.length);
-
       this.createBlocker(); // 함수 호출
 
       this.hideLoading();
@@ -727,9 +710,6 @@ class LobbyScene extends Phaser.Scene {
     this.hostId = data.hostId || this.hostId;
 
     const isHost = socket.id === this.hostId;
-
-    console.log("players 숫자 in refresh:", data.players.length);
-
     // 로그로 현재 상태 확인
     console.log(
       `[Sync] 방:${this.currentRoomId}, 나:${socket.id}, 방장:${this.hostId}, 방장여부:${isHost}`
@@ -801,7 +781,6 @@ class LobbyScene extends Phaser.Scene {
     if (!this.cameras || !this.cameras.main) return;
 
     const { width, height } = this.cameras.main;
-    console.log("렌더링 위치:", width / 2, 150); // 좌표 확인용
 
     if (this.activeToast) this.activeToast.destroy();
 
@@ -841,7 +820,7 @@ class LobbyScene extends Phaser.Scene {
       duration: 400,
       ease: "Back.easeOut",
       onComplete: () => {
-        this.time.delayedCall(2500, () => {
+        this.time.delayedCall(1000, () => {
           if (toast.scene) {
             this.tweens.add({
               targets: toast,
@@ -1151,8 +1130,6 @@ class LobbyScene extends Phaser.Scene {
   }
 
   showWaiting(roomId, players = [], isHost = false, maxPlayers = 2) {
-    console.log("players 숫자 in Waiting:", players.length);
-
     const { width, height } = this.cameras.main;
     const centerX = width / 2;
 
@@ -1642,6 +1619,8 @@ class GameScene extends Phaser.Scene {
     // 2. 할리갈리 전용 소켓 리스너
     // ============================================
     socket.off("gameStart").on("gameStart", (data) => {
+      console.log("Gamestart");
+
       // 1. 결과창이 떠 있다면 위로 치우며 제거
       if (this.resultContainer) {
         this.tweens.add({
@@ -1660,9 +1639,7 @@ class GameScene extends Phaser.Scene {
       this.isSingle = false; // 멀티플레이임을 명시
       this.isGameStarted = true;
       this.isGameReady = true;
-      const startIdx = data.players.findIndex((p) => p.id === data.nextTurnId);
-      this.turnIndex = startIdx !== -1 ? startIdx : 0;
-
+      this.turnIndex = 0;
       this.canClick = false; // 💡 시작 직후엔 클릭 금지
 
       // 2. 모든 플레이어에게 공통 연출 실행
@@ -1764,6 +1741,8 @@ class GameScene extends Phaser.Scene {
           recipients: data.recipients,
           players: updatedPlayers, // 👈 중요!
         });
+
+        this.renderTable(updatedPlayers);
       }
     });
 
@@ -1989,7 +1968,6 @@ class GameScene extends Phaser.Scene {
       }
     });
   }
-  // drawPlayerInfo 밖이나 create 하단에 추가
   updateTurnEffect() {
     const isMyTurn =
       this.roundData.players[this.turnIndex]?.id ===
@@ -2024,16 +2002,17 @@ class GameScene extends Phaser.Scene {
     }
   }
 
-  // 이 함수를 renderTable이 호출될 때마다 같이 실행해주세요.
-
   drawPlayerInfo(p, layout) {
     const { width } = this.cameras.main;
     const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
     const isMe = p.id === myId;
-
+    console.log("my id " + myId);
+    console.log("index " + this.turnIndex);
     // 현재 방 데이터에서 턴 인덱스에 해당하는 플레이어인지 확인
-    const isMyTurn = this.roundData.players[this.turnIndex]?.id === p.id;
+    if (typeof this.turnIndex !== "number") this.turnIndex = 0;
 
+    const isMyTurn = this.roundData.players[this.turnIndex]?.id === p.id;
+    console.log(this.roundData.players[this.turnIndex]?.id + " " + p.id);
     const cardCount = p.cards ?? (p.myDeck ? p.myDeck.length : 0);
     //const isEliminated = cardCount === 0;
     const isEliminated = p.isEliminated ?? false;
@@ -2200,6 +2179,7 @@ class GameScene extends Phaser.Scene {
     }
 
     let finishedCount = 0;
+    this.renderTable(data.players);
 
     targetPlayers.forEach((player) => {
       const realIdx = players.findIndex((p) => p.id === player.id);
