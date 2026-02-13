@@ -520,6 +520,8 @@ class LobbyScene extends Phaser.Scene {
     });
 
     socket.on("startBlocked", (msg) => {
+      console.log("startblock");
+
       this.showToast(
         msg || "아직 준비되지 않은 플레이어가 있습니다!",
         "#e74c3c"
@@ -1725,6 +1727,8 @@ class GameScene extends Phaser.Scene {
       this.playFeedback(data.success, data.message);
 
       // 1. 서버 데이터를 즉시 내 로컬 데이터에 반영 (Deep Copy 성격)
+      // 1. [중요] 애니메이션용 데이터 준비 (업데이트 전 로컬 데이터를 함께 보냄)
+      const currentTablePlayers = this.roundData.players;
       const updatedPlayers = data.players.map((p) => ({
         ...p,
         cards: p.cards ?? (p.myDeck ? p.myDeck.length : 0),
@@ -1733,14 +1737,27 @@ class GameScene extends Phaser.Scene {
       }));
 
       // 멤버 변수 업데이트
-      this.roundData.players = updatedPlayers;
+      //this.roundData.players = updatedPlayers;
 
       if (data.success) {
         const message = `${data.winnerNickname} ${data.collectedCount}장 획득(${data.reactionTime}초)`;
         this.addGameLog(`${message}`, "#f1c40f");
-        this.time.delayedCall(500, () => {
-          this.renderTable(this.roundData.players);
+
+        // 💡 [추가] 승리 애니메이션 호출 (renderTable은 애니메이션 끝난 후 함수 내부에서 실행됨)
+        this.playWinAnimation({
+          winnerId: data.winnerId, // 서버에서 승자 ID를 보내준다고 가정
+          players: updatedPlayers,
+          prevPlayers: currentTablePlayers, // 바닥 카드가 남아있는 이전 상태 전달
         });
+
+        this.addGameLog(
+          `${data.winnerNickname}님 획득! (${data.reactionTime}초)`,
+          "#f1c40f"
+        );
+        this.roundData.players = updatedPlayers;
+        /*this.time.delayedCall(500, () => {
+          this.renderTable(this.roundData.players);
+        });*/
       } else {
         // 2. 💡 패널티 애니메이션 호출 시 '이미 업데이트된' 데이터를 직접 넘김
         this.playPenaltyAnimation({
@@ -1835,7 +1852,7 @@ class GameScene extends Phaser.Scene {
           strokeThickness: 2,
           backgroundColor: "#00000044", // 살짝 반투명 배경을 넣어 가독성 확보
         })
-        .setDepth(5000); // UI 최상단
+        .setDepth(20); // UI 최상단
 
       this.logTexts.push(logTxt);
     });
@@ -1850,21 +1867,6 @@ class GameScene extends Phaser.Scene {
       .setDisplaySize(width * 0.22, width * 0.22)
       .setInteractive({ useHandCursor: true })
       .on("pointerdown", () => this.handleRingBell());
-
-    // 2. 카드 뒤집기 버튼 (하단)
-    const flipBtn = this.add
-      .image(width / 2, height * 0.9, "uibtn")
-      .setDisplaySize(width * 0.5, height * 0.08)
-      .setInteractive({ useHandCursor: true })
-      .on("pointerdown", () => this.handleFlipCard());
-
-    this.add
-      .text(width / 2, height * 0.9, "카드 뒤집기", {
-        fontFamily: GAME_FONTS.main,
-        fontSize: "22px",
-        color: "#ffffff",
-      })
-      .setOrigin(0.5);
   }
 
   getCardKey(card) {
@@ -1952,9 +1954,9 @@ class GameScene extends Phaser.Scene {
     }
 
     const { width } = this.cameras.main;
-    const barWidth = width * 0.5; // 5초이므로 가독성을 위해 조금 더 길게 설정
+    const barWidth = width * 0.2; // 5초이므로 가독성을 위해 조금 더 길게 설정
     const barHeight = 8;
-    const barY = layout.y + (layout.rotation === 180 ? -120 : 120 + 50);
+    const barY = layout.y + (layout.rotation === 180 ? -120 : 120 - 20);
 
     // 2. Progress Bar 생성 (처음에는 알파값 0으로 안 보이게 시작 가능)
     const bg = this.add
@@ -2090,12 +2092,30 @@ class GameScene extends Phaser.Scene {
   drawPlayerDeck(p, layout) {
     const { width } = this.cameras.main;
 
+    const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
+    const isMe = p.id === myId; // 내 카드인지 확인
+
     // 💡 카드 장수 결정 로직 통일
     const cardCount = p.cards !== undefined ? p.cards : p.remainingCards || 0;
 
     const deck = this.add
       .image(layout.x, layout.y, "card_back")
       .setDisplaySize(width * 0.15, width * 0.22);
+
+    // 내 카드 덱인 경우에만 클릭 이벤트 부여
+    if (isMe && cardCount > 0) {
+      deck.setInteractive({ useHandCursor: true });
+      deck.on("pointerdown", () => {
+        // 살짝 눌리는 효과 (피드백)
+        this.tweens.add({
+          targets: deck,
+          scale: "*=0.95",
+          duration: 50,
+          yoyo: true,
+          onComplete: () => this.handleFlipCard(), // 카드 뒤집기 함수 호출
+        });
+      });
+    }
 
     // 💡 카드 장수 표시 (p.cards 데이터 반영)
     const countTxt = this.add
@@ -2109,6 +2129,12 @@ class GameScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setDepth(10); // 카드보다 위에 보이게 설정
+
+    // 텍스트도 클릭 가능하게 하려면(숫자 부분을 눌러도 작동하게)
+    if (isMe && cardCount > 0) {
+      countTxt.setInteractive({ useHandCursor: true });
+      countTxt.on("pointerdown", () => this.handleFlipCard());
+    }
 
     this.playerTableGroup.add([deck, countTxt]);
   }
@@ -2144,6 +2170,76 @@ class GameScene extends Phaser.Scene {
     } else {
       console.error(`🚨 drawOpenCard 에러: 키를 찾을 수 없음 - ${cardKey}`);
     }
+  }
+
+  playWinAnimation(data) {
+    const { width, height } = this.cameras.main;
+    const players = data.players;
+    const prevPlayers = data.prevPlayers;
+    const winnerId = data.winnerId;
+
+    const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
+    const myIndex = players.findIndex((p) => p.id === myId);
+    const winIdx = players.findIndex((p) => p.id === winnerId);
+
+    if (winIdx === -1) return;
+
+    // 플레이어 덱 좌표 (도착지)
+    const pos = [
+      { x: width * 0.5, y: height * 0.75 },
+      { x: width * 0.11, y: height * 0.45 },
+      { x: width * 0.5, y: height * 0.18 },
+      { x: width * 0.89, y: height * 0.45 },
+    ];
+
+    const relWinIdx = (winIdx - myIndex + players.length) % players.length;
+    const targetPos = pos[relWinIdx];
+
+    let cardsFlying = 0;
+
+    prevPlayers.forEach((p, index) => {
+      if (p.openCard) {
+        cardsFlying++;
+
+        const relIdx = (index - myIndex + players.length) % players.length;
+        // 각 위치별 회전값 (0: 하단, 1: 좌측, 2: 상단, 3: 우측)
+        const rotation = [0, 90, 180, -90][relIdx];
+
+        // 1. [좌표 원복] 기존 drawOpenCard 로직과 동일하게 상하/좌우 방향으로 시작점 계산
+        const dist = width * 0.25;
+        const rad = Phaser.Math.DegToRad(rotation - 90);
+
+        // 상하/좌우 모든 플레이어가 중앙 방향으로 일정한 거리만큼 떨어진 곳에서 시작
+        const startX = pos[relIdx].x + Math.cos(rad) * dist * 0.7;
+        const startY = pos[relIdx].y + Math.sin(rad) * dist;
+
+        // 2. 임시 카드 생성
+        const flyCard = this.add
+          .image(startX, startY, "card_back")
+          .setDisplaySize(width * 0.15, width * 0.22)
+          .setDepth(2000);
+
+        // 3. 애니메이션 실행 (회전 없이 직선 이동)
+        this.tweens.add({
+          targets: flyCard,
+          x: targetPos.x,
+          y: targetPos.y,
+          duration: 400, // 슈슈슉 속도
+          ease: "Cubic.out",
+          onComplete: () => {
+            flyCard.destroy();
+            cardsFlying--;
+
+            if (cardsFlying === 0) {
+              this.renderTable(players);
+              this.sound.play("pop", { volume: 0.3 });
+            }
+          },
+        });
+      }
+    });
+
+    if (cardsFlying === 0) this.renderTable(players);
   }
 
   playCardFlipAnimation(data) {
@@ -2321,7 +2417,7 @@ class GameScene extends Phaser.Scene {
 
     // 3. 플레이어들의 카드 데이터 초기화 (처음 시작 장수로 리셋)
     // 예: 모든 플레이어에게 다시 20장씩 부여 (기존 게임 설정에 맞춰 조절)
-    const initialCardCount = 20;
+    const initialCardCount = 14;
     this.roundData.players.forEach((p) => {
       p.cards = initialCardCount;
       p.remainingCards = initialCardCount;
@@ -2349,12 +2445,12 @@ class GameScene extends Phaser.Scene {
 
     // 배경 (이미지 키 'resultbg' 사용)
     const bg = this.add
-      .image(width / 2, height / 2, "resultbg")
-      .setDisplaySize(width * 1.2, height * 1.4);
+      .image(width / 2, height * 0.4, "resultbg")
+      .setDisplaySize(width * 1.2, height * 1.3);
     container.add(bg);
 
     // 결과 타이틀 (WIN / LOSE)
-    const titleText = result === "WIN" ? "최종 승리!" : "패배...";
+    /*const titleText = result === "WIN" ? "최종 승리!" : "패배...";
     const titleColor = result === "WIN" ? "#2ecc71" : "#e74c3c";
     const titleTxt = this.add
       .text(width / 2, height * 0.2, titleText, {
@@ -2365,7 +2461,7 @@ class GameScene extends Phaser.Scene {
         strokeThickness: 6,
       })
       .setOrigin(0.5);
-    container.add(titleTxt);
+    container.add(titleTxt);*/
 
     // 플레이어 리스트
     players.forEach((p, i) => {
@@ -2374,7 +2470,7 @@ class GameScene extends Phaser.Scene {
 
       const row = this.add.container(width / 2, y);
       const rankTxt = this.add
-        .text(-width * 0.25, 0, `${i + 1}위`, {
+        .text(-width * 0.15, 0, `${i + 1}위`, {
           fontFamily: GAME_FONTS.main,
           fontSize: `${width * 0.05}px`,
           fill: "#334155",
@@ -2382,7 +2478,7 @@ class GameScene extends Phaser.Scene {
         .setOrigin(0.5);
 
       const nameTxt = this.add
-        .text(-width * 0.1, 0, isMe ? `${p.nickname} (나)` : p.nickname, {
+        .text(-width * 0.05, 0, isMe ? `${p.nickname}` : p.nickname, {
           fontFamily: GAME_FONTS.main,
           fontSize: `${width * 0.05}px`,
           fill: isMe ? "#22c55e" : "#0f172a",
@@ -2390,22 +2486,22 @@ class GameScene extends Phaser.Scene {
         })
         .setOrigin(0, 0.5);
 
-      const scoreTxt = this.add
+      /*const scoreTxt = this.add
         .text(width * 0.25, 0, `${p.cards}장`, {
           fontFamily: GAME_FONTS.main,
           fontSize: `${width * 0.05}px`,
           fill: "#2563eb",
           fontWeight: "bold",
         })
-        .setOrigin(0.5);
+        .setOrigin(0.5);*/
 
-      row.add([rankTxt, nameTxt, scoreTxt]);
+      row.add([rankTxt, nameTxt]);
       container.add(row);
     });
 
     // --- 버튼 영역 ---
-    const btnY = height * 0.75;
-    const exitBtnY = height * 0.84;
+    const btnY = height * 0.7;
+    const exitBtnY = height * 0.8;
 
     // 1. 다시 시작 버튼
     const restartBtn = this.add
@@ -2529,7 +2625,7 @@ class GameScene extends Phaser.Scene {
     if (this.bellImage) {
       this.tweens.add({
         targets: this.bellImage,
-        scale: 0.8, // 원래 스케일에 맞춰 조절 (기존 0.8 유지)
+        scale: "*=0.95", // 원래 스케일에 맞춰 조절 (기존 0.8 유지)
         duration: 50,
         yoyo: true,
         ease: "Quad.easeInOut",
@@ -2551,17 +2647,6 @@ class GameScene extends Phaser.Scene {
       socket.emit("ringBell");
     }
   }
-
-  /*drawBell(x, y) {
-    const { width } = this.cameras.main;
-    this.bellImage = this.add
-      .image(x, y, "bell")
-      .setDisplaySize(width * 0.25, width * 0.25)
-      .setInteractive({ useHandCursor: true })
-      .setDepth(200);
-
-    this.bellImage.on("pointerdown", () => this.handleRingBell());
-  }*/
 
   checkFruitCountForAI() {
     if (!this.isSingle) return;
@@ -2948,13 +3033,14 @@ class GameScene extends Phaser.Scene {
 
     const bg = this.add
       .image(width / 2, height / 2, "resultbg")
-      .setDisplaySize(width * 1.2, height * 1.4);
+      .setDisplaySize(width * 1.2, height * 1.1);
     container.add(bg);
 
     // --- 플레이어 리스트 매핑 (할리갈리 버전) ---
-    // --- 플레이어 리스트 매핑 부분 ---
+    const listStartY = height * 0.43; // 시작점 (원하는 만큼 조절)
+
     players.forEach((p, i) => {
-      const y = height * 0.35 + i * (height * 0.08);
+      const y = listStartY + i * (height * 0.06);
       const row = this.add.container(width / 2, y);
 
       const isThisPlayerHost = p.id === currentHostId;
@@ -2962,11 +3048,11 @@ class GameScene extends Phaser.Scene {
 
       let displayName = p.nickname;
       if (isThisPlayerHost) displayName = `${displayName} 👑`;
-      if (isMe) displayName = `${displayName} (나)`;
+      if (isMe) displayName = `${displayName}`;
 
       // 1. 순위 텍스트
       const rankTxt = this.add
-        .text(-width * 0.25, 0, `${i + 1}위`, {
+        .text(-width * 0.15, 0, `${i + 1}위`, {
           fontFamily: GAME_FONTS.main,
           fontSize: `${width * 0.05}px`,
           fill: "#334155",
@@ -2979,7 +3065,7 @@ class GameScene extends Phaser.Scene {
       else if (p.isReady) nameColor = "#2ecc71"; // 준비 완료면 초록색 (방장 아닐 때만)
 
       const nameTxt = this.add
-        .text(-width * 0.1, 0, displayName, {
+        .text(-width * 0.07, 0, displayName, {
           fontFamily: GAME_FONTS.main,
           fontSize: `${width * 0.05}px`,
           fill: nameColor, // 💡 여기서 결정된 색상을 적용
@@ -2988,7 +3074,7 @@ class GameScene extends Phaser.Scene {
         .setOrigin(0, 0.5);
 
       // 3. 점수/카드 장수 텍스트
-      const scoreValue = p.cards !== undefined ? `${p.cards}장` : "";
+      /*const scoreValue = p.cards !== undefined ? `${p.cards}장` : "";
       const scoreTxt = this.add
         .text(width * 0.25, 0, scoreValue, {
           fontFamily: GAME_FONTS.main,
@@ -2996,13 +3082,13 @@ class GameScene extends Phaser.Scene {
           fill: "#2563eb",
           fontWeight: "bold",
         })
-        .setOrigin(0.5);
+        .setOrigin(0.5);*/
 
-      row.add([rankTxt, nameTxt, scoreTxt]);
+      row.add([rankTxt, nameTxt]);
       container.add(row);
     });
 
-    const btnY = height * 0.75;
+    const btnY = height * 0.74;
     const exitBtnY = height * 0.84;
 
     // --- 방장/일반유저 버튼 로직 ---
@@ -3021,7 +3107,7 @@ class GameScene extends Phaser.Scene {
         })
         .setOrigin(0.5);
 
-      startBtn.on("pointerdown", () => {
+      /*startBtn.on("pointerdown", () => {
         this.sound.play("btn", { volume: 0.1 });
         startBtn.disableInteractive();
         startBtn.setAlpha(0.5);
@@ -3029,8 +3115,31 @@ class GameScene extends Phaser.Scene {
         // 💡 기존의 playReadyGoSequence 호출을 지우고 서버에 요청만 보냅니다.
         // 연출은 서버 응답(gameStart)을 받은 모든 플레이어 화면에서 동시에 실행됩니다.
         socket.emit("startGameRequest");
-      });
+      });*/
 
+      startBtn.on("pointerdown", () => {
+        this.sound.play("btn", { volume: 0.1 });
+
+        // 버튼 클릭 피드백 (눌리는 연출)
+        this.tweens.add({
+          targets: [startBtn, startTxt],
+          scale: 0.95,
+          duration: 50,
+          yoyo: true,
+          onComplete: () => {
+            // 💡 일단 요청을 보냅니다.
+            socket.emit("startGameRequest");
+
+            // 💡 [수정] 즉시 disable하지 말고, 연속 클릭 방지만 위해 1초 정도만 막아둡니다.
+            startBtn.disableInteractive();
+            this.time.delayedCall(1000, () => {
+              if (this.resultContainer && this.resultContainer.active) {
+                startBtn.setInteractive(); // 1초 뒤 다시 활성화 (실패했을 경우 대비)
+              }
+            });
+          },
+        });
+      });
       container.add([startBtn, startTxt]);
     } else {
       const isReady = myInfo ? myInfo.isReady : false;

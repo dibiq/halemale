@@ -237,9 +237,36 @@ io.on("connection", (socket) => {
 
   socket.on("startGameRequest", () => {
     const room = rooms[socket.roomId];
-    if (!room || room.host !== socket.id || room.players.length < 2) return;
-    if (!room.players.filter((p) => p.id !== room.host).every((p) => p.isReady))
-      return;
+    //if (!room || room.host !== socket.id || room.players.length < 2) return;
+    //if (!room.players.filter((p) => p.id !== room.host).every((p) => p.isReady))
+    // return;
+
+    // 0. 방이 없으면 무시 (최소한의 안전장치)
+    if (!room) return;
+
+    // 1. 방장 권한 체크
+    if (room.host !== socket.id) {
+      return socket.emit("startBlocked", "방장만 게임을 시작할 수 있습니다.");
+    }
+
+    // 2. 인원 수 체크 (2명 미만)
+    if (room.players.length < 2) {
+      return socket.emit(
+        "startBlocked",
+        "최소 2명 이상의 플레이어가 필요합니다."
+      );
+    }
+
+    // 3. 준비 상태 체크 (방장 제외 모두 Ready 인지)
+    const notReadyPlayers = room.players.filter(
+      (p) => p.id !== room.host && !p.isReady
+    );
+    if (notReadyPlayers.length > 0) {
+      return socket.emit(
+        "startBlocked",
+        "모든 인원이 준비 완료 상태여야 합니다."
+      );
+    }
 
     let deck = [];
     [1, 2, 3, 4].forEach((f) =>
