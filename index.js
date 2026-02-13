@@ -338,6 +338,7 @@ io.on("connection", (socket) => {
     io.to(room.roomId).emit("cardFlipped", {
       playerId: socket.id,
       card,
+      openCardStack: p.openCardStack, // 💡 [추가] 지금까지 쌓인 전체 카드 배열!
       nextTurnId: p.id,
       remainingCount: p.myDeck.length,
       isEliminated: p.isEliminated, // 💡 이 값을 반드시 포함해서 보냅니다!
