@@ -1612,7 +1612,7 @@ class GameScene extends Phaser.Scene {
 
     socket.off("playerLeft").on("playerLeft", (data) => {
       this.sound.play("btn", { volume: 0.2 });
-      this.showToast(`${data.nickname}님이 나갔습니다.`, "#e74c3c");
+      this.showToast(`${data.leftPlayerNickname}님이 나갔습니다.`, "#e74c3c");
       this.roundData.players = data.players;
       this.renderTable(data.players);
     });
@@ -1660,7 +1660,9 @@ class GameScene extends Phaser.Scene {
       this.isSingle = false; // 멀티플레이임을 명시
       this.isGameStarted = true;
       this.isGameReady = true;
-      this.turnIndex = 0;
+      const startIdx = data.players.findIndex((p) => p.id === data.nextTurnId);
+      this.turnIndex = startIdx !== -1 ? startIdx : 0;
+
       this.canClick = false; // 💡 시작 직후엔 클릭 금지
 
       // 2. 모든 플레이어에게 공통 연출 실행
