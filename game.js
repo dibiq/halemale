@@ -3123,7 +3123,7 @@ class GameScene extends Phaser.Scene {
         // 버튼 클릭 피드백 (눌리는 연출)
         this.tweens.add({
           targets: [startBtn, startTxt],
-          scale: 0.95,
+          scale: "*=0.95",
           duration: 50,
           yoyo: true,
           onComplete: () => {
@@ -3617,11 +3617,11 @@ class GameScene extends Phaser.Scene {
 const config = {
   type: Phaser.AUTO,
   parent: "game-container", // 🔹 위에서 만든 div ID와 일치해야 함
-  width: 480,
-  height: 854,
+  width: 1080, // 기준 해상도 (세로형 게임 기준)
+  height: 1920,
   backgroundColor: "#0f172a",
   scale: {
-    mode: Phaser.Scale.NONE,
+    mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
   dom: { createContainer: true }, // ✅ 여기를 추가

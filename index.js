@@ -10,6 +10,7 @@ const server = http.createServer(app);
 // 1. CORS 설정
 function getAllowedOrigins() {
   return [
+    "https://halemale.onrender.com",
     "https://skewer-master.apps.tossmini.com",
     "https://skewer-master.private-apps.tossmini.com",
     "http://10.68.14.196:5173",
