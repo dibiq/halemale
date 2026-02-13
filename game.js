@@ -1667,6 +1667,7 @@ class GameScene extends Phaser.Scene {
         return {
           ...p,
           cards: initialCards, // 여기서 숫자가 0이 되지 않도록 보장
+          openStack: [], // 💡 추가
           openCard: null,
           isEliminated: false, // 시작 시 탈락 상태 초기화
         };
@@ -1755,7 +1756,7 @@ class GameScene extends Phaser.Scene {
         this.playWinAnimation({
           winnerId: data.winnerId, // 서버에서 승자 ID를 보내준다고 가정
           players: updatedPlayers,
-          prevPlayers: currentTablePlayers, // 바닥 카드가 남아있는 이전 상태 전달
+          prevPlayers: prevPlayers, // 바닥 카드가 남아있는 이전 상태 전달
         });
 
         this.addGameLog(
@@ -1914,8 +1915,8 @@ class GameScene extends Phaser.Scene {
       this.drawPlayerInfo(p, layout);
       this.drawPlayerDeck(p, layout); // 💡 여기서 숫자가 그려짐
 
-      if (p.openCard && !p.isFlipping) {
-        this.drawOpenCard(p.openCard, layout);
+      if (p.openStack && p.openStack.length > 0) {
+        this.drawOpenCard(p.openStack, layout);
       }
     });
   }
@@ -2149,7 +2150,7 @@ class GameScene extends Phaser.Scene {
     this.playerTableGroup.add([deck, countTxt]);
   }
 
-  drawOpenCard(openCards, layout) {
+  /*drawOpenCard(openCards, layout) {
     if (!openCards) return;
     const { width } = this.cameras.main;
 
@@ -2186,34 +2187,57 @@ class GameScene extends Phaser.Scene {
         this.playerTableGroup.add(openCardImg);
       }
     });
-    /*const fruitName = fruitNames[card.fruit] || "strawberry";
-    const cardKey = `${fruitName}_${card.count}`;
+  
+  }*/
 
-    // 2. 좌표 계산
+  drawOpenCard(openStack, layout) {
+    if (!openStack || !Array.isArray(openStack)) return;
+    const { width } = this.cameras.main;
+
+    const player = this.roundData.players.find(
+      (p) => p.openStack === openStack
+    );
+    const cardsToDraw =
+      player && player.isFlipping ? openStack.slice(0, -1) : openStack;
+
     const dist = width * 0.25;
     const rad = Phaser.Math.DegToRad(layout.rotation - 90);
-    const ox = layout.x + Math.cos(rad) * dist * 0.7;
-    const oy = layout.y + Math.sin(rad) * dist;
 
-    // 3. 이미지 생성 (키가 존재하는지 확인)
-    if (this.textures.exists(cardKey)) {
-      const openCardImg = this.add
-        .image(ox, oy, cardKey)
-        .setDisplaySize(width * 0.18, width * 0.25)
-        .setAngle(0)
-        .setDepth(150);
+    // 기본 카드 뭉치 중앙 위치
+    const baseX = layout.x + Math.cos(rad) * dist * 0.7;
+    const baseY = layout.y + Math.sin(rad) * dist;
 
-      this.playerTableGroup.add(openCardImg);
-    } else {
-      console.error(`🚨 drawOpenCard 에러: 키를 찾을 수 없음 - ${cardKey}`);
-    }*/
+    const fruitNames = { 1: "strawberry", 2: "banana", 3: "lime", 4: "plum" };
+
+    cardsToDraw.forEach((card, index) => {
+      const cardKey = `${fruitNames[card.fruit] || "strawberry"}_${card.count}`;
+
+      if (this.textures.exists(cardKey)) {
+        // 💡 [핵심 수정] 플레이어 위치(rotation)에 따라 쌓이는 방향 결정
+        // rotation 0(하단): 위로(-Y), 90(좌측): 오른쪽(+X), 180(상단): 아래로(+Y), -90(우측): 왼쪽(-X)
+        let offsetX = 0;
+        let offsetY = 0;
+        const step = 3; // 카드 한 장당 어긋나는 픽셀 거리 (취향껏 조절)
+
+        if (layout.rotation === 0) offsetY = -index * step;
+        else if (layout.rotation === 90) offsetX = index * step;
+        else if (layout.rotation === 180) offsetY = index * step;
+        else if (layout.rotation === -90 || layout.rotation === 270)
+          offsetX = -index * step;
+
+        const openCardImg = this.add
+          .image(baseX + offsetX, baseY + offsetY, cardKey)
+          .setDisplaySize(width * 0.18, width * 0.25)
+          .setDepth(150 + index); // 나중 카드가 위로 오게
+
+        this.playerTableGroup.add(openCardImg);
+      }
+    });
   }
 
   playWinAnimation(data) {
     const { width, height } = this.cameras.main;
-    const players = data.players;
-    const prevPlayers = data.prevPlayers;
-    const winnerId = data.winnerId;
+    const { players, prevPlayers, winnerId } = data;
 
     const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
     const myIndex = players.findIndex((p) => p.id === myId);
@@ -2221,7 +2245,6 @@ class GameScene extends Phaser.Scene {
 
     if (winIdx === -1) return;
 
-    // 플레이어 덱 좌표 (도착지)
     const pos = [
       { x: width * 0.5, y: height * 0.75 },
       { x: width * 0.11, y: height * 0.45 },
@@ -2232,133 +2255,67 @@ class GameScene extends Phaser.Scene {
     const relWinIdx = (winIdx - myIndex + players.length) % players.length;
     const targetPos = pos[relWinIdx];
 
-    let cardsFlying = 0;
+    let totalCardsToFly = 0;
+    let finishedFlys = 0;
 
-    prevPlayers.forEach((p, index) => {
-      if (p.openCard) {
-        cardsFlying++;
+    // 1. 전체 날려야 할 카드 총 개수 먼저 계산
+    prevPlayers.forEach((p) => {
+      if (p.openStack) totalCardsToFly += p.openStack.length;
+    });
 
-        const relIdx = (index - myIndex + players.length) % players.length;
-        // 각 위치별 회전값 (0: 하단, 1: 좌측, 2: 상단, 3: 우측)
+    if (totalCardsToFly === 0) {
+      this.renderTable(players);
+      return;
+    }
+
+    // 2. 각 플레이어의 스택을 순회하며 모든 카드 생성
+    prevPlayers.forEach((p, pIndex) => {
+      if (p.openStack && p.openStack.length > 0) {
+        const relIdx = (pIndex - myIndex + players.length) % players.length;
         const rotation = [0, 90, 180, -90][relIdx];
-
-        // 1. [좌표 원복] 기존 drawOpenCard 로직과 동일하게 상하/좌우 방향으로 시작점 계산
         const dist = width * 0.25;
         const rad = Phaser.Math.DegToRad(rotation - 90);
 
-        // 상하/좌우 모든 플레이어가 중앙 방향으로 일정한 거리만큼 떨어진 곳에서 시작
         const startX = pos[relIdx].x + Math.cos(rad) * dist * 0.7;
         const startY = pos[relIdx].y + Math.sin(rad) * dist;
 
-        // 2. 임시 카드 생성
-        const flyCard = this.add
-          .image(startX, startY, "card_back")
-          .setDisplaySize(width * 0.15, width * 0.22)
-          .setDepth(2000);
+        // 💡 [핵심] 해당 플레이어의 openStack에 있는 모든 카드를 날림
+        p.openStack.forEach((card, cardIdx) => {
+          // 약간의 시간차를 주어 '슈슈슉' 느낌 유도 (선택 사항)
+          const delay = cardIdx * 50;
 
-        // 3. 애니메이션 실행 (회전 없이 직선 이동)
-        this.tweens.add({
-          targets: flyCard,
-          x: targetPos.x,
-          y: targetPos.y,
-          duration: 400, // 슈슈슉 속도
-          ease: "Cubic.out",
-          onComplete: () => {
-            flyCard.destroy();
-            cardsFlying--;
+          const flyCard = this.add
+            .image(startX, startY - cardIdx * 2, "card_back") // 기존 쌓여있던 높이 재현
+            .setDisplaySize(width * 0.15, width * 0.22)
+            .setDepth(2000 + cardIdx);
 
-            if (cardsFlying === 0) {
-              this.renderTable(players);
-              this.sound.play("pop", { volume: 0.3 });
-            }
-          },
+          this.tweens.add({
+            targets: flyCard,
+            x: targetPos.x,
+            y: targetPos.y,
+            duration: 400,
+            delay: delay,
+            ease: "Cubic.out",
+            onComplete: () => {
+              flyCard.destroy();
+              finishedFlys++;
+
+              // 모든 카드가 다 날아갔을 때
+              if (finishedFlys === totalCardsToFly) {
+                // 3. 데이터 비우기 및 최종 렌더링
+                this.roundData.players.forEach((player) => {
+                  player.openStack = [];
+                  player.isFlipping = false;
+                });
+                this.renderTable(this.roundData.players);
+                this.sound.play("pop", { volume: 0.3 });
+              }
+            },
+          });
         });
       }
     });
-
-    if (cardsFlying === 0) this.renderTable(players);
   }
-
-  /*playCardFlipAnimation(data) {
-    if (!data || !this.roundData.players) return;
-    const { width, height } = this.cameras.main;
-    const cardKey = this.getCardKey(data.card);
-
-    // 데이터 최신화 확인
-    const player = this.roundData.players.find((p) => p.id === data.playerId);
-    if (player) {
-      // 💡 [수정] 기존 openCard가 없으면 배열로 초기화
-      if (!player.openCard || !Array.isArray(player.openCard)) {
-        player.openCard = [];
-      }
-
-      player.isFlipping = true;
-      //player.openCard = data.card;
-      player.isEliminated = data.isEliminated; // 서버에서 받은 true/false 반영
-      // 💡 서버 변수명 반영
-      if (data.remainingCount !== undefined) {
-        player.cards = data.remainingCount;
-      }
-    }
-
-    // 2. 즉시 다시 그려서, 날아갈 카드가 위치할 자리를 비워줍니다.
-    this.renderTable(this.roundData.players);
-
-    // 2. 내 위치 기반 상대적 위치 계산
-    const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
-    const myIndex = this.roundData.players.findIndex((p) => p.id === myId);
-    const playerIdx = this.roundData.players.findIndex(
-      (p) => p.id === data.playerId
-    );
-
-    const safeMyIndex = myIndex === -1 ? 0 : myIndex;
-    const relativeIdx =
-      (playerIdx - safeMyIndex + this.roundData.players.length) %
-      this.roundData.players.length;
-
-    const pos = [
-      { x: width * 0.5, y: height * 0.75, rotation: 0 },
-      { x: width * 0.11, y: height * 0.45, rotation: 90 },
-      { x: width * 0.5, y: height * 0.18, rotation: 180 },
-      { x: width * 0.89, y: height * 0.45, rotation: -90 },
-    ];
-
-    const startPos = pos[relativeIdx];
-    if (!startPos) return;
-
-    const tempCard = this.add
-      .image(startPos.x, startPos.y, "card_back")
-      .setDisplaySize(width * 0.15, width * 0.22)
-      .setAngle(0)
-      .setDepth(1000);
-
-    const dist = width * 0.25;
-    const rad = Phaser.Math.DegToRad(startPos.rotation - 90);
-
-    this.tweens.add({
-      targets: tempCard,
-      x: startPos.x + Math.cos(rad) * dist * 0.7,
-      y: startPos.y + Math.sin(rad) * dist,
-      duration: 300,
-      ease: "Cubic.out",
-      onUpdate: (tween) => {
-        if (tween.progress > 0.5 && tempCard.texture.key === "card_back") {
-          if (this.textures.exists(cardKey)) tempCard.setTexture(cardKey);
-        }
-      },
-      onComplete: () => {
-        // 3. 애니메이션 완료 후 플래그 OFF
-        if (player) {
-          player.openCard.push(data.card); // 배열에 쌓기
-          player.isFlipping = false;
-        }
-
-        tempCard.destroy();
-        // 💡 데이터가 이미 위에서 수정되었으므로, 다시 그리면 숫자가 바뀝니다.
-        this.renderTable(this.roundData.players);
-      },
-    });
-  }*/
 
   playCardFlipAnimation(data) {
     if (!data || !this.roundData.players) return;
@@ -2393,6 +2350,25 @@ class GameScene extends Phaser.Scene {
     ];
 
     const startPos = pos[relativeIdx];
+
+    // 💡 1. 현재 쌓여있는 카드의 개수를 파악합니다.
+    const currentStackCount = player.openStack ? player.openStack.length : 0;
+    const step = 3; // 카드 한 장당 어긋날 간격 (픽셀)
+
+    let targetOffsetX = 0;
+    let targetOffsetY = 0;
+
+    // 💡 2. 플레이어 위치(rotation)에 따라 쌓이는 방향으로 오프셋 계산
+    // drawOpenCard와 방향을 일치시켜야 '착' 하고 달라붙습니다.
+    if (startPos.rotation === 0)
+      targetOffsetY = -currentStackCount * step; // 내 위치: 위로 쌓임
+    else if (startPos.rotation === 90)
+      targetOffsetX = currentStackCount * step; // 왼쪽: 오른쪽으로 쌓임
+    else if (startPos.rotation === 180)
+      targetOffsetY = currentStackCount * step; // 위쪽: 아래로 쌓임
+    else if (startPos.rotation === -90 || startPos.rotation === 270)
+      targetOffsetX = -currentStackCount * step; // 오른쪽: 왼쪽으로 쌓임
+
     const tempCard = this.add
       .image(startPos.x, startPos.y, "card_back")
       .setDisplaySize(width * 0.15, width * 0.22)
@@ -2403,8 +2379,8 @@ class GameScene extends Phaser.Scene {
 
     this.tweens.add({
       targets: tempCard,
-      x: startPos.x + Math.cos(rad) * dist * 0.7,
-      y: startPos.y + Math.sin(rad) * dist,
+      x: startPos.x + Math.cos(rad) * dist * 0.7 + targetOffsetX,
+      y: startPos.y + Math.sin(rad) * dist + targetOffsetY,
       duration: 300,
       ease: "Cubic.out",
       onUpdate: (tween) => {
@@ -2749,7 +2725,7 @@ class GameScene extends Phaser.Scene {
     if (this.bellImage) {
       this.tweens.add({
         targets: this.bellImage,
-        scale: "*=0.95", // 원래 스케일에 맞춰 조절 (기존 0.8 유지)
+        scale: "*=0.7", // 원래 스케일에 맞춰 조절 (기존 0.8 유지)
         duration: 50,
         yoyo: true,
         ease: "Quad.easeInOut",
