@@ -74,7 +74,7 @@ function checkGameOver(room, io) {
     room.isGameStarted = false;
     const winner = survivors.length === 1 ? survivors[0] : room.players[0];
     const sorted = [...room.players].sort(
-      (a, b) => (b.myDeck?.length || 0) - (a.myDeck?.length || 0)
+      (a, b) => (b.myDeck?.length || 0) - (a.myDeck?.length || 0),
     );
 
     io.to(room.roomId).emit("gameEnded", {
@@ -254,26 +254,26 @@ io.on("connection", (socket) => {
     if (room.players.length < 2) {
       return socket.emit(
         "startBlocked",
-        "최소 2명 이상의 플레이어가 필요합니다."
+        "최소 2명 이상의 플레이어가 필요합니다.",
       );
     }
 
     // 3. 준비 상태 체크 (방장 제외 모두 Ready 인지)
     const notReadyPlayers = room.players.filter(
-      (p) => p.id !== room.host && !p.isReady
+      (p) => p.id !== room.host && !p.isReady,
     );
     if (notReadyPlayers.length > 0) {
       return socket.emit(
         "startBlocked",
-        "모든 인원이 준비 완료 상태여야 합니다."
+        "모든 인원이 준비 완료 상태여야 합니다.",
       );
     }
 
     let deck = [];
     [1, 2, 3, 4].forEach((f) =>
       [1, 1, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 5].forEach((c) =>
-        deck.push({ fruit: f, count: c })
-      )
+        deck.push({ fruit: f, count: c }),
+      ),
     );
     deck.sort(() => Math.random() - 0.5);
 
@@ -421,7 +421,7 @@ io.on("connection", (socket) => {
     } else {
       const p = room.players.find((pl) => pl.id === socket.id);
       const others = room.players.filter(
-        (pl) => pl.id !== socket.id && !pl.isEliminated
+        (pl) => pl.id !== socket.id && !pl.isEliminated,
       );
 
       const recipients = []; // 💡 카드를 실제 받은 사람 ID를 담을 배열

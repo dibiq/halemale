@@ -11,7 +11,7 @@ function handleGetUserKey() {
   } else {
     // 브라우저 환경일 경우 임시 키 발급 또는 에러 방지 처리
     console.warn(
-      "ReactNativeWebView를 찾을 수 없습니다. 브라우저 모드로 동작합니다."
+      "ReactNativeWebView를 찾을 수 없습니다. 브라우저 모드로 동작합니다.",
     );
     return "GUEST_USER";
   }
@@ -129,12 +129,12 @@ class LobbyScene extends Phaser.Scene {
     this.load.image("chef", `${ASSET_SERVER}/images/chef.png${VERSION}`);
     this.load.image(
       "resultbg",
-      `${ASSET_SERVER}/images/resultbg.png${VERSION}`
+      `${ASSET_SERVER}/images/resultbg.png${VERSION}`,
     );
     this.load.image("soundon", `${ASSET_SERVER}/images/soundon.png${VERSION}`);
     this.load.image(
       "soundoff",
-      `${ASSET_SERVER}/images/soundoff.png${VERSION}`
+      `${ASSET_SERVER}/images/soundoff.png${VERSION}`,
     );
     this.load.image("popupbg", `${ASSET_SERVER}/images/popupbg2.png${VERSION}`);
     this.load.image("home", `${ASSET_SERVER}/images/home.png${VERSION}`);
@@ -148,7 +148,7 @@ class LobbyScene extends Phaser.Scene {
         // 키 형식: strawberry_1, banana_5 등
         this.load.image(
           `${fruit}_${count}`,
-          `${ASSET_SERVER}/images/cards/${fruit}_${count}.png${VERSION}`
+          `${ASSET_SERVER}/images/cards/${fruit}_${count}.png${VERSION}`,
         );
       }
     });
@@ -156,7 +156,7 @@ class LobbyScene extends Phaser.Scene {
     // 카드 뒷면 로드
     this.load.image(
       "card_back",
-      `${ASSET_SERVER}/images/cards/card_back.png${VERSION}`
+      `${ASSET_SERVER}/images/cards/card_back.png${VERSION}`,
     );
 
     // ============================================
@@ -505,7 +505,7 @@ class LobbyScene extends Phaser.Scene {
             console.log("새 유저 입장 토스트 실행!");
             this.showToast(
               `${lastPlayer.nickname}님이 입장했습니다!`,
-              "#2ecc71"
+              "#2ecc71",
             );
           }
         }
@@ -524,7 +524,7 @@ class LobbyScene extends Phaser.Scene {
 
       this.showToast(
         msg || "아직 준비되지 않은 플레이어가 있습니다!",
-        "#e74c3c"
+        "#e74c3c",
       );
     });
 
@@ -691,7 +691,7 @@ class LobbyScene extends Phaser.Scene {
       screenWidth,
       screenHeight,
       0x000000,
-      0.8
+      0.8,
     );
     this.lobbyBlocker.setOrigin(0);
     this.lobbyBlocker.setDepth(5); // UI보다 낮고 배경보다는 높게
@@ -714,7 +714,7 @@ class LobbyScene extends Phaser.Scene {
     const isHost = socket.id === this.hostId;
     // 로그로 현재 상태 확인
     console.log(
-      `[Sync] 방:${this.currentRoomId}, 나:${socket.id}, 방장:${this.hostId}, 방장여부:${isHost}`
+      `[Sync] 방:${this.currentRoomId}, 나:${socket.id}, 방장:${this.hostId}, 방장여부:${isHost}`,
     );
 
     // UI 그리기 (기존 함수 호출)
@@ -722,7 +722,7 @@ class LobbyScene extends Phaser.Scene {
       this.currentRoomId,
       this.currentPlayers,
       isHost,
-      this.currentMax
+      this.currentMax,
     );
   }
 
@@ -1177,7 +1177,7 @@ class LobbyScene extends Phaser.Scene {
           fontSize: `${width * 0.08}px`,
           fill: "#ffff00",
           fontWeight: "bold",
-        }
+        },
       )
       .setDepth(10)
       .setOrigin(0.5);
@@ -1211,7 +1211,7 @@ class LobbyScene extends Phaser.Scene {
       panelY - panelHeight / 2,
       panelWidth,
       panelHeight,
-      15 // 모서리 곡률
+      15, // 모서리 곡률
     );
     this.lobbyUIContainer.add(listPanel);
 
@@ -1243,7 +1243,7 @@ class LobbyScene extends Phaser.Scene {
             stroke: isReadyState ? "#004400" : "#000000",
             strokeThickness: isReadyState ? 2 : 0,
             fontWeight: "bold",
-          }
+          },
         )
         .setOrigin(0, 0.5); // ⭐ 핵심: 원점을 왼쪽(0)으로 설정하여 왼쪽 정렬
 
@@ -1296,7 +1296,7 @@ class LobbyScene extends Phaser.Scene {
             if (currentCount <= 1) {
               this.showToast(
                 "함께 할 유저가 필요합니다! (최소 2인)",
-                "#e74c3c"
+                "#e74c3c",
               );
               console.log("시작 거부: 혼자 있음");
             }
@@ -1684,7 +1684,7 @@ class GameScene extends Phaser.Scene {
     // gameStart 리스너 근처에 추가하세요.
     socket.off("turnChanged").on("turnChanged", (data) => {
       const nextIdx = this.roundData.players.findIndex(
-        (p) => p.id === data.nextTurnId
+        (p) => p.id === data.nextTurnId,
       );
 
       if (nextIdx !== -1) {
@@ -1736,7 +1736,7 @@ class GameScene extends Phaser.Scene {
 
       const updatedPlayers = data.players.map((serverPlayer) => {
         const localPlayer = this.roundData.players.find(
-          (p) => p.id === serverPlayer.id
+          (p) => p.id === serverPlayer.id,
         );
         return {
           ...serverPlayer,
@@ -1761,7 +1761,7 @@ class GameScene extends Phaser.Scene {
 
         this.addGameLog(
           `${data.winnerNickname}님 획득! (${data.reactionTime}초)`,
-          "#f1c40f"
+          "#f1c40f",
         );
         this.roundData.players = updatedPlayers;
         /*this.time.delayedCall(500, () => {
@@ -1934,7 +1934,7 @@ class GameScene extends Phaser.Scene {
           0,
           0,
           this.cameras.main.width,
-          this.cameras.main.height
+          this.cameras.main.height,
         );
         this.turnOverlay.setDepth(1000);
 
@@ -1981,7 +1981,7 @@ class GameScene extends Phaser.Scene {
         barWidth,
         barHeight,
         0x22c55e,
-        1
+        1,
       )
       .setOrigin(0, 0.5)
       .setDepth(1001)
@@ -2067,7 +2067,7 @@ class GameScene extends Phaser.Scene {
           fontWeight: "bold",
           stroke: isMyTurn && !isEliminated ? "#ffffff" : "#000", // 차례면 흰색 테두리로 강조
           strokeThickness: isMyTurn && !isEliminated ? 5 : 3,
-        }
+        },
       )
       .setOrigin(0.5);
 
@@ -2195,7 +2195,7 @@ class GameScene extends Phaser.Scene {
     const { width } = this.cameras.main;
 
     const player = this.roundData.players.find(
-      (p) => p.openStack === openStack
+      (p) => p.openStack === openStack,
     );
     const cardsToDraw =
       player && player.isFlipping ? openStack.slice(0, -1) : openStack;
@@ -2268,6 +2268,14 @@ class GameScene extends Phaser.Scene {
       return;
     }
 
+    // 💡 [수정] 애니메이션 시작 직후 바닥 카드를 즉시 비우고 렌더링
+    // → 애니메이션 중에 기존 카드가 화면에 보이지 않도록 함
+    this.roundData.players.forEach((player) => {
+      player.openStack = [];
+      player.openCard = null;
+    });
+    this.renderTable(this.roundData.players);
+
     // 2. 각 플레이어의 스택을 순회하며 모든 카드 생성
     prevPlayers.forEach((p, pIndex) => {
       if (p.openStack && p.openStack.length > 0) {
@@ -2281,8 +2289,8 @@ class GameScene extends Phaser.Scene {
 
         // 💡 [핵심] 해당 플레이어의 openStack에 있는 모든 카드를 날림
         p.openStack.forEach((card, cardIdx) => {
-          // 약간의 시간차를 주어 '슈슈슉' 느낌 유도 (선택 사항)
-          const delay = cardIdx * 50;
+          // 💡 [수정] 더 빠른 "슈슈슉" 느낌: delay 25ms, duration 250ms
+          const delay = cardIdx * 25;
 
           const flyCard = this.add
             .image(startX, startY - cardIdx * 2, "card_back") // 기존 쌓여있던 높이 재현
@@ -2293,7 +2301,7 @@ class GameScene extends Phaser.Scene {
             targets: flyCard,
             x: targetPos.x,
             y: targetPos.y,
-            duration: 400,
+            duration: 250,
             delay: delay,
             ease: "Cubic.out",
             onComplete: () => {
@@ -2335,7 +2343,7 @@ class GameScene extends Phaser.Scene {
     const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
     const myIndex = this.roundData.players.findIndex((p) => p.id === myId);
     const playerIdx = this.roundData.players.findIndex(
-      (p) => p.id === data.playerId
+      (p) => p.id === data.playerId,
     );
     const safeMyIndex = myIndex === -1 ? 0 : myIndex;
     const relativeIdx =
@@ -2436,7 +2444,7 @@ class GameScene extends Phaser.Scene {
       targetPlayers = players.filter((p) => data.recipients.includes(p.id));
     } else {
       targetPlayers = players.filter(
-        (p) => p.id !== data.penaltyId && p.cards > 0
+        (p) => p.id !== data.penaltyId && p.cards > 0,
       );
     }
 
@@ -2464,8 +2472,8 @@ class GameScene extends Phaser.Scene {
         targets: flyCard,
         x: targetPos.x,
         y: targetPos.y,
-        duration: 500,
-        delay: index * 100, // 💡 0.1초씩 간격을 두고 날아감
+        duration: 250,
+        delay: index * 25, // 💡 [수정] 더 빠른 "슈슈슉" 느낌
         ease: "Cubic.out",
         // delay: 0, // 💡 한 장씩 확실히 빠지는걸 보여주려면 딜레이를 없애거나 짧게 조절
         onStart: () => {
@@ -2797,24 +2805,34 @@ class GameScene extends Phaser.Scene {
       fruit: Math.floor(Math.random() * 4) + 1,
       count: Math.floor(Math.random() * 5) + 1,
     };
+
+    // 즉시 현재 보여지는 카드로 설정
     player.openCard = randomCard;
+
+    // --- 핵심 수정: 싱글플레이에서는 로컬 openStack을 직접 누적 ---
+    if (!player.openStack || !Array.isArray(player.openStack))
+      player.openStack = [];
+    player.openStack.push(randomCard); // 즉시 누적해서 기존 바닥 카드들이 유지되게 함
 
     const animationData = {
       playerId: playerId,
       card: randomCard,
       remainingCards: player.cards,
+      // playCardFlipAnimation 내부에서 중복 push를 방지하도록 현재 스택 전달
+      openCardStack: [...player.openStack],
     };
 
     // 4. 애니메이션 및 UI 갱신
     this.playCardFlipAnimation(animationData);
 
+    // 즉시 렌더링 (새 카드가 기존 스택 위에 쌓인 것을 바로 보여줌)
     this.renderTable(this.roundData.players);
 
     // 5. 💡 마지막 카드를 낸 순간 알림 (기사회생 독려)
     if (playerId === myId && player.cards === 0) {
       this.showToast(
         "마지막 카드를 제출했습니다! 종을 쳐서 카드를 획득하세요!",
-        "#f39c12"
+        "#f39c12",
       );
     }
 
@@ -2857,7 +2875,7 @@ class GameScene extends Phaser.Scene {
       (p) =>
         p.id !== failedPlayerId &&
         !p.isEliminated &&
-        (Number(p.cards) || 0) >= 0
+        (Number(p.cards) || 0) >= 0,
     );
 
     // 3. 페널티 실행 (받을 사람이 없어도 내 카드는 깎여야 규칙에 맞음)
@@ -2919,7 +2937,7 @@ class GameScene extends Phaser.Scene {
 
     // 1. 현재 카드가 1장이라도 있는 '실제 생존자' 명단 추출
     const survivors = this.roundData.players.filter(
-      (p) => (Number(p.cards) || 0) > 0
+      (p) => (Number(p.cards) || 0) > 0,
     );
     const isMeAlive = survivors.some((p) => p.id === myId);
 
@@ -2976,9 +2994,8 @@ class GameScene extends Phaser.Scene {
     // 가져갈 카드가 없으면 리턴 (중복 실행 방지)
     if (totalCollected === 0) return;
 
-    //const winner = this.roundData.players.find((p) => p.id === winnerId);
     const winnerIdx = this.roundData.players.findIndex(
-      (p) => p.id === winnerId
+      (p) => p.id === winnerId,
     );
     const winner = this.roundData.players[winnerIdx];
 
@@ -2991,17 +3008,43 @@ class GameScene extends Phaser.Scene {
 
       this.addGameLog(
         `${winner.nickname}님이 카드 ${totalCollected}장을 획득!`,
-        "#f1c40f"
+        "#f1c40f",
       );
     }
 
+    // --- 멀티플레이와 동일한 시각적 처리 적용 (애니메이션 + 데이터 교체)
+    const prevPlayers = this.roundData.players.map((p) => ({
+      ...p,
+      openStack: p.openStack ? [...p.openStack] : [],
+    }));
+
+    const updatedPlayers = this.roundData.players.map((p) => {
+      const clone = { ...p };
+      if (p.id === (winner && winner.id)) {
+        clone.cards = winner.cards;
+        clone.remainingCards = winner.remainingCards;
+      }
+      // playWinAnimation은 prevPlayers의 openStack을 사용해 애니메이션을 수행하고,
+      // 완료 시 this.roundData.players의 openStack을 비우므로 여기에는 기존 스택을 넣어둡니다.
+      clone.openStack = p.openStack ? [...p.openStack] : [];
+      return clone;
+    });
+
+    // 애니메이션 실행 (멀티와 동일한 흐름)
+    this.playWinAnimation({
+      winnerId: winner ? winner.id : null,
+      players: updatedPlayers,
+      prevPlayers: prevPlayers,
+    });
+
+    // 즉시 로컬 상태 업데이트 (애니메이션이 끝나면 openStack은 playWinAnimation에서 비워집니다)
+    this.roundData.players = updatedPlayers;
+
+    // 상태 갱신
     this.updateEliminationStatus();
-
-    // 3. UI 갱신
-
-    this.renderTable(this.roundData.players);
     this.updateTurnEffect();
 
+    // 승자 다음 동작 예약 (AI는 뒤집기, 플레이어는 다시 입력 허용)
     if (winner && winner.id.startsWith("AI_")) {
       this.time.delayedCall(1500, () => {
         if (this.isGameStarted) {
@@ -3009,7 +3052,6 @@ class GameScene extends Phaser.Scene {
         }
       });
     } else {
-      // 내가 승자라면, 다시 내가 누를 수 있게 상태 초기화
       this.canClick = true;
       this.isFlipping = false;
     }
@@ -3161,7 +3203,8 @@ class GameScene extends Phaser.Scene {
 
       // 2. 닉네임 텍스트 (색상 로직 수정)
       let nameColor = "#0f172a"; // 기본 검정색 계열
-      if (isThisPlayerHost) nameColor = "#e67e22"; // 방장은 주황색
+      if (isThisPlayerHost)
+        nameColor = "#e67e22"; // 방장은 주황색
       else if (p.isReady) nameColor = "#2ecc71"; // 준비 완료면 초록색 (방장 아닐 때만)
 
       const nameTxt = this.add
