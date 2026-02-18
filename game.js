@@ -322,8 +322,50 @@ class LobbyScene extends Phaser.Scene {
     });
 
     // 인원 선택 버튼들 [2, 3, 4] 아래에 추가
-    const singleBtnY = height * 0.51; // 기존 0.4보다 위쪽인 0.3으로 설정
-    const singleBtnW = width * 0.6; // 너비를 좀 더 넓게
+    const publicBtnY = height * 0.5; // 새로 추가: 공개 방 찾기
+    const publicBtnW = width * 0.6;
+    const publicBtnH = height * 0.07;
+
+    const publicBtn = this.add.container(centerX, publicBtnY);
+    const publicBtnImg = this.add
+      .image(0, 0, "uibtn")
+      .setDisplaySize(publicBtnW, publicBtnH)
+      .setInteractive()
+      .setTint(0x3498db); // 파란색 포인트
+
+    publicBtn.add([
+      publicBtnImg,
+      this.add
+        .text(0, 0, "공개 방 찾기", {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.055}px`,
+          color: "#ffffff",
+          fontWeight: "bold",
+        })
+        .setOrigin(0.5),
+    ]);
+
+    publicBtnImg.on("pointerdown", () => {
+      this.sound.play("pop", { volume: 0.1 });
+      this.tweens.add({
+        targets: [publicBtnImg, publicBtn.list[1]],
+        scaleX: "*=0.95",
+        scaleY: "*=0.95",
+        duration: 50,
+        yoyo: true,
+        onComplete: () => {
+          if (this.isOnline) {
+            // 💡 공개 방 리스트 표시
+            this.showPublicRoomsPopup();
+          } else {
+            this.showToast("인터넷 연결이 필요합니다!", "#ffffff");
+          }
+        },
+      });
+    });
+
+    const singleBtnY = height * 0.59; // 기존 0.51에서 조정
+    const singleBtnW = width * 0.6;
     const singleBtnH = height * 0.07;
 
     const singleBtn = this.add.container(centerX, singleBtnY);
@@ -409,7 +451,7 @@ class LobbyScene extends Phaser.Scene {
     });
 
     // 방 코드 입력 버튼 (비율 적용)
-    const joinBtnY = height * 0.6;
+    const joinBtnY = height * 0.68; // 기존 0.6에서 조정
 
     const joinBtnImg = this.add
       .image(centerX, joinBtnY, "uibtn")
@@ -1021,6 +1063,180 @@ class LobbyScene extends Phaser.Scene {
       });
     });
   }
+  showPublicRoomsPopup() {
+    this.isJoinPopupOpen = true;
+
+    const { width, height } = this.cameras.main;
+    const centerX = width / 2;
+    const popupY = height * 0.4;
+
+    // 로딩 표시
+    this.showLoading("방 목록 로딩 중...");
+
+    // 공개 방 목록 가져오기
+    fetch("/api/public-rooms")
+      .then((res) => res.json())
+      .then((rooms) => {
+        // 로딩 닫기
+        this.hideLoading();
+
+        if (!rooms || rooms.length === 0) {
+          this.showToast("사용 가능한 공개 방이 없습니다!");
+          this.isJoinPopupOpen = false;
+          return;
+        }
+
+        // 1. 기존 팝업 닫기
+        if (this.joinPopupContainer) this.joinPopupContainer.destroy();
+        this.joinPopupContainer = this.add.container(0, 0).setDepth(200);
+
+        // 2. 반투명 배경
+        const overlay = this.add
+          .rectangle(centerX, height * 0.5, width, height, 0x000000, 0.5)
+          .setInteractive();
+
+        // 3. 팝업 배경 이미지
+        const popupBg = this.add
+          .image(centerX, popupY, "popupbg")
+          .setDisplaySize(width * 0.7, height * 0.5);
+
+        // 4. 제목 텍스트
+        const titleText = this.add
+          .text(centerX, popupY - 200, "공개 방 모음", {
+            fontFamily: "Jua",
+            fontSize: `${width * 0.05}px`,
+            color: "#ffffff",
+            align: "center",
+            stroke: "#000000",
+            strokeThickness: 3,
+          })
+          .setOrigin(0.5);
+
+        // 5. 방 목록 컨테이너 (스크롤 처리)
+        const roomListContainer = this.add
+          .container(centerX, popupY - 80)
+          .setDepth(201);
+        const roomItemHeight = height * 0.065;
+        const maxVisibleRooms = 4;
+
+        rooms.forEach((room, index) => {
+          if (index >= maxVisibleRooms) return; // 최대 4개만 표시
+
+          const itemY = index * (roomItemHeight + 10);
+
+          // 방 아이템 배경
+          const itemBg = this.add.rectangle(
+            0,
+            itemY,
+            width * 0.6,
+            roomItemHeight,
+            0x34495e,
+          );
+
+          // 방 정보 텍스트
+          const roomInfo = `[${room.roomId}] ${room.hostNickname} (${room.playerCount}/${room.maxPlayers})`;
+          const roomText = this.add
+            .text(0, itemY, roomInfo, {
+              fontFamily: "Jua",
+              fontSize: `${width * 0.035}px`,
+              color: "#ffffff",
+              align: "left",
+            })
+            .setOrigin(0, 0.5);
+
+          // 클릭 가능하게 만들기
+          itemBg.setInteractive({ useHandCursor: true });
+          itemBg.on("pointerdown", () => {
+            this.sound.play("pop", { volume: 0.1 });
+
+            // 항튱 피드백
+            if (window.ReactNativeWebView) {
+              generateHapticFeedback({ type: "impactLight" }).catch(() => {});
+            }
+
+            const myNickname = localStorage.getItem("nickname") || "요리사";
+
+            this.showLoading("방 입장 중...");
+
+            // joinPublicRoom 소켓 이벤트 발송
+            this.socket.emit("joinPublicRoom", {
+              roomId: room.roomId,
+              nickname: myNickname,
+            });
+
+            closePopup();
+          });
+
+          itemBg.on("pointerover", () => {
+            itemBg.setFillStyle(0x2c3e50);
+          });
+
+          itemBg.on("pointerout", () => {
+            itemBg.setFillStyle(0x34495e);
+          });
+
+          roomListContainer.add([itemBg, roomText]);
+        });
+
+        // 6. 취소 버튼
+        const cancelBtnImg = this.add
+          .image(centerX, popupY + 180, "uibtn")
+          .setDisplaySize(width * 0.3, height * 0.065)
+          .setInteractive({ useHandCursor: true })
+          .setTint(0xffaaaa);
+        const cancelBtnText = this.add
+          .text(centerX, popupY + 180, "취소", {
+            fontFamily: "Jua",
+            fontSize: `${width * 0.055}px`,
+            color: "#ffffff",
+          })
+          .setOrigin(0.5);
+
+        // 팝업 요소를 컨테이너에 추가
+        this.joinPopupContainer.add([
+          overlay,
+          popupBg,
+          titleText,
+          roomListContainer,
+          cancelBtnImg,
+          cancelBtnText,
+        ]);
+
+        const closePopup = () => {
+          if (this.joinPopupContainer) {
+            this.joinPopupContainer.destroy();
+            this.joinPopupContainer = null;
+          }
+          this.isJoinPopupOpen = false;
+        };
+
+        cancelBtnImg.on("pointerdown", () => {
+          this.sound.play("pop", { volume: 0.1 });
+
+          if (window.ReactNativeWebView) {
+            generateHapticFeedback({ type: "impactLight" }).catch(() => {});
+          }
+
+          this.tweens.add({
+            targets: [cancelBtnImg, cancelBtnText],
+            scaleX: "*=0.95",
+            scaleY: "*=0.95",
+            duration: 50,
+            yoyo: true,
+            onComplete: () => {
+              closePopup();
+            },
+          });
+        });
+      })
+      .catch((err) => {
+        console.error("Error fetching public rooms:", err);
+        this.hideLoading();
+        this.showToast("방 목록을 불러올 수 없습니다!");
+        this.isJoinPopupOpen = false;
+      });
+  }
+
   cleanupPopup() {
     if (this.activePopupElements) {
       this.activePopupElements.forEach((el) => {
@@ -1732,7 +1948,12 @@ class GameScene extends Phaser.Scene {
 
       this.playFeedback(data.success, data.message);
 
-      const prevPlayers = [...this.roundData.players]; // 애니메이션용 이전 상태 보관
+      // 💡 [수정] prevPlayers를 깊은 복사로 만들어 openStack이 유지되도록 함
+      // (서버가 이미 openCardStack을 비운 상태로 보내므로)
+      const prevPlayers = this.roundData.players.map((p) => ({
+        ...p,
+        openStack: p.openStack ? [...p.openStack] : [],
+      }));
 
       const updatedPlayers = data.players.map((serverPlayer) => {
         const localPlayer = this.roundData.players.find(
@@ -1743,8 +1964,7 @@ class GameScene extends Phaser.Scene {
           cards:
             serverPlayer.cards ??
             (serverPlayer.myDeck ? serverPlayer.myDeck.length : 0),
-          // 💡 여기서 중요! 바로 []로 지우지 않고, 기존에 쌓여있던 걸 일단 넣어줍니다.
-          openStack: localPlayer ? localPlayer.openStack : [],
+          openStack: [], // 서버에서 이미 비워졌으므로 빈 배열로 설정
         };
       });
 
@@ -1775,7 +1995,8 @@ class GameScene extends Phaser.Scene {
           players: updatedPlayers, // 👈 중요!
         });
 
-        this.renderTable(updatedPlayers);
+        // 💡 [수정] 렌더링 제거 - playPenaltyAnimation 내부 완료 후에만 호출
+        this.roundData.players = updatedPlayers;
       }
     });
 
@@ -2455,7 +2676,7 @@ class GameScene extends Phaser.Scene {
     }
 
     let finishedCount = 0;
-    this.renderTable(data.players);
+    // 💡 [수정] 애니메이션 시작 직전 렌더링 제거 → 애니메이션 완료 후만 렌더링
 
     targetPlayers.forEach((player, index) => {
       const realIdx = players.findIndex((p) => p.id === player.id);

@@ -42,6 +42,20 @@ let rooms = {};
 app.get("/", (req, res) => res.status(200).send("서버 가동 중"));
 app.get("/health", (req, res) => res.status(200).json({ status: "ok" }));
 
+// 💡 [추가] 공개 방 목록 조회 API
+app.get("/api/public-rooms", (req, res) => {
+  const publicRooms = Object.values(rooms)
+    .filter((room) => room.isPublic && !room.isGameStarted)
+    .map((room) => ({
+      roomId: room.roomId,
+      hostNickname: room.players[0]?.nickname || "방장",
+      playerCount: room.players.length,
+      maxPlayers: room.maxPlayers,
+    }));
+
+  res.json({ rooms: publicRooms });
+});
+
 // --- 공통 유틸리티 함수 ---
 
 function getFruitTotals(players) {
@@ -162,12 +176,16 @@ io.on("connection", (socket) => {
     while (rooms[roomId])
       roomId = Math.floor(1000 + Math.random() * 9000).toString();
 
+    // 💡 [추가] isPublic 플래그 설정
+    const isPublic = data.isPublic === true;
+
     rooms[roomId] = {
       roomId,
       host: socket.id,
       players: [],
       maxPlayers: data.maxPlayers || 4,
       isGameStarted: false,
+      isPublic: isPublic, // 💡 공개 방 여부
     };
     rooms[roomId].players.push({
       id: socket.id,
@@ -185,6 +203,7 @@ io.on("connection", (socket) => {
       players: rooms[roomId].players,
       hostId: socket.id,
       max: rooms[roomId].maxPlayers,
+      isPublic: isPublic,
     });
   });
 
@@ -197,6 +216,40 @@ io.on("connection", (socket) => {
     const room = rooms[roomId];
 
     if (!room) return socket.emit("joinRoomError", "방이 존재하지 않습니다.");
+    if (room.players.length >= room.maxPlayers)
+      return socket.emit("joinRoomError", "인원 초과");
+    if (room.isGameStarted)
+      return socket.emit("joinRoomError", "이미 시작된 게임");
+
+    socket.join(roomId);
+    socket.roomId = roomId;
+    socket.nickname = nickname;
+    if (!room.players.find((p) => p.id === socket.id)) {
+      room.players.push({
+        id: socket.id,
+        nickname,
+        myDeck: [],
+        openCard: null,
+        openCardStack: [],
+        isReady: false,
+      });
+    }
+    io.to(roomId).emit("playerJoined", {
+      roomId,
+      players: room.players,
+      hostId: room.host,
+      max: room.maxPlayers,
+    });
+  });
+
+  // 💡 [추가] 공개 방 입장 이벤트
+  socket.on("joinPublicRoom", (data) => {
+    const roomId = data.roomId;
+    const nickname = data.nickname || socket.nickname || "요리사";
+    const room = rooms[roomId];
+
+    if (!room) return socket.emit("joinRoomError", "방이 존재하지 않습니다.");
+    if (!room.isPublic) return socket.emit("joinRoomError", "비공개 방입니다.");
     if (room.players.length >= room.maxPlayers)
       return socket.emit("joinRoomError", "인원 초과");
     if (room.isGameStarted)
