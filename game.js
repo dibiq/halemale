@@ -122,6 +122,8 @@ class LobbyScene extends Phaser.Scene {
 
     //this.load.image("title", `${ASSET_SERVER}/images/title.png${VERSION}`);
     this.load.image("mybg", `${ASSET_SERVER}/images/mybg.png${VERSION}`);
+    this.load.image("roombg", `${ASSET_SERVER}/images/roombg.png${VERSION}`);
+
     this.load.image("bar", `${ASSET_SERVER}/images/bar.png${VERSION}`);
     this.load.image("itembg", `${ASSET_SERVER}/images/itembg.png${VERSION}`);
     this.load.image("uibtn", `${ASSET_SERVER}/images/ui_btn.png${VERSION}`);
@@ -1183,14 +1185,27 @@ class LobbyScene extends Phaser.Scene {
                 }
 
                 const myNickname = localStorage.getItem("nickname") || "요리사";
-                this.showLoading("방 입장 중...");
 
-                socket.emit("joinPublicRoom", {
-                  roomId: room.roomId,
-                  nickname: myNickname,
-                });
-
-                closePopupWithCleanup();
+                if (!room.isPublic) {
+                  // 비공개 방: 비밀번호 입력 팝업
+                  this.showPasswordPopup((pw) => {
+                    this.showLoading("방 입장 중...");
+                    socket.emit("joinPublicRoom", {
+                      roomId: room.roomId,
+                      nickname: myNickname,
+                      password: pw,
+                    });
+                    closePopupWithCleanup();
+                  });
+                } else {
+                  // 공개 방: 바로 입장
+                  this.showLoading("방 입장 중...");
+                  socket.emit("joinPublicRoom", {
+                    roomId: room.roomId,
+                    nickname: myNickname,
+                  });
+                  closePopupWithCleanup();
+                }
               });
 
               itemBg.on("pointerover", () => {
@@ -1332,14 +1347,14 @@ class LobbyScene extends Phaser.Scene {
         const showRoomCreateForm = (container) => {
           // 방 이름 입력창 (DOM 절대 좌표)
           const roomNameInput = this.add
-            .dom(centerX * -0.36, contentY * -0.2, "input")
+            .dom(centerX, contentY - height * 0.1, "input")
             .setDepth(1102);
-          const el = roomNameInput.node;
-          el.placeholder = "방 이름 입력 (선택)";
-          Object.assign(el.style, {
+          const nameEl = roomNameInput.node;
+          nameEl.placeholder = "방 이름 입력 (선택, 최대10자)";
+          Object.assign(nameEl.style, {
             width: `${width * 0.5}px`,
-            height: "90px",
-            fontSize: "50px",
+            height: "70px",
+            fontSize: "38px",
             fontFamily: "'Jua', sans-serif",
             textAlign: "center",
             border: "3px solid #5d4037",
@@ -1348,52 +1363,100 @@ class LobbyScene extends Phaser.Scene {
             outline: "none",
             color: "#000",
           });
-          el.addEventListener("input", () => {
-            if (el.value.length > 10) el.value = el.value.substring(0, 10);
+          nameEl.addEventListener("input", () => {
+            if (nameEl.value.length > 10)
+              nameEl.value = nameEl.value.substring(0, 10);
           });
 
-          // 공개/비공개 토글 상태
+          // 공개/비공개 각각 버튼
           let isPublic = true;
+          const btnGapX = width * 0.13;
+          const toggleY = height * 0.01;
 
-          // 토글 배경
-          const toggleBg = this.add
-            .image(0, height * 0.02, "uibtn")
-            .setDisplaySize(width * 0.25, height * 0.055)
-            .setTint(0x3498db);
-
-          // 토글 텍스트
-          const toggleText = this.add
-            .text(0, height * 0.02, "🌐 공개 방", {
+          const publicBtnImg = this.add
+            .image(-btnGapX, toggleY, "uibtn")
+            .setDisplaySize(width * 0.22, height * 0.05)
+            .setTint(0x3498db) // 활성 상태 (파란색)
+            .setInteractive({ useHandCursor: true });
+          const publicBtnText = this.add
+            .text(-btnGapX, toggleY, "🌐 공개", {
               fontFamily: "Jua",
-              fontSize: `${width * 0.038}px`,
+              fontSize: `${width * 0.033}px`,
               color: "#ffffff",
               fontWeight: "bold",
             })
             .setOrigin(0.5);
 
-          toggleBg.setInteractive({ useHandCursor: true });
-          toggleBg.on("pointerdown", () => {
-            this.sound.play("pop", { volume: 0.1 });
-            isPublic = !isPublic;
-            toggleBg.setTint(isPublic ? 0x3498db : 0xf39c12);
-            toggleText.setText(isPublic ? "🌐 공개" : "🔒 비공개");
+          const privateBtnImg = this.add
+            .image(btnGapX, toggleY, "uibtn")
+            .setDisplaySize(width * 0.22, height * 0.05)
+            .setTint(0x7f8c8d) // 비활성 상태 (회색)
+            .setInteractive({ useHandCursor: true });
+          const privateBtnText = this.add
+            .text(btnGapX, toggleY, "🔒 비공개", {
+              fontFamily: "Jua",
+              fontSize: `${width * 0.033}px`,
+              color: "#ffffff",
+              fontWeight: "bold",
+            })
+            .setOrigin(0.5);
+
+          // 비밀번호 입력창 (비공개 선택 시 표시)
+          const pwInput = this.add
+            .dom(centerX, contentY + height * 0.06, "input")
+            .setDepth(1102);
+          const pwEl = pwInput.node;
+          pwEl.placeholder = "비밀번호 (숫자 4자리)";
+          pwEl.type = "password";
+          Object.assign(pwEl.style, {
+            width: `${width * 0.4}px`,
+            height: "65px",
+            fontSize: "38px",
+            fontFamily: "'Jua', sans-serif",
+            textAlign: "center",
+            border: "3px solid #e67e22",
+            borderRadius: "10px",
+            backgroundColor: "#fff8f0",
+            outline: "none",
+            color: "#000",
+            display: "none", // 처음엔 숨김
           });
-          toggleText.setInteractive({ useHandCursor: true });
-          toggleText.on("pointerdown", () => {
+          pwEl.addEventListener("input", () => {
+            pwEl.value = pwEl.value.replace(/[^0-9]/g, "").substring(0, 4);
+          });
+
+          const updateToggle = (pub) => {
+            isPublic = pub;
+            publicBtnImg.setTint(pub ? 0x3498db : 0x7f8c8d);
+            privateBtnImg.setTint(pub ? 0x7f8c8d : 0xe67e22);
+            pwEl.style.display = pub ? "none" : "block";
+          };
+
+          publicBtnImg.on("pointerdown", () => {
             this.sound.play("pop", { volume: 0.1 });
-            isPublic = !isPublic;
-            toggleBg.setTint(isPublic ? 0x3498db : 0xf39c12);
-            toggleText.setText(isPublic ? "🌐 공개" : "🔒 비공개");
+            updateToggle(true);
+          });
+          publicBtnText.on("pointerdown", () => {
+            this.sound.play("pop", { volume: 0.1 });
+            updateToggle(true);
+          });
+          privateBtnImg.on("pointerdown", () => {
+            this.sound.play("pop", { volume: 0.1 });
+            updateToggle(false);
+          });
+          privateBtnText.on("pointerdown", () => {
+            this.sound.play("pop", { volume: 0.1 });
+            updateToggle(false);
           });
 
           // 방 만들기 버튼
           const createBtnImg = this.add
-            .image(0, height * 0.12, "uibtn")
-            .setDisplaySize(width * 0.2, height * 0.065)
+            .image(0, height * 0.13, "uibtn")
+            .setDisplaySize(width * 0.25, height * 0.06)
             .setTint(0x2ecc71)
             .setInteractive({ useHandCursor: true });
           const createBtnText = this.add
-            .text(0, height * 0.12, "만들기", {
+            .text(0, height * 0.13, "만들기", {
               fontFamily: "Jua",
               fontSize: `${width * 0.042}px`,
               color: "#ffffff",
@@ -1411,13 +1474,21 @@ class LobbyScene extends Phaser.Scene {
               yoyo: true,
               onComplete: () => {
                 const myNickname = localStorage.getItem("nickname") || "요리사";
-                const roomName = el.value.trim() || `${myNickname}의 방`;
+                const roomName = nameEl.value.trim() || `${myNickname}의 방`;
+                const password = isPublic ? null : pwEl.value.trim();
+
+                if (!isPublic && (!password || password.length < 4)) {
+                  this.showToast("비밀번호 4자리를 입력해주세요!", "#e74c3c");
+                  return;
+                }
+
                 this.showLoading("방 생성 중...");
                 socket.emit("createRoom", {
                   nickname: myNickname,
                   maxPlayers: 4,
                   isPublic: isPublic,
                   roomName: roomName,
+                  password: password,
                 });
                 closePopupWithCleanup();
               },
@@ -1426,8 +1497,11 @@ class LobbyScene extends Phaser.Scene {
 
           container.add([
             roomNameInput,
-            toggleBg,
-            toggleText,
+            publicBtnImg,
+            publicBtnText,
+            privateBtnImg,
+            privateBtnText,
+            pwInput,
             createBtnImg,
             createBtnText,
           ]);
@@ -1633,6 +1707,123 @@ class LobbyScene extends Phaser.Scene {
         this.showToast("방 목록을 불러올 수 없습니다!");
         this.isJoinPopupOpen = false;
       });
+  }
+
+  showPasswordPopup(callback) {
+    const { width, height } = this.cameras.main;
+    const centerX = width / 2;
+    const popupY = height * 0.4;
+
+    const pwPopupContainer = this.add.container(0, 0).setDepth(1200);
+
+    const overlay = this.add
+      .rectangle(centerX, height * 0.5, width, height, 0x000000, 0.6)
+      .setInteractive();
+
+    const popupBg = this.add
+      .image(centerX, popupY, "popupbg")
+      .setDisplaySize(width * 0.65, height * 0.22);
+
+    const titleText = this.add
+      .text(centerX, popupY - height * 0.1, "비밀번호를 입력하세요", {
+        fontFamily: "Jua",
+        fontSize: `${width * 0.045}px`,
+        color: "#ffffff",
+        stroke: "#000000",
+        strokeThickness: 3,
+      })
+      .setOrigin(0.5);
+
+    const pwInput = this.add
+      .dom(centerX, popupY - height * 0.02, "input")
+      .setDepth(1201);
+    const pwEl = pwInput.node;
+    pwEl.placeholder = "숫자 4자리";
+    pwEl.type = "password";
+    Object.assign(pwEl.style, {
+      width: `${width * 0.4}px`,
+      height: "70px",
+      fontSize: "44px",
+      fontFamily: "'Jua', sans-serif",
+      textAlign: "center",
+      border: "3px solid #e67e22",
+      borderRadius: "10px",
+      backgroundColor: "#fff8f0",
+      outline: "none",
+      color: "#000",
+    });
+    pwEl.addEventListener("input", () => {
+      pwEl.value = pwEl.value.replace(/[^0-9]/g, "").substring(0, 4);
+    });
+
+    const btnGap = width * 0.17;
+    const btnY = popupY + height * 0.08;
+
+    const cancelBtnImg = this.add
+      .image(centerX - btnGap, btnY, "uibtn")
+      .setDisplaySize(width * 0.28, height * 0.06)
+      .setTint(0xffaaaa)
+      .setInteractive({ useHandCursor: true });
+    const cancelBtnText = this.add
+      .text(centerX - btnGap, btnY, "취소", {
+        fontFamily: "Jua",
+        fontSize: `${width * 0.045}px`,
+        color: "#ffffff",
+      })
+      .setOrigin(0.5);
+
+    const confirmBtnImg = this.add
+      .image(centerX + btnGap, btnY, "uibtn")
+      .setDisplaySize(width * 0.28, height * 0.06)
+      .setInteractive({ useHandCursor: true });
+    const confirmBtnText = this.add
+      .text(centerX + btnGap, btnY, "입장", {
+        fontFamily: "Jua",
+        fontSize: `${width * 0.045}px`,
+        color: "#ffffff",
+        fontWeight: "bold",
+      })
+      .setOrigin(0.5);
+
+    pwPopupContainer.add([
+      overlay,
+      popupBg,
+      titleText,
+      cancelBtnImg,
+      cancelBtnText,
+      confirmBtnImg,
+      confirmBtnText,
+    ]);
+
+    const closePwPopup = () => {
+      pwPopupContainer.destroy();
+      pwInput.destroy();
+    };
+
+    cancelBtnImg.on("pointerdown", () => {
+      this.sound.play("pop", { volume: 0.1 });
+      closePwPopup();
+    });
+
+    confirmBtnImg.on("pointerdown", () => {
+      const pw = pwEl.value.trim();
+      if (!pw || pw.length < 4) {
+        this.showToast("비밀번호 4자리를 입력해주세요!", "#e74c3c");
+        return;
+      }
+      this.sound.play("pop", { volume: 0.1 });
+      this.tweens.add({
+        targets: [confirmBtnImg, confirmBtnText],
+        scaleX: "*=0.95",
+        scaleY: "*=0.95",
+        duration: 50,
+        yoyo: true,
+        onComplete: () => {
+          closePwPopup();
+          if (callback) callback(pw);
+        },
+      });
+    });
   }
 
   cleanupPopup() {

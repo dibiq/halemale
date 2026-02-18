@@ -196,6 +196,7 @@ io.on("connection", (socket) => {
     // 💡 [추가] isPublic 플래그 설정
     const isPublic = data.isPublic === true;
     const roomName = data.roomName || `${socket.nickname}의 방`;
+    const password = isPublic ? null : data.password || null;
 
     rooms[roomId] = {
       roomId,
@@ -204,7 +205,8 @@ io.on("connection", (socket) => {
       maxPlayers: data.maxPlayers || 4,
       isGameStarted: false,
       isPublic: isPublic,
-      roomName: roomName, // 💡 방 이름 저장
+      roomName: roomName,
+      password: password, // 💡 비밀번호 저장 (비공개 방만)
     };
     rooms[roomId].players.push({
       id: socket.id,
@@ -270,10 +272,16 @@ io.on("connection", (socket) => {
   socket.on("joinPublicRoom", (data) => {
     const roomId = data.roomId;
     const nickname = data.nickname || socket.nickname || "요리사";
+    const inputPassword = data.password || null;
     const room = rooms[roomId];
 
     if (!room) return socket.emit("joinRoomError", "방이 존재하지 않습니다.");
-    if (!room.isPublic) return socket.emit("joinRoomError", "비공개 방입니다.");
+    // 비공개 방이면 비밀번호 검증
+    if (!room.isPublic) {
+      if (!inputPassword || inputPassword !== room.password) {
+        return socket.emit("joinRoomError", "비밀번호가 틀렸습니다.");
+      }
+    }
     if (room.players.length >= room.maxPlayers)
       return socket.emit("joinRoomError", "인원 초과");
     if (room.isGameStarted)
