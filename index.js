@@ -48,6 +48,7 @@ app.get("/api/public-rooms", (req, res) => {
     .filter((room) => room.isPublic && !room.isGameStarted)
     .map((room) => ({
       roomId: room.roomId,
+      roomName: room.roomName || `${room.players[0]?.nickname || "방장"}의 방`,
       hostNickname: room.players[0]?.nickname || "방장",
       playerCount: room.players.length,
       maxPlayers: room.maxPlayers,
@@ -55,6 +56,20 @@ app.get("/api/public-rooms", (req, res) => {
 
   res.json(publicRooms);
 });
+
+// 공개 방 목록을 모든 클라이언트에게 브로드캐스트하는 헬퍼 함수
+function broadcastPublicRooms() {
+  const publicRooms = Object.values(rooms)
+    .filter((room) => room.isPublic && !room.isGameStarted)
+    .map((room) => ({
+      roomId: room.roomId,
+      roomName: room.roomName || `${room.players[0]?.nickname || "방장"}의 방`,
+      hostNickname: room.players[0]?.nickname || "방장",
+      playerCount: room.players.length,
+      maxPlayers: room.maxPlayers,
+    }));
+  io.emit("publicRoomsUpdated", publicRooms);
+}
 
 // --- 공통 유틸리티 함수 ---
 
@@ -178,6 +193,7 @@ io.on("connection", (socket) => {
 
     // 💡 [추가] isPublic 플래그 설정
     const isPublic = data.isPublic === true;
+    const roomName = data.roomName || `${socket.nickname}의 방`;
 
     rooms[roomId] = {
       roomId,
@@ -185,7 +201,8 @@ io.on("connection", (socket) => {
       players: [],
       maxPlayers: data.maxPlayers || 4,
       isGameStarted: false,
-      isPublic: isPublic, // 💡 공개 방 여부
+      isPublic: isPublic,
+      roomName: roomName, // 💡 방 이름 저장
     };
     rooms[roomId].players.push({
       id: socket.id,
@@ -205,6 +222,11 @@ io.on("connection", (socket) => {
       max: rooms[roomId].maxPlayers,
       isPublic: isPublic,
     });
+
+    // 💡 공개 방이면 방목록 브로드캐스트
+    if (isPublic) {
+      broadcastPublicRooms();
+    }
   });
 
   socket.on("joinRoom", (data) => {

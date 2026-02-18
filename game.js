@@ -120,11 +120,13 @@ class LobbyScene extends Phaser.Scene {
       VERSION = "";
     }
 
-    this.load.image("title", `${ASSET_SERVER}/images/title.png${VERSION}`);
+    //this.load.image("title", `${ASSET_SERVER}/images/title.png${VERSION}`);
     this.load.image("mybg", `${ASSET_SERVER}/images/mybg.png${VERSION}`);
     this.load.image("bar", `${ASSET_SERVER}/images/bar.png${VERSION}`);
     this.load.image("itembg", `${ASSET_SERVER}/images/itembg.png${VERSION}`);
     this.load.image("uibtn", `${ASSET_SERVER}/images/ui_btn.png${VERSION}`);
+    this.load.image("btnbg", `${ASSET_SERVER}/images/btnbg.png${VERSION}`);
+
     this.load.image("slide", `${ASSET_SERVER}/images/slide.png${VERSION}`);
     this.load.image("chef", `${ASSET_SERVER}/images/chef.png${VERSION}`);
     this.load.image(
@@ -136,7 +138,7 @@ class LobbyScene extends Phaser.Scene {
       "soundoff",
       `${ASSET_SERVER}/images/soundoff.png${VERSION}`,
     );
-    this.load.image("popupbg", `${ASSET_SERVER}/images/popupbg2.png${VERSION}`);
+    this.load.image("popupbg", `${ASSET_SERVER}/images/popupbg.png${VERSION}`);
     this.load.image("home", `${ASSET_SERVER}/images/home.png${VERSION}`);
 
     // ============================================
@@ -225,11 +227,11 @@ class LobbyScene extends Phaser.Scene {
       .setDepth(0) // 레이어 순서를 가장 뒤로
       .setAlpha(1); // 게임 화면은 집중을 위해 약간 어둡게 처리(선택사항)
 
-    const title = this.add
+    /*const title = this.add
       .image(centerX, height * 0.2, "title")
       .setDisplaySize(width * 0.9, height * 0.6)
       .setDepth(1) // 레이어 순서를 가장 뒤로
-      .setAlpha(1); // 게임 화면은 집중을 위해 약간 어둡게 처리(선택사항)
+      .setAlpha(1); // 게임 화면은 집중을 위해 약간 어둡게 처리(선택사항)*/
 
     socket.off("hostChanged").on("hostChanged", (data) => {
       if (data.players) this.currentPlayers = data.players;
@@ -265,22 +267,27 @@ class LobbyScene extends Phaser.Scene {
 ======================================================= */
     const x = centerX; // 화면 중앙
     const y = height * 0.42;
-    const btnW = width * 0.6; // 단일 버튼이므로 크기를 조금 더 키움
+    const btnW = width * 0.5; // 단일 버튼이므로 크기를 조금 더 키움
     const btnH = height * 0.07;
 
     const multiBtn = this.add.container(x, y);
 
     // 1. 버튼 배경 이미지
+    /*const BtnBgImg = this.add
+      .image(0, y * 0.5, "btnbg")
+      .setDisplaySize(btnW * 1.2, btnH * 3.8)
+      .setInteractive();*/
+
     const multiBtnImg = this.add
-      .image(0, 0, "uibtn")
-      .setDisplaySize(btnW, btnH)
+      .image(0, y * 0.4, "uibtn")
+      .setDisplaySize(btnW, btnH * 1.2)
       .setInteractive();
 
     // 2. 버튼 텍스트
     const multiBtnText = this.add
-      .text(0, 0, "멀티플레이", {
+      .text(0, y * 0.4, "멀티플레이", {
         fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.055}px`,
+        fontSize: `${width * 0.06}px`,
         color: "#ffffff",
         fontWeight: "bold",
       })
@@ -304,8 +311,8 @@ class LobbyScene extends Phaser.Scene {
         yoyo: true,
         onComplete: () => {
           if (this.isOnline) {
-            // 공개/비공개 선택 팝업 띄우기
-            this.showRoomTypeSelectionPopup();
+            // 공개 방 화면 띄우기 (방 찾기 / 방 만들기 / 코드 입력)
+            this.showPublicRoomsPopup();
           } else {
             this.showToast("인터넷 연결이 필요합니다!", "#ffffff");
           }
@@ -314,47 +321,23 @@ class LobbyScene extends Phaser.Scene {
     });
 
     // 인원 선택 버튼들 [2, 3, 4] 아래에 추가
-    const publicBtnY = height * 0.5; // 새로 추가: 공개 방 찾기
-    const publicBtnW = width * 0.6;
-    const publicBtnH = height * 0.07;
-
-    const publicBtn = this.add.container(centerX, publicBtnY);
-    const publicBtnImg = this.add
-      .image(0, 0, "uibtn")
-      .setDisplaySize(publicBtnW, publicBtnH)
-      .setInteractive()
-      .setTint(0x3498db); // 파란색 포인트
-
-    publicBtn.add([
-      publicBtnImg,
-      this.add
-        .text(0, 0, "공개 방 찾기", {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.055}px`,
-          color: "#ffffff",
-          fontWeight: "bold",
-        })
-        .setOrigin(0.5),
-    ]);
-
-    // 인원 선택 버튼들 [2, 3, 4] 아래에 추가
     const singleBtnY = height * 0.5; // 싱글플레이 버튼 위치
-    const singleBtnW = width * 0.6;
+    const singleBtnW = width * 0.5;
     const singleBtnH = height * 0.07;
 
     const singleBtn = this.add.container(centerX, singleBtnY);
     const singleBtnImg = this.add
-      .image(0, 0, "uibtn")
-      .setDisplaySize(singleBtnW, singleBtnH)
+      .image(0, y * 0.43, "uibtn")
+      .setDisplaySize(singleBtnW, singleBtnH * 1.2)
       .setInteractive()
       .setTint(0xffd700); // 금색 포인트
 
     singleBtn.add([
       singleBtnImg,
       this.add
-        .text(0, 0, "싱글플레이", {
+        .text(0, y * 0.43, "싱글플레이", {
           fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.055}px`,
+          fontSize: `${width * 0.06}px`,
           color: "#ffffff",
           fontWeight: "bold",
         })
@@ -420,57 +403,6 @@ class LobbyScene extends Phaser.Scene {
           };
 
           this.scene.start("GameScene", singleGameData);
-        },
-      });
-    });
-
-    // 방 코드 입력 버튼 (비율 적용)
-    const joinBtnY = height * 0.68; // 기존 0.6에서 조정
-
-    const joinBtnImg = this.add
-      .image(centerX, joinBtnY, "uibtn")
-      .setDisplaySize(width * 0.6, height * 0.08)
-      .setTint(0xe67e22)
-      .setInteractive();
-
-    // 2. 버튼 텍스트 생성
-    const joinBtnText = this.add
-      .text(centerX, joinBtnY, "방 코드 입력하기", {
-        fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.055}px`,
-        color: "#ffffff",
-      })
-      .setOrigin(0.5);
-
-    // 3. 클릭 이벤트 연출 추가
-    joinBtnImg.on("pointerdown", () => {
-      this.checkConnection();
-
-      // 효과음 재생 (기존 'btn' 사용)
-      this.sound.play("btn", { volume: 0.1 });
-
-      // 버튼과 글자가 함께 눌리는 연출
-      this.tweens.add({
-        targets: [joinBtnImg, joinBtnText],
-        scaleX: "*=0.95", // 현재 크기에서 5% 축소
-        scaleY: "*=0.95",
-        duration: 50,
-        yoyo: true, // 다시 원래 크기로 돌아옴
-        onComplete: () => {
-          if (this.isOnline) {
-            this.showJoinCodePopup((data) => {
-              if (data && data.roomId) {
-                // data가 { roomId, nickname } 객체이므로 그대로 전송
-                socket.emit("joinRoom", data);
-
-                if (window.ReactNativeWebView) {
-                  generateHapticFeedback({ type: "success" }).catch(() => {});
-                }
-              }
-            });
-          } else {
-            this.showToast("인터넷 연결이 필요합니다!", "#ffffff"); // 초록색 토스트
-          }
         },
       });
     });
@@ -602,7 +534,7 @@ class LobbyScene extends Phaser.Scene {
       .setInteractive();
 
     // [핵심] 생성한 모든 객체를 메인 컨테이너에 추가
-    this.mainUIContainer.add([title, bgmBtn]);
+    this.mainUIContainer.add([bgmBtn]);
     this.mainUIContainer.setDepth(100);
 
     bgmBtn.on("pointerdown", () => {
@@ -746,7 +678,7 @@ class LobbyScene extends Phaser.Scene {
   showLoading(message) {
     const { width, height } = this.cameras.main;
 
-    // 기존 로딩창이 있다면 제거
+    // 기존 로딩창이 있다면 제거 (타이머도 함께 취소됨)
     this.hideLoading();
 
     this.loadingContainer = this.add.container(0, 0).setDepth(1000);
@@ -778,7 +710,7 @@ class LobbyScene extends Phaser.Scene {
     this.loadingContainer.add([bg, txt]);
 
     // 5초 후에도 안 사라지면 강제로 닫기 (네트워크 오류 대비)
-    this.time.delayedCall(10000, () => {
+    this.loadingTimer = this.time.delayedCall(10000, () => {
       if (this.loadingContainer) {
         this.hideLoading();
         this.showToast("연결 시간이 초과되었습니다.");
@@ -787,6 +719,12 @@ class LobbyScene extends Phaser.Scene {
   }
 
   hideLoading() {
+    // 타이머 취소
+    if (this.loadingTimer) {
+      this.loadingTimer.remove();
+      this.loadingTimer = null;
+    }
+
     if (this.loadingContainer) {
       this.loadingContainer.destroy();
       this.loadingContainer = null;
@@ -1054,28 +992,25 @@ class LobbyScene extends Phaser.Scene {
         return res.json();
       })
       .then((rooms) => {
-        // 로딩 닫기
-        this.hideLoading();
-
         // 1. 기존 팝업 닫기
         if (this.joinPopupContainer) this.joinPopupContainer.destroy();
         this.joinPopupContainer = this.add.container(0, 0).setDepth(1100); // 로비 UI보다 높게
 
         // 2. 반투명 배경
         const overlay = this.add
-          .rectangle(centerX, height * 0.5, width, height, 0x000000, 0.5)
+          .rectangle(centerX, height * 0.5, width, height, 0x000000, 0.55)
           .setInteractive();
 
         // 3. 팝업 배경 이미지
         const popupBg = this.add
           .image(centerX, popupY, "popupbg")
-          .setDisplaySize(width * 0.7, height * 0.6);
+          .setDisplaySize(width * 0.7, height * 0.5);
 
         // 4. 제목 텍스트
         const titleText = this.add
-          .text(centerX, popupY - 210, "멀티플레이", {
+          .text(centerX, popupY * 0.48, "멀티플레이", {
             fontFamily: "Jua",
-            fontSize: `${width * 0.05}px`,
+            fontSize: `${width * 0.08}px`,
             color: "#ffffff",
             align: "center",
             stroke: "#000000",
@@ -1083,76 +1018,85 @@ class LobbyScene extends Phaser.Scene {
           })
           .setOrigin(0.5);
 
-        // 5. 탭 버튼들 (3가지 선택)
-        const tabY = popupY - 150;
-        const tabBtnW = width * 0.15;
-        const tabBtnH = height * 0.045;
-        const tabGap = width * 0.18;
+        // 5. 탭 버튼들 (3가지 선택) - popupbg 하단에 uibtn 이미지로 배치
+        // popupbg 하단 = popupY + popupbg높이/2 부근
+        const popupHalfH = (height * 0.6) / 2;
+        const tabY = popupY + popupHalfH - height * 0.075; // popupbg 하단 안쪽
+        const tabBtnW = width * 0.16;
+        const tabBtnH = height * 0.05;
+        const tabGap = width * 0.195;
 
         let currentTab = "browse"; // 기본 탭
+        const allTabs = []; // 모든 탭 저장
+
+        // 먼저 배경과 제목을 컨테이너에 추가
+        this.joinPopupContainer.add([overlay, popupBg, titleText]);
 
         const createTabButton = (label, tabName, posX) => {
-          const tabBg = this.add.rectangle(
-            0,
-            0,
-            tabBtnW,
-            tabBtnH,
-            currentTab === tabName ? 0x2ecc71 : 0x34495e,
-          );
+          const isActive = currentTab === tabName;
+          const tabImg = this.add
+            .image(posX, tabY, "uibtn")
+            .setDisplaySize(tabBtnW, tabBtnH * 1.1)
+            .setTint(isActive ? 0x2ecc71 : 0x7f8c8d)
+            .setInteractive({ useHandCursor: true });
+
           const tabText = this.add
-            .text(0, 0, label, {
+            .text(posX, tabY, label, {
               fontFamily: "Jua",
-              fontSize: `${width * 0.03}px`,
+              fontSize: `${width * 0.035}px`,
               color: "#ffffff",
+              fontWeight: "bold",
             })
             .setOrigin(0.5);
 
-          const tabContainer = this.add.container(posX, tabY, [tabBg, tabText]);
-          tabContainer.setInteractive(
-            new Phaser.Geom.Rectangle(
-              -tabBtnW / 2,
-              -tabBtnH / 2,
-              tabBtnW,
-              tabBtnH,
-            ),
-            Phaser.Geom.Rectangle.Contains,
-          );
-
-          tabContainer.on("pointerdown", () => {
+          const onTabClick = () => {
             currentTab = tabName;
             this.sound.play("pop", { volume: 0.1 });
 
-            // 탭 업데이트
-            tabBg.setFillStyle(0x2ecc71);
-            otherTabs.forEach((t) => t.bg.setFillStyle(0x34495e));
+            // 모든 탭 색상 업데이트
+            allTabs.forEach((tab) => {
+              tab.img.setTint(tab.name === tabName ? 0x2ecc71 : 0x7f8c8d);
+            });
 
             // 콘텐츠 업데이트
             updateTabContent(tabName);
-          });
+          };
 
-          return { container: tabContainer, bg: tabBg, name: tabName };
+          tabImg.on("pointerdown", onTabClick);
+          tabText.on("pointerdown", onTabClick);
+
+          this.joinPopupContainer.add([tabImg, tabText]);
+
+          return { img: tabImg, text: tabText, name: tabName };
         };
 
         const browseTab = createTabButton(
           "방 찾기",
           "browse",
-          centerX - tabGap,
+          centerX * 1 - tabGap,
         );
-        const createTab = createTabButton("방 만들기", "create", centerX);
-        const codeTab = createTabButton("코드입력", "code", centerX + tabGap);
+        const createTab = createTabButton("방 만들기", "create", centerX * 1);
+        const codeTab = createTabButton(
+          "코드입력",
+          "code",
+          centerX * 1 + tabGap,
+        );
 
-        const otherTabs = [createTab, codeTab];
+        allTabs.push(browseTab, createTab, codeTab);
 
         // 6. 콘텐츠 영역
-        const contentY = popupY + 20;
+        const contentY = popupY;
         let currentContent = null;
 
-        const updateTabContent = (tabName) => {
-          if (currentContent) currentContent.destroy();
+        const updateTabContent = (tabName, roomsData) => {
+          if (currentContent) {
+            this.joinPopupContainer.remove(currentContent);
+            currentContent.destroy();
+          }
 
           if (tabName === "browse") {
             currentContent = this.add.container(centerX, contentY);
-            showRoomList(currentContent, rooms);
+            showRoomList(currentContent, roomsData || rooms);
           } else if (tabName === "create") {
             currentContent = this.add.container(centerX, contentY);
             showRoomCreateForm(currentContent);
@@ -1160,171 +1104,350 @@ class LobbyScene extends Phaser.Scene {
             currentContent = this.add.container(centerX, contentY);
             showRoomCodeForm(currentContent);
           }
+
+          // 콘텐츠를 joinPopupContainer에 추가
+          if (currentContent) {
+            this.joinPopupContainer.add(currentContent);
+          }
         };
 
         // 콘텐츠 표시 함수들
         const showRoomList = (container, rooms) => {
           if (rooms.length === 0) {
-            this.add
-              .text(centerX, contentY, "사용 가능한 공개 방이 없습니다", {
+            const emptyText = this.add
+              .text(0, 0, "방이 없습니다", {
                 fontFamily: "Jua",
-                fontSize: `${width * 0.035}px`,
-                color: "#aaaaaa",
+                fontSize: `${width * 0.05}px`,
+                color: "#ffffff",
               })
               .setOrigin(0.5);
+            container.add(emptyText);
             return;
           }
 
           const roomItemHeight = height * 0.065;
           const maxVisibleRooms = 4;
-          const totalVisibleHeight = maxVisibleRooms * (roomItemHeight + 10);
+          const roomsPerPage = 4;
+          const listWidth = width * 0.6;
 
-          // 마스크
-          const roomListMask = this.make.graphics(
-            { x: centerX, y: contentY, add: false },
-            false,
-          );
-          roomListMask.fillStyle(0xffffff);
-          roomListMask.fillRect(
-            -width * 0.3,
-            -totalVisibleHeight / 2,
-            width * 0.6,
-            totalVisibleHeight,
-          );
+          // 페이지 상태 관리
+          let currentPage = 0;
+          const totalPages = Math.ceil(rooms.length / roomsPerPage);
 
-          const roomListContainer = this.add
-            .container(centerX, contentY)
-            .setDepth(1101);
-          roomListContainer.setMask(roomListMask.createGeometryMask());
+          // 방 목록을 담을 컨테이너
+          const roomsContainer = this.add.container(0, 0);
+          container.add(roomsContainer);
 
-          rooms.forEach((room, index) => {
-            const itemY = index * (roomItemHeight + 10);
+          // 현재 페이지 방들을 표시하는 함수
+          const displayRoomsPage = () => {
+            // 기존 방들 제거
+            roomsContainer.removeAll(true);
 
-            const itemBg = this.add.rectangle(
-              0,
-              itemY,
-              width * 0.6,
-              roomItemHeight,
-              0x34495e,
-            );
+            const startIdx = currentPage * roomsPerPage;
+            const endIdx = Math.min(startIdx + roomsPerPage, rooms.length);
 
-            const roomInfo = `[${room.roomId}] ${room.hostNickname} (${room.playerCount}/${room.maxPlayers})`;
-            const roomText = this.add
-              .text(0, itemY, roomInfo, {
-                fontFamily: "Jua",
-                fontSize: `${width * 0.03}px`,
-                color: "#ffffff",
-                align: "left",
-              })
-              .setOrigin(0, 0.5);
+            for (let i = startIdx; i < endIdx; i++) {
+              const room = rooms[i];
+              const pageIndex = i - startIdx;
+              const itemY = pageIndex * (roomItemHeight + 10);
 
-            itemBg.setInteractive({ useHandCursor: true });
-            itemBg.on("pointerdown", () => {
-              this.sound.play("pop", { volume: 0.1 });
+              const itemBg = this.add.rectangle(
+                0,
+                itemY,
+                listWidth,
+                roomItemHeight,
+                0x34495e,
+              );
 
-              if (window.ReactNativeWebView) {
-                generateHapticFeedback({ type: "impactLight" }).catch(() => {});
-              }
+              const roomTitle = room.roomName || `${room.hostNickname}의 방`;
+              const roomInfo = `${roomTitle}  (${room.playerCount}/${room.maxPlayers})`;
+              const roomText = this.add
+                .text(-listWidth / 2 + 10, itemY, roomInfo, {
+                  fontFamily: "Jua",
+                  fontSize: `${width * 0.032}px`,
+                  color: "#ffffff",
+                  align: "left",
+                })
+                .setOrigin(0, 0.5);
 
-              const myNickname = localStorage.getItem("nickname") || "요리사";
+              itemBg.setInteractive({ useHandCursor: true });
+              itemBg.on("pointerdown", () => {
+                this.sound.play("pop", { volume: 0.1 });
 
-              this.showLoading("방 입장 중...");
+                if (window.ReactNativeWebView) {
+                  generateHapticFeedback({ type: "impactLight" }).catch(
+                    () => {},
+                  );
+                }
 
-              socket.emit("joinPublicRoom", {
-                roomId: room.roomId,
-                nickname: myNickname,
+                const myNickname = localStorage.getItem("nickname") || "요리사";
+                this.showLoading("방 입장 중...");
+
+                socket.emit("joinPublicRoom", {
+                  roomId: room.roomId,
+                  nickname: myNickname,
+                });
+
+                closePopupWithCleanup();
               });
 
-              closePopupWithCleanup();
+              itemBg.on("pointerover", () => {
+                itemBg.setFillStyle(0x2c3e50);
+              });
+
+              itemBg.on("pointerout", () => {
+                itemBg.setFillStyle(0x34495e);
+              });
+
+              roomsContainer.add([itemBg, roomText]);
+            }
+          };
+
+          // 첫 페이지 표시
+          displayRoomsPage();
+
+          // 페이지 버튼 추가 (방 목록 아래에)
+          if (totalPages > 1) {
+            const pageButtonY = (maxVisibleRooms + 1) * (roomItemHeight + 10);
+            const buttonGap = width * 0.15;
+
+            // 이전 버튼
+            const prevBtnBg = this.add
+              .rectangle(
+                -buttonGap,
+                pageButtonY,
+                width * 0.2,
+                height * 0.05,
+                0x3498db,
+              )
+              .setInteractive({ useHandCursor: true });
+            const prevBtnText = this.add
+              .text(-buttonGap, pageButtonY, "◀ 이전", {
+                fontFamily: "Jua",
+                fontSize: `${width * 0.028}px`,
+                color: "#ffffff",
+              })
+              .setOrigin(0.5);
+
+            // 다음 버튼
+            const nextBtnBg = this.add
+              .rectangle(
+                buttonGap,
+                pageButtonY,
+                width * 0.2,
+                height * 0.05,
+                0x3498db,
+              )
+              .setInteractive({ useHandCursor: true });
+            const nextBtnText = this.add
+              .text(buttonGap, pageButtonY, "다음 ▶", {
+                fontFamily: "Jua",
+                fontSize: `${width * 0.028}px`,
+                color: "#ffffff",
+              })
+              .setOrigin(0.5);
+
+            // 페이지 표시
+            const pageIndicator = this.add
+              .text(0, pageButtonY, `${currentPage + 1}/${totalPages}`, {
+                fontFamily: "Jua",
+                fontSize: `${width * 0.028}px`,
+                color: "#cccccc",
+              })
+              .setOrigin(0.5);
+
+            // 버튼 상태 업데이트
+            const updateButtonStates = () => {
+              if (currentPage === 0) {
+                prevBtnBg.setFillStyle(0x7f8c8d);
+                prevBtnBg.disableInteractive();
+              } else {
+                prevBtnBg.setFillStyle(0x3498db);
+                prevBtnBg.setInteractive({ useHandCursor: true });
+              }
+
+              if (currentPage === totalPages - 1) {
+                nextBtnBg.setFillStyle(0x7f8c8d);
+                nextBtnBg.disableInteractive();
+              } else {
+                nextBtnBg.setFillStyle(0x3498db);
+                nextBtnBg.setInteractive({ useHandCursor: true });
+              }
+
+              pageIndicator.setText(`${currentPage + 1}/${totalPages}`);
+            };
+
+            updateButtonStates();
+
+            // 이전 버튼 클릭
+            prevBtnBg.on("pointerdown", () => {
+              if (currentPage > 0) {
+                this.sound.play("pop", { volume: 0.1 });
+                currentPage--;
+                displayRoomsPage();
+                updateButtonStates();
+              }
             });
 
-            itemBg.on("pointerover", () => {
-              itemBg.setFillStyle(0x2c3e50);
+            prevBtnText.on("pointerdown", () => {
+              if (currentPage > 0) {
+                this.sound.play("pop", { volume: 0.1 });
+                currentPage--;
+                displayRoomsPage();
+                updateButtonStates();
+              }
             });
 
-            itemBg.on("pointerout", () => {
-              itemBg.setFillStyle(0x34495e);
+            // 다음 버튼 클릭
+            nextBtnBg.on("pointerdown", () => {
+              if (currentPage < totalPages - 1) {
+                this.sound.play("pop", { volume: 0.1 });
+                currentPage++;
+                displayRoomsPage();
+                updateButtonStates();
+              }
             });
 
-            roomListContainer.add([itemBg, roomText]);
-          });
+            nextBtnText.on("pointerdown", () => {
+              if (currentPage < totalPages - 1) {
+                this.sound.play("pop", { volume: 0.1 });
+                currentPage++;
+                displayRoomsPage();
+                updateButtonStates();
+              }
+            });
 
-          container.add(roomListContainer);
+            container.add([
+              prevBtnBg,
+              prevBtnText,
+              nextBtnBg,
+              nextBtnText,
+              pageIndicator,
+            ]);
+          }
         };
 
         const showRoomCreateForm = (container) => {
-          const buttonY = 0;
-          const btnGap = width * 0.2;
-
-          const privateBtnBg = this.add
-            .rectangle(-btnGap, buttonY, width * 0.25, height * 0.06, 0xf39c12)
-            .setInteractive({ useHandCursor: true });
-          const privateBtnText = this.add
-            .text(-btnGap, buttonY, "비공개 방", {
-              fontFamily: "Jua",
-              fontSize: `${width * 0.032}px`,
-              color: "#ffffff",
-            })
-            .setOrigin(0.5);
-
-          const publicBtnBg = this.add
-            .rectangle(btnGap, buttonY, width * 0.25, height * 0.06, 0x3498db)
-            .setInteractive({ useHandCursor: true });
-          const publicBtnText = this.add
-            .text(btnGap, buttonY, "공개 방", {
-              fontFamily: "Jua",
-              fontSize: `${width * 0.032}px`,
-              color: "#ffffff",
-            })
-            .setOrigin(0.5);
-
-          const createRoom = (isPublic) => {
-            const myNickname = localStorage.getItem("nickname") || "요리사";
-
-            this.showLoading("방 생성 중...");
-
-            socket.emit("createRoom", {
-              nickname: myNickname,
-              maxPlayers: 4,
-              isPublic: isPublic,
-            });
-
-            closePopupWithCleanup();
-          };
-
-          privateBtnBg.on("pointerdown", () => {
-            this.sound.play("pop", { volume: 0.1 });
-            createRoom(false);
+          // 방 이름 입력창 (DOM 절대 좌표)
+          const roomNameInput = this.add
+            .dom(centerX * -0.36, contentY * -0.2, "input")
+            .setDepth(1102);
+          const el = roomNameInput.node;
+          el.placeholder = "방 이름 입력 (선택)";
+          Object.assign(el.style, {
+            width: `${width * 0.5}px`,
+            height: "90px",
+            fontSize: "50px",
+            fontFamily: "'Jua', sans-serif",
+            textAlign: "center",
+            border: "3px solid #5d4037",
+            borderRadius: "10px",
+            backgroundColor: "#ffffff",
+            outline: "none",
+            color: "#000",
+          });
+          el.addEventListener("input", () => {
+            if (el.value.length > 10) el.value = el.value.substring(0, 10);
           });
 
-          publicBtnBg.on("pointerdown", () => {
+          // 공개/비공개 토글 상태
+          let isPublic = true;
+
+          // 토글 배경
+          const toggleBg = this.add
+            .image(0, height * 0.02, "uibtn")
+            .setDisplaySize(width * 0.25, height * 0.055)
+            .setTint(0x3498db);
+
+          // 토글 텍스트
+          const toggleText = this.add
+            .text(0, height * 0.02, "🌐 공개 방", {
+              fontFamily: "Jua",
+              fontSize: `${width * 0.038}px`,
+              color: "#ffffff",
+              fontWeight: "bold",
+            })
+            .setOrigin(0.5);
+
+          toggleBg.setInteractive({ useHandCursor: true });
+          toggleBg.on("pointerdown", () => {
             this.sound.play("pop", { volume: 0.1 });
-            createRoom(true);
+            isPublic = !isPublic;
+            toggleBg.setTint(isPublic ? 0x3498db : 0xf39c12);
+            toggleText.setText(isPublic ? "🌐 공개" : "🔒 비공개");
+          });
+          toggleText.setInteractive({ useHandCursor: true });
+          toggleText.on("pointerdown", () => {
+            this.sound.play("pop", { volume: 0.1 });
+            isPublic = !isPublic;
+            toggleBg.setTint(isPublic ? 0x3498db : 0xf39c12);
+            toggleText.setText(isPublic ? "🌐 공개" : "🔒 비공개");
+          });
+
+          // 방 만들기 버튼
+          const createBtnImg = this.add
+            .image(0, height * 0.12, "uibtn")
+            .setDisplaySize(width * 0.2, height * 0.065)
+            .setTint(0x2ecc71)
+            .setInteractive({ useHandCursor: true });
+          const createBtnText = this.add
+            .text(0, height * 0.12, "만들기", {
+              fontFamily: "Jua",
+              fontSize: `${width * 0.042}px`,
+              color: "#ffffff",
+              fontWeight: "bold",
+            })
+            .setOrigin(0.5);
+
+          createBtnImg.on("pointerdown", () => {
+            this.sound.play("pop", { volume: 0.1 });
+            this.tweens.add({
+              targets: [createBtnImg, createBtnText],
+              scaleX: "*=0.95",
+              scaleY: "*=0.95",
+              duration: 50,
+              yoyo: true,
+              onComplete: () => {
+                const myNickname = localStorage.getItem("nickname") || "요리사";
+                const roomName = el.value.trim() || `${myNickname}의 방`;
+                this.showLoading("방 생성 중...");
+                socket.emit("createRoom", {
+                  nickname: myNickname,
+                  maxPlayers: 4,
+                  isPublic: isPublic,
+                  roomName: roomName,
+                });
+                closePopupWithCleanup();
+              },
+            });
           });
 
           container.add([
-            privateBtnBg,
-            privateBtnText,
-            publicBtnBg,
-            publicBtnText,
+            roomNameInput,
+            toggleBg,
+            toggleText,
+            createBtnImg,
+            createBtnText,
           ]);
         };
 
         const showRoomCodeForm = (container) => {
+          // DOM 요소는 절대 좌표 기준이므로 centerX를 직접 사용
+          // 컨테이너 내부 좌표(0)가 아닌 화면 절대 X 좌표(centerX)로 배치
           const codeInput = this.add
-            .dom(0, -height * 0.02, "input")
+            .dom(centerX * -0.375, contentY * -0.1, "input")
             .setDepth(1102);
 
           const el = codeInput.node;
           el.placeholder = "방 코드 입력";
           Object.assign(el.style, {
             width: `${width * 0.5}px`,
-            height: "60px",
-            fontSize: "40px",
+            height: "100px",
+            fontSize: "60px",
             fontFamily: "'Jua', sans-serif",
             textAlign: "center",
-            border: "2px solid #5d4037",
-            borderRadius: "8px",
+            border: "3px solid #5d4037",
+            borderRadius: "10px",
             backgroundColor: "#ffffff",
             outline: "none",
             color: "#000",
@@ -1337,71 +1460,63 @@ class LobbyScene extends Phaser.Scene {
               .substring(0, 6);
           });
 
-          const joinBtnBg = this.add
-            .rectangle(0, height * 0.05, width * 0.3, height * 0.055, 0x27ae60)
+          // 입장 버튼 - uibtn 이미지 사용
+          const joinBtnImg = this.add
+            .image(0, height * 0.1, "uibtn")
+            .setDisplaySize(width * 0.35, height * 0.065)
             .setInteractive({ useHandCursor: true });
           const joinBtnText = this.add
-            .text(0, height * 0.05, "입장", {
+            .text(0, height * 0.1, "입장", {
               fontFamily: "Jua",
-              fontSize: `${width * 0.035}px`,
+              fontSize: `${width * 0.045}px`,
               color: "#ffffff",
+              fontWeight: "bold",
             })
             .setOrigin(0.5);
 
-          joinBtnBg.on("pointerdown", () => {
+          joinBtnImg.on("pointerdown", () => {
             const code = el.value.trim();
 
             if (code) {
               this.sound.play("pop", { volume: 0.1 });
-              const myNickname = localStorage.getItem("nickname") || "요리사";
-
-              this.showLoading("방 입장 중...");
-
-              socket.emit("joinRoom", {
-                roomId: code.toUpperCase(),
-                nickname: myNickname,
+              this.tweens.add({
+                targets: [joinBtnImg, joinBtnText],
+                scaleX: "*=0.95",
+                scaleY: "*=0.95",
+                duration: 50,
+                yoyo: true,
+                onComplete: () => {
+                  const myNickname =
+                    localStorage.getItem("nickname") || "요리사";
+                  this.showLoading("방 입장 중...");
+                  socket.emit("joinRoom", {
+                    roomId: code.toUpperCase(),
+                    nickname: myNickname,
+                  });
+                  closePopupWithCleanup();
+                },
               });
-
-              closePopupWithCleanup();
             } else {
               this.showToast("방 코드를 입력해주세요!");
             }
           });
 
-          container.add([codeInput, joinBtnBg, joinBtnText]);
+          container.add([codeInput, joinBtnImg, joinBtnText]);
         };
 
         // 초기 콘텐츠 표시
         updateTabContent("browse");
 
-        // 6. 나가기 버튼 (Home으로)
-        const cancelBtnImg = this.add
-          .image(centerX, popupY + 210, "uibtn")
-          .setDisplaySize(width * 0.3, height * 0.065)
-          .setInteractive({ useHandCursor: true })
-          .setTint(0xffaaaa);
-        const cancelBtnText = this.add
-          .text(centerX, popupY + 210, "나가기", {
-            fontFamily: "Jua",
-            fontSize: `${width * 0.055}px`,
-            color: "#ffffff",
-          })
-          .setOrigin(0.5);
-
-        // 팝업 요소를 컨테이너에 추가
-        this.joinPopupContainer.add([
-          overlay,
-          popupBg,
-          titleText,
-          browseTab.container,
-          createTab.container,
-          codeTab.container,
-          cancelBtnImg,
-          cancelBtnText,
-        ]);
-
-        // ✅ closePopup 함수를 먼저 정의
+        // ✅ closePopup 함수 정의 (먼저 선언해야 아래에서 참조 가능)
         const closePopup = () => {
+          // 자동 새로고침 타이머 정리
+          if (this._roomListRefreshTimer) {
+            clearInterval(this._roomListRefreshTimer);
+            this._roomListRefreshTimer = null;
+          }
+          // 소켓 이벤트 리스너 정리
+          socket.off("publicRoomsUpdated");
+
           if (this.joinPopupContainer) {
             this.joinPopupContainer.destroy();
             this.joinPopupContainer = null;
@@ -1413,6 +1528,83 @@ class LobbyScene extends Phaser.Scene {
           closePopup();
         };
 
+        // 새로고침 실행 함수
+        const doRefresh = () => {
+          if (!this.joinPopupContainer) return;
+          fetch(`${SERVER_URL}/api/public-rooms`)
+            .then((res) => res.json())
+            .then((freshRooms) => {
+              if (!this.joinPopupContainer) return;
+              rooms = freshRooms;
+              if (currentTab === "browse") {
+                updateTabContent("browse", freshRooms);
+              }
+            })
+            .catch(() => {});
+        };
+
+        // 탭 버튼들의 onTabClick 재설정 - "방 찾기" 탭 클릭 시 새로고침 포함
+        allTabs.forEach((tab) => {
+          tab.img.removeAllListeners("pointerdown");
+          tab.text.removeAllListeners("pointerdown");
+          const onTabClick = () => {
+            this.sound.play("pop", { volume: 0.1 });
+            allTabs.forEach((t) => {
+              t.img.setTint(t.name === tab.name ? 0x2ecc71 : 0x7f8c8d);
+            });
+            currentTab = tab.name;
+            updateTabContent(tab.name);
+            // "방 찾기" 탭 클릭 시 자동 새로고침
+            if (tab.name === "browse") {
+              doRefresh();
+            }
+          };
+          tab.img.on("pointerdown", onTabClick);
+          tab.text.on("pointerdown", onTabClick);
+        });
+
+        // ✅ 소켓 이벤트: 다른 유저가 공개 방을 만들면 자동 갱신
+        socket
+          .off("publicRoomsUpdated")
+          .on("publicRoomsUpdated", (freshRooms) => {
+            if (!this.joinPopupContainer) return;
+            rooms = freshRooms;
+            if (currentTab === "browse") {
+              updateTabContent("browse", freshRooms);
+              this.showToast("새로운 방이 생겼어요!", "#2ecc71");
+            }
+          });
+
+        // ✅ 자동 새로고침: 15초마다 방 목록 갱신
+        this._roomListRefreshTimer = setInterval(() => {
+          if (!this.joinPopupContainer) {
+            clearInterval(this._roomListRefreshTimer);
+            this._roomListRefreshTimer = null;
+            return;
+          }
+          if (currentTab === "browse") {
+            doRefresh();
+          }
+        }, 15000);
+
+        // 6. 나가기 버튼 (Home으로)
+        const cancelBtnImg = this.add
+          .image(centerX, popupY * 1.75, "uibtn")
+          .setDisplaySize(width * 0.3, height * 0.065)
+          .setInteractive({ useHandCursor: true })
+          .setTint(0xffaaaa);
+        const cancelBtnText = this.add
+          .text(centerX, popupY * 1.75, "나가기", {
+            fontFamily: "Jua",
+            fontSize: `${width * 0.055}px`,
+            color: "#ffffff",
+          })
+          .setOrigin(0.5);
+
+        // 나가기 버튼을 컨테이너에 추가
+        this.joinPopupContainer.add([cancelBtnImg, cancelBtnText]);
+
+        // 나가기 버튼 클릭 이벤트
         cancelBtnImg.on("pointerdown", () => {
           this.sound.play("pop", { volume: 0.1 });
 
@@ -1428,14 +1620,13 @@ class LobbyScene extends Phaser.Scene {
             yoyo: true,
             onComplete: () => {
               closePopupWithCleanup();
-              // 로비 씬으로 돌아가기
               this.scene.start("LobbyScene");
             },
           });
         });
       })
       .catch((err) => {
-        console.error("Error fetching public rooms:", err);
+        console.error("공개 방 목록 요청 실패:", err);
         this.hideLoading();
         this.showToast("방 목록을 불러올 수 없습니다!");
         this.isJoinPopupOpen = false;
