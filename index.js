@@ -53,7 +53,7 @@ app.get("/api/public-rooms", (req, res) => {
       maxPlayers: room.maxPlayers,
     }));
 
-  res.json({ rooms: publicRooms });
+  res.json(publicRooms);
 });
 
 // --- 공통 유틸리티 함수 ---

@@ -1075,7 +1075,10 @@ class LobbyScene extends Phaser.Scene {
 
     // 공개 방 목록 가져오기
     fetch("/api/public-rooms")
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
       .then((rooms) => {
         // 로딩 닫기
         this.hideLoading();
