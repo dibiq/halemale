@@ -1159,12 +1159,14 @@ class LobbyScene extends Phaser.Scene {
                 0x34495e,
               );
 
+              const roomNo = startIdx + i + 1;
+              const publicTag = room.isPublic === false ? "🔒" : "🌐";
               const roomTitle = room.roomName || `${room.hostNickname}의 방`;
-              const roomInfo = `${roomTitle}  (${room.playerCount}/${room.maxPlayers})`;
+              const roomInfo = `${roomNo}. ${publicTag} ${roomTitle}  (${room.playerCount}/${room.maxPlayers})`;
               const roomText = this.add
                 .text(-listWidth / 2 + 10, itemY, roomInfo, {
                   fontFamily: "Jua",
-                  fontSize: `${width * 0.032}px`,
+                  fontSize: `${width * 0.03}px`,
                   color: "#ffffff",
                   align: "left",
                 })
