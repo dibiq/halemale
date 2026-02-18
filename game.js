@@ -1153,28 +1153,30 @@ class LobbyScene extends Phaser.Scene {
               const pageIndex = i - startIdx;
               const itemY = pageIndex * (roomItemHeight + 10);
 
-              const itemBg = this.add.rectangle(
-                0,
-                itemY,
-                listWidth,
-                roomItemHeight,
-                0x34495e,
-              );
+              const isPlaying = room.isGameStarted === true;
+
+              const itemBg = this.add
+                .image(0, itemY, "roombg")
+                .setDisplaySize(listWidth, roomItemHeight)
+                .setTint(isPlaying ? 0x555555 : 0xffffff)
+                .setInteractive({ useHandCursor: true });
 
               const roomNo = startIdx + i + 1;
               const publicTag = room.isPublic === false ? "🔒" : "🌐";
+              const playingTag = isPlaying ? " 🎮플레이중" : "";
               const roomTitle = room.roomName || `${room.hostNickname}의 방`;
-              const roomInfo = `${roomNo}. ${publicTag} ${roomTitle}  (${room.playerCount}/${room.maxPlayers})`;
+              const roomInfo = `${roomNo}. ${publicTag} ${roomTitle}${playingTag}  (${room.playerCount}/${room.maxPlayers})`;
               const roomText = this.add
                 .text(-listWidth / 2 + 10, itemY, roomInfo, {
                   fontFamily: "Jua",
-                  fontSize: `${width * 0.03}px`,
-                  color: "#ffffff",
+                  fontSize: `${width * 0.028}px`,
+                  color: isPlaying ? "#aaaaaa" : "#ffffff",
+                  stroke: "#000000",
+                  strokeThickness: 2,
                   align: "left",
                 })
                 .setOrigin(0, 0.5);
 
-              itemBg.setInteractive({ useHandCursor: true });
               itemBg.on("pointerdown", () => {
                 this.sound.play("pop", { volume: 0.1 });
 
@@ -1209,11 +1211,11 @@ class LobbyScene extends Phaser.Scene {
               });
 
               itemBg.on("pointerover", () => {
-                itemBg.setFillStyle(0x2c3e50);
+                itemBg.setAlpha(0.8);
               });
 
               itemBg.on("pointerout", () => {
-                itemBg.setFillStyle(0x34495e);
+                itemBg.setAlpha(1);
               });
 
               roomsContainer.add([itemBg, roomText]);
@@ -1347,14 +1349,14 @@ class LobbyScene extends Phaser.Scene {
         const showRoomCreateForm = (container) => {
           // 방 이름 입력창 (DOM 절대 좌표)
           const roomNameInput = this.add
-            .dom(centerX, contentY - height * 0.1, "input")
+            .dom(centerX * -0.35, contentY * -0.25, "input")
             .setDepth(1102);
           const nameEl = roomNameInput.node;
           nameEl.placeholder = "방 이름 입력 (선택, 최대10자)";
           Object.assign(nameEl.style, {
             width: `${width * 0.5}px`,
-            height: "70px",
-            fontSize: "38px",
+            height: "90px",
+            fontSize: "40px",
             fontFamily: "'Jua', sans-serif",
             textAlign: "center",
             border: "3px solid #5d4037",
@@ -1374,12 +1376,12 @@ class LobbyScene extends Phaser.Scene {
           const toggleY = height * 0.01;
 
           const publicBtnImg = this.add
-            .image(-btnGapX, toggleY, "uibtn")
+            .image(-btnGapX, toggleY * 4, "uibtn")
             .setDisplaySize(width * 0.22, height * 0.05)
             .setTint(0x3498db) // 활성 상태 (파란색)
             .setInteractive({ useHandCursor: true });
           const publicBtnText = this.add
-            .text(-btnGapX, toggleY, "🌐 공개", {
+            .text(-btnGapX, toggleY * 4, "🌐 공개", {
               fontFamily: "Jua",
               fontSize: `${width * 0.033}px`,
               color: "#ffffff",
@@ -1388,12 +1390,12 @@ class LobbyScene extends Phaser.Scene {
             .setOrigin(0.5);
 
           const privateBtnImg = this.add
-            .image(btnGapX, toggleY, "uibtn")
+            .image(btnGapX, toggleY * 4, "uibtn")
             .setDisplaySize(width * 0.22, height * 0.05)
             .setTint(0x7f8c8d) // 비활성 상태 (회색)
             .setInteractive({ useHandCursor: true });
           const privateBtnText = this.add
-            .text(btnGapX, toggleY, "🔒 비공개", {
+            .text(btnGapX, toggleY * 4, "🔒 비공개", {
               fontFamily: "Jua",
               fontSize: `${width * 0.033}px`,
               color: "#ffffff",
@@ -1403,7 +1405,7 @@ class LobbyScene extends Phaser.Scene {
 
           // 비밀번호 입력창 (비공개 선택 시 표시)
           const pwInput = this.add
-            .dom(centerX, contentY + height * 0.06, "input")
+            .dom(centerX * -0.35, contentY * -0.1, "input")
             .setDepth(1102);
           const pwEl = pwInput.node;
           pwEl.placeholder = "비밀번호 (숫자 4자리)";
@@ -1721,7 +1723,7 @@ class LobbyScene extends Phaser.Scene {
       .setInteractive();
 
     const popupBg = this.add
-      .image(centerX, popupY, "popupbg")
+      .image(centerX, popupY, "btnbg")
       .setDisplaySize(width * 0.65, height * 0.22);
 
     const titleText = this.add
@@ -1735,7 +1737,7 @@ class LobbyScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     const pwInput = this.add
-      .dom(centerX, popupY - height * 0.02, "input")
+      .dom(centerX * 0.72, popupY - height * 0.02, "input")
       .setDepth(1201);
     const pwEl = pwInput.node;
     pwEl.placeholder = "숫자 4자리";
