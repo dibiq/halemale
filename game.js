@@ -200,6 +200,7 @@ class LobbyScene extends Phaser.Scene {
     this.isJoinPopupOpen = false;
     this.isToastOpen = false;
     this.isRoomOpen = false;
+    this.isSingle = false; // 로비는 항상 멀티플레이
 
     this.currentJoinPopupCloseHandler = null;
 
@@ -294,6 +295,15 @@ class LobbyScene extends Phaser.Scene {
           this.updateProfileAvatarUI();
         }
       }
+
+      // 특수카드 저장
+      if (profile && typeof profile.specialCards === "object") {
+        localStorage.setItem(
+          "specialCards",
+          JSON.stringify(profile.specialCards),
+        );
+      }
+
       this.updateMyProfileUI(profile);
     });
 
@@ -565,6 +575,45 @@ class LobbyScene extends Phaser.Scene {
           };
 
           this.scene.start("GameScene", singleGameData);
+        },
+      });
+    });
+
+    /* =======================================================
+   상점 버튼 추가
+======================================================= */
+    const shopBtnY = height * 0.58; // 싱글플레이 버튼 아래
+    const shopBtnW = width * 0.5;
+    const shopBtnH = height * 0.07;
+
+    const shopBtn = this.add.container(centerX, shopBtnY);
+    const shopBtnImg = this.add
+      .image(0, y * 0.51, "uibtn")
+      .setDisplaySize(shopBtnW, shopBtnH * 1.2)
+      .setInteractive()
+      .setTint(0xff69b4); // 핑크 포인트
+
+    const shopBtnText = this.add
+      .text(0, y * 0.51, "🎁 상점", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.06}px`,
+        color: "#ffffff",
+        fontWeight: "bold",
+      })
+      .setOrigin(0.5);
+
+    shopBtn.add([shopBtnImg, shopBtnText]);
+
+    shopBtnImg.on("pointerdown", () => {
+      this.sound.play("pop", { volume: 0.1 });
+      this.tweens.add({
+        targets: [shopBtnImg, shopBtnText],
+        scaleX: "*=0.95",
+        scaleY: "*=0.95",
+        duration: 50,
+        yoyo: true,
+        onComplete: () => {
+          this.showShopPopup();
         },
       });
     });
@@ -1241,6 +1290,304 @@ class LobbyScene extends Phaser.Scene {
       });
     });
   }
+
+  showShopPopup() {
+    this.isJoinPopupOpen = true;
+
+    const { width, height } = this.cameras.main;
+    const centerX = width / 2;
+    const popupY = height * 0.5;
+
+    // 특수카드 데이터 (가격과 설명 포함)
+    const specialCards = [
+      {
+        id: 1,
+        name: "🧲 자석",
+        description: "모든 과일을 끌어당깁니다",
+        price: 100,
+      },
+      {
+        id: 2,
+        name: "💣 폭탄",
+        description: "상대방 카드를 날립니다",
+        price: 150,
+      },
+      {
+        id: 3,
+        name: "⭐ 별",
+        description: "2배 점수 획득",
+        price: 200,
+      },
+    ];
+
+    if (this.shopPopupContainer) this.shopPopupContainer.destroy();
+    this.shopPopupContainer = this.add.container(0, 0).setDepth(200);
+
+    // 반투명 배경
+    const overlay = this.add
+      .rectangle(centerX, height * 0.5, width, height, 0x000000, 0.5)
+      .setInteractive();
+    overlay.on("pointerdown", () => {
+      this.closeShopPopup();
+    });
+
+    // 팝업 배경
+    const popupBg = this.add
+      .rectangle(centerX, popupY, width * 0.8, height * 0.6, 0x1a1a2e, 0.95)
+      .setStrokeStyle(3, 0xffd700, 1);
+
+    // 제목
+    const titleText = this.add
+      .text(centerX, popupY - height * 0.25, "✨ 상점", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.07}px`,
+        color: "#ffd700",
+        fontWeight: "bold",
+      })
+      .setOrigin(0.5);
+
+    // 현재 코인 표시
+    let coinText = this.add
+      .text(
+        centerX,
+        popupY - height * 0.19,
+        `보유: 💰 ${this.myProfile.coins}`,
+        {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.04}px`,
+          color: "#ffd700",
+          fontWeight: "bold",
+        },
+      )
+      .setOrigin(0.5);
+
+    // 카드 표시 영역 초기화
+    let currentCardIndex = 0;
+    const cardDisplayContainer = this.add.container(centerX, popupY);
+
+    const updateCardDisplay = () => {
+      // 기존 카드 객체들 제거
+      cardDisplayContainer.removeAll(true);
+
+      // localStorage에서 보유 수량 읽기
+      const specialCardsOwned =
+        JSON.parse(localStorage.getItem("specialCards")) || {};
+      const ownedCount =
+        specialCardsOwned[specialCards[currentCardIndex].id] || 0;
+
+      const card = specialCards[currentCardIndex];
+      const cardBg = this.add
+        .rectangle(0, -20, width * 0.6, height * 0.22, 0x2d2d44, 0.9)
+        .setStrokeStyle(2, 0x39ff14, 1);
+
+      const cardName = this.add
+        .text(0, -60, card.name, {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.05}px`,
+          color: "#39ff14",
+          fontWeight: "bold",
+        })
+        .setOrigin(0.5);
+
+      const cardDesc = this.add
+        .text(0, -25, card.description, {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.035}px`,
+          color: "#ffffff",
+          align: "center",
+          wordWrap: { width: width * 0.5 },
+        })
+        .setOrigin(0.5);
+
+      const cardPrice = this.add
+        .text(0, 20, `💰 ${card.price}`, {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.04}px`,
+          color: "#ffd700",
+          fontWeight: "bold",
+        })
+        .setOrigin(0.5);
+
+      // 보유 수량 표시
+      const ownedText = this.add
+        .text(0, 45, `보유중: ${ownedCount}개`, {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.032}px`,
+          color: "#2ecc71",
+          fontWeight: "bold",
+        })
+        .setOrigin(0.5);
+
+      cardDisplayContainer.add([
+        cardBg,
+        cardName,
+        cardDesc,
+        cardPrice,
+        ownedText,
+      ]);
+    };
+
+    updateCardDisplay();
+
+    // 왼쪽 버튼
+    const leftBtn = this.add
+      .circle(centerX - width * 0.35, popupY, width * 0.06, 0x39ff14, 0.8)
+      .setStrokeStyle(2, 0xffffff, 1)
+      .setInteractive({ useHandCursor: true });
+
+    const leftIcon = this.add
+      .text(centerX - width * 0.35, popupY, "<", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.06}px`,
+        color: "#ffffff",
+        fontWeight: "bold",
+      })
+      .setOrigin(0.5);
+
+    leftBtn.on("pointerdown", () => {
+      this.sound.play("pop", { volume: 0.08 });
+      currentCardIndex =
+        (currentCardIndex - 1 + specialCards.length) % specialCards.length;
+      updateCardDisplay();
+    });
+
+    // 오른쪽 버튼
+    const rightBtn = this.add
+      .circle(centerX + width * 0.35, popupY, width * 0.06, 0x39ff14, 0.8)
+      .setStrokeStyle(2, 0xffffff, 1)
+      .setInteractive({ useHandCursor: true });
+
+    const rightIcon = this.add
+      .text(centerX + width * 0.35, popupY, ">", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.06}px`,
+        color: "#ffffff",
+        fontWeight: "bold",
+      })
+      .setOrigin(0.5);
+
+    rightBtn.on("pointerdown", () => {
+      this.sound.play("pop", { volume: 0.08 });
+      currentCardIndex = (currentCardIndex + 1) % specialCards.length;
+      updateCardDisplay();
+    });
+
+    // 구매 버튼
+    const buyBtn = this.add
+      .rectangle(
+        centerX,
+        popupY + height * 0.18,
+        width * 0.4,
+        height * 0.07,
+        0x39ff14,
+        0.8,
+      )
+      .setStrokeStyle(2, 0xffffff, 1)
+      .setInteractive({ useHandCursor: true });
+
+    const buyBtnText = this.add
+      .text(centerX, popupY + height * 0.18, "구매", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.05}px`,
+        color: "#000000",
+        fontWeight: "bold",
+      })
+      .setOrigin(0.5);
+
+    buyBtn.on("pointerdown", () => {
+      const card = specialCards[currentCardIndex];
+      if (this.myProfile.coins >= card.price) {
+        this.sound.play("pop", { volume: 0.1 });
+        this.myProfile.coins -= card.price;
+        localStorage.setItem("profileCoins", String(this.myProfile.coins));
+
+        // 특수카드 저장 (로컬)
+        let specialCardsOwned =
+          JSON.parse(localStorage.getItem("specialCards")) || {};
+        if (!specialCardsOwned[card.id]) {
+          specialCardsOwned[card.id] = 0;
+        }
+        specialCardsOwned[card.id] += 1;
+        localStorage.setItem("specialCards", JSON.stringify(specialCardsOwned));
+
+        // 💰 코인 텍스트 실시간 업데이트
+        coinText.setText(`보유: 💰 ${this.myProfile.coins}`);
+
+        // 카드 표시 업데이트 (보유 수량 변경 반영)
+        updateCardDisplay();
+
+        this.updateMyProfileUI();
+
+        // 🔹 서버에 구매 정보 전송 (멀티플레이인 경우)
+        if (!this.isSingle && socket.connected) {
+          socket.emit("buySpecialCard", {
+            cardId: card.id,
+            cardPrice: card.price,
+          });
+        }
+
+        this.showToast(`${card.name} 구매 완료!`, "#2ecc71");
+      } else {
+        this.sound.play("pop", { volume: 0.08 });
+        this.showToast("코인이 부족합니다!", "#e74c3c");
+      }
+    });
+
+    // 닫기 버튼
+    const closeBtn = this.add
+      .circle(
+        centerX + width * 0.35,
+        popupY - height * 0.27,
+        width * 0.05,
+        0xff6b6b,
+        0.8,
+      )
+      .setStrokeStyle(2, 0xffffff, 1)
+      .setInteractive({ useHandCursor: true });
+
+    const closeBtnIcon = this.add
+      .text(centerX + width * 0.35, popupY - height * 0.27, "✕", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.05}px`,
+        color: "#ffffff",
+        fontWeight: "bold",
+      })
+      .setOrigin(0.5);
+
+    closeBtn.on("pointerdown", () => {
+      this.sound.play("pop", { volume: 0.08 });
+      this.closeShopPopup();
+    });
+
+    this.shopPopupContainer.add([
+      overlay,
+      popupBg,
+      titleText,
+      coinText,
+      cardDisplayContainer,
+      leftBtn,
+      leftIcon,
+      rightBtn,
+      rightIcon,
+      buyBtn,
+      buyBtnText,
+      closeBtn,
+      closeBtnIcon,
+    ]);
+
+    this.currentShopPopupCloseHandler = () => {
+      this.closeShopPopup();
+    };
+  }
+
+  closeShopPopup() {
+    this.isJoinPopupOpen = false;
+    if (this.shopPopupContainer) {
+      this.shopPopupContainer.destroy();
+      this.shopPopupContainer = null;
+    }
+  }
+
   showPublicRoomsPopup() {
     this.isJoinPopupOpen = true;
 
@@ -3136,6 +3483,7 @@ class GameScene extends Phaser.Scene {
 
       this.drawPlayerInfo(p, layout);
       this.drawPlayerDeck(p, layout); // 💡 여기서 숫자가 그려짐
+      this.drawSpecialCards(p, layout); // 특수카드 표시
 
       if (p.openStack && p.openStack.length > 0) {
         this.drawOpenCard(p.openStack, layout);
@@ -3448,6 +3796,96 @@ class GameScene extends Phaser.Scene {
     }
 
     this.playerTableGroup.add([deck, countTxt]);
+  }
+
+  drawSpecialCards(p, layout) {
+    const { width, height } = this.cameras.main;
+    const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
+    const isMe = p.id === myId; // 내 카드인지 확인
+
+    // 나만 특수카드를 표시함
+    if (!isMe) return;
+
+    // 특수카드 데이터 정의 (총 5개)
+    const allSpecialCards = [
+      {
+        id: 1,
+        name: "🧲",
+        description: "자석",
+        emoji: "🧲",
+      },
+      {
+        id: 2,
+        name: "💣",
+        description: "폭탄",
+        emoji: "💣",
+      },
+      {
+        id: 3,
+        name: "⭐",
+        description: "별",
+        emoji: "⭐",
+      },
+      {
+        id: 4,
+        name: "🔥",
+        description: "불",
+        emoji: "🔥",
+      },
+      {
+        id: 5,
+        name: "❄️",
+        description: "얼음",
+        emoji: "❄️",
+      },
+    ];
+
+    // localStorage에서 보유한 특수카드 로드
+    const specialCardsOwned =
+      JSON.parse(localStorage.getItem("specialCards")) || {};
+
+    // 카드 배치 (내 카드 바로 아래에 가로 5개)
+    const cardSize = width * 0.08; // 특수카드 크기
+    const startX = layout.x - (cardSize * 2.5 + width * 0.02 * 2); // 중앙 정렬
+    const cardY = layout.y + width * 0.15; // 내 카드 밑에 배치
+    const cardGap = cardSize + width * 0.02; // 카드 간격
+
+    allSpecialCards.forEach((card, index) => {
+      const cardX = startX + index * cardGap;
+      const count = specialCardsOwned[card.id] || 0;
+
+      if (count > 0) {
+        // 보유한 카드: 컬러풀하게 표시
+        const cardBg = this.add
+          .rectangle(cardX, cardY, cardSize, cardSize, 0x2ecc71, 0.7)
+          .setStrokeStyle(2, 0xffd700, 1);
+
+        const cardEmoji = this.add
+          .text(cardX, cardY - cardSize * 0.15, card.emoji, {
+            fontFamily: "Arial",
+            fontSize: `${cardSize * 0.6}px`,
+          })
+          .setOrigin(0.5);
+
+        const cardCount = this.add
+          .text(cardX, cardY + cardSize * 0.25, `x${count}`, {
+            fontFamily: GAME_FONTS.main,
+            fontSize: `${cardSize * 0.4}px`,
+            color: "#ffffff",
+            fontWeight: "bold",
+          })
+          .setOrigin(0.5);
+
+        this.playerTableGroup.add([cardBg, cardEmoji, cardCount]);
+      } else {
+        // 미보유 카드: 흰색 빈 칸
+        const emptyBg = this.add
+          .rectangle(cardX, cardY, cardSize, cardSize, 0x444444, 0.4)
+          .setStrokeStyle(1, 0x999999, 0.5);
+
+        this.playerTableGroup.add(emptyBg);
+      }
+    });
   }
 
   /*drawOpenCard(openCards, layout) {

@@ -337,17 +337,45 @@ io.on("connection", (socket) => {
     socket.coins = 0;
     socket.experience = 0;
     socket.items = [];
+    socket.specialCards = {}; // 특수카드 초기화
 
     // 💡 [추가] DB에서 유저 데이터 불러오기
     const savedData = await getPlayer(socket.nickname);
     if (savedData) {
       console.log(`${socket.nickname}의 데이터를 불러왔습니다:`, savedData);
       let parsedItems = [];
-      if (Array.isArray(savedData.items)) {
+      let parsedSpecialCards = {};
+
+      // items 데이터 파싱 (기존 배열 또는 새로운 객체 형식 지원)
+      if (
+        typeof savedData.items === "object" &&
+        !Array.isArray(savedData.items)
+      ) {
+        // 새로운 형식: {items: [...], specialCards: {...}}
+        parsedItems = Array.isArray(savedData.items.items)
+          ? savedData.items.items
+          : [];
+        parsedSpecialCards =
+          typeof savedData.items.specialCards === "object"
+            ? savedData.items.specialCards
+            : {};
+      } else if (Array.isArray(savedData.items)) {
+        // 기존 형식: 배열
         parsedItems = savedData.items;
       } else if (typeof savedData.items === "string") {
         try {
-          parsedItems = JSON.parse(savedData.items);
+          const parsed = JSON.parse(savedData.items);
+          if (typeof parsed === "object" && !Array.isArray(parsed)) {
+            // 객체 형식
+            parsedItems = Array.isArray(parsed.items) ? parsed.items : [];
+            parsedSpecialCards =
+              typeof parsed.specialCards === "object"
+                ? parsed.specialCards
+                : {};
+          } else if (Array.isArray(parsed)) {
+            // 배열 형식
+            parsedItems = parsed;
+          }
         } catch (e) {
           parsedItems = [];
         }
@@ -360,6 +388,7 @@ io.on("connection", (socket) => {
         Number(savedData.experience) ||
         Math.max((Number(savedData.level) || 1) - 1, 0) * XP_PER_LEVEL;
       socket.items = parsedItems;
+      socket.specialCards = parsedSpecialCards; // 특수카드 할당
     }
 
     socket.level =
@@ -372,6 +401,7 @@ io.on("connection", (socket) => {
       items: Array.isArray(socket.items) ? socket.items : [],
       experience: Number(socket.experience) || 0,
       avatarKey: socket.avatarKey || "player_1",
+      specialCards: socket.specialCards || {},
     });
 
     if (socket.roomId && rooms[socket.roomId]) {
@@ -396,6 +426,49 @@ io.on("connection", (socket) => {
         });
       }
     }
+  });
+
+  // 특수카드 구매 이벤트
+  socket.on("buySpecialCard", async (data) => {
+    const { cardId, cardPrice } = data;
+
+    // 1. 코인 차감
+    socket.coins -= cardPrice;
+
+    // 2. 특수카드 수량 증가
+    if (!socket.specialCards[cardId]) {
+      socket.specialCards[cardId] = 0;
+    }
+    socket.specialCards[cardId] += 1;
+
+    // 3. DB에 저장
+    const mergedItems = {
+      items: Array.isArray(socket.items) ? socket.items : [],
+      specialCards: socket.specialCards || {},
+    };
+
+    await savePlayer(
+      socket.nickname,
+      socket.level,
+      socket.coins,
+      mergedItems,
+      socket.experience,
+    );
+
+    // 4. 클라이언트에 최신 프로필 전송
+    socket.emit("myProfile", {
+      nickname: socket.nickname,
+      level: Number(socket.level) || 1,
+      coins: Number(socket.coins) || 0,
+      items: Array.isArray(socket.items) ? socket.items : [],
+      experience: Number(socket.experience) || 0,
+      avatarKey: socket.avatarKey || "player_1",
+      specialCards: socket.specialCards || {},
+    });
+
+    console.log(
+      `✅ ${socket.nickname}이(가) 카드 ${cardId} 구매 (현재 보유: ${socket.specialCards[cardId]}개)`,
+    );
   });
 
   socket.on("createRoom", (data) => {
