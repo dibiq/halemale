@@ -222,13 +222,30 @@ function processSkipTurn(room, io) {
 
 // 2. 소켓 로직
 io.on("connection", (socket) => {
-  socket.on("setNickname", (nickname) => {
+  socket.on("setNickname", async (nickname) => {
     socket.nickname = nickname || "요리사" + Math.floor(Math.random() * 1000);
+
+    // 💡 [추가] DB에서 유저 데이터 불러오기
+    const savedData = await getPlayer(socket.nickname);
+    if (savedData) {
+      console.log(`${socket.nickname}의 데이터를 불러왔습니다:`, savedData);
+      // 이 데이터를 socket 객체에 담아두거나 클라이언트에 보내주면 됩니다.
+      socket.level = savedData.level;
+      socket.coins = savedData.coins;
+    }
+
     if (socket.roomId && rooms[socket.roomId]) {
       const room = rooms[socket.roomId];
       const player = room.players.find((p) => p.id === socket.id);
+
       if (player) {
         player.nickname = socket.nickname;
+
+        // 💡 [추가] DB에서 가져온 데이터를 player 객체에 할당
+        player.level = socket.level || 1;
+        player.coins = socket.coins || 0;
+        player.items = socket.items || [];
+
         io.to(socket.roomId).emit("playerJoined", {
           roomId: socket.roomId,
           players: room.players,

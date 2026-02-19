@@ -448,6 +448,10 @@ class LobbyScene extends Phaser.Scene {
     });
 
     socket.off("playerJoined").on("playerJoined", (data) => {
+      console.log(
+        `${player.nickname}님의 레벨: ${player.level}, 코인: ${player.coins}`,
+      );
+
       this.createBlocker(); // 함수 호출
 
       this.hideLoading();
