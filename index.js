@@ -508,7 +508,7 @@ io.on("connection", (socket) => {
     );
   });
 
-  socket.on("createRoom", (data) => {
+  socket.on("createRoom", async (data) => {
     const nickname = typeof data === "object" ? data.nickname : socket.nickname;
     const avatarKey =
       typeof data === "object" && /^player_[1-4]$/.test(data.avatarKey)
@@ -516,6 +516,15 @@ io.on("connection", (socket) => {
         : socket.avatarKey || "player_1";
     socket.nickname = nickname || "요리사";
     socket.avatarKey = avatarKey;
+
+    // 💡 [추가] nickname으로 DB에서 플레이어 정보 조회 (level 복원)
+    if (!socket.level || socket.level === 1) {
+      const savedData = await getPlayer(socket.nickname);
+      if (savedData && savedData.level) {
+        socket.level = savedData.level;
+      }
+    }
+
     let roomId = Math.floor(1000 + Math.random() * 9000).toString();
     while (rooms[roomId])
       roomId = Math.floor(1000 + Math.random() * 9000).toString();
@@ -565,7 +574,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("joinRoom", (data) => {
+  socket.on("joinRoom", async (data) => {
     const roomId = (
       typeof data === "object" ? data.roomId : data
     ).toUpperCase();
@@ -587,6 +596,15 @@ io.on("connection", (socket) => {
     socket.roomId = roomId;
     socket.nickname = nickname;
     socket.avatarKey = avatarKey;
+
+    // 💡 [추가] nickname으로 DB에서 플레이어 정보 조회 (level 복원)
+    if (!socket.level || socket.level === 1) {
+      const savedData = await getPlayer(nickname);
+      if (savedData && savedData.level) {
+        socket.level = savedData.level;
+      }
+    }
+
     if (!room.players.find((p) => p.id === socket.id)) {
       room.players.push({
         id: socket.id,
@@ -611,7 +629,7 @@ io.on("connection", (socket) => {
   });
 
   // 💡 [추가] 공개 방 입장 이벤트
-  socket.on("joinPublicRoom", (data) => {
+  socket.on("joinPublicRoom", async (data) => {
     const roomId = data.roomId;
     const nickname = data.nickname || socket.nickname || "요리사";
     const avatarKey = /^player_[1-4]$/.test(data.avatarKey)
@@ -636,6 +654,15 @@ io.on("connection", (socket) => {
     socket.roomId = roomId;
     socket.nickname = nickname;
     socket.avatarKey = avatarKey;
+
+    // 💡 [추가] nickname으로 DB에서 플레이어 정보 조회 (level 복원)
+    if (!socket.level || socket.level === 1) {
+      const savedData = await getPlayer(nickname);
+      if (savedData && savedData.level) {
+        socket.level = savedData.level;
+      }
+    }
+
     if (!room.players.find((p) => p.id === socket.id)) {
       room.players.push({
         id: socket.id,
@@ -728,6 +755,14 @@ io.on("connection", (socket) => {
       p.isEliminated = false; // 시작할 때 초기화
     });
 
+    console.log(
+      "📊 게임 시작 - room.players 레벨 확인:",
+      room.players.map((p) => ({
+        id: p.id,
+        nickname: p.nickname,
+        level: p.level,
+      })),
+    );
     io.to(room.roomId).emit("gameStart", {
       roomId: room.roomId,
       players: room.players,

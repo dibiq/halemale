@@ -201,6 +201,7 @@ class LobbyScene extends Phaser.Scene {
     this.isToastOpen = false;
     this.isRoomOpen = false;
     this.isSingle = false; // 로비는 항상 멀티플레이
+    this.coinShopElements = []; // 코인 팝업 요소들
 
     this.currentJoinPopupCloseHandler = null;
 
@@ -332,9 +333,15 @@ class LobbyScene extends Phaser.Scene {
 
     const multiBtn = this.add.container(x, y);
 
-    const profileCenterY = y - height * 0.18;
+    const profileCenterY = y - height * 0.02;
     const profileSize = width * 0.2;
     const profileContainer = this.add.container(centerX, profileCenterY);
+
+    // 프로필 배경 이미지
+    const profileBg = this.add
+      .image(0, y * 0.1, "btnbg")
+      .setDisplaySize(profileSize * 2.3, profileSize * 2.1)
+      .setAlpha(1.0);
 
     this.profileImage = this.add
       .image(0, 0, this.profileAvatarKeys[this.profileAvatarIndex])
@@ -419,6 +426,7 @@ class LobbyScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     profileContainer.add([
+      profileBg,
       this.profileImage,
       avatarLeftBtn,
       avatarLeftIcon,
@@ -444,20 +452,14 @@ class LobbyScene extends Phaser.Scene {
     this.updateMyProfileUI();
     this.updateProfileAvatarUI();
 
-    // 1. 버튼 배경 이미지
-    /*const BtnBgImg = this.add
-      .image(0, y * 0.5, "btnbg")
-      .setDisplaySize(btnW * 1.2, btnH * 3.8)
-      .setInteractive();*/
-
     const multiBtnImg = this.add
-      .image(0, y * 0.4, "uibtn")
+      .image(0, y * 0.47, "uibtn")
       .setDisplaySize(btnW, btnH * 1.2)
       .setInteractive();
 
     // 2. 버튼 텍스트
     const multiBtnText = this.add
-      .text(0, y * 0.4, "멀티플레이", {
+      .text(0, y * 0.47, "멀티플레이", {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.06}px`,
         color: "#ffffff",
@@ -499,7 +501,7 @@ class LobbyScene extends Phaser.Scene {
 
     const singleBtn = this.add.container(centerX, singleBtnY);
     const singleBtnImg = this.add
-      .image(0, y * 0.43, "uibtn")
+      .image(0, y * 0.5, "uibtn")
       .setDisplaySize(singleBtnW, singleBtnH * 1.2)
       .setInteractive()
       .setTint(0xffd700); // 금색 포인트
@@ -507,7 +509,7 @@ class LobbyScene extends Phaser.Scene {
     singleBtn.add([
       singleBtnImg,
       this.add
-        .text(0, y * 0.43, "싱글플레이", {
+        .text(0, y * 0.5, "싱글플레이", {
           fontFamily: GAME_FONTS.main,
           fontSize: `${width * 0.06}px`,
           color: "#ffffff",
@@ -588,13 +590,13 @@ class LobbyScene extends Phaser.Scene {
 
     const shopBtn = this.add.container(centerX, shopBtnY);
     const shopBtnImg = this.add
-      .image(0, y * 0.51, "uibtn")
+      .image(0, y * 0.53, "uibtn")
       .setDisplaySize(shopBtnW, shopBtnH * 1.2)
       .setInteractive()
       .setTint(0xff69b4); // 핑크 포인트
 
     const shopBtnText = this.add
-      .text(0, y * 0.51, "🎁 상점", {
+      .text(0, y * 0.53, "🎁 상점", {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.06}px`,
         color: "#ffffff",
@@ -1347,7 +1349,7 @@ class LobbyScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     // 현재 코인 표시
-    let coinText = this.add
+    this.shopCoinText = this.add
       .text(
         centerX,
         popupY - height * 0.19,
@@ -1537,7 +1539,7 @@ class LobbyScene extends Phaser.Scene {
         localStorage.setItem("specialCards", JSON.stringify(specialCardsOwned));
 
         // 💰 코인 텍스트 실시간 업데이트
-        coinText.setText(`보유: 💰 ${this.myProfile.coins}`);
+        this.shopCoinText.setText(`보유: 💰 ${this.myProfile.coins}`);
 
         // 카드 표시 업데이트 (보유 수량 변경 반영)
         updateCardDisplay();
@@ -1589,7 +1591,9 @@ class LobbyScene extends Phaser.Scene {
       overlay,
       popupBg,
       titleText,
-      coinText,
+      this.shopCoinText,
+      coinBuyBtn,
+      coinBuyBtnText,
       cardDisplayContainer,
       leftBtn,
       leftIcon,
@@ -1619,20 +1623,24 @@ class LobbyScene extends Phaser.Scene {
     ];
 
     if (this.coinShopContainer) this.coinShopContainer.destroy();
-    this.coinShopContainer = this.add.container(0, 0).setDepth(300);
+    this.coinShopElements = []; // 코인 팝업 요소들을 추적할 배열
 
     // 반투명 배경
     const overlay = this.add
       .rectangle(centerX, height * 0.5, width, height, 0x000000, 0.6)
-      .setInteractive();
+      .setInteractive()
+      .setDepth(1001);
     overlay.on("pointerdown", () => {
       this.closeCoinShopPopup();
     });
+    this.coinShopElements.push(overlay);
 
     // 팝업 배경
     const popupBg = this.add
       .rectangle(centerX, popupY, width * 0.85, height * 0.5, 0x1a1a2e, 0.95)
-      .setStrokeStyle(3, 0x4ecdc4, 1);
+      .setStrokeStyle(3, 0x4ecdc4, 1)
+      .setDepth(1002);
+    this.coinShopElements.push(popupBg);
 
     // 제목
     const titleText = this.add
@@ -1642,7 +1650,9 @@ class LobbyScene extends Phaser.Scene {
         color: "#4ecdc4",
         fontWeight: "bold",
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setDepth(1003);
+    this.coinShopElements.push(titleText);
 
     // 현재 보유 코인
     const currentCoinText = this.add
@@ -1657,7 +1667,9 @@ class LobbyScene extends Phaser.Scene {
           fontWeight: "bold",
         },
       )
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setDepth(1003);
+    this.coinShopElements.push(currentCoinText);
 
     // 닫기 버튼
     const closeBtn = this.add
@@ -1669,7 +1681,9 @@ class LobbyScene extends Phaser.Scene {
         0.8,
       )
       .setStrokeStyle(2, 0xffffff, 1)
-      .setInteractive({ useHandCursor: true });
+      .setInteractive({ useHandCursor: true })
+      .setDepth(1003);
+    this.coinShopElements.push(closeBtn);
 
     const closeBtnIcon = this.add
       .text(centerX + width * 0.4, popupY - height * 0.215, "✕", {
@@ -1678,7 +1692,9 @@ class LobbyScene extends Phaser.Scene {
         color: "#ffffff",
         fontWeight: "bold",
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setDepth(1004);
+    this.coinShopElements.push(closeBtnIcon);
 
     closeBtn.on("pointerdown", () => {
       this.sound.play("pop", { volume: 0.08 });
@@ -1703,12 +1719,16 @@ class LobbyScene extends Phaser.Scene {
           0x2d2d44,
           0.9,
         )
-        .setStrokeStyle(2, 0x4ecdc4, 1);
+        .setStrokeStyle(2, 0x4ecdc4, 1)
+        .setDepth(1003);
+      this.coinShopElements.push(productBg);
 
       // 상품 버튼
       const productBtn = this.add
         .rectangle(productX, productY, width * 0.22, height * 0.18, 0x4ecdc4, 0)
-        .setInteractive({ useHandCursor: true });
+        .setInteractive({ useHandCursor: true })
+        .setDepth(1003);
+      this.coinShopElements.push(productBtn);
 
       // 상품 텍스트
       const productText = this.add
@@ -1719,7 +1739,9 @@ class LobbyScene extends Phaser.Scene {
           fontWeight: "bold",
           align: "center",
         })
-        .setOrigin(0.5);
+        .setOrigin(0.5)
+        .setDepth(1004);
+      this.coinShopElements.push(productText);
 
       productBtn.on("pointerdown", () => {
         this.sound.play("pop", { volume: 0.1 });
@@ -1733,24 +1755,18 @@ class LobbyScene extends Phaser.Scene {
       productBtn.on("pointerout", () => {
         productBg.setStrokeStyle(2, 0x4ecdc4, 1);
       });
-
-      this.coinShopContainer.add([productBg, productBtn, productText]);
     });
-
-    this.coinShopContainer.add([
-      overlay,
-      popupBg,
-      titleText,
-      currentCoinText,
-      closeBtn,
-      closeBtnIcon,
-    ]);
   }
 
   buyCoin(amount) {
     // 🔹 코인 추가
     this.myProfile.coins += amount;
     localStorage.setItem("profileCoins", String(this.myProfile.coins));
+
+    // 🔹 스토어의 코인 텍스트 업데이트 (상점 팝업이 뒤에 있을 때)
+    if (this.shopCoinText) {
+      this.shopCoinText.setText(`보유: 💰 ${this.myProfile.coins}`);
+    }
 
     // 🔹 서버에 전송 (멀티플레이인 경우)
     if (!this.isSingle && socket.connected) {
@@ -1767,9 +1783,11 @@ class LobbyScene extends Phaser.Scene {
   }
 
   closeCoinShopPopup() {
-    if (this.coinShopContainer) {
-      this.coinShopContainer.destroy();
-      this.coinShopContainer = null;
+    if (this.coinShopElements && Array.isArray(this.coinShopElements)) {
+      this.coinShopElements.forEach((element) => {
+        if (element) element.destroy();
+      });
+      this.coinShopElements = [];
     }
   }
 
@@ -3416,6 +3434,7 @@ class GameScene extends Phaser.Scene {
       });
 
       // 3. 💡 [핵심 수정] 데이터 갱신 로직 강화
+      console.log("📊 게임시작 players 데이터:", data.players); // 디버그용
       this.roundData.players = data.players.map((p) => {
         // 서버에서 p.myDeck이 올 때 그 길이를 cards로 강제 할당
         const initialCards = p.cards ?? (p.myDeck ? p.myDeck.length : 0);
