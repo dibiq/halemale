@@ -225,7 +225,23 @@ function processSkipTurn(room, io) {
 // 2. 소켓 로직
 io.on("connection", (socket) => {
   socket.on("setNickname", async (nickname) => {
-    socket.nickname = nickname || "요리사" + Math.floor(Math.random() * 1000);
+    const nicknamePayload =
+      typeof nickname === "object" && nickname !== null ? nickname : {};
+    const resolvedNickname =
+      typeof nicknamePayload.nickname === "string"
+        ? nicknamePayload.nickname
+        : typeof nickname === "string"
+          ? nickname
+          : "요리사" + Math.floor(Math.random() * 1000);
+
+    const avatarKey =
+      typeof nicknamePayload.avatarKey === "string" &&
+      /^player_[1-4]$/.test(nicknamePayload.avatarKey)
+        ? nicknamePayload.avatarKey
+        : socket.avatarKey || "player_1";
+
+    socket.nickname = resolvedNickname;
+    socket.avatarKey = avatarKey;
     socket.level = 1;
     socket.coins = 0;
     socket.items = [];
@@ -256,6 +272,7 @@ io.on("connection", (socket) => {
       level: Number(socket.level) || 1,
       coins: Number(socket.coins) || 0,
       items: Array.isArray(socket.items) ? socket.items : [],
+      avatarKey: socket.avatarKey || "player_1",
     });
 
     if (socket.roomId && rooms[socket.roomId]) {
@@ -264,6 +281,7 @@ io.on("connection", (socket) => {
 
       if (player) {
         player.nickname = socket.nickname;
+        player.avatarKey = socket.avatarKey || "player_1";
 
         // 💡 [추가] DB에서 가져온 데이터를 player 객체에 할당
         player.level = socket.level || 1;
@@ -282,7 +300,12 @@ io.on("connection", (socket) => {
 
   socket.on("createRoom", (data) => {
     const nickname = typeof data === "object" ? data.nickname : socket.nickname;
+    const avatarKey =
+      typeof data === "object" && /^player_[1-4]$/.test(data.avatarKey)
+        ? data.avatarKey
+        : socket.avatarKey || "player_1";
     socket.nickname = nickname || "요리사";
+    socket.avatarKey = avatarKey;
     let roomId = Math.floor(1000 + Math.random() * 9000).toString();
     while (rooms[roomId])
       roomId = Math.floor(1000 + Math.random() * 9000).toString();
@@ -305,6 +328,7 @@ io.on("connection", (socket) => {
     rooms[roomId].players.push({
       id: socket.id,
       nickname: socket.nickname,
+      avatarKey: socket.avatarKey || "player_1",
       level: socket.level || 1, // 💡 방장 데이터도 포함
       coins: socket.coins || 0,
       items: socket.items || [],
@@ -336,6 +360,10 @@ io.on("connection", (socket) => {
     ).toUpperCase();
     const nickname =
       (typeof data === "object" ? data.nickname : socket.nickname) || "요리사";
+    const avatarKey =
+      typeof data === "object" && /^player_[1-4]$/.test(data.avatarKey)
+        ? data.avatarKey
+        : socket.avatarKey || "player_1";
     const room = rooms[roomId];
 
     if (!room) return socket.emit("joinRoomError", "방이 존재하지 않습니다.");
@@ -347,10 +375,12 @@ io.on("connection", (socket) => {
     socket.join(roomId);
     socket.roomId = roomId;
     socket.nickname = nickname;
+    socket.avatarKey = avatarKey;
     if (!room.players.find((p) => p.id === socket.id)) {
       room.players.push({
         id: socket.id,
         nickname,
+        avatarKey: socket.avatarKey || "player_1",
         level: socket.level || 1, // 💡 socket에 저장된 값을 가져옴
         coins: socket.coins || 0, // 💡 socket에 저장된 값을 가져옴
         items: socket.items || [],
@@ -372,6 +402,9 @@ io.on("connection", (socket) => {
   socket.on("joinPublicRoom", (data) => {
     const roomId = data.roomId;
     const nickname = data.nickname || socket.nickname || "요리사";
+    const avatarKey = /^player_[1-4]$/.test(data.avatarKey)
+      ? data.avatarKey
+      : socket.avatarKey || "player_1";
     const inputPassword = data.password || null;
     const room = rooms[roomId];
 
@@ -390,10 +423,12 @@ io.on("connection", (socket) => {
     socket.join(roomId);
     socket.roomId = roomId;
     socket.nickname = nickname;
+    socket.avatarKey = avatarKey;
     if (!room.players.find((p) => p.id === socket.id)) {
       room.players.push({
         id: socket.id,
         nickname,
+        avatarKey: socket.avatarKey || "player_1",
         level: socket.level || 1, // 💡 이 부분 추가
         coins: socket.coins || 0, // 💡 이 부분 추가
         items: socket.items || [], // 💡 이 부분 추가

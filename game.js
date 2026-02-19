@@ -210,14 +210,20 @@ class LobbyScene extends Phaser.Scene {
         localStorage.setItem("nickname", nickname); // 로컬에 영구 저장
 
         // 서버로 전송
-        socket.emit("setNickname", nickname);
+        socket.emit("setNickname", {
+          nickname,
+          avatarKey: this.getSelectedAvatarKey(),
+        });
         this.myNickname = nickname; // 현재 씬 변수에 저장
         this.updateMyProfileUI({ nickname: this.myNickname });
       });
     } else {
       // 3. 이미 닉네임이 있다면 팝업 없이 바로 서버로 전송
       this.myNickname = savedNickname;
-      socket.emit("setNickname", savedNickname);
+      socket.emit("setNickname", {
+        nickname: savedNickname,
+        avatarKey: this.getSelectedAvatarKey(),
+      });
 
       // (선택 사항) 로딩 중이라면 바로 메인 화면으로 진입하는 로직 실행
       console.log(`반가워요, ${savedNickname} 요리사님!`);
@@ -228,6 +234,11 @@ class LobbyScene extends Phaser.Scene {
       level: 1,
       coins: 0,
     };
+
+    this.profileAvatarKeys = ["player_1", "player_2", "player_3", "player_4"];
+    const savedAvatarKey = localStorage.getItem("profileAvatarKey");
+    const savedAvatarIndex = this.profileAvatarKeys.indexOf(savedAvatarKey);
+    this.profileAvatarIndex = savedAvatarIndex >= 0 ? savedAvatarIndex : 0;
 
     bgmEnabled = localStorage.getItem("bgmEnabled") !== "false";
 
@@ -268,6 +279,18 @@ class LobbyScene extends Phaser.Scene {
     });
 
     socket.off("myProfile").on("myProfile", (profile) => {
+      if (
+        profile &&
+        typeof profile.avatarKey === "string" &&
+        /^player_[1-4]$/.test(profile.avatarKey)
+      ) {
+        const idx = this.profileAvatarKeys.indexOf(profile.avatarKey);
+        if (idx >= 0) {
+          this.profileAvatarIndex = idx;
+          localStorage.setItem("profileAvatarKey", profile.avatarKey);
+          this.updateProfileAvatarUI();
+        }
+      }
       this.updateMyProfileUI(profile);
     });
 
@@ -300,9 +323,37 @@ class LobbyScene extends Phaser.Scene {
     const profileSize = width * 0.2;
     const profileContainer = this.add.container(centerX, profileCenterY);
 
-    const profileImg = this.add
-      .image(0, 0, "chef")
+    this.profileImage = this.add
+      .image(0, 0, this.profileAvatarKeys[this.profileAvatarIndex])
       .setDisplaySize(profileSize, profileSize);
+
+    const avatarLeftBtn = this.add
+      .circle(-profileSize * 0.75, 0, profileSize * 0.14, 0x000000, 0.55)
+      .setStrokeStyle(2, 0xffffff, 0.9)
+      .setInteractive({ useHandCursor: true });
+
+    const avatarLeftIcon = this.add
+      .text(-profileSize * 0.75, 0, "<", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.05}px`,
+        color: "#ffffff",
+        fontWeight: "bold",
+      })
+      .setOrigin(0.5);
+
+    const avatarRightBtn = this.add
+      .circle(profileSize * 0.75, 0, profileSize * 0.14, 0x000000, 0.55)
+      .setStrokeStyle(2, 0xffffff, 0.9)
+      .setInteractive({ useHandCursor: true });
+
+    const avatarRightIcon = this.add
+      .text(profileSize * 0.75, 0, ">", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.05}px`,
+        color: "#ffffff",
+        fontWeight: "bold",
+      })
+      .setOrigin(0.5);
 
     const levelBadge = this.add
       .circle(
@@ -341,14 +392,29 @@ class LobbyScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     profileContainer.add([
-      profileImg,
+      this.profileImage,
+      avatarLeftBtn,
+      avatarLeftIcon,
+      avatarRightBtn,
+      avatarRightIcon,
       levelBadge,
       this.profileLevelText,
       this.profileIdText,
       this.profileCoinText,
     ]);
 
+    avatarLeftBtn.on("pointerdown", () => {
+      this.sound.play("pop", { volume: 0.08 });
+      this.changeProfileAvatar(-1);
+    });
+
+    avatarRightBtn.on("pointerdown", () => {
+      this.sound.play("pop", { volume: 0.08 });
+      this.changeProfileAvatar(1);
+    });
+
     this.updateMyProfileUI();
+    this.updateProfileAvatarUI();
 
     // 1. 버튼 배경 이미지
     /*const BtnBgImg = this.add
@@ -692,6 +758,50 @@ class LobbyScene extends Phaser.Scene {
     this.profileLevelText.setText(`${this.myProfile.level}`);
     this.profileIdText.setText(this.myProfile.nickname);
     this.profileCoinText.setText(`코인 ${this.myProfile.coins}`);
+  }
+
+  changeProfileAvatar(step) {
+    if (
+      !Array.isArray(this.profileAvatarKeys) ||
+      this.profileAvatarKeys.length === 0
+    ) {
+      return;
+    }
+
+    const total = this.profileAvatarKeys.length;
+    this.profileAvatarIndex =
+      ((Number(this.profileAvatarIndex) || 0) + step + total) % total;
+
+    const selectedKey = this.profileAvatarKeys[this.profileAvatarIndex];
+    localStorage.setItem("profileAvatarKey", selectedKey);
+    this.updateProfileAvatarUI();
+  }
+
+  updateProfileAvatarUI() {
+    if (!this.profileImage || !this.profileAvatarKeys) {
+      return;
+    }
+
+    const textureKey =
+      this.profileAvatarKeys[this.profileAvatarIndex] || "player_1";
+    this.profileImage.setTexture(textureKey);
+  }
+
+  getSelectedAvatarKey() {
+    const current =
+      Array.isArray(this.profileAvatarKeys) &&
+      this.profileAvatarKeys[this.profileAvatarIndex];
+
+    if (typeof current === "string" && /^player_[1-4]$/.test(current)) {
+      return current;
+    }
+
+    const saved = localStorage.getItem("profileAvatarKey");
+    if (typeof saved === "string" && /^player_[1-4]$/.test(saved)) {
+      return saved;
+    }
+
+    return "player_1";
   }
 
   showLoading(message = "로딩 중...") {
@@ -1303,6 +1413,7 @@ class LobbyScene extends Phaser.Scene {
                     socket.emit("joinPublicRoom", {
                       roomId: room.roomId,
                       nickname: myNickname,
+                      avatarKey: this.getSelectedAvatarKey(),
                       password: pw,
                     });
                     closePopupWithCleanup();
@@ -1313,6 +1424,7 @@ class LobbyScene extends Phaser.Scene {
                   socket.emit("joinPublicRoom", {
                     roomId: room.roomId,
                     nickname: myNickname,
+                    avatarKey: this.getSelectedAvatarKey(),
                   });
                   closePopupWithCleanup();
                 }
@@ -1598,6 +1710,7 @@ class LobbyScene extends Phaser.Scene {
                 this.showLoading("방 생성 중...");
                 socket.emit("createRoom", {
                   nickname: myNickname,
+                  avatarKey: this.getSelectedAvatarKey(),
                   maxPlayers: 4,
                   isPublic: isPublic,
                   roomName: roomName,
@@ -1681,6 +1794,7 @@ class LobbyScene extends Phaser.Scene {
                   socket.emit("joinRoom", {
                     roomId: code.toUpperCase(),
                     nickname: myNickname,
+                    avatarKey: this.getSelectedAvatarKey(),
                   });
                   closePopupWithCleanup();
                 },
@@ -2197,7 +2311,7 @@ class LobbyScene extends Phaser.Scene {
         .image(
           pos.x - cardW / 2 + profileSize * 1.3,
           pos.y - cardH * 0.05,
-          `player_${i + 1}`,
+          /^player_[1-4]$/.test(p.avatarKey) ? p.avatarKey : `player_${i + 1}`,
         )
         .setDisplaySize(profileSize * 2, profileSize * 2);
       this.lobbyUIContainer.add(profileImg);
