@@ -226,6 +226,9 @@ function processSkipTurn(room, io) {
 io.on("connection", (socket) => {
   socket.on("setNickname", async (nickname) => {
     socket.nickname = nickname || "요리사" + Math.floor(Math.random() * 1000);
+    socket.level = 1;
+    socket.coins = 0;
+    socket.items = [];
 
     // 💡 [추가] DB에서 유저 데이터 불러오기
     const savedData = await getPlayer(socket.nickname);
@@ -247,6 +250,13 @@ io.on("connection", (socket) => {
       socket.coins = savedData.coins;
       socket.items = parsedItems;
     }
+
+    socket.emit("myProfile", {
+      nickname: socket.nickname,
+      level: Number(socket.level) || 1,
+      coins: Number(socket.coins) || 0,
+      items: Array.isArray(socket.items) ? socket.items : [],
+    });
 
     if (socket.roomId && rooms[socket.roomId]) {
       const room = rooms[socket.roomId];

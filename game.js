@@ -212,6 +212,7 @@ class LobbyScene extends Phaser.Scene {
         // 서버로 전송
         socket.emit("setNickname", nickname);
         this.myNickname = nickname; // 현재 씬 변수에 저장
+        this.updateMyProfileUI({ nickname: this.myNickname });
       });
     } else {
       // 3. 이미 닉네임이 있다면 팝업 없이 바로 서버로 전송
@@ -221,6 +222,12 @@ class LobbyScene extends Phaser.Scene {
       // (선택 사항) 로딩 중이라면 바로 메인 화면으로 진입하는 로직 실행
       console.log(`반가워요, ${savedNickname} 요리사님!`);
     }
+
+    this.myProfile = {
+      nickname: this.myNickname || savedNickname || "요리사",
+      level: 1,
+      coins: 0,
+    };
 
     bgmEnabled = localStorage.getItem("bgmEnabled") !== "false";
 
@@ -260,6 +267,10 @@ class LobbyScene extends Phaser.Scene {
       }
     });
 
+    socket.off("myProfile").on("myProfile", (profile) => {
+      this.updateMyProfileUI(profile);
+    });
+
     this.backHandler = await App.addListener("backButton", ({ canGoBack }) => {
       // 2. 알림창(Alert)이 떠 있는지 우선 확인
       if (this.isJoinPopupOpen) {
@@ -284,6 +295,60 @@ class LobbyScene extends Phaser.Scene {
     const btnH = height * 0.07;
 
     const multiBtn = this.add.container(x, y);
+
+    const profileCenterY = y - height * 0.18;
+    const profileSize = width * 0.2;
+    const profileContainer = this.add.container(centerX, profileCenterY);
+
+    const profileImg = this.add
+      .image(0, 0, "chef")
+      .setDisplaySize(profileSize, profileSize);
+
+    const levelBadge = this.add
+      .circle(
+        -profileSize * 0.35,
+        profileSize * 0.35,
+        profileSize * 0.2,
+        0xe67e22,
+      )
+      .setStrokeStyle(2, 0xffffff, 1);
+
+    this.profileLevelText = this.add
+      .text(-profileSize * 0.35, profileSize * 0.35, "1", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.035}px`,
+        color: "#ffffff",
+        fontWeight: "bold",
+      })
+      .setOrigin(0.5);
+
+    this.profileIdText = this.add
+      .text(0, profileSize * 0.72, this.myProfile.nickname, {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.045}px`,
+        color: "#ffffff",
+        fontWeight: "bold",
+      })
+      .setOrigin(0.5);
+
+    this.profileCoinText = this.add
+      .text(0, profileSize * 1.02, `코인 ${this.myProfile.coins}`, {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.04}px`,
+        color: "#ffd700",
+        fontWeight: "bold",
+      })
+      .setOrigin(0.5);
+
+    profileContainer.add([
+      profileImg,
+      levelBadge,
+      this.profileLevelText,
+      this.profileIdText,
+      this.profileCoinText,
+    ]);
+
+    this.updateMyProfileUI();
 
     // 1. 버튼 배경 이미지
     /*const BtnBgImg = this.add
@@ -601,6 +666,32 @@ class LobbyScene extends Phaser.Scene {
       socket.off("recipeEnded");
       this.backHandler.remove();
     });
+  }
+
+  updateMyProfileUI(profile = {}) {
+    const prev = this.myProfile || {};
+
+    this.myProfile = {
+      nickname:
+        profile.nickname ||
+        prev.nickname ||
+        localStorage.getItem("nickname") ||
+        "요리사",
+      level: Number(profile.level ?? prev.level ?? 1) || 1,
+      coins: Number(profile.coins ?? prev.coins ?? 0) || 0,
+    };
+
+    if (
+      !this.profileLevelText ||
+      !this.profileIdText ||
+      !this.profileCoinText
+    ) {
+      return;
+    }
+
+    this.profileLevelText.setText(`${this.myProfile.level}`);
+    this.profileIdText.setText(this.myProfile.nickname);
+    this.profileCoinText.setText(`코인 ${this.myProfile.coins}`);
   }
 
   showLoading(message = "로딩 중...") {
