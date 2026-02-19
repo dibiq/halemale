@@ -370,6 +370,9 @@ io.on("connection", (socket) => {
       room.players.push({
         id: socket.id,
         nickname,
+        level: socket.level || 1, // 💡 이 부분 추가
+        coins: socket.coins || 0, // 💡 이 부분 추가
+        items: socket.items || [], // 💡 이 부분 추가
         myDeck: [],
         openCard: null,
         openCardStack: [],
