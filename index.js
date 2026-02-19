@@ -80,6 +80,7 @@ const io = new Server(server, {
 });
 
 let rooms = {};
+const WIN_REWARD_COINS = 20;
 
 // 헬스체크
 app.get("/", (req, res) => res.status(200).send("서버 가동 중"));
@@ -149,16 +150,15 @@ function checkGameOver(room, io) {
       (a, b) => (b.myDeck?.length || 0) - (a.myDeck?.length || 0),
     );
 
-    // 💡 [추가] DB에 결과 저장
-    // 게임 종료 시점의 레벨, 코인, 아이템 등을 저장합니다.
-    // 여기서는 간단하게 점수(보유 카드 수)를 코인으로 치환하거나 레벨업 로직을 넣을 수 있습니다.
-    room.players.forEach((p) => {
-      // 예: 보유했던 카드 수만큼 코인을 주거나, 승자에게 추가 보너스
-      const earnedCoins = p.myDeck?.length || 0;
-      const currentLevel = 1; // 실제 레벨 시스템이 있다면 해당 값 사용
-      const currentItems = []; // 실제 아이템 시스템이 있다면 해당 값 사용
+    // 승자에게 고정 코인 보상 지급 후, 누적 코인을 DB에 저장
+    winner.coins = (Number(winner.coins) || 0) + WIN_REWARD_COINS;
 
-      savePlayer(p.nickname, currentLevel, earnedCoins, currentItems);
+    room.players.forEach((p) => {
+      const currentLevel = Number(p.level) || 1;
+      const currentCoins = Number(p.coins) || 0;
+      const currentItems = Array.isArray(p.items) ? p.items : [];
+
+      savePlayer(p.nickname, currentLevel, currentCoins, currentItems);
     });
 
     io.to(room.roomId).emit("gameEnded", {
@@ -169,6 +169,8 @@ function checkGameOver(room, io) {
         cards: p.myDeck?.length || 0,
       })),
       winner: winner.nickname,
+      rewardCoins: WIN_REWARD_COINS,
+      winnerCoins: winner.coins,
     });
     return true;
   }
@@ -229,9 +231,21 @@ io.on("connection", (socket) => {
     const savedData = await getPlayer(socket.nickname);
     if (savedData) {
       console.log(`${socket.nickname}의 데이터를 불러왔습니다:`, savedData);
+      let parsedItems = [];
+      if (Array.isArray(savedData.items)) {
+        parsedItems = savedData.items;
+      } else if (typeof savedData.items === "string") {
+        try {
+          parsedItems = JSON.parse(savedData.items);
+        } catch (e) {
+          parsedItems = [];
+        }
+      }
+
       // 이 데이터를 socket 객체에 담아두거나 클라이언트에 보내주면 됩니다.
       socket.level = savedData.level;
       socket.coins = savedData.coins;
+      socket.items = parsedItems;
     }
 
     if (socket.roomId && rooms[socket.roomId]) {
