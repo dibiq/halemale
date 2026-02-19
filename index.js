@@ -522,6 +522,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("createRoom", async (data) => {
+    console.log("🏠 createRoom 호출됨, 받은 data:", JSON.stringify(data));
     const nickname = typeof data === "object" ? data.nickname : socket.nickname;
     const avatarKey =
       typeof data === "object" && /^player_[1-4]$/.test(data.avatarKey)
@@ -529,6 +530,7 @@ io.on("connection", (socket) => {
         : socket.avatarKey || "player_1";
     socket.nickname = nickname || "요리사";
     socket.avatarKey = avatarKey;
+    console.log(`🏠 createRoom - socket.nickname 설정됨: ${socket.nickname}`);
 
     // 💡 [추가] nickname으로 DB에서 플레이어 정보 조회 (level, coins, experience 복원)
     const savedData = await getPlayer(socket.nickname);
@@ -632,6 +634,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("joinRoom", async (data) => {
+    console.log("🚪 joinRoom 호출됨, 받은 data:", JSON.stringify(data));
     const roomId = (
       typeof data === "object" ? data.roomId : data
     ).toUpperCase();
@@ -653,6 +656,7 @@ io.on("connection", (socket) => {
     socket.roomId = roomId;
     socket.nickname = nickname;
     socket.avatarKey = avatarKey;
+    console.log(`🚪 joinRoom - socket.nickname 설정됨: ${socket.nickname}`);
 
     // 💡 [추가] nickname으로 DB에서 플레이어 정보 조회 (level, coins, experience 복원)
     const savedData = await getPlayer(nickname);
@@ -729,6 +733,7 @@ io.on("connection", (socket) => {
 
   // 💡 [추가] 공개 방 입장 이벤트
   socket.on("joinPublicRoom", async (data) => {
+    console.log("🌐 joinPublicRoom 호출됨, 받은 data:", JSON.stringify(data));
     const roomId = data.roomId;
     const nickname = data.nickname || socket.nickname || "요리사";
     const avatarKey = /^player_[1-4]$/.test(data.avatarKey)
@@ -753,6 +758,9 @@ io.on("connection", (socket) => {
     socket.roomId = roomId;
     socket.nickname = nickname;
     socket.avatarKey = avatarKey;
+    console.log(
+      `🌐 joinPublicRoom - socket.nickname 설정됨: ${socket.nickname}`,
+    );
 
     // 💡 [추가] nickname으로 DB에서 플레이어 정보 조회 (level, coins, experience 복원)
     const savedData = await getPlayer(nickname);

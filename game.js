@@ -623,6 +623,11 @@ class LobbyScene extends Phaser.Scene {
     socket.off("roomCreated").on("roomCreated", (data) => {
       this.isRoomOpen = true;
 
+      console.log(
+        "📥 roomCreated 받은 데이터:",
+        JSON.stringify(data.players, null, 2),
+      );
+
       this.hideLoading(); // 🔹 로딩창 끄기
       this.showToast("방 생성 성공!", "#2ecc71"); // 초록색 토스트
 
@@ -654,6 +659,11 @@ class LobbyScene extends Phaser.Scene {
 
       this.cleanupPopup();
 
+      console.log(
+        "📥 playerJoined 받은 데이터:",
+        JSON.stringify(data.players, null, 2),
+      );
+
       // UI를 먼저 동기화해서 데이터 구조를 잡습니다.
       this.refreshLobbyUI(data);
 
@@ -671,6 +681,7 @@ class LobbyScene extends Phaser.Scene {
             console.log(
               `${lastPlayer.id}님의 레벨: ${lastPlayer.level}, 코인: ${lastPlayer.coins}`,
             );
+            console.log("전체 플레이어 객체:", lastPlayer);
           }
         }
       });
