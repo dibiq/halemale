@@ -2948,7 +2948,7 @@ class LobbyScene extends Phaser.Scene {
         .text(
           pos.x - cardW / 2 + profileSize * 0.8 - profileSize * 0.35,
           pos.y - cardH * 0.05 + profileSize * 0.35,
-          "1",
+          String(p.level || 1), // 💡 플레이어의 실제 레벨 사용
           {
             fontFamily: GAME_FONTS.main,
             fontSize: `${levelSize * 0.7}px`,
