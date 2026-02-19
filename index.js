@@ -281,6 +281,9 @@ io.on("connection", (socket) => {
     rooms[roomId].players.push({
       id: socket.id,
       nickname: socket.nickname,
+      level: socket.level || 1, // 💡 방장 데이터도 포함
+      coins: socket.coins || 0,
+      items: socket.items || [],
       myDeck: [],
       openCard: null,
       openCardStack: [],
@@ -324,6 +327,9 @@ io.on("connection", (socket) => {
       room.players.push({
         id: socket.id,
         nickname,
+        level: socket.level || 1, // 💡 socket에 저장된 값을 가져옴
+        coins: socket.coins || 0, // 💡 socket에 저장된 값을 가져옴
+        items: socket.items || [],
         myDeck: [],
         openCard: null,
         openCardStack: [],

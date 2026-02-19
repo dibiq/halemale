@@ -448,10 +448,6 @@ class LobbyScene extends Phaser.Scene {
     });
 
     socket.off("playerJoined").on("playerJoined", (data) => {
-      console.log(
-        `${player.nickname}님의 레벨: ${player.level}, 코인: ${player.coins}`,
-      );
-
       this.createBlocker(); // 함수 호출
 
       this.hideLoading();
@@ -471,6 +467,9 @@ class LobbyScene extends Phaser.Scene {
             this.showToast(
               `${lastPlayer.nickname}님이 입장했습니다!`,
               "#2ecc71",
+            );
+            console.log(
+              `${lastPlayer.id}님의 레벨: ${lastPlayer.level}, 코인: ${lastPlayer.coins}`,
             );
           }
         }
