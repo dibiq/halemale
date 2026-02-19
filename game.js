@@ -1361,6 +1361,32 @@ class LobbyScene extends Phaser.Scene {
       )
       .setOrigin(0.5);
 
+    // 코인 구매 버튼
+    const coinBuyBtn = this.add
+      .circle(
+        centerX + width * 0.25,
+        popupY - height * 0.19,
+        width * 0.04,
+        0x4ecdc4,
+        0.8,
+      )
+      .setStrokeStyle(2, 0xffffff, 1)
+      .setInteractive({ useHandCursor: true });
+
+    const coinBuyBtnText = this.add
+      .text(centerX + width * 0.25, popupY - height * 0.19, "+", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.045}px`,
+        color: "#ffffff",
+        fontWeight: "bold",
+      })
+      .setOrigin(0.5);
+
+    coinBuyBtn.on("pointerdown", () => {
+      this.sound.play("pop", { volume: 0.1 });
+      this.showCoinShopPopup();
+    });
+
     // 카드 표시 영역 초기화
     let currentCardIndex = 0;
     const cardDisplayContainer = this.add.container(centerX, popupY);
@@ -1578,6 +1604,173 @@ class LobbyScene extends Phaser.Scene {
     this.currentShopPopupCloseHandler = () => {
       this.closeShopPopup();
     };
+  }
+
+  showCoinShopPopup() {
+    const { width, height } = this.cameras.main;
+    const centerX = width / 2;
+    const popupY = height * 0.5;
+
+    // 코인 상품 데이터
+    const coinProducts = [
+      { amount: 500, price: 0.99, display: "💰 500 +\n$0.99" },
+      { amount: 1000, price: 1.99, display: "💰 1000 +\n$1.99" },
+      { amount: 3000, price: 4.99, display: "💰 3000 +\n$4.99" },
+    ];
+
+    if (this.coinShopContainer) this.coinShopContainer.destroy();
+    this.coinShopContainer = this.add.container(0, 0).setDepth(300);
+
+    // 반투명 배경
+    const overlay = this.add
+      .rectangle(centerX, height * 0.5, width, height, 0x000000, 0.6)
+      .setInteractive();
+    overlay.on("pointerdown", () => {
+      this.closeCoinShopPopup();
+    });
+
+    // 팝업 배경
+    const popupBg = this.add
+      .rectangle(centerX, popupY, width * 0.85, height * 0.5, 0x1a1a2e, 0.95)
+      .setStrokeStyle(3, 0x4ecdc4, 1);
+
+    // 제목
+    const titleText = this.add
+      .text(centerX, popupY - height * 0.2, "💎 코인 구매", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.07}px`,
+        color: "#4ecdc4",
+        fontWeight: "bold",
+      })
+      .setOrigin(0.5);
+
+    // 현재 보유 코인
+    const currentCoinText = this.add
+      .text(
+        centerX,
+        popupY - height * 0.135,
+        `현재 보유: 💰 ${this.myProfile.coins}`,
+        {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.035}px`,
+          color: "#ffd700",
+          fontWeight: "bold",
+        },
+      )
+      .setOrigin(0.5);
+
+    // 닫기 버튼
+    const closeBtn = this.add
+      .circle(
+        centerX + width * 0.4,
+        popupY - height * 0.215,
+        width * 0.04,
+        0xff6b6b,
+        0.8,
+      )
+      .setStrokeStyle(2, 0xffffff, 1)
+      .setInteractive({ useHandCursor: true });
+
+    const closeBtnIcon = this.add
+      .text(centerX + width * 0.4, popupY - height * 0.215, "✕", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.04}px`,
+        color: "#ffffff",
+        fontWeight: "bold",
+      })
+      .setOrigin(0.5);
+
+    closeBtn.on("pointerdown", () => {
+      this.sound.play("pop", { volume: 0.08 });
+      this.closeCoinShopPopup();
+    });
+
+    // 코인 상품 버튼들 배치
+    const productSpacing = width * 0.27;
+    const productStartX = centerX - (productSpacing * 2) / 2;
+
+    coinProducts.forEach((product, index) => {
+      const productX = productStartX + index * productSpacing;
+      const productY = popupY + height * 0.05;
+
+      // 상품 배경
+      const productBg = this.add
+        .rectangle(
+          productX,
+          productY,
+          width * 0.22,
+          height * 0.18,
+          0x2d2d44,
+          0.9,
+        )
+        .setStrokeStyle(2, 0x4ecdc4, 1);
+
+      // 상품 버튼
+      const productBtn = this.add
+        .rectangle(productX, productY, width * 0.22, height * 0.18, 0x4ecdc4, 0)
+        .setInteractive({ useHandCursor: true });
+
+      // 상품 텍스트
+      const productText = this.add
+        .text(productX, productY, product.display, {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.035}px`,
+          color: "#ffd700",
+          fontWeight: "bold",
+          align: "center",
+        })
+        .setOrigin(0.5);
+
+      productBtn.on("pointerdown", () => {
+        this.sound.play("pop", { volume: 0.1 });
+        this.buyCoin(product.amount);
+      });
+
+      productBtn.on("pointerover", () => {
+        productBg.setStrokeStyle(3, 0xffd700, 1);
+      });
+
+      productBtn.on("pointerout", () => {
+        productBg.setStrokeStyle(2, 0x4ecdc4, 1);
+      });
+
+      this.coinShopContainer.add([productBg, productBtn, productText]);
+    });
+
+    this.coinShopContainer.add([
+      overlay,
+      popupBg,
+      titleText,
+      currentCoinText,
+      closeBtn,
+      closeBtnIcon,
+    ]);
+  }
+
+  buyCoin(amount) {
+    // 🔹 코인 추가
+    this.myProfile.coins += amount;
+    localStorage.setItem("profileCoins", String(this.myProfile.coins));
+
+    // 🔹 서버에 전송 (멀티플레이인 경우)
+    if (!this.isSingle && socket.connected) {
+      socket.emit("addCoins", { amount });
+    }
+
+    // 🔹 프로필 업데이트
+    this.updateMyProfileUI();
+
+    this.showToast(`💰 ${amount} 코인 추가되었습니다!`, "#2ecc71");
+
+    // 🔹 코인 팝업 닫기
+    this.closeCoinShopPopup();
+  }
+
+  closeCoinShopPopup() {
+    if (this.coinShopContainer) {
+      this.coinShopContainer.destroy();
+      this.coinShopContainer = null;
+    }
   }
 
   closeShopPopup() {

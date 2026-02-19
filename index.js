@@ -471,6 +471,43 @@ io.on("connection", (socket) => {
     );
   });
 
+  // 코인 추가 구매 이벤트
+  socket.on("addCoins", async (data) => {
+    const { amount } = data;
+
+    // 1. 코인 추가
+    socket.coins += amount;
+
+    // 2. DB에 저장
+    const mergedItems = {
+      items: Array.isArray(socket.items) ? socket.items : [],
+      specialCards: socket.specialCards || {},
+    };
+
+    await savePlayer(
+      socket.nickname,
+      socket.level,
+      socket.coins,
+      mergedItems,
+      socket.experience,
+    );
+
+    // 3. 클라이언트에 최신 프로필 전송
+    socket.emit("myProfile", {
+      nickname: socket.nickname,
+      level: Number(socket.level) || 1,
+      coins: Number(socket.coins) || 0,
+      items: Array.isArray(socket.items) ? socket.items : [],
+      experience: Number(socket.experience) || 0,
+      avatarKey: socket.avatarKey || "player_1",
+      specialCards: socket.specialCards || {},
+    });
+
+    console.log(
+      `✅ ${socket.nickname}이(가) 코인 ${amount}개 구매 (현재 보유: ${socket.coins}개)`,
+    );
+  });
+
   socket.on("createRoom", (data) => {
     const nickname = typeof data === "object" ? data.nickname : socket.nickname;
     const avatarKey =
