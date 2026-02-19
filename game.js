@@ -4456,7 +4456,7 @@ class GameScene extends Phaser.Scene {
     if (!players || players.length === 0) return;
 
     const { width, height } = this.cameras.main;
-    const currentHostId = data.hostId || this.roundData.hostId; // 데이터에서 받은 hostId 우선 사용
+    const currentHostId = (data && data.hostId) || this.roundData.hostId; // 데이터에서 받은 hostId 우선 사용
     const isHost = socket.id === currentHostId;
 
     // --- 컨테이너 생성 및 초기화 로직 유지 ---
@@ -4517,6 +4517,17 @@ class GameScene extends Phaser.Scene {
         })
         .setOrigin(0, 0.5);
 
+      const earnedCoins = Number(p.earnedCoins) || 0;
+      const earnedExp = Number(p.earnedExperience) || 0;
+      const rewardTxt = this.add
+        .text(width * 0.18, 0, `코인 +${earnedCoins}  EXP +${earnedExp}`, {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.032}px`,
+          fill: "#0f172a",
+          fontWeight: "bold",
+        })
+        .setOrigin(0.5);
+
       // 3. 점수/카드 장수 텍스트
       /*const scoreValue = p.cards !== undefined ? `${p.cards}장` : "";
       const scoreTxt = this.add
@@ -4528,7 +4539,7 @@ class GameScene extends Phaser.Scene {
         })
         .setOrigin(0.5);*/
 
-      row.add([rankTxt, nameTxt]);
+      row.add([rankTxt, nameTxt, rewardTxt]);
       container.add(row);
     });
 
