@@ -120,8 +120,9 @@ class LobbyScene extends Phaser.Scene {
       VERSION = "";
     }
 
-    //this.load.image("title", `${ASSET_SERVER}/images/title.png${VERSION}`);
     this.load.image("mybg", `${ASSET_SERVER}/images/mybg.png${VERSION}`);
+    this.load.image("gamebg", `${ASSET_SERVER}/images/gamebg.png${VERSION}`);
+
     this.load.image("roombg", `${ASSET_SERVER}/images/roombg.png${VERSION}`);
 
     this.load.image("bar", `${ASSET_SERVER}/images/bar.png${VERSION}`);
@@ -131,6 +132,22 @@ class LobbyScene extends Phaser.Scene {
 
     this.load.image("slide", `${ASSET_SERVER}/images/slide.png${VERSION}`);
     this.load.image("chef", `${ASSET_SERVER}/images/chef.png${VERSION}`);
+    this.load.image(
+      "player_1",
+      `${ASSET_SERVER}/images/player_1.png${VERSION}`,
+    );
+    this.load.image(
+      "player_2",
+      `${ASSET_SERVER}/images/player_2.png${VERSION}`,
+    );
+    this.load.image(
+      "player_3",
+      `${ASSET_SERVER}/images/player_3.png${VERSION}`,
+    );
+    this.load.image(
+      "player_4",
+      `${ASSET_SERVER}/images/player_4.png${VERSION}`,
+    );
     this.load.image(
       "resultbg",
       `${ASSET_SERVER}/images/resultbg.png${VERSION}`,
@@ -228,12 +245,6 @@ class LobbyScene extends Phaser.Scene {
       .setDisplaySize(width, height * 1.1)
       .setDepth(0) // 레이어 순서를 가장 뒤로
       .setAlpha(1); // 게임 화면은 집중을 위해 약간 어둡게 처리(선택사항)
-
-    /*const title = this.add
-      .image(centerX, height * 0.2, "title")
-      .setDisplaySize(width * 0.9, height * 0.6)
-      .setDepth(1) // 레이어 순서를 가장 뒤로
-      .setAlpha(1); // 게임 화면은 집중을 위해 약간 어둡게 처리(선택사항)*/
 
     socket.off("hostChanged").on("hostChanged", (data) => {
       if (data.players) this.currentPlayers = data.players;
@@ -994,6 +1005,7 @@ class LobbyScene extends Phaser.Scene {
         return res.json();
       })
       .then((rooms) => {
+        this.hideLoading(); // ✅ 방 목록 로드 완료 시 로딩창 닫기
         // 1. 기존 팝업 닫기
         if (this.joinPopupContainer) this.joinPopupContainer.destroy();
         this.joinPopupContainer = this.add.container(0, 0).setDepth(1100); // 로비 UI보다 높게
@@ -1075,16 +1087,15 @@ class LobbyScene extends Phaser.Scene {
         const browseTab = createTabButton(
           "방 찾기",
           "browse",
-          centerX * 1 - tabGap,
+          centerX * 1 - tabGap * 0.5,
         );
-        const createTab = createTabButton("방 만들기", "create", centerX * 1);
-        const codeTab = createTabButton(
-          "코드입력",
-          "code",
-          centerX * 1 + tabGap,
+        const createTab = createTabButton(
+          "방 만들기",
+          "create",
+          centerX * 1 + tabGap * 0.5,
         );
 
-        allTabs.push(browseTab, createTab, codeTab);
+        allTabs.push(browseTab, createTab);
 
         // 6. 콘텐츠 영역
         const contentY = popupY;
@@ -1102,9 +1113,6 @@ class LobbyScene extends Phaser.Scene {
           } else if (tabName === "create") {
             currentContent = this.add.container(centerX, contentY);
             showRoomCreateForm(currentContent);
-          } else if (tabName === "code") {
-            currentContent = this.add.container(centerX, contentY);
-            showRoomCodeForm(currentContent);
           }
 
           // 콘텐츠를 joinPopupContainer에 추가
@@ -1184,6 +1192,12 @@ class LobbyScene extends Phaser.Scene {
                   generateHapticFeedback({ type: "impactLight" }).catch(
                     () => {},
                   );
+                }
+
+                // 플레이 중인 방은 입장 불가
+                if (isPlaying) {
+                  this.showToast("이미 게임이 진행 중인 방입니다!", "#e74c3c");
+                  return;
                 }
 
                 const myNickname = localStorage.getItem("nickname") || "요리사";
@@ -1427,11 +1441,14 @@ class LobbyScene extends Phaser.Scene {
             pwEl.value = pwEl.value.replace(/[^0-9]/g, "").substring(0, 4);
           });
 
+          pwInput.setVisible(false);
           const updateToggle = (pub) => {
             isPublic = pub;
             publicBtnImg.setTint(pub ? 0x3498db : 0x7f8c8d);
             privateBtnImg.setTint(pub ? 0x7f8c8d : 0xe67e22);
             pwEl.style.display = pub ? "none" : "block";
+            pwInput.setVisible(!pub);
+            if (pub) pwEl.value = "";
           };
 
           publicBtnImg.on("pointerdown", () => {
@@ -1698,7 +1715,7 @@ class LobbyScene extends Phaser.Scene {
             yoyo: true,
             onComplete: () => {
               closePopupWithCleanup();
-              this.scene.start("LobbyScene");
+              // 씬 재시작 없이 팝업만 닫음 (mainUIContainer 유지)
             },
           });
         });
@@ -1938,204 +1955,317 @@ class LobbyScene extends Phaser.Scene {
     });
   }
 
-  showWaiting(roomId, players = [], isHost = false, maxPlayers = 2) {
+  showWaiting(roomId, players = [], isHost = false, maxPlayers = 4) {
     const { width, height } = this.cameras.main;
     const centerX = width / 2;
 
-    // 1. 메인 화면 UI (타이틀, 사운드버튼 등) 파괴
+    // 1. 메인 화면 UI 파괴
     if (this.mainUIContainer) {
       this.mainUIContainer.destroy();
       this.mainUIContainer = null;
     }
-
-    // 2. 입장 코드 팝업 컨테이너 파괴
     if (this.joinPopupContainer) {
       this.joinPopupContainer.destroy();
       this.joinPopupContainer = null;
     }
-
-    // 3. 입력창 DOM 요소 파괴 (이게 중요!)
     if (this.joinInputElement) {
       this.joinInputElement.destroy();
       this.joinInputElement = null;
     }
 
-    // 기존 대기실 UI가 있다면 제거 (중복 생성 방지)
+    // 기존 대기실 UI 제거
     if (this.lobbyUIContainer) {
       this.lobbyUIContainer.destroy();
     }
     this.lobbyUIContainer = this.add.container(0, 0).setDepth(100);
 
-    // 2. 배경 (컨테이너에 추가)
+    // 배경
     const bg = this.add
-      .image(centerX, height / 2, "mybg")
+      .image(centerX, height / 2, "gamebg")
       .setDisplaySize(width, height * 1.2)
       .setDepth(0);
     this.lobbyUIContainer.add(bg);
 
-    // 3. 입장 코드 (roomId가 undefined면 기존 변수 사용)
+    // 입장 코드
     const codeText = this.add
       .text(
         centerX,
-        height * 0.15,
+        height * 0.08,
         `입장코드: ${roomId || this.currentRoomId}`,
         {
           fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.08}px`,
+          fontSize: `${width * 0.065}px`,
           fill: "#ffff00",
           fontWeight: "bold",
+          stroke: "#000000",
+          strokeThickness: 4,
         },
       )
       .setDepth(10)
       .setOrigin(0.5);
     this.lobbyUIContainer.add(codeText);
 
-    // 4. 참가자 수
+    // 참가자 수
     const countText = this.add
-      .text(centerX, height * 0.25, `참가자: ${players.length} / 4`, {
-        fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.05}px`,
-        fill: "#fff",
-      })
+      .text(
+        centerX,
+        height * 0.14,
+        `참가자: ${players.length} / ${maxPlayers}`,
+        {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.045}px`,
+          fill: "#ffffff",
+        },
+      )
       .setOrigin(0.5);
     this.lobbyUIContainer.add(countText);
 
     /* =======================================================
-       5. 플레이어 리스트 패널 (배경 박스) 생성
+       플레이어 카드 UI (위 2명 / 아래 2명)
+       슬롯 위치: [0]=왼쪽위, [1]=오른쪽위, [2]=왼쪽아래, [3]=오른쪽아래
     ======================================================= */
-    const listTopY = height * 0.32; // 리스트 시작 높이
-    const itemHeight = height * 0.05; // 한 줄당 높이
-    const panelWidth = width * 0.5; // 패널 가로 길이
-    const panelPadding = height * 0.08;
-    const panelHeight = players.length * itemHeight + panelPadding;
-    const panelY = listTopY + panelHeight / 2 - panelPadding / 2;
+    const slotPositions = [
+      { x: centerX - width * 0.25, y: height * 0.3 },
+      { x: centerX + width * 0.25, y: height * 0.3 },
+      { x: centerX - width * 0.25, y: height * 0.52 },
+      { x: centerX + width * 0.25, y: height * 0.52 },
+    ];
 
-    // 라운드 박스 그리기
-    const listPanel = this.add.graphics();
-    listPanel.fillStyle(0x000000, 0.5); // 검정색, 50% 투명도
-    listPanel.fillRoundedRect(
-      centerX - panelWidth / 2,
-      panelY - panelHeight / 2,
-      panelWidth,
-      panelHeight,
-      15, // 모서리 곡률
-    );
-    this.lobbyUIContainer.add(listPanel);
+    const cardW = width * 0.38;
+    const cardH = height * 0.18;
+    const profileSize = width * 0.14;
+    const levelSize = width * 0.07;
 
-    /* =======================================================
-       6. 플레이어 리스트 텍스트 렌더링
-    ======================================================= */
-    const textStartX = centerX - panelWidth / 2 + width * 0.05;
+    // 빈 슬롯 4개 먼저 그리기
+    for (let i = 0; i < 4; i++) {
+      const pos = slotPositions[i];
+      const emptyCard = this.add.graphics();
+      emptyCard.fillStyle(0x000000, 0.25);
+      emptyCard.fillRoundedRect(
+        pos.x - cardW / 2,
+        pos.y - cardH / 2,
+        cardW,
+        cardH,
+        20,
+      );
+      emptyCard.lineStyle(2, 0xffffff, 0.2);
+      emptyCard.strokeRoundedRect(
+        pos.x - cardW / 2,
+        pos.y - cardH / 2,
+        cardW,
+        cardH,
+        20,
+      );
+      this.lobbyUIContainer.add(emptyCard);
 
+      const emptyTxt = this.add
+        .text(pos.x, pos.y, "대기 중...", {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.035}px`,
+          color: "#888888",
+        })
+        .setOrigin(0.5);
+      this.lobbyUIContainer.add(emptyTxt);
+    }
+
+    // 플레이어 카드 그리기
     players.forEach((p, i) => {
+      if (i >= 4) return;
+      const pos = slotPositions[i];
       const isThisPlayerHost = p.id === this.hostId;
       const isMe = p.id === socket.id;
+      const isReady = isThisPlayerHost || p.isReady;
 
-      const isReadyState = isThisPlayerHost || p.isReady;
-      const statusColor = isReadyState ? "#00ff00" : "#ffffff";
-      const circleIcon = isReadyState ? "●" : "○";
+      // 카드 배경 (준비 상태에 따라 색상 변경)
+      const cardBg = this.add.graphics();
+      const bgColor = isReady ? 0x1a4a1a : 0x1a1a2e;
+      const borderColor = isReady ? 0x2ecc71 : isMe ? 0xf1c40f : 0x4a4a6a;
+      cardBg.fillStyle(bgColor, 0.9);
+      cardBg.fillRoundedRect(
+        pos.x - cardW / 2,
+        pos.y - cardH / 2,
+        cardW,
+        cardH,
+        20,
+      );
+      cardBg.lineStyle(3, borderColor, 1);
+      cardBg.strokeRoundedRect(
+        pos.x - cardW / 2,
+        pos.y - cardH / 2,
+        cardW,
+        cardH,
+        20,
+      );
+      this.lobbyUIContainer.add(cardBg);
 
-      let pName = p.nickname;
-      if (isThisPlayerHost) pName = `${pName} 👑`;
+      // 프로필 이미지 (chef)
+      const profileImg = this.add
+        .image(
+          pos.x - cardW / 2 + profileSize * 1.3,
+          pos.y - cardH * 0.05,
+          `player_${i + 1}`,
+        )
+        .setDisplaySize(profileSize * 2, profileSize * 2);
+      this.lobbyUIContainer.add(profileImg);
 
-      const pText = this.add
+      // 레벨 배지 (프로필 왼쪽 아래 모서리)
+      const levelBg = this.add.graphics();
+      levelBg.fillStyle(0xe67e22, 1);
+      levelBg.fillCircle(
+        pos.x - cardW / 2 + profileSize * 0.8 - profileSize * 0.35,
+        pos.y - cardH * 0.05 + profileSize * 0.35,
+        levelSize * 0.55,
+      );
+      this.lobbyUIContainer.add(levelBg);
+
+      const levelTxt = this.add
         .text(
-          textStartX, // 왼쪽 정렬된 시작 좌표
-          listTopY + i * itemHeight + panelPadding / 4,
-          `${circleIcon} ${pName}`,
+          pos.x - cardW / 2 + profileSize * 0.8 - profileSize * 0.35,
+          pos.y - cardH * 0.05 + profileSize * 0.35,
+          "1",
           {
             fontFamily: GAME_FONTS.main,
-            fontSize: `${width * 0.06}px`,
-            color: isMe ? "#ffff00" : statusColor,
-            stroke: isReadyState ? "#004400" : "#000000",
-            strokeThickness: isReadyState ? 2 : 0,
+            fontSize: `${levelSize * 0.7}px`,
+            color: "#ffffff",
             fontWeight: "bold",
           },
         )
-        .setOrigin(0, 0.5); // ⭐ 핵심: 원점을 왼쪽(0)으로 설정하여 왼쪽 정렬
+        .setOrigin(0.5);
+      this.lobbyUIContainer.add(levelTxt);
 
-      this.lobbyUIContainer.add(pText);
+      // 방장 왕관 표시
+      if (isThisPlayerHost) {
+        const crownTxt = this.add
+          .text(pos.x + cardW * 0.3, pos.y - cardH * 0.38, "👑", {
+            fontSize: `${width * 0.05}px`,
+          })
+          .setOrigin(0.5);
+        this.lobbyUIContainer.add(crownTxt);
+      }
+
+      // 닉네임 텍스트 (버튼 대신 텍스트로 표시, 준비 상태에 따라 색상 변경)
+      let displayName = p.nickname;
+      if (displayName.length > 6)
+        displayName = displayName.substring(0, 6) + "..";
+
+      // 방장 표시 포함
+      if (isThisPlayerHost) displayName = `👑 ${displayName}`;
+
+      // 준비 상태에 따라 색상 결정
+      let nameColor = "#aaaaaa"; // 기본: 대기 중 (회색)
+      if (isThisPlayerHost)
+        nameColor = "#f1c40f"; // 방장: 노란색
+      else if (isReady)
+        nameColor = "#2ecc71"; // 준비 완료: 초록색
+      else if (isMe) nameColor = "#ffffff"; // 나(대기): 흰색
+
+      const nameTxt = this.add
+        .text(pos.x, pos.y + cardH * 0.28, displayName, {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.038}px`,
+          color: nameColor,
+          fontWeight: "bold",
+          stroke: "#000000",
+          strokeThickness: 3,
+        })
+        .setOrigin(0.5);
+      this.lobbyUIContainer.add(nameTxt);
     });
 
     /* ======================
-     시작 / 나가기 버튼 로직 (기존과 동일하되 컨테이너에 add)
+     시작하기 / 준비하기 / 나가기 버튼
      ====================== */
-    const mainBtnY = height * 0.615;
-    const mainBtnImg = this.add
-      .image(centerX, mainBtnY, "uibtn")
-      .setDisplaySize(width * 0.6, height * 0.085)
-      .setTint(0xe67e22)
-      .setDepth(20)
-      .setInteractive();
+    const mainBtnY = height * 0.73;
+    const exitBtnY = height * 0.82;
 
-    const mainBtnText = this.add
-      .text(centerX, mainBtnY, isHost ? "시작하기" : "준비하기", {
-        fontFamily: GAME_FONTS.main,
-        color: "#fff",
-        fontSize: `${width * 0.055}px`,
-        fontWeight: "bold",
-      })
-      .setDepth(20)
-      .setOrigin(0.5);
+    if (isHost) {
+      // 방장: 시작하기 버튼
+      const startBtnImg = this.add
+        .image(centerX, mainBtnY, "uibtn")
+        .setDisplaySize(width * 0.6, height * 0.075)
+        .setTint(0xe67e22)
+        .setDepth(20)
+        .setInteractive({ useHandCursor: true });
+      const startBtnText = this.add
+        .text(centerX, mainBtnY, "시작하기", {
+          fontFamily: GAME_FONTS.main,
+          color: "#fff",
+          fontSize: `${width * 0.055}px`,
+          fontWeight: "bold",
+        })
+        .setDepth(20)
+        .setOrigin(0.5);
+      this.lobbyUIContainer.add([startBtnImg, startBtnText]);
 
-    this.lobbyUIContainer.add([mainBtnImg, mainBtnText]);
-
-    // 시작/나가기 버튼 클릭 이벤트
-    // 시작/나가기 버튼 클릭 이벤트
-    mainBtnImg.on("pointerdown", () => {
-      // 효과음 재생
-      this.sound.play("pop", { volume: 0.1 });
-
-      // 1. 클릭 연출 추가 (이미지와 텍스트 동시 적용)
-      this.tweens.add({
-        targets: [mainBtnImg, mainBtnText],
-        scaleX: "*=0.95", // 현재 크기에서 5% 축소
-        scaleY: "*=0.95",
-        duration: 50,
-        yoyo: true, // 다시 원래 크기로 복구
-        onComplete: () => {
-          // 2. 애니메이션이 끝난 후 기존 로직 실행
-          console.log("시작 버튼 클릭 연출 완료");
-
-          if (isHost) {
+      startBtnImg.on("pointerdown", () => {
+        this.sound.play("pop", { volume: 0.1 });
+        this.tweens.add({
+          targets: [startBtnImg, startBtnText],
+          scaleX: "*=0.95",
+          scaleY: "*=0.95",
+          duration: 50,
+          yoyo: true,
+          onComplete: () => {
             const currentCount = this.currentPlayers.length;
-            // 1. 방장 혼자 있을 때 (가장 먼저 체크)
             if (currentCount <= 1) {
               this.showToast(
                 "함께 할 유저가 필요합니다! (최소 2인)",
                 "#e74c3c",
               );
-              console.log("시작 거부: 혼자 있음");
-            }
-            // 3. 모든 조건 만족 시 게임 시작
-            else {
-              //socket.emit("requestNextRecipe"); 이건 쿠시용
+            } else {
               socket.emit("startGameRequest");
-              console.log("게임 시작 요청 전송");
             }
-          } else {
-            // 중복 클릭 방지
-            mainBtnImg.disableInteractive();
-            socket.emit("toggleReady");
+          },
+        });
+      });
+    } else {
+      // 일반 유저: 준비하기 버튼
+      const myReadyState =
+        players.find((p) => p.id === socket.id)?.isReady || false;
+      const readyBtnImg = this.add
+        .image(centerX, mainBtnY, "uibtn")
+        .setDisplaySize(width * 0.6, height * 0.075)
+        .setTint(myReadyState ? 0x2ecc71 : 0x3498db)
+        .setDepth(20)
+        .setInteractive({ useHandCursor: true });
+      const readyBtnText = this.add
+        .text(centerX, mainBtnY, myReadyState ? "준비완료!" : "준비하기", {
+          fontFamily: GAME_FONTS.main,
+          color: "#fff",
+          fontSize: `${width * 0.055}px`,
+          fontWeight: "bold",
+        })
+        .setDepth(20)
+        .setOrigin(0.5);
+      this.lobbyUIContainer.add([readyBtnImg, readyBtnText]);
 
+      readyBtnImg.on("pointerdown", () => {
+        this.sound.play("pop", { volume: 0.1 });
+        this.tweens.add({
+          targets: [readyBtnImg, readyBtnText],
+          scaleX: "*=0.95",
+          scaleY: "*=0.95",
+          duration: 50,
+          yoyo: true,
+          onComplete: () => {
+            readyBtnImg.disableInteractive();
+            socket.emit("toggleReady");
             this.time.delayedCall(300, () => {
-              if (mainBtnImg && mainBtnImg.active) {
-                mainBtnImg.setInteractive();
+              if (readyBtnImg && readyBtnImg.active) {
+                readyBtnImg.setInteractive({ useHandCursor: true });
               }
             });
-          }
-        },
+          },
+        });
       });
-    });
+    }
 
-    // 방장용 추가 나가기 버튼
-    const exitBtnY = height * 0.715;
+    // 나가기 버튼
     const exitBtnImg = this.add
       .image(centerX, exitBtnY, "uibtn")
-      .setDisplaySize(width * 0.6, height * 0.08)
-      .setInteractive()
-      .setTint(isHost ? 0xffffff : 0xffaaaa);
-
+      .setDisplaySize(width * 0.6, height * 0.07)
+      .setInteractive({ useHandCursor: true })
+      .setTint(0xffaaaa);
     const exitBtnText = this.add
       .text(centerX, exitBtnY, "나가기", {
         fontFamily: GAME_FONTS.main,
@@ -2144,14 +2274,10 @@ class LobbyScene extends Phaser.Scene {
         fontWeight: "bold",
       })
       .setOrigin(0.5);
-
     this.lobbyUIContainer.add([exitBtnImg, exitBtnText]);
 
     exitBtnImg.on("pointerdown", () => {
-      // 1. 효과음 재생
       this.sound.play("pop", { volume: 0.1 });
-
-      // 2. 클릭 연출 (이미지와 텍스트 동시 적용)
       this.tweens.add({
         targets: [exitBtnImg, exitBtnText],
         scaleX: "*=0.95",
@@ -2159,7 +2285,6 @@ class LobbyScene extends Phaser.Scene {
         duration: 50,
         yoyo: true,
         onComplete: () => {
-          // 3. 연출이 눈에 보인 직후에 페이지 새로고침
           window.location.reload();
         },
       });
@@ -2374,10 +2499,10 @@ class GameScene extends Phaser.Scene {
 
     // 배경 설정
     this.add
-      .image(centerX, height / 2, "mybg")
+      .image(centerX, height / 2, "gamebg")
       .setDisplaySize(width, height)
       .setDepth(-1)
-      .setAlpha(0.6);
+      .setAlpha(0.9);
 
     // 플레이어/카드들을 담을 그룹
     this.playerTableGroup = this.add.container(0, 0).setDepth(100);
@@ -2731,6 +2856,84 @@ class GameScene extends Phaser.Scene {
         this.drawOpenCard(p.openStack, layout);
       }
     });
+
+    // =============================================
+    // 바닥 카드 총합 표시 (화면 중앙)
+    // =============================================
+    const totalStackCount = players.reduce((sum, p) => {
+      return sum + (p.openStack ? p.openStack.length : 0);
+    }, 0);
+
+    if (totalStackCount > 0) {
+      const cx = width * 0.5;
+      const cy = height * 0.465;
+
+      // 긴장감 단계: 10장 이상 → 주황, 20장 이상 → 빨강
+      const tension = totalStackCount >= 20 ? 2 : totalStackCount >= 10 ? 1 : 0;
+      const textColor =
+        tension === 2 ? "#ff4444" : tension === 1 ? "#e67e22" : "#ffffff";
+
+      // 배경 원 (고정, 애니메이션 없음)
+      const circleRadius = width * 0.09;
+      const circleBg = this.add.graphics();
+      circleBg.fillStyle(0x000000, 0.55);
+      circleBg.fillCircle(cx, cy, circleRadius);
+      circleBg.lineStyle(
+        3,
+        tension === 2 ? 0xe74c3c : tension === 1 ? 0xe67e22 : 0xffffff,
+        0.8,
+      );
+      circleBg.strokeCircle(cx, cy, circleRadius);
+      this.playerTableGroup.add(circleBg);
+
+      // 총합 숫자 텍스트 (고정)
+      const stackTxt = this.add
+        .text(cx, cy - width * 0.025, `${totalStackCount}`, {
+          fontFamily: "Jua",
+          fontSize: `${width * 0.07}px`,
+          color: textColor,
+          fontWeight: "bold",
+          stroke: "#000000",
+          strokeThickness: 5,
+        })
+        .setOrigin(0.5)
+        .setDepth(200);
+      this.playerTableGroup.add(stackTxt);
+
+      // "장" 라벨 (고정)
+      const labelTxt = this.add
+        .text(cx, cy + width * 0.045, "장", {
+          fontFamily: "Jua",
+          fontSize: `${width * 0.032}px`,
+          color: textColor,
+          stroke: "#000000",
+          strokeThickness: 3,
+        })
+        .setOrigin(0.5)
+        .setDepth(200);
+      this.playerTableGroup.add(labelTxt);
+
+      // 화면 테두리 깜빡임 효과 (10장 이상)
+      if (tension >= 1) {
+        const borderColor = tension === 2 ? 0xe74c3c : 0xe67e22;
+        const blinkSpeed = tension === 2 ? 300 : 500;
+
+        const borderOverlay = this.add.graphics();
+        borderOverlay.lineStyle(35, borderColor, 1);
+        borderOverlay.strokeRect(0, 0, width, height);
+        borderOverlay.setDepth(500);
+        this.playerTableGroup.add(borderOverlay);
+
+        this.tweens.add({
+          targets: borderOverlay,
+          alpha: 0,
+          duration: blinkSpeed,
+          yoyo: true,
+          repeat: -1,
+          ease: "Sine.easeInOut",
+        });
+      }
+    }
   }
 
   updateTurnEffect() {
@@ -3173,21 +3376,22 @@ class GameScene extends Phaser.Scene {
 
     // 💡 1. 현재 쌓여있는 카드의 개수를 파악합니다.
     const currentStackCount = player.openStack ? player.openStack.length : 0;
-    const step = 3; // 카드 한 장당 어긋날 간격 (픽셀)
+    const step = 1; // 카드 한 장당 어긋날 간격 (픽셀)
 
     let targetOffsetX = 0;
     let targetOffsetY = 0;
 
     // 💡 2. 플레이어 위치(rotation)에 따라 쌓이는 방향으로 오프셋 계산
     // drawOpenCard와 방향을 일치시켜야 '착' 하고 달라붙습니다.
-    if (startPos.rotation === 0)
+    if (startPos.rotation === 0) {
       targetOffsetY = -currentStackCount * step; // 내 위치: 위로 쌓임
-    else if (startPos.rotation === 90)
+    } else if (startPos.rotation === 90) {
       targetOffsetX = currentStackCount * step; // 왼쪽: 오른쪽으로 쌓임
-    else if (startPos.rotation === 180)
+    } else if (startPos.rotation === 180) {
       targetOffsetY = currentStackCount * step; // 위쪽: 아래로 쌓임
-    else if (startPos.rotation === -90 || startPos.rotation === 270)
+    } else if (startPos.rotation === -90 || startPos.rotation === 270) {
       targetOffsetX = -currentStackCount * step; // 오른쪽: 왼쪽으로 쌓임
+    }
 
     const tempCard = this.add
       .image(startPos.x, startPos.y, "card_back")

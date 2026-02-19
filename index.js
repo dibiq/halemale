@@ -3,6 +3,7 @@ const http = require("http");
 const { Server } = require("socket.io");
 const path = require("path");
 const cors = require("cors");
+const { Pool } = require("pg");
 
 const app = express();
 const server = http.createServer(app);
@@ -21,6 +22,48 @@ function getAllowedOrigins() {
     "http://192.168.10.113:5173",
     "http://localhost:3000",
   ];
+}
+
+// 1. DB 연결 설정
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL, // Render 환경변수에 등록한 주소
+  ssl: {
+    rejectUnauthorized: false, // Render DB 접속 시 필수 설정
+  },
+});
+
+// 2. [저장하기] 플레이어 데이터 저장/업데이트 (UPSERT)
+async function savePlayer(id, level, coins, items) {
+  const query = `
+    INSERT INTO players (id, level, coins, items, updated_at)
+    VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+    ON CONFLICT (id) 
+    DO UPDATE SET 
+      level = EXCLUDED.level,
+      coins = EXCLUDED.coins,
+      items = EXCLUDED.items,
+      updated_at = CURRENT_TIMESTAMP;
+  `;
+  try {
+    // items는 배열 ['potion', 'sword'] 형태 그대로 넣으면 pg가 처리합니다.
+    await pool.query(query, [id, level, coins, JSON.stringify(items)]);
+    console.log(`✅ ${id} 데이터 저장 성공`);
+  } catch (err) {
+    console.error("❌ 저장 에러:", err);
+  }
+}
+
+// 3. [불러오기] 플레이어 데이터 조회
+async function getPlayer(id) {
+  try {
+    const res = await pool.query("SELECT * FROM players WHERE id = $1", [id]);
+    if (res.rows.length > 0) {
+      return res.rows[0];
+    }
+    return null; // 유저 정보 없음
+  } catch (err) {
+    console.error("❌ 조회 에러:", err);
+  }
 }
 
 app.use(cors({ origin: getAllowedOrigins(), credentials: true }));
@@ -105,6 +148,18 @@ function checkGameOver(room, io) {
     const sorted = [...room.players].sort(
       (a, b) => (b.myDeck?.length || 0) - (a.myDeck?.length || 0),
     );
+
+    // 💡 [추가] DB에 결과 저장
+    // 게임 종료 시점의 레벨, 코인, 아이템 등을 저장합니다.
+    // 여기서는 간단하게 점수(보유 카드 수)를 코인으로 치환하거나 레벨업 로직을 넣을 수 있습니다.
+    room.players.forEach((p) => {
+      // 예: 보유했던 카드 수만큼 코인을 주거나, 승자에게 추가 보너스
+      const earnedCoins = p.myDeck?.length || 0;
+      const currentLevel = 1; // 실제 레벨 시스템이 있다면 해당 값 사용
+      const currentItems = []; // 실제 아이템 시스템이 있다면 해당 값 사용
+
+      savePlayer(p.nickname, currentLevel, earnedCoins, currentItems);
+    });
 
     io.to(room.roomId).emit("gameEnded", {
       message: `게임 종료! ${winner.nickname}님의 최종 승리!`,
