@@ -389,10 +389,23 @@ io.on("connection", (socket) => {
         Math.max((Number(savedData.level) || 1) - 1, 0) * XP_PER_LEVEL;
       socket.items = parsedItems;
       socket.specialCards = parsedSpecialCards; // 특수카드 할당
+      console.log(`✅ setNickname - ${socket.nickname} DB 로드 완료:`, {
+        level: socket.level,
+        coins: socket.coins,
+        exp: socket.experience,
+      });
+    } else {
+      console.log(`⚠️ setNickname - ${socket.nickname} DB 데이터 없음`);
     }
 
     socket.level =
       Number(socket.level) || getLevelFromExperience(socket.experience);
+
+    console.log(`🎯 setNickname 최종 - ${socket.nickname}:`, {
+      level: socket.level,
+      coins: socket.coins,
+      exp: socket.experience,
+    });
 
     socket.emit("myProfile", {
       nickname: socket.nickname,
@@ -517,12 +530,50 @@ io.on("connection", (socket) => {
     socket.nickname = nickname || "요리사";
     socket.avatarKey = avatarKey;
 
-    // 💡 [추가] nickname으로 DB에서 플레이어 정보 조회 (level 복원)
-    if (!socket.level || socket.level === 1) {
-      const savedData = await getPlayer(socket.nickname);
-      if (savedData && savedData.level) {
-        socket.level = savedData.level;
+    // 💡 [추가] nickname으로 DB에서 플레이어 정보 조회 (level, coins, experience 복원)
+    const savedData = await getPlayer(socket.nickname);
+    if (savedData) {
+      console.log(`🔍 createRoom - ${socket.nickname}의 DB 데이터:`, {
+        level: savedData.level,
+        coins: savedData.coins,
+        exp: savedData.experience,
+      });
+      socket.level = savedData.level || 1;
+      socket.coins = savedData.coins || 0;
+      socket.experience = savedData.experience || 0;
+
+      // items 파싱
+      let parsedItems = [];
+      if (
+        typeof savedData.items === "object" &&
+        !Array.isArray(savedData.items)
+      ) {
+        parsedItems = Array.isArray(savedData.items.items)
+          ? savedData.items.items
+          : [];
+      } else if (Array.isArray(savedData.items)) {
+        parsedItems = savedData.items;
+      } else if (typeof savedData.items === "string") {
+        try {
+          const parsed = JSON.parse(savedData.items);
+          parsedItems = Array.isArray(parsed.items)
+            ? parsed.items
+            : Array.isArray(parsed)
+              ? parsed
+              : [];
+        } catch (e) {
+          parsedItems = [];
+        }
       }
+      socket.items = parsedItems;
+    } else {
+      console.log(
+        `⚠️ createRoom - ${socket.nickname}의 DB 데이터 없음, 기본값 사용`,
+      );
+      socket.level = socket.level || 1;
+      socket.coins = socket.coins || 0;
+      socket.experience = socket.experience || 0;
+      socket.items = socket.items || [];
     }
 
     let roomId = Math.floor(1000 + Math.random() * 9000).toString();
@@ -544,7 +595,7 @@ io.on("connection", (socket) => {
       roomName: roomName,
       password: password, // 💡 비밀번호 저장 (비공개 방만)
     };
-    rooms[roomId].players.push({
+    const playerData = {
       id: socket.id,
       nickname: socket.nickname,
       avatarKey: socket.avatarKey || "player_1",
@@ -556,7 +607,13 @@ io.on("connection", (socket) => {
       openCard: null,
       openCardStack: [],
       isReady: false,
+    };
+    console.log(`✅ createRoom - 방장 추가:`, {
+      nickname: playerData.nickname,
+      level: playerData.level,
+      coins: playerData.coins,
     });
+    rooms[roomId].players.push(playerData);
 
     socket.join(roomId);
     socket.roomId = roomId;
@@ -597,16 +654,52 @@ io.on("connection", (socket) => {
     socket.nickname = nickname;
     socket.avatarKey = avatarKey;
 
-    // 💡 [추가] nickname으로 DB에서 플레이어 정보 조회 (level 복원)
-    if (!socket.level || socket.level === 1) {
-      const savedData = await getPlayer(nickname);
-      if (savedData && savedData.level) {
-        socket.level = savedData.level;
+    // 💡 [추가] nickname으로 DB에서 플레이어 정보 조회 (level, coins, experience 복원)
+    const savedData = await getPlayer(nickname);
+    if (savedData) {
+      console.log(`🔍 joinRoom - ${nickname}의 DB 데이터:`, {
+        level: savedData.level,
+        coins: savedData.coins,
+        exp: savedData.experience,
+      });
+      socket.level = savedData.level || 1;
+      socket.coins = savedData.coins || 0;
+      socket.experience = savedData.experience || 0;
+
+      // items 파싱
+      let parsedItems = [];
+      if (
+        typeof savedData.items === "object" &&
+        !Array.isArray(savedData.items)
+      ) {
+        parsedItems = Array.isArray(savedData.items.items)
+          ? savedData.items.items
+          : [];
+      } else if (Array.isArray(savedData.items)) {
+        parsedItems = savedData.items;
+      } else if (typeof savedData.items === "string") {
+        try {
+          const parsed = JSON.parse(savedData.items);
+          parsedItems = Array.isArray(parsed.items)
+            ? parsed.items
+            : Array.isArray(parsed)
+              ? parsed
+              : [];
+        } catch (e) {
+          parsedItems = [];
+        }
       }
+      socket.items = parsedItems;
+    } else {
+      console.log(`⚠️ joinRoom - ${nickname}의 DB 데이터 없음, 기본값 사용`);
+      socket.level = socket.level || 1;
+      socket.coins = socket.coins || 0;
+      socket.experience = socket.experience || 0;
+      socket.items = socket.items || [];
     }
 
     if (!room.players.find((p) => p.id === socket.id)) {
-      room.players.push({
+      const playerData = {
         id: socket.id,
         nickname,
         avatarKey: socket.avatarKey || "player_1",
@@ -618,7 +711,13 @@ io.on("connection", (socket) => {
         openCard: null,
         openCardStack: [],
         isReady: false,
+      };
+      console.log(`✅ joinRoom - 플레이어 추가:`, {
+        nickname: playerData.nickname,
+        level: playerData.level,
+        coins: playerData.coins,
       });
+      room.players.push(playerData);
     }
     io.to(roomId).emit("playerJoined", {
       roomId,
@@ -655,16 +754,54 @@ io.on("connection", (socket) => {
     socket.nickname = nickname;
     socket.avatarKey = avatarKey;
 
-    // 💡 [추가] nickname으로 DB에서 플레이어 정보 조회 (level 복원)
-    if (!socket.level || socket.level === 1) {
-      const savedData = await getPlayer(nickname);
-      if (savedData && savedData.level) {
-        socket.level = savedData.level;
+    // 💡 [추가] nickname으로 DB에서 플레이어 정보 조회 (level, coins, experience 복원)
+    const savedData = await getPlayer(nickname);
+    if (savedData) {
+      console.log(`🔍 joinPublicRoom - ${nickname}의 DB 데이터:`, {
+        level: savedData.level,
+        coins: savedData.coins,
+        exp: savedData.experience,
+      });
+      socket.level = savedData.level || 1;
+      socket.coins = savedData.coins || 0;
+      socket.experience = savedData.experience || 0;
+
+      // items 파싱
+      let parsedItems = [];
+      if (
+        typeof savedData.items === "object" &&
+        !Array.isArray(savedData.items)
+      ) {
+        parsedItems = Array.isArray(savedData.items.items)
+          ? savedData.items.items
+          : [];
+      } else if (Array.isArray(savedData.items)) {
+        parsedItems = savedData.items;
+      } else if (typeof savedData.items === "string") {
+        try {
+          const parsed = JSON.parse(savedData.items);
+          parsedItems = Array.isArray(parsed.items)
+            ? parsed.items
+            : Array.isArray(parsed)
+              ? parsed
+              : [];
+        } catch (e) {
+          parsedItems = [];
+        }
       }
+      socket.items = parsedItems;
+    } else {
+      console.log(
+        `⚠️ joinPublicRoom - ${nickname}의 DB 데이터 없음, 기본값 사용`,
+      );
+      socket.level = socket.level || 1;
+      socket.coins = socket.coins || 0;
+      socket.experience = socket.experience || 0;
+      socket.items = socket.items || [];
     }
 
     if (!room.players.find((p) => p.id === socket.id)) {
-      room.players.push({
+      const playerData = {
         id: socket.id,
         nickname,
         avatarKey: socket.avatarKey || "player_1",
@@ -676,7 +813,13 @@ io.on("connection", (socket) => {
         openCard: null,
         openCardStack: [],
         isReady: false,
+      };
+      console.log(`✅ joinPublicRoom - 플레이어 추가:`, {
+        nickname: playerData.nickname,
+        level: playerData.level,
+        coins: playerData.coins,
       });
+      room.players.push(playerData);
     }
     io.to(roomId).emit("playerJoined", {
       roomId,
