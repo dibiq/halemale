@@ -3729,20 +3729,7 @@ class GameScene extends Phaser.Scene {
       const textColor =
         tension === 2 ? "#ff4444" : tension === 1 ? "#e67e22" : "#ffffff";
 
-      // 배경 원 (고정, 애니메이션 없음)
-      const circleRadius = width * 0.09;
-      const circleBg = this.add.graphics();
-      circleBg.fillStyle(0x000000, 0.55);
-      circleBg.fillCircle(cx, cy, circleRadius);
-      circleBg.lineStyle(
-        3,
-        tension === 2 ? 0xe74c3c : tension === 1 ? 0xe67e22 : 0xffffff,
-        0.8,
-      );
-      circleBg.strokeCircle(cx, cy, circleRadius);
-      this.playerTableGroup.add(circleBg);
-
-      // 총합 숫자 텍스트 (고정)
+      // 총합 숫자 텍스트
       const stackTxt = this.add
         .text(cx, cy - width * 0.025, `${totalStackCount}`, {
           fontFamily: "Jua",
@@ -3756,18 +3743,32 @@ class GameScene extends Phaser.Scene {
         .setDepth(200);
       this.playerTableGroup.add(stackTxt);
 
-      // "장" 라벨 (고정)
-      const labelTxt = this.add
-        .text(cx, cy + width * 0.045, "장", {
-          fontFamily: "Jua",
-          fontSize: `${width * 0.032}px`,
-          color: textColor,
-          stroke: "#000000",
-          strokeThickness: 3,
-        })
-        .setOrigin(0.5)
-        .setDepth(200);
-      this.playerTableGroup.add(labelTxt);
+      // 💥 10장 이상일 때 숫자와 라벨에 역동적인 효과 추가
+      if (tension >= 1) {
+        const bounceScale = tension === 2 ? 1.15 : 1.08; // 20장 이상이면 더 큰 바운스
+        const bounceDuration = tension === 2 ? 300 : 400;
+        const shakeIntensity = tension === 2 ? 3 : 2;
+
+        // 바운스 효과
+        this.tweens.add({
+          targets: [stackTxt],
+          scale: bounceScale,
+          duration: bounceDuration,
+          yoyo: true,
+          repeat: -1,
+          ease: "Sine.easeInOut",
+        });
+
+        // 흔들림 효과
+        this.tweens.add({
+          targets: stackTxt,
+          rotation: Phaser.Math.DegToRad(shakeIntensity),
+          duration: 100,
+          yoyo: true,
+          repeat: -1,
+          ease: "Sine.easeInOut",
+        });
+      }
 
       // 화면 테두리 깜빡임 효과 (10장 이상)
       if (tension >= 1) {
@@ -4200,6 +4201,9 @@ class GameScene extends Phaser.Scene {
     const { width, height } = this.cameras.main;
     const { players, prevPlayers, winnerId } = data;
 
+    // 💥 멀티플레이 정답 시 스펙타클한 이펙트
+    this.playSuccessEffect();
+
     const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
     const myIndex = players.findIndex((p) => p.id === myId);
     const winIdx = players.findIndex((p) => p.id === winnerId);
@@ -4381,6 +4385,9 @@ class GameScene extends Phaser.Scene {
   playPenaltyAnimation(data) {
     const { width, height } = this.cameras.main;
 
+    // 💥 멀티플레이 패널티 시 강력한 실패 효과
+    this.playFailureEffect();
+
     const players = data.players;
 
     const penaltyIdx = players.findIndex((p) => p.id === data.penaltyId);
@@ -4556,15 +4563,6 @@ class GameScene extends Phaser.Scene {
         })
         .setOrigin(0, 0.5);
 
-      /*const scoreTxt = this.add
-        .text(width * 0.25, 0, `${p.cards}장`, {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.05}px`,
-          fill: "#2563eb",
-          fontWeight: "bold",
-        })
-        .setOrigin(0.5);*/
-
       row.add([rankTxt, nameTxt]);
       container.add(row);
     });
@@ -4707,7 +4705,11 @@ class GameScene extends Phaser.Scene {
       const isFive = Object.values(totals).some((count) => count === 5);
 
       if (isFive) {
-        // 성공 시
+        // 💥 성공 시 스펙타클한 이펙트 추가
+        this.playSuccessEffect();
+        // 성공 사운드
+        this.sound.play("irassai", { volume: 0.3 });
+
         this.processSingleBell(this.myId || "PLAYER_ME");
       } else {
         // 💡 실패 시 페널티 로직 실행
@@ -4811,15 +4813,278 @@ class GameScene extends Phaser.Scene {
     const isFive = Object.values(totals).some((count) => count === 5);
     if (!isFive) return;
 
+    // 💥 AI도 정답 시 스펙타클한 이펙트
+    this.playSuccessEffect();
+
     // 2. 사운드 재생 (캐시 확인 포함)
     if (this.cache.audio.exists("bell")) {
       this.sound.play("bell", { volume: 0.2 });
     } else if (this.cache.audio.exists("pop")) {
       this.sound.play("pop", { volume: 0.2 });
     }
+    this.sound.play("irassai", { volume: 0.3 });
 
     // 3. 승리 처리
     this.processSingleBell(aiId);
+  }
+
+  // 💥 정답 시 스펙타클한 이펙트
+  playSuccessEffect() {
+    const { width, height } = this.cameras.main;
+    const centerX = width / 2;
+    const centerY = height / 2;
+
+    // 1. 화면 전체 플래시 효과 (흰색 깜빡임)
+    const flash = this.add
+      .rectangle(centerX, centerY, width, height, 0xffffff, 1)
+      .setDepth(10000);
+
+    this.tweens.add({
+      targets: flash,
+      alpha: 0,
+      duration: 300,
+      ease: "Power2",
+      onComplete: () => flash.destroy(),
+    });
+
+    // 2. 카메라 셰이크
+    this.cameras.main.shake(400, 0.01);
+
+    // 3. "PERFECT!" 텍스트 애니메이션
+    const perfectText = this.add
+      .text(centerX, centerY - height * 0.1, "성공!", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.15}px`,
+        color: "#FFD700",
+        fontWeight: "bold",
+        stroke: "#FF6B6B",
+        strokeThickness: 12,
+      })
+      .setOrigin(0.5)
+      .setDepth(10001)
+      .setScale(0)
+      .setAlpha(0);
+
+    // 텍스트 등장 애니메이션
+    this.tweens.add({
+      targets: perfectText,
+      scale: 1.2,
+      alpha: 1,
+      duration: 200,
+      ease: "Back.easeOut",
+      onComplete: () => {
+        // 잠시 유지 후 사라짐
+        this.tweens.add({
+          targets: perfectText,
+          scale: 1.5,
+          alpha: 0,
+          y: centerY - height * 0.2,
+          duration: 400,
+          delay: 300,
+          ease: "Power2.easeIn",
+          onComplete: () => perfectText.destroy(),
+        });
+      },
+    });
+
+    // 4. 파티클 효과 - 황금 별 폭발
+    const particles = [];
+    const particleCount = 30;
+
+    for (let i = 0; i < particleCount; i++) {
+      const angle = (Math.PI * 2 * i) / particleCount;
+      const speed = 200 + Math.random() * 200;
+
+      const particle = this.add
+        .circle(centerX, centerY, width * 0.02, 0xffd700, 1)
+        .setDepth(10002);
+
+      particles.push(particle);
+
+      const vx = Math.cos(angle) * speed;
+      const vy = Math.sin(angle) * speed;
+
+      this.tweens.add({
+        targets: particle,
+        x: centerX + vx,
+        y: centerY + vy,
+        alpha: 0,
+        scale: 0,
+        duration: 800,
+        ease: "Power2.easeOut",
+        onComplete: () => particle.destroy(),
+      });
+    }
+
+    // 5. 별 이모지가 bell 중앙에서 360도로 폭발하는 효과
+    const bellY = height * 0.465; // bell의 y 위치
+    const starCount = 20;
+
+    for (let i = 0; i < starCount; i++) {
+      const angle = (Math.PI * 2 * i) / starCount;
+      const distance = width * 0.4 + Math.random() * width * 0.2;
+
+      const star = this.add
+        .text(centerX, bellY, "⭐", {
+          fontSize: `${width * 0.03}px`, // 크기 축소
+        })
+        .setOrigin(0.5)
+        .setDepth(10003)
+        .setAlpha(0);
+
+      const targetX = centerX + Math.cos(angle) * distance;
+      const targetY = bellY + Math.sin(angle) * distance;
+
+      // 약간의 지연을 주어 파도치듯 퍼지는 효과
+      this.time.delayedCall(i * 10, () => {
+        this.tweens.add({
+          targets: star,
+          x: targetX,
+          y: targetY,
+          alpha: 1,
+          rotation: Math.PI * 2 + Math.random() * Math.PI,
+          scale: 1 + Math.random() * 0.5,
+          duration: 300 + Math.random() * 200, // 더 빨리 흩어짐
+          ease: "Power2.easeOut",
+          onComplete: () => {
+            // 도착 후 서서히 사라짐
+            this.tweens.add({
+              targets: star,
+              alpha: 0,
+              scale: 0,
+              duration: 150, // 더 빨리 사라짐
+              ease: "Power2.easeIn",
+              onComplete: () => star.destroy(),
+            });
+          },
+        });
+      });
+    }
+  }
+
+  // 💥 틀렸을 때 강력한 패널티 효과
+  playFailureEffect() {
+    const { width, height } = this.cameras.main;
+    const centerX = width / 2;
+    const centerY = height / 2;
+
+    // 1. 화면 전체 붉은 플래시 효과
+    const flash = this.add
+      .rectangle(centerX, centerY, width, height, 0xff3333, 0.8)
+      .setDepth(10000);
+
+    this.tweens.add({
+      targets: flash,
+      alpha: 0,
+      duration: 400,
+      ease: "Power2",
+      onComplete: () => flash.destroy(),
+    });
+
+    // 2. 더 강한 카메라 흔들림
+    this.cameras.main.shake(500, 0.015);
+
+    // 3. "WRONG!" 텍스트 표시
+    const wrongText = this.add
+      .text(centerX, centerY, "땡!", {
+        fontSize: `${width * 0.12}px`,
+        fontFamily: "Arial Black",
+        color: "#ff0000",
+        stroke: "#ffffff",
+        strokeThickness: 8,
+      })
+      .setOrigin(0.5)
+      .setDepth(10001)
+      .setAlpha(0)
+      .setScale(0);
+
+    this.tweens.add({
+      targets: wrongText,
+      scale: 1.3,
+      alpha: 1,
+      duration: 200,
+      ease: "Back.easeOut",
+      onComplete: () => {
+        this.tweens.add({
+          targets: wrongText,
+          y: centerY - height * 0.15,
+          alpha: 0,
+          scale: 0.8,
+          duration: 400,
+          delay: 200,
+          ease: "Power2.easeIn",
+          onComplete: () => wrongText.destroy(),
+        });
+      },
+    });
+
+    // 4. 붉은 파티클 폭발 효과
+    const particleCount = 40;
+    for (let i = 0; i < particleCount; i++) {
+      const angle = (Math.PI * 2 * i) / particleCount;
+      const distance = Math.random() * width * 0.3;
+
+      const particle = this.add
+        .circle(centerX, centerY, width * 0.015, 0xff0000, 1)
+        .setDepth(10002);
+
+      const targetX = centerX + Math.cos(angle) * distance;
+      const targetY = centerY + Math.sin(angle) * distance;
+
+      this.tweens.add({
+        targets: particle,
+        x: targetX,
+        y: targetY,
+        alpha: 0,
+        scale: 0.3,
+        duration: 500 + Math.random() * 300,
+        ease: "Power2.easeOut",
+        onComplete: () => particle.destroy(),
+      });
+    }
+
+    // 5. ❌ 이모지가 중앙에서 폭발하는 효과
+    const bellY = height * 0.465;
+    const xCount = 15;
+
+    for (let i = 0; i < xCount; i++) {
+      const angle = (Math.PI * 2 * i) / xCount;
+      const distance = width * 0.35 + Math.random() * width * 0.2;
+
+      const xMark = this.add
+        .text(centerX, bellY, "❌", {
+          fontSize: `${width * 0.04}px`,
+        })
+        .setOrigin(0.5)
+        .setDepth(10003)
+        .setAlpha(0);
+
+      const targetX = centerX + Math.cos(angle) * distance;
+      const targetY = bellY + Math.sin(angle) * distance;
+
+      this.time.delayedCall(i * 15, () => {
+        this.tweens.add({
+          targets: xMark,
+          x: targetX,
+          y: targetY,
+          alpha: 1,
+          rotation: Math.PI * 2 + Math.random() * Math.PI,
+          scale: 1 + Math.random() * 0.5,
+          duration: 400 + Math.random() * 200,
+          ease: "Power2.easeOut",
+          onComplete: () => {
+            this.tweens.add({
+              targets: xMark,
+              alpha: 0,
+              scale: 0,
+              duration: 200,
+              ease: "Power2.easeIn",
+              onComplete: () => xMark.destroy(),
+            });
+          },
+        });
+      });
+    }
   }
 
   processPenaltySingle(failedPlayerId) {
@@ -4828,6 +5093,9 @@ class GameScene extends Phaser.Scene {
     const players = this.roundData.players;
     const loser = players.find((p) => p.id === failedPlayerId);
     if (!loser || (Number(loser.cards) || 0) <= 0) return;
+
+    // 💥 패널티 발생 시 강력한 실패 효과
+    this.playFailureEffect();
 
     //const recipients = players.filter(
     //  (p) => p.id !== failedPlayerId && (Number(p.cards) || 0) > 0
@@ -5220,17 +5488,6 @@ class GameScene extends Phaser.Scene {
         })
         .setOrigin(0.5);
 
-      // 3. 점수/카드 장수 텍스트
-      /*const scoreValue = p.cards !== undefined ? `${p.cards}장` : "";
-      const scoreTxt = this.add
-        .text(width * 0.25, 0, scoreValue, {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.05}px`,
-          fill: "#2563eb",
-          fontWeight: "bold",
-        })
-        .setOrigin(0.5);*/
-
       row.add([rankTxt, nameTxt, coinTxt, levelTxt]);
       container.add(row);
     });
@@ -5379,7 +5636,7 @@ class GameScene extends Phaser.Scene {
 
       this.sound.play("yosi", { volume: 0.2 });
 
-      const feedbackText = this.add
+      /*const feedbackText = this.add
         .text(centerX, centerY, "SUCCESS!", {
           fontFamily: GAME_FONTS.main,
           fontSize: `${width * 0.15}px`,
@@ -5408,7 +5665,7 @@ class GameScene extends Phaser.Scene {
             });
           });
         },
-      });
+      });*/
     } else {
       console.log("실패 연출 실행 시작"); // 디버깅용
       // 실패 피드백: 빨간색 화면 반짝임 + 화면 흔들림
