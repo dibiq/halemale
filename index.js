@@ -171,6 +171,24 @@ function checkGameOver(room, io) {
   if (survivors.length <= 1 && room.isGameStarted) {
     room.isGameStarted = false;
     const winner = survivors.length === 1 ? survivors[0] : room.players[0];
+    const beforeStateById = new Map(
+      room.players.map((p) => {
+        const beforeExperience = Number(p.experience) || 0;
+        const beforeLevel =
+          Number(p.level) || getLevelFromExperience(beforeExperience);
+        const beforeCoins = Number(p.coins) || 0;
+
+        return [
+          p.id,
+          {
+            beforeCoins,
+            beforeExperience,
+            beforeLevel,
+          },
+        ];
+      }),
+    );
+
     const sorted = [...room.players].sort(
       (a, b) => (b.myDeck?.length || 0) - (a.myDeck?.length || 0),
     );
@@ -207,13 +225,36 @@ function checkGameOver(room, io) {
 
     io.to(room.roomId).emit("gameEnded", {
       message: `게임 종료! ${winner.nickname}님의 최종 승리!`,
-      ranking: sorted.map((p) => ({
-        id: p.id,
-        nickname: p.nickname,
-        cards: p.myDeck?.length || 0,
-        earnedCoins: p.id === winner.id ? WIN_REWARD_COINS : 0,
-        earnedExperience: p.id === winner.id ? WIN_REWARD_XP : 0,
-      })),
+      ranking: sorted.map((p) => {
+        const before = beforeStateById.get(p.id) || {
+          beforeCoins: Number(p.coins) || 0,
+          beforeExperience: Number(p.experience) || 0,
+          beforeLevel: Number(p.level) || 1,
+        };
+
+        const earnedCoins = p.id === winner.id ? WIN_REWARD_COINS : 0;
+        const earnedExperience = p.id === winner.id ? WIN_REWARD_XP : 0;
+        const finalCoins = Number(p.coins) || 0;
+        const finalExperience = Number(p.experience) || 0;
+        const finalLevel =
+          Number(p.level) || getLevelFromExperience(finalExperience);
+        const leveledUp = finalLevel > (Number(before.beforeLevel) || 1);
+
+        return {
+          id: p.id,
+          nickname: p.nickname,
+          cards: p.myDeck?.length || 0,
+          currentCoins: before.beforeCoins,
+          earnedCoins,
+          finalCoins,
+          currentLevel: before.beforeLevel,
+          finalLevel,
+          currentExperience: before.beforeExperience,
+          earnedExperience,
+          finalExperience,
+          leveledUp,
+        };
+      }),
       winner: winner.nickname,
       winnerId: winner.id,
       rewardCoins: WIN_REWARD_COINS,

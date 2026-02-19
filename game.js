@@ -4483,7 +4483,7 @@ class GameScene extends Phaser.Scene {
     const listStartY = height * 0.43; // 시작점 (원하는 만큼 조절)
 
     players.forEach((p, i) => {
-      const y = listStartY + i * (height * 0.06);
+      const y = listStartY + i * (height * 0.075);
       const row = this.add.container(width / 2, y);
 
       const isThisPlayerHost = p.id === currentHostId;
@@ -4517,13 +4517,44 @@ class GameScene extends Phaser.Scene {
         })
         .setOrigin(0, 0.5);
 
+      const currentCoins = Number(p.currentCoins ?? p.finalCoins ?? 0) || 0;
       const earnedCoins = Number(p.earnedCoins) || 0;
+      const finalCoins =
+        Number(p.finalCoins ?? currentCoins + earnedCoins) || 0;
+      const currentLevel = Number(p.currentLevel ?? p.finalLevel ?? 1) || 1;
+      const finalLevel = Number(p.finalLevel ?? currentLevel) || currentLevel;
+      const finalExperience = Number(
+        p.finalExperience ?? p.currentExperience ?? 0,
+      );
       const earnedExp = Number(p.earnedExperience) || 0;
-      const rewardTxt = this.add
-        .text(width * 0.18, 0, `코인 +${earnedCoins}  EXP +${earnedExp}`, {
+      const leveledUp =
+        typeof p.leveledUp === "boolean"
+          ? p.leveledUp
+          : finalLevel > currentLevel;
+
+      const coinTxt = this.add
+        .text(
+          width * 0.2,
+          -height * 0.012,
+          `코인 ${currentCoins} / +${earnedCoins} → ${finalCoins}`,
+          {
+            fontFamily: GAME_FONTS.main,
+            fontSize: `${width * 0.026}px`,
+            fill: "#0f172a",
+            fontWeight: "bold",
+          },
+        )
+        .setOrigin(0.5);
+
+      const levelLine = leveledUp
+        ? `Lv.${currentLevel} → Lv.${finalLevel} (레벨업!)`
+        : `Lv.${currentLevel}  EXP ${finalExperience} (+${earnedExp})`;
+
+      const levelTxt = this.add
+        .text(width * 0.2, height * 0.014, levelLine, {
           fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.032}px`,
-          fill: "#0f172a",
+          fontSize: `${width * 0.024}px`,
+          fill: leveledUp ? "#e67e22" : "#0f172a",
           fontWeight: "bold",
         })
         .setOrigin(0.5);
@@ -4539,7 +4570,7 @@ class GameScene extends Phaser.Scene {
         })
         .setOrigin(0.5);*/
 
-      row.add([rankTxt, nameTxt, rewardTxt]);
+      row.add([rankTxt, nameTxt, coinTxt, levelTxt]);
       container.add(row);
     });
 
