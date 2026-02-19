@@ -38,6 +38,7 @@ const COLORS = {
   warning: 0xf59e0b,
   text: 0xf1f5f9,
 };
+const XP_PER_LEVEL = 100;
 
 let bgmEnabled = localStorage.getItem("bgmEnabled") !== "false";
 
@@ -231,9 +232,11 @@ class LobbyScene extends Phaser.Scene {
 
     this.myProfile = {
       nickname: this.myNickname || savedNickname || "요리사",
-      level: 1,
-      coins: 0,
+      level: Number(localStorage.getItem("profileLevel")) || 1,
+      coins: Number(localStorage.getItem("profileCoins")) || 0,
+      experience: Number(localStorage.getItem("profileExperience")) || 0,
     };
+    this.hasReceivedProfileStats = false;
 
     this.profileAvatarKeys = ["player_1", "player_2", "player_3", "player_4"];
     const savedAvatarKey = localStorage.getItem("profileAvatarKey");
@@ -391,6 +394,20 @@ class LobbyScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
+    this.profileExpText = this.add
+      .text(
+        0,
+        profileSize * 1.24,
+        `EXP ${this.myProfile.experience % XP_PER_LEVEL}/${XP_PER_LEVEL}`,
+        {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.032}px`,
+          color: "#ffffff",
+          fontWeight: "bold",
+        },
+      )
+      .setOrigin(0.5);
+
     profileContainer.add([
       this.profileImage,
       avatarLeftBtn,
@@ -401,6 +418,7 @@ class LobbyScene extends Phaser.Scene {
       this.profileLevelText,
       this.profileIdText,
       this.profileCoinText,
+      this.profileExpText,
     ]);
 
     avatarLeftBtn.on("pointerdown", () => {
@@ -736,6 +754,11 @@ class LobbyScene extends Phaser.Scene {
 
   updateMyProfileUI(profile = {}) {
     const prev = this.myProfile || {};
+    const prevLevel = Number(prev.level) || 1;
+    const hasIncomingStats =
+      typeof profile.level !== "undefined" ||
+      typeof profile.coins !== "undefined" ||
+      typeof profile.experience !== "undefined";
 
     this.myProfile = {
       nickname:
@@ -745,12 +768,35 @@ class LobbyScene extends Phaser.Scene {
         "요리사",
       level: Number(profile.level ?? prev.level ?? 1) || 1,
       coins: Number(profile.coins ?? prev.coins ?? 0) || 0,
+      experience: Number(profile.experience ?? prev.experience ?? 0) || 0,
     };
+
+    localStorage.setItem("profileLevel", String(this.myProfile.level));
+    localStorage.setItem("profileCoins", String(this.myProfile.coins));
+    localStorage.setItem(
+      "profileExperience",
+      String(this.myProfile.experience),
+    );
+
+    if (
+      hasIncomingStats &&
+      this.hasReceivedProfileStats &&
+      this.myProfile.level > prevLevel
+    ) {
+      this.showToast(
+        `레벨 업! Lv.${prevLevel} → Lv.${this.myProfile.level}`,
+        "#2ecc71",
+      );
+    }
+    if (hasIncomingStats) {
+      this.hasReceivedProfileStats = true;
+    }
 
     if (
       !this.profileLevelText ||
       !this.profileIdText ||
-      !this.profileCoinText
+      !this.profileCoinText ||
+      !this.profileExpText
     ) {
       return;
     }
@@ -758,6 +804,9 @@ class LobbyScene extends Phaser.Scene {
     this.profileLevelText.setText(`${this.myProfile.level}`);
     this.profileIdText.setText(this.myProfile.nickname);
     this.profileCoinText.setText(`코인 ${this.myProfile.coins}`);
+    this.profileExpText.setText(
+      `EXP ${this.myProfile.experience % XP_PER_LEVEL}/${XP_PER_LEVEL}`,
+    );
   }
 
   changeProfileAvatar(step) {
@@ -2755,6 +2804,33 @@ class GameScene extends Phaser.Scene {
       }
     });
 
+    socket.off("myProfile").on("myProfile", (profile) => {
+      const prevLevel = Number(localStorage.getItem("profileLevel")) || 1;
+      const newLevel = Number(profile?.level) || prevLevel;
+
+      localStorage.setItem("profileLevel", String(newLevel));
+      localStorage.setItem(
+        "profileCoins",
+        String(
+          Number(profile?.coins) ||
+            Number(localStorage.getItem("profileCoins")) ||
+            0,
+        ),
+      );
+      localStorage.setItem(
+        "profileExperience",
+        String(
+          Number(profile?.experience) ||
+            Number(localStorage.getItem("profileExperience")) ||
+            0,
+        ),
+      );
+
+      if (newLevel > prevLevel) {
+        this.showToast(`레벨 업! Lv.${prevLevel} → Lv.${newLevel}`, "#2ecc71");
+      }
+    });
+
     socket.on("startBlocked", (msg) => {
       this.showToast(msg, "#e74c3c");
     });
@@ -2967,6 +3043,7 @@ class GameScene extends Phaser.Scene {
       socket.off("bellResult");
       socket.off("gameEnded");
       socket.off("startBlocked");
+      socket.off("myProfile");
     });
   }
 

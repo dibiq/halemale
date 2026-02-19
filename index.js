@@ -33,23 +33,42 @@ const pool = new Pool({
 });
 
 // 2. [저장하기] 플레이어 데이터 저장/업데이트 (UPSERT)
-async function savePlayer(id, level, coins, items) {
+async function savePlayer(id, level, coins, items, experience) {
   const query = `
-    INSERT INTO players (id, level, coins, items, updated_at)
-    VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+    INSERT INTO players (id, level, coins, items, experience, updated_at)
+    VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
     ON CONFLICT (id) 
     DO UPDATE SET 
       level = EXCLUDED.level,
       coins = EXCLUDED.coins,
       items = EXCLUDED.items,
+      experience = EXCLUDED.experience,
       updated_at = CURRENT_TIMESTAMP;
   `;
   try {
     // items는 배열 ['potion', 'sword'] 형태 그대로 넣으면 pg가 처리합니다.
-    await pool.query(query, [id, level, coins, JSON.stringify(items)]);
+    await pool.query(query, [
+      id,
+      level,
+      coins,
+      JSON.stringify(items),
+      experience,
+    ]);
     console.log(`✅ ${id} 데이터 저장 성공`);
   } catch (err) {
     console.error("❌ 저장 에러:", err);
+  }
+}
+
+async function ensurePlayersSchema() {
+  try {
+    await pool.query(`
+      ALTER TABLE players
+      ADD COLUMN IF NOT EXISTS experience INTEGER NOT NULL DEFAULT 0;
+    `);
+    console.log("✅ players.experience 컬럼 확인 완료");
+  } catch (err) {
+    console.error("❌ players 스키마 확인 에러:", err);
   }
 }
 
@@ -81,6 +100,12 @@ const io = new Server(server, {
 
 let rooms = {};
 const WIN_REWARD_COINS = 20;
+const WIN_REWARD_XP = 40;
+const XP_PER_LEVEL = 100;
+
+function getLevelFromExperience(experience) {
+  return Math.floor((Number(experience) || 0) / XP_PER_LEVEL) + 1;
+}
 
 // 헬스체크
 app.get("/", (req, res) => res.status(200).send("서버 가동 중"));
@@ -150,15 +175,34 @@ function checkGameOver(room, io) {
       (a, b) => (b.myDeck?.length || 0) - (a.myDeck?.length || 0),
     );
 
-    // 승자에게 고정 코인 보상 지급 후, 누적 코인을 DB에 저장
+    // 승자에게 고정 코인/경험치 보상을 지급하고 레벨을 갱신
     winner.coins = (Number(winner.coins) || 0) + WIN_REWARD_COINS;
+    winner.experience = (Number(winner.experience) || 0) + WIN_REWARD_XP;
+    winner.level = getLevelFromExperience(winner.experience);
 
     room.players.forEach((p) => {
-      const currentLevel = Number(p.level) || 1;
+      const currentExp = Number(p.experience) || 0;
+      const currentLevel =
+        Number(p.level) || getLevelFromExperience(currentExp);
       const currentCoins = Number(p.coins) || 0;
       const currentItems = Array.isArray(p.items) ? p.items : [];
 
-      savePlayer(p.nickname, currentLevel, currentCoins, currentItems);
+      savePlayer(
+        p.nickname,
+        currentLevel,
+        currentCoins,
+        currentItems,
+        currentExp,
+      );
+
+      io.to(p.id).emit("myProfile", {
+        nickname: p.nickname,
+        level: currentLevel,
+        coins: currentCoins,
+        items: currentItems,
+        experience: currentExp,
+        avatarKey: p.avatarKey || "player_1",
+      });
     });
 
     io.to(room.roomId).emit("gameEnded", {
@@ -171,6 +215,9 @@ function checkGameOver(room, io) {
       winner: winner.nickname,
       rewardCoins: WIN_REWARD_COINS,
       winnerCoins: winner.coins,
+      rewardExperience: WIN_REWARD_XP,
+      winnerExperience: winner.experience,
+      winnerLevel: winner.level,
     });
     return true;
   }
@@ -244,6 +291,7 @@ io.on("connection", (socket) => {
     socket.avatarKey = avatarKey;
     socket.level = 1;
     socket.coins = 0;
+    socket.experience = 0;
     socket.items = [];
 
     // 💡 [추가] DB에서 유저 데이터 불러오기
@@ -264,14 +312,21 @@ io.on("connection", (socket) => {
       // 이 데이터를 socket 객체에 담아두거나 클라이언트에 보내주면 됩니다.
       socket.level = savedData.level;
       socket.coins = savedData.coins;
+      socket.experience =
+        Number(savedData.experience) ||
+        Math.max((Number(savedData.level) || 1) - 1, 0) * XP_PER_LEVEL;
       socket.items = parsedItems;
     }
+
+    socket.level =
+      Number(socket.level) || getLevelFromExperience(socket.experience);
 
     socket.emit("myProfile", {
       nickname: socket.nickname,
       level: Number(socket.level) || 1,
       coins: Number(socket.coins) || 0,
       items: Array.isArray(socket.items) ? socket.items : [],
+      experience: Number(socket.experience) || 0,
       avatarKey: socket.avatarKey || "player_1",
     });
 
@@ -286,6 +341,7 @@ io.on("connection", (socket) => {
         // 💡 [추가] DB에서 가져온 데이터를 player 객체에 할당
         player.level = socket.level || 1;
         player.coins = socket.coins || 0;
+        player.experience = socket.experience || 0;
         player.items = socket.items || [];
 
         io.to(socket.roomId).emit("playerJoined", {
@@ -331,6 +387,7 @@ io.on("connection", (socket) => {
       avatarKey: socket.avatarKey || "player_1",
       level: socket.level || 1, // 💡 방장 데이터도 포함
       coins: socket.coins || 0,
+      experience: socket.experience || 0,
       items: socket.items || [],
       myDeck: [],
       openCard: null,
@@ -383,6 +440,7 @@ io.on("connection", (socket) => {
         avatarKey: socket.avatarKey || "player_1",
         level: socket.level || 1, // 💡 socket에 저장된 값을 가져옴
         coins: socket.coins || 0, // 💡 socket에 저장된 값을 가져옴
+        experience: socket.experience || 0,
         items: socket.items || [],
         myDeck: [],
         openCard: null,
@@ -431,6 +489,7 @@ io.on("connection", (socket) => {
         avatarKey: socket.avatarKey || "player_1",
         level: socket.level || 1, // 💡 이 부분 추가
         coins: socket.coins || 0, // 💡 이 부분 추가
+        experience: socket.experience || 0,
         items: socket.items || [], // 💡 이 부분 추가
         myDeck: [],
         openCard: null,
@@ -723,4 +782,7 @@ io.on("connection", (socket) => {
 });
 
 const PORT = process.env.PORT || 8080;
-server.listen(PORT, "0.0.0.0", () => console.log(`Server on ${PORT}`));
+
+ensurePlayersSchema().finally(() => {
+  server.listen(PORT, "0.0.0.0", () => console.log(`Server on ${PORT}`));
+});
