@@ -832,12 +832,25 @@ io.on("connection", (socket) => {
       });
       room.players.push(playerData);
     }
+
+    // 방에 있는 모든 플레이어에게 새 플레이어 입장 알림
     io.to(roomId).emit("playerJoined", {
       roomId,
       players: room.players,
       hostId: room.host,
       max: room.maxPlayers,
       roomName: room.roomName,
+      newPlayerNickname: nickname,
+    });
+
+    // 입장한 플레이어 본인에게 입장 성공 알림
+    socket.emit("joinRoomSuccess", {
+      roomId,
+      players: room.players,
+      hostId: room.host,
+      maxPlayers: room.maxPlayers,
+      roomName: room.roomName,
+      isGameStarted: room.isGameStarted || false,
     });
   });
 

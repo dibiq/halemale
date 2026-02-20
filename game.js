@@ -3879,13 +3879,19 @@ class LobbyScene extends Phaser.Scene {
   showInvitePopup(users, roomName) {
     const { width, height, centerX, centerY } = this.cameras.main;
 
-    // 배경
+    // 배경 어둡게
+    const overlay = this.add
+      .rectangle(centerX, centerY, width, height, 0x000000, 0.5)
+      .setDepth(4000)
+      .setInteractive();
+
+    // 팝업 배경 (popupbg 이미지)
     const popupWidth = width * 0.85;
     const popupHeight = height * 0.55;
     const popupBg = this.add
-      .rectangle(centerX, centerY, popupWidth, popupHeight, 0x1a1a2e, 0.95)
-      .setDepth(300)
-      .setStrokeStyle(3, 0xffd700, 1);
+      .image(centerX, centerY, "popupbg")
+      .setDisplaySize(popupWidth, popupHeight)
+      .setDepth(4001);
 
     // 타이틀
     const titleText = this.add
@@ -3896,7 +3902,7 @@ class LobbyScene extends Phaser.Scene {
         fontWeight: "bold",
       })
       .setOrigin(0.5)
-      .setDepth(301);
+      .setDepth(4002);
 
     // 서브텍스트
     const subText = this.add
@@ -3912,29 +3918,41 @@ class LobbyScene extends Phaser.Scene {
         },
       )
       .setOrigin(0.5)
-      .setDepth(301);
+      .setDepth(4002);
+
+    // 모든 객체 저장 배열
+    const allObjects = [overlay, popupBg, titleText, subText];
+
+    // 삭제 함수 (한 번만 실행)
+    let isDestroyed = false;
+    const destroyPopup = () => {
+      if (isDestroyed) return;
+      isDestroyed = true;
+
+      allObjects.forEach((obj) => {
+        if (obj && obj.active) obj.destroy();
+      });
+    };
+
+    overlay.setInteractive();
+    overlay.on("pointerdown", () => {
+      this.sound.play("pop", { volume: 0.1 });
+      destroyPopup();
+    });
 
     // 유저 리스트 컨테이너
     const listContainerY = centerY;
     const listH = height * 0.35;
-    const userButtons = [];
 
     users.forEach((user, index) => {
       const btnY =
         listContainerY - listH / 2 + (index + 1) * (listH / (users.length + 1));
 
-      // 유저 배경
+      // 유저 배경 (itembg 이미지)
       const userBg = this.add
-        .rectangle(
-          centerX,
-          btnY,
-          popupWidth * 0.8,
-          height * 0.06,
-          0x2a2a3e,
-          0.8,
-        )
-        .setStrokeStyle(2, 0x555555, 1)
-        .setDepth(301)
+        .image(centerX, btnY, "itembg")
+        .setDisplaySize(popupWidth * 0.8, height * 0.06)
+        .setDepth(4001)
         .setInteractive({ useHandCursor: true });
 
       // 유저 아이콘
@@ -3945,7 +3963,7 @@ class LobbyScene extends Phaser.Scene {
           /^player_[1-4]$/.test(user.avatarKey) ? user.avatarKey : "player_1",
         )
         .setDisplaySize(height * 0.045, height * 0.045)
-        .setDepth(302);
+        .setDepth(4002);
 
       // 유저명 + 레벨
       const userName = this.add
@@ -3961,7 +3979,7 @@ class LobbyScene extends Phaser.Scene {
           },
         )
         .setOrigin(0.5)
-        .setDepth(302);
+        .setDepth(4002);
 
       const userLevel = this.add
         .text(
@@ -3975,20 +3993,14 @@ class LobbyScene extends Phaser.Scene {
           },
         )
         .setOrigin(0.5)
-        .setDepth(302);
+        .setDepth(4002);
 
-      // 초대 버튼
+      // 초대 버튼 (uibtn 이미지)
       const inviteBtn = this.add
-        .rectangle(
-          centerX + popupWidth * 0.3,
-          btnY,
-          width * 0.12,
-          height * 0.05,
-          0x3498db,
-          1,
-        )
-        .setStrokeStyle(2, 0x2980b9, 1)
-        .setDepth(301)
+        .image(centerX + popupWidth * 0.3, btnY, "uibtn")
+        .setDisplaySize(width * 0.12, height * 0.05)
+        .setTint(0x3498db)
+        .setDepth(4001)
         .setInteractive({ useHandCursor: true });
 
       const inviteBtnText = this.add
@@ -3999,7 +4011,7 @@ class LobbyScene extends Phaser.Scene {
           fontWeight: "bold",
         })
         .setOrigin(0.5)
-        .setDepth(302);
+        .setDepth(4002);
 
       inviteBtn.on("pointerdown", () => {
         this.sound.play("pop", { volume: 0.1 });
@@ -4013,19 +4025,11 @@ class LobbyScene extends Phaser.Scene {
           onComplete: () => {
             socket.emit("inviteUser", { targetId: user.id });
             this.showToast(`${user.nickname}님을 초대했습니다!`, "#3498db");
-            this.time.delayedCall(500, () => {
-              popupBg.destroy();
-              titleText.destroy();
-              subText.destroy();
-              userButtons.forEach((btn) => {
-                if (btn && btn.active) btn.destroy();
-              });
-            });
           },
         });
       });
 
-      userButtons.push(
+      allObjects.push(
         userBg,
         userIcon,
         userName,
@@ -4035,18 +4039,16 @@ class LobbyScene extends Phaser.Scene {
       );
     });
 
-    // 닫기 버튼
+    // 닫기 버튼 (uibtn 이미지)
     const closeBtn = this.add
-      .rectangle(
+      .image(
         centerX + popupWidth / 2 - width * 0.06,
         centerY - popupHeight / 2 + height * 0.03,
-        width * 0.1,
-        height * 0.04,
-        0xe74c3c,
-        1,
+        "uibtn",
       )
-      .setStrokeStyle(2, 0xc0392b, 1)
-      .setDepth(301)
+      .setDisplaySize(width * 0.1, height * 0.04)
+      .setTint(0xe74c3c)
+      .setDepth(4001)
       .setInteractive({ useHandCursor: true });
 
     const closeBtnText = this.add
@@ -4062,44 +4064,52 @@ class LobbyScene extends Phaser.Scene {
         },
       )
       .setOrigin(0.5)
-      .setDepth(302);
+      .setDepth(4002);
+
+    allObjects.push(closeBtn, closeBtnText);
 
     closeBtn.on("pointerdown", () => {
       this.sound.play("pop", { volume: 0.1 });
-      popupBg.destroy();
-      titleText.destroy();
-      subText.destroy();
-      closeBtn.destroy();
-      closeBtnText.destroy();
-      userButtons.forEach((btn) => {
-        if (btn && btn.active) btn.destroy();
-      });
-    });
-
-    // 사용자가 클릭한 영역 외 팝업 배경 클릭 시 닫기
-    popupBg.on("pointerdown", () => {
-      this.sound.play("pop", { volume: 0.1 });
-      popupBg.destroy();
-      titleText.destroy();
-      subText.destroy();
-      closeBtn.destroy();
-      closeBtnText.destroy();
-      userButtons.forEach((btn) => {
-        if (btn && btn.active) btn.destroy();
-      });
+      destroyPopup();
     });
   }
 
   showInviteReceivePopup(inviteData) {
     const { width, height, centerX, centerY } = this.cameras.main;
 
-    // 배경
+    // 배경 어둡게
+    const overlay = this.add
+      .rectangle(centerX, centerY, width, height, 0x000000, 0.5)
+      .setDepth(4000)
+      .setInteractive();
+
+    // 팝업 배경 (popupbg 이미지)
     const popupWidth = width * 0.75;
     const popupHeight = height * 0.35;
     const popupBg = this.add
-      .rectangle(centerX, centerY, popupWidth, popupHeight, 0x1a1a2e, 0.95)
-      .setDepth(300)
-      .setStrokeStyle(3, 0x3498db, 1);
+      .image(centerX, centerY, "popupbg")
+      .setDisplaySize(popupWidth, popupHeight)
+      .setDepth(4001);
+
+    // 모든 객체 저장 배열
+    const allObjects = [overlay, popupBg];
+
+    // 삭제 함수 (한 번만 실행)
+    let isDestroyed = false;
+    const destroyPopup = () => {
+      if (isDestroyed) return;
+      isDestroyed = true;
+
+      allObjects.forEach((obj) => {
+        if (obj && obj.active) obj.destroy();
+      });
+    };
+
+    overlay.setInteractive();
+    overlay.on("pointerdown", () => {
+      this.sound.play("pop", { volume: 0.1 });
+      destroyPopup();
+    });
 
     // 타이틀
     const titleText = this.add
@@ -4115,7 +4125,7 @@ class LobbyScene extends Phaser.Scene {
         },
       )
       .setOrigin(0.5)
-      .setDepth(301);
+      .setDepth(4002);
 
     // 초대 정보
     const infoText = this.add
@@ -4131,7 +4141,7 @@ class LobbyScene extends Phaser.Scene {
         },
       )
       .setOrigin(0.5)
-      .setDepth(301);
+      .setDepth(4002);
 
     const playerCountText = this.add
       .text(
@@ -4145,20 +4155,18 @@ class LobbyScene extends Phaser.Scene {
         },
       )
       .setOrigin(0.5)
-      .setDepth(301);
+      .setDepth(4002);
 
-    // 수락 버튼
+    // 수락 버튼 (uibtn 이미지)
     const acceptBtn = this.add
-      .rectangle(
+      .image(
         centerX - width * 0.15,
         centerY + popupHeight / 2 - height * 0.05,
-        width * 0.2,
-        height * 0.06,
-        0x2ecc71,
-        1,
+        "uibtn",
       )
-      .setStrokeStyle(2, 0x27ae60, 1)
-      .setDepth(301)
+      .setDisplaySize(width * 0.2, height * 0.06)
+      .setTint(0x2ecc71)
+      .setDepth(4001)
       .setInteractive({ useHandCursor: true });
 
     const acceptBtnText = this.add
@@ -4174,20 +4182,18 @@ class LobbyScene extends Phaser.Scene {
         },
       )
       .setOrigin(0.5)
-      .setDepth(302);
+      .setDepth(4002);
 
-    // 거절 버튼
+    // 거절 버튼 (uibtn 이미지)
     const declineBtn = this.add
-      .rectangle(
+      .image(
         centerX + width * 0.15,
         centerY + popupHeight / 2 - height * 0.05,
-        width * 0.2,
-        height * 0.06,
-        0xe74c3c,
-        1,
+        "uibtn",
       )
-      .setStrokeStyle(2, 0xc0392b, 1)
-      .setDepth(301)
+      .setDisplaySize(width * 0.2, height * 0.06)
+      .setTint(0xe74c3c)
+      .setDepth(4001)
       .setInteractive({ useHandCursor: true });
 
     const declineBtnText = this.add
@@ -4203,26 +4209,22 @@ class LobbyScene extends Phaser.Scene {
         },
       )
       .setOrigin(0.5)
-      .setDepth(302);
+      .setDepth(4002);
+
+    allObjects.push(
+      titleText,
+      infoText,
+      playerCountText,
+      acceptBtn,
+      acceptBtnText,
+      declineBtn,
+      declineBtnText,
+    );
 
     // 자동 닫기 (15초)
     let autoCloseTimer = this.time.delayedCall(15000, () => {
-      if (popupBg && popupBg.active) {
-        destroyPopup();
-      }
+      destroyPopup();
     });
-
-    const destroyPopup = () => {
-      if (autoCloseTimer) autoCloseTimer.remove();
-      popupBg.destroy();
-      titleText.destroy();
-      infoText.destroy();
-      playerCountText.destroy();
-      acceptBtn.destroy();
-      acceptBtnText.destroy();
-      declineBtn.destroy();
-      declineBtnText.destroy();
-    };
 
     acceptBtn.on("pointerdown", () => {
       this.sound.play("pop", { volume: 0.1 });
@@ -4236,6 +4238,7 @@ class LobbyScene extends Phaser.Scene {
         onComplete: () => {
           socket.emit("acceptInvite", { roomId: inviteData.roomId });
           this.showToast("초대를 수락했습니다!", "#2ecc71");
+          if (autoCloseTimer) autoCloseTimer.remove();
           destroyPopup();
         },
       });
@@ -4252,6 +4255,7 @@ class LobbyScene extends Phaser.Scene {
         ease: "Quad.easeInOut",
         onComplete: () => {
           this.showToast("초대를 거절했습니다!", "#e74c3c");
+          if (autoCloseTimer) autoCloseTimer.remove();
           destroyPopup();
         },
       });
@@ -5176,7 +5180,7 @@ class GameScene extends Phaser.Scene {
         const cardCount = this.add
           .text(cardX, cardY + cardSize * 0.25, `x${count}`, {
             fontFamily: GAME_FONTS.main,
-            fontSize: `${cardSize * 1.5}px`,
+            fontSize: `${cardSize}px`,
             color: "#ffffff",
             fontWeight: "bold",
           })
