@@ -217,6 +217,12 @@ class LobbyScene extends Phaser.Scene {
     this.load.audio("irassai", `${ASSET_SERVER}/sounds/irassai.mp3${VERSION}`);
     this.load.audio("yare", `${ASSET_SERVER}/sounds/yare.mp3${VERSION}`);
     this.load.audio("yosi", `${ASSET_SERVER}/sounds/yosi.mp3${VERSION}`);
+    this.load.audio("buy", `${ASSET_SERVER}/sounds/buy.wav${VERSION}`);
+    this.load.audio(
+      "cardflip",
+      `${ASSET_SERVER}/sounds/cardflip.wav${VERSION}`,
+    );
+    this.load.audio("pass", `${ASSET_SERVER}/sounds/pass.wav${VERSION}`);
   }
 
   async create() {
@@ -4920,7 +4926,7 @@ class GameScene extends Phaser.Scene {
       // 화면 테두리 깜빡임 효과 (10장 이상)
       if (tension >= 1) {
         const borderColor = tension === 2 ? 0xe74c3c : 0xe67e22;
-        const blinkSpeed = tension === 2 ? 300 : 500;
+        const blinkSpeed = tension === 2 ? 600 : 900;
 
         // 테두리 오버레이
         const borderOverlay = this.add.graphics();
@@ -4940,7 +4946,7 @@ class GameScene extends Phaser.Scene {
 
         // 💥 전체 화면 연한 깜빡임 효과 추가
         const screenFlashColor = tension === 2 ? 0xff0000 : 0xff8800; // 빨강 또는 주황
-        const screenFlashAlpha = tension === 2 ? 0.15 : 0.1; // 연한 투명도
+        const screenFlashAlpha = tension === 2 ? 0.08 : 0.05; // 연한 투명도 (눈 편안하게 완화)
 
         const screenFlash = this.add.graphics();
         screenFlash.fillStyle(screenFlashColor, screenFlashAlpha);
@@ -5531,6 +5537,9 @@ class GameScene extends Phaser.Scene {
             duration: 300,
             delay: delay,
             ease: "Cubic.out",
+            onStart: () => {
+              this.sound.play("pass", { volume: 0.3 });
+            },
             onComplete: () => {
               flyCard.destroy();
               finishedFlys++;
@@ -5753,6 +5762,7 @@ class GameScene extends Phaser.Scene {
         delay: index * 25,
         ease: "Cubic.out",
         onStart: () => {
+          this.sound.play("pass", { volume: 0.3 });
           this.sound.play("pop", { volume: 0.1, detune: 500 });
         },
         onComplete: () => {
