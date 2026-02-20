@@ -903,12 +903,17 @@ io.on("connection", (socket) => {
     // 강퇴된 플레이어에게 알림
     io.to(targetId).emit("playerKicked", { kickedId: targetId });
 
-    // 방의 다른 플레이어들에게 플레이어 퇴장 알림
-    io.to(roomId).emit("playerLeft", {
-      playerId: targetId,
-      players: room.players,
-      hostId: room.host,
-    });
+    // 방이 비었으면 방 삭제
+    if (room.players.length === 0) {
+      delete rooms[roomId];
+    } else {
+      // 방의 다른 플레이어들에게 플레이어 퇴장 알림
+      io.to(roomId).emit("playerLeft", {
+        playerId: targetId,
+        players: room.players,
+        hostId: room.host,
+      });
+    }
   });
 
   socket.on("startGameRequest", () => {
