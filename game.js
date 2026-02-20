@@ -203,6 +203,11 @@ class LobbyScene extends Phaser.Scene {
     this.isSingle = false; // 로비는 항상 멀티플레이
     this.coinShopElements = []; // 코인 팝업 요소들
 
+    this.lobbyChatMessages = this.lobbyChatMessages || [];
+    this.lobbyChatTexts = [];
+    this.lobbyChatLayout = null;
+    this.lobbyChatInputElement = null;
+
     // 특수카드 쿨타임 추적 객체 초기화
     this.specialCardCooldowns = {}; // { cardId: endTime }
     this.specialCardCooldownTimers = {}; // { cardId: timerId }
@@ -310,6 +315,15 @@ class LobbyScene extends Phaser.Scene {
       }
 
       this.updateMyProfileUI(profile);
+    });
+
+    socket.off("lobbyChatMessage").on("lobbyChatMessage", (payload) => {
+      if (!payload || typeof payload.message !== "string") return;
+      const nickname = payload.nickname || "요리사";
+      const message = payload.message.trim();
+      if (!message) return;
+
+      this.addLobbyChatMessage(`${nickname}: ${message}`);
     });
 
     this.backHandler = await App.addListener("backButton", ({ canGoBack }) => {
@@ -3079,6 +3093,10 @@ class LobbyScene extends Phaser.Scene {
       this.joinInputElement.destroy();
       this.joinInputElement = null;
     }
+    if (this.lobbyChatInputElement) {
+      this.lobbyChatInputElement.destroy();
+      this.lobbyChatInputElement = null;
+    }
 
     // 기존 대기실 UI 제거
     if (this.lobbyUIContainer) {
@@ -3275,6 +3293,125 @@ class LobbyScene extends Phaser.Scene {
     });
 
     /* ======================
+     대기실 채팅 UI
+     ====================== */
+    const chatAreaWidth = width * 0.75;
+    const chatAreaHeight = height * 0.14;
+    const chatAreaX = centerX;
+    const chatAreaY = height * 0.64;
+
+    const chatBg = this.add
+      .rectangle(
+        chatAreaX,
+        chatAreaY,
+        chatAreaWidth,
+        chatAreaHeight,
+        0x000000,
+        0.35,
+      )
+      .setStrokeStyle(2, 0xffffff, 0.2);
+    this.lobbyUIContainer.add(chatBg);
+
+    const chatTitle = this.add
+      .text(
+        chatAreaX - chatAreaWidth / 2 + width * 0.02,
+        chatAreaY - chatAreaHeight / 2 - height * 0.035,
+        "채팅",
+        {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.035}px`,
+          color: "#ffffff",
+          fontWeight: "bold",
+          stroke: "#000000",
+          strokeThickness: 3,
+        },
+      )
+      .setOrigin(0, 0.5)
+      .setDepth(20);
+    this.lobbyUIContainer.add(chatTitle);
+
+    this.lobbyChatLayout = {
+      startX: chatAreaX - chatAreaWidth / 2 + width * 0.02,
+      startY: chatAreaY - chatAreaHeight / 2 + height * 0.01,
+      lineSpacing: chatAreaHeight / 5,
+    };
+    this.updateLobbyChatDisplay();
+
+    const chatInputY = height * 0.72;
+    const chatInputW = chatAreaWidth * 0.72;
+    const chatInputH = height * 0.055;
+    const chatSendW = chatAreaWidth * 0.2;
+    const chatGap = chatAreaWidth * 0.04;
+
+    const chatInputX = centerX - (chatSendW + chatGap) / 2;
+    const chatSendX = centerX + (chatInputW + chatGap) / 2;
+
+    this.lobbyChatInputElement = this.add
+      .dom(chatInputX, chatInputY, "input")
+      .setDepth(30)
+      .setOrigin(0.5);
+
+    const chatInputEl = this.lobbyChatInputElement.node;
+    chatInputEl.placeholder = "메시지 입력";
+    Object.assign(chatInputEl.style, {
+      width: `${chatInputW}px`,
+      height: `${chatInputH}px`,
+      fontSize: `${width * 0.03}px`,
+      fontFamily: "'Jua', sans-serif",
+      textAlign: "left",
+      padding: "6px 10px",
+      border: "2px solid #5d4037",
+      borderRadius: "10px",
+      backgroundColor: "#ffffff",
+      outline: "none",
+      color: "#000",
+    });
+
+    const sendBtnImg = this.add
+      .image(chatSendX, chatInputY, "uibtn")
+      .setDisplaySize(chatSendW, chatInputH)
+      .setInteractive({ useHandCursor: true })
+      .setTint(0x3498db)
+      .setDepth(20);
+    const sendBtnText = this.add
+      .text(chatSendX, chatInputY, "전송", {
+        fontFamily: GAME_FONTS.main,
+        color: "#fff",
+        fontSize: `${width * 0.04}px`,
+        fontWeight: "bold",
+      })
+      .setOrigin(0.5)
+      .setDepth(20);
+    this.lobbyUIContainer.add([sendBtnImg, sendBtnText]);
+
+    const sendLobbyChat = () => {
+      const rawMessage = chatInputEl.value || "";
+      const message = rawMessage.trim();
+      if (!message) return;
+      socket.emit("lobbyChatMessage", { message });
+      chatInputEl.value = "";
+    };
+
+    sendBtnImg.on("pointerdown", () => {
+      this.sound.play("pop", { volume: 0.1 });
+      this.tweens.add({
+        targets: [sendBtnImg, sendBtnText],
+        scale: "*=0.95",
+        duration: 80,
+        yoyo: true,
+        ease: "Quad.easeInOut",
+        onComplete: () => sendLobbyChat(),
+      });
+    });
+
+    chatInputEl.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        sendLobbyChat();
+      }
+    });
+
+    /* ======================
      시작하기 / 준비하기 / 상점 / 나가기 버튼
      ====================== */
     const mainBtnY = height * 0.78;
@@ -3431,6 +3568,47 @@ class LobbyScene extends Phaser.Scene {
           window.location.reload();
         },
       });
+    });
+  }
+
+  addLobbyChatMessage(message) {
+    if (!this.lobbyChatMessages) this.lobbyChatMessages = [];
+    if (!this.lobbyChatTexts) this.lobbyChatTexts = [];
+
+    this.lobbyChatMessages.push(message);
+    if (this.lobbyChatMessages.length > 5) {
+      this.lobbyChatMessages.shift();
+    }
+
+    this.updateLobbyChatDisplay();
+  }
+
+  updateLobbyChatDisplay() {
+    if (!this.lobbyChatLayout || !this.lobbyUIContainer) return;
+
+    const { startX, startY, lineSpacing } = this.lobbyChatLayout;
+
+    if (this.lobbyChatTexts && this.lobbyChatTexts.length > 0) {
+      this.lobbyChatTexts.forEach((txt) => txt.destroy());
+    }
+    this.lobbyChatTexts = [];
+
+    const messages = this.lobbyChatMessages || [];
+    messages.forEach((message, index) => {
+      const chatText = this.add
+        .text(startX, startY + index * lineSpacing, message, {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${this.cameras.main.width * 0.032}px`,
+          color: "#ffffff",
+          stroke: "#000000",
+          strokeThickness: 2,
+          backgroundColor: "#00000044",
+        })
+        .setOrigin(0, 0)
+        .setDepth(20);
+
+      this.lobbyUIContainer.add(chatText);
+      this.lobbyChatTexts.push(chatText);
     });
   }
 

@@ -855,6 +855,28 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("lobbyChatMessage", (data) => {
+    const roomId = socket.roomId;
+    const room = rooms[roomId];
+    if (!room) return;
+
+    const rawMessage =
+      typeof data === "object" && data !== null ? data.message : data;
+    if (typeof rawMessage !== "string") return;
+
+    const message = rawMessage.trim();
+    if (!message) return;
+
+    const safeMessage = message.slice(0, 120);
+    const nickname = socket.nickname || "요리사";
+
+    io.to(roomId).emit("lobbyChatMessage", {
+      nickname,
+      message: safeMessage,
+      timestamp: Date.now(),
+    });
+  });
+
   socket.on("startGameRequest", () => {
     const room = rooms[socket.roomId];
     //if (!room || room.host !== socket.id || room.players.length < 2) return;
