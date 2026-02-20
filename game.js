@@ -217,12 +217,6 @@ class LobbyScene extends Phaser.Scene {
     this.load.audio("irassai", `${ASSET_SERVER}/sounds/irassai.mp3${VERSION}`);
     this.load.audio("yare", `${ASSET_SERVER}/sounds/yare.mp3${VERSION}`);
     this.load.audio("yosi", `${ASSET_SERVER}/sounds/yosi.mp3${VERSION}`);
-    this.load.audio("buy", `${ASSET_SERVER}/sounds/buy.wav${VERSION}`);
-    this.load.audio(
-      "cardflip",
-      `${ASSET_SERVER}/sounds/cardflip.wav${VERSION}`,
-    );
-    this.load.audio("pass", `${ASSET_SERVER}/sounds/pass.wav${VERSION}`);
   }
 
   async create() {
@@ -4926,7 +4920,7 @@ class GameScene extends Phaser.Scene {
       // 화면 테두리 깜빡임 효과 (10장 이상)
       if (tension >= 1) {
         const borderColor = tension === 2 ? 0xe74c3c : 0xe67e22;
-        const blinkSpeed = tension === 2 ? 600 : 900;
+        const blinkSpeed = tension === 2 ? 300 : 500;
 
         // 테두리 오버레이
         const borderOverlay = this.add.graphics();
@@ -4946,7 +4940,7 @@ class GameScene extends Phaser.Scene {
 
         // 💥 전체 화면 연한 깜빡임 효과 추가
         const screenFlashColor = tension === 2 ? 0xff0000 : 0xff8800; // 빨강 또는 주황
-        const screenFlashAlpha = tension === 2 ? 0.08 : 0.05; // 연한 투명도 (눈 편안하게 완화)
+        const screenFlashAlpha = tension === 2 ? 0.15 : 0.1; // 연한 투명도
 
         const screenFlash = this.add.graphics();
         screenFlash.fillStyle(screenFlashColor, screenFlashAlpha);
@@ -5537,9 +5531,6 @@ class GameScene extends Phaser.Scene {
             duration: 300,
             delay: delay,
             ease: "Cubic.out",
-            onStart: () => {
-              this.sound.play("pass", { volume: 0.3 });
-            },
             onComplete: () => {
               flyCard.destroy();
               finishedFlys++;
@@ -5762,7 +5753,6 @@ class GameScene extends Phaser.Scene {
         delay: index * 25,
         ease: "Cubic.out",
         onStart: () => {
-          this.sound.play("pass", { volume: 0.3 });
           this.sound.play("pop", { volume: 0.1, detune: 500 });
         },
         onComplete: () => {
@@ -5967,8 +5957,14 @@ class GameScene extends Phaser.Scene {
       return;
     }
 
+    this.canClick = false;
     // 💡 2. 이미 뒤집는 중이면 무시 (연타 방지)
     if (this.isFlipping === true) return;
+
+    if (this.myTurnTimer) {
+      this.myTurnTimer.remove();
+      this.myTurnTimer = null;
+    }
 
     // 턴 인덱스 보정 (undefined 방지)
     if (typeof this.turnIndex !== "number") this.turnIndex = 0;
@@ -5976,17 +5972,9 @@ class GameScene extends Phaser.Scene {
     const currentPlayer = this.roundData.players[this.turnIndex];
     const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
 
-    // 💡 3. 턴 체크 (턴이 아니면 조용히 무시)
     if (!currentPlayer || currentPlayer.id !== myId) {
+      this.showToast("당신의 차례가 아닙니다!", "#e74c3c");
       return;
-    }
-
-    // 💡 4. 모든 체크를 통과했으므로 이제 클릭 잠금 설정
-    this.canClick = false;
-
-    if (this.myTurnTimer) {
-      this.myTurnTimer.remove();
-      this.myTurnTimer = null;
     }
 
     // --- 클라이언트 잠금 ---
