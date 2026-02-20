@@ -4030,12 +4030,25 @@ class GameScene extends Phaser.Scene {
       ...players.slice(0, myIndex),
     ];
 
-    const pos = [
-      { x: width * 0.5, y: height * 0.75, rotation: 0 },
-      { x: width * 0.11, y: height * 0.45, rotation: 90 },
-      { x: width * 0.5, y: height * 0.18, rotation: 180 },
-      { x: width * 0.89, y: height * 0.45, rotation: -90 },
-    ];
+    const playerCount = sortedPlayers.length;
+    const pos =
+      playerCount === 2
+        ? [
+            { x: width * 0.5, y: height * 0.75, rotation: 0 },
+            { x: width * 0.5, y: height * 0.18, rotation: 180 },
+          ]
+        : playerCount === 3
+          ? [
+              { x: width * 0.5, y: height * 0.75, rotation: 0 },
+              { x: width * 0.11, y: height * 0.45, rotation: 90 },
+              { x: width * 0.89, y: height * 0.45, rotation: -90 },
+            ]
+          : [
+              { x: width * 0.5, y: height * 0.75, rotation: 0 },
+              { x: width * 0.11, y: height * 0.45, rotation: 90 },
+              { x: width * 0.5, y: height * 0.18, rotation: 180 },
+              { x: width * 0.89, y: height * 0.45, rotation: -90 },
+            ];
 
     sortedPlayers.forEach((p, i) => {
       if (!p || !pos[i]) return;
@@ -4640,12 +4653,25 @@ class GameScene extends Phaser.Scene {
 
     if (winIdx === -1) return;
 
-    const pos = [
-      { x: width * 0.5, y: height * 0.75 },
-      { x: width * 0.11, y: height * 0.45 },
-      { x: width * 0.5, y: height * 0.18 },
-      { x: width * 0.89, y: height * 0.45 },
-    ];
+    const playerCount = players.length;
+    const pos =
+      playerCount === 2
+        ? [
+            { x: width * 0.5, y: height * 0.75 },
+            { x: width * 0.5, y: height * 0.18 },
+          ]
+        : playerCount === 3
+          ? [
+              { x: width * 0.5, y: height * 0.75 },
+              { x: width * 0.11, y: height * 0.45 },
+              { x: width * 0.89, y: height * 0.45 },
+            ]
+          : [
+              { x: width * 0.5, y: height * 0.75 },
+              { x: width * 0.11, y: height * 0.45 },
+              { x: width * 0.5, y: height * 0.18 },
+              { x: width * 0.89, y: height * 0.45 },
+            ];
 
     const relWinIdx = (winIdx - myIndex + players.length) % players.length;
     const targetPos = pos[relWinIdx];
@@ -4677,7 +4703,13 @@ class GameScene extends Phaser.Scene {
     prevPlayers.forEach((p, pIndex) => {
       if (p.openStack && p.openStack.length > 0) {
         const relIdx = (pIndex - myIndex + players.length) % players.length;
-        const rotation = [0, 90, 180, -90][relIdx];
+        const rotations =
+          playerCount === 2
+            ? [0, 180]
+            : playerCount === 3
+              ? [0, 90, -90]
+              : [0, 90, 180, -90];
+        const rotation = rotations[relIdx];
         const dist = width * 0.25;
         const rad = Phaser.Math.DegToRad(rotation - 90);
 
@@ -4748,12 +4780,25 @@ class GameScene extends Phaser.Scene {
       (playerIdx - safeMyIndex + this.roundData.players.length) %
       this.roundData.players.length;
 
-    const pos = [
-      { x: width * 0.5, y: height * 0.75, rotation: 0 },
-      { x: width * 0.11, y: height * 0.45, rotation: 90 },
-      { x: width * 0.5, y: height * 0.18, rotation: 180 },
-      { x: width * 0.89, y: height * 0.45, rotation: -90 },
-    ];
+    const playerCount = this.roundData.players.length;
+    const pos =
+      playerCount === 2
+        ? [
+            { x: width * 0.5, y: height * 0.75, rotation: 0 },
+            { x: width * 0.5, y: height * 0.18, rotation: 180 },
+          ]
+        : playerCount === 3
+          ? [
+              { x: width * 0.5, y: height * 0.75, rotation: 0 },
+              { x: width * 0.11, y: height * 0.45, rotation: 90 },
+              { x: width * 0.89, y: height * 0.45, rotation: -90 },
+            ]
+          : [
+              { x: width * 0.5, y: height * 0.75, rotation: 0 },
+              { x: width * 0.11, y: height * 0.45, rotation: 90 },
+              { x: width * 0.5, y: height * 0.18, rotation: 180 },
+              { x: width * 0.89, y: height * 0.45, rotation: -90 },
+            ];
 
     const startPos = pos[relativeIdx];
 
@@ -4829,12 +4874,25 @@ class GameScene extends Phaser.Scene {
 
     if (penaltyIdx === -1) return;
 
-    const pos = [
-      { x: width * 0.5, y: height * 0.75 },
-      { x: width * 0.18, y: height * 0.45 },
-      { x: width * 0.5, y: height * 0.18 },
-      { x: width * 0.82, y: height * 0.45 },
-    ];
+    const playerCount = players.length;
+    const pos =
+      playerCount === 2
+        ? [
+            { x: width * 0.5, y: height * 0.75 },
+            { x: width * 0.5, y: height * 0.18 },
+          ]
+        : playerCount === 3
+          ? [
+              { x: width * 0.5, y: height * 0.75 },
+              { x: width * 0.11, y: height * 0.45 },
+              { x: width * 0.89, y: height * 0.45 },
+            ]
+          : [
+              { x: width * 0.5, y: height * 0.75 },
+              { x: width * 0.11, y: height * 0.45 },
+              { x: width * 0.5, y: height * 0.18 },
+              { x: width * 0.89, y: height * 0.45 },
+            ];
 
     const relPenaltyIdx =
       (penaltyIdx - myIndex + players.length) % players.length;
