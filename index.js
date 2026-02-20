@@ -925,24 +925,27 @@ io.on("connection", (socket) => {
     const room = rooms[socket.roomId];
     if (!room) return;
 
-    // 현재 방 외의 모든 온라인 유저 목록 (대기 중인 유저만)
+    // 현재 방 외의 모든 온라인 유저 목록 (로비 + 다른 방의 대기 중인 유저)
     const onlineUsers = [];
     const userIds = new Set(room.players.map((p) => p.id)); // 현재 방의 유저 ID
 
-    // 모든 방을 순회하며 대기 중인 유저 수집
-    for (const [roomId, r] of Object.entries(rooms)) {
-      if (roomId === socket.roomId) continue; // 현재 방은 제외
-      if (r.isGameStarted) continue; // 게임이 시작된 방은 제외
-      for (const player of r.players) {
-        if (!userIds.has(player.id)) {
-          onlineUsers.push({
-            id: player.id,
-            nickname: player.nickname || "알 수 없는 요리사",
-            avatarKey: player.avatarKey || "player_1",
-            level: player.level || 1,
-          });
-        }
+    // 모든 연결된 소켓을 순회하며 수집
+    for (const [id, s] of io.sockets.sockets) {
+      if (id === socket.id) continue; // 자신은 제외
+      if (userIds.has(id)) continue; // 현재 방에 속한 사람은 제외
+
+      // 게임이 시작된 방의 플레이어는 제외
+      if (s.roomId && rooms[s.roomId]?.isGameStarted) {
+        continue;
       }
+
+      // 온라인 유저 추가
+      onlineUsers.push({
+        id: s.id,
+        nickname: s.nickname || "알 수 없는 요리사",
+        avatarKey: s.avatarKey || "player_1",
+        level: s.level || 1,
+      });
     }
 
     // 최근 5명만 전송 (역순 정렬)
