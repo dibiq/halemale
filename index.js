@@ -436,6 +436,7 @@ io.on("connection", (socket) => {
           players: room.players,
           hostId: room.host,
           max: room.maxPlayers,
+          roomName: room.roomName,
         });
       }
     }
@@ -625,6 +626,7 @@ io.on("connection", (socket) => {
       hostId: socket.id,
       max: rooms[roomId].maxPlayers,
       isPublic: isPublic,
+      roomName: rooms[roomId].roomName,
     });
 
     // 💡 공개 방이면 방목록 브로드캐스트
@@ -728,6 +730,7 @@ io.on("connection", (socket) => {
       players: room.players,
       hostId: room.host,
       max: room.maxPlayers,
+      roomName: room.roomName,
     });
   });
 
@@ -834,6 +837,7 @@ io.on("connection", (socket) => {
       players: room.players,
       hostId: room.host,
       max: room.maxPlayers,
+      roomName: room.roomName,
     });
   });
 
@@ -846,6 +850,7 @@ io.on("connection", (socket) => {
       io.to(socket.roomId).emit("readyStatusUpdated", {
         players: room.players,
         hostId: room.host,
+        roomName: room.roomName,
       });
     }
   });
@@ -1113,6 +1118,7 @@ io.on("connection", (socket) => {
           players: room.players,
           hostId: room.host,
           leftPlayerNickname: leftPlayerNickname, // 이 값을 추가하세요
+          roomName: room.roomName,
         });
 
         if (room.isGameStarted) processSkipTurn(room, io);

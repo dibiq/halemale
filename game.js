@@ -642,6 +642,7 @@ class LobbyScene extends Phaser.Scene {
         players: data.players,
         max: data.maxPlayers,
         hostId: socket.id,
+        roomName: data.roomName,
       });
     });
 
@@ -990,6 +991,7 @@ class LobbyScene extends Phaser.Scene {
     this.currentPlayers = data.players || [];
     this.currentMax = data.max || this.currentMax;
     this.hostId = data.hostId || this.hostId;
+    this.currentRoomName = data.roomName || this.currentRoomName || "대기실";
 
     const isHost = socket.id === this.hostId;
     // 로그로 현재 상태 확인
@@ -1003,6 +1005,7 @@ class LobbyScene extends Phaser.Scene {
       this.currentPlayers,
       isHost,
       this.currentMax,
+      this.currentRoomName,
     );
   }
 
@@ -2843,7 +2846,13 @@ class LobbyScene extends Phaser.Scene {
     });
   }
 
-  showWaiting(roomId, players = [], isHost = false, maxPlayers = 4) {
+  showWaiting(
+    roomId,
+    players = [],
+    isHost = false,
+    maxPlayers = 4,
+    roomName = "대기실",
+  ) {
     const { width, height } = this.cameras.main;
     const centerX = width / 2;
 
@@ -2874,27 +2883,22 @@ class LobbyScene extends Phaser.Scene {
       .setDepth(0);
     this.lobbyUIContainer.add(bg);
 
-    // 입장 코드
+    // 입장 코드 (방 제목 표시)
     const codeText = this.add
-      .text(
-        centerX,
-        height * 0.08,
-        `입장코드: ${roomId || this.currentRoomId}`,
-        {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.065}px`,
-          fill: "#ffff00",
-          fontWeight: "bold",
-          stroke: "#000000",
-          strokeThickness: 4,
-        },
-      )
+      .text(centerX, height * 0.08, roomName, {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.065}px`,
+        fill: "#ffff00",
+        fontWeight: "bold",
+        stroke: "#000000",
+        strokeThickness: 4,
+      })
       .setDepth(10)
       .setOrigin(0.5);
     this.lobbyUIContainer.add(codeText);
 
     // 참가자 수
-    const countText = this.add
+    /*const countText = this.add
       .text(
         centerX,
         height * 0.14,
@@ -2906,7 +2910,7 @@ class LobbyScene extends Phaser.Scene {
         },
       )
       .setOrigin(0.5);
-    this.lobbyUIContainer.add(countText);
+    this.lobbyUIContainer.add(countText);*/
 
     /* =======================================================
        플레이어 카드 UI (위 2명 / 아래 2명)
@@ -3632,8 +3636,8 @@ class GameScene extends Phaser.Scene {
           players: updatedPlayers, // 👈 중요!
         });
 
-        // 💡 [수정] 렌더링 제거 - playPenaltyAnimation 내부 완료 후에만 호출
-        this.roundData.players = updatedPlayers;
+        // 💡 [수정] roundData 업데이트는 playPenaltyAnimation 내부에서 처리됨
+        // this.roundData.players = updatedPlayers; (제거 - 바닥 카드 보존을 위해)
       }
     });
 
@@ -4559,12 +4563,32 @@ class GameScene extends Phaser.Scene {
 
     const totalCardsToFly = targetPlayers.length;
     if (totalCardsToFly === 0) {
-      this.renderTable(data.players);
+      // 바닥 카드 보존을 위해 openStack만 유지하면서 나머지 업데이트
+      this.roundData.players.forEach((oldPlayer) => {
+        const newPlayer = data.players.find((p) => p.id === oldPlayer.id);
+        if (newPlayer) {
+          const preservedOpenStack = oldPlayer.openStack;
+          Object.assign(oldPlayer, newPlayer);
+          oldPlayer.openStack = preservedOpenStack;
+        }
+      });
+      this.renderTable(this.roundData.players);
       return;
     }
 
+    // 💡 [중요] 애니메이션 시작 전에 먼저 업데이트된 플레이어 데이터를 반영
+    // 단, openStack은 보존 (바닥 카드가 사라지지 않도록)
+    this.roundData.players.forEach((oldPlayer) => {
+      const newPlayer = data.players.find((p) => p.id === oldPlayer.id);
+      if (newPlayer) {
+        // openStack을 제외한 나머지 속성만 업데이트
+        const preservedOpenStack = oldPlayer.openStack;
+        Object.assign(oldPlayer, newPlayer);
+        oldPlayer.openStack = preservedOpenStack; // 바닥 카드 보존
+      }
+    });
+
     let finishedCount = 0;
-    // 💡 [수정] 애니메이션 시작 직전 렌더링 제거 → 애니메이션 완료 후만 렌더링
 
     targetPlayers.forEach((player, index) => {
       const realIdx = players.findIndex((p) => p.id === player.id);
@@ -4582,9 +4606,8 @@ class GameScene extends Phaser.Scene {
         x: targetPos.x,
         y: targetPos.y,
         duration: 250,
-        delay: index * 25, // 💡 [수정] 더 빠른 "슈슈슉" 느낌
+        delay: index * 25,
         ease: "Cubic.out",
-        // delay: 0, // 💡 한 장씩 확실히 빠지는걸 보여주려면 딜레이를 없애거나 짧게 조절
         onStart: () => {
           this.sound.play("pop", { volume: 0.1, detune: 500 });
         },
@@ -4593,8 +4616,9 @@ class GameScene extends Phaser.Scene {
           finishedCount++;
 
           if (finishedCount === totalCardsToFly) {
-            // 애니메이션이 완전히 끝난 후 테이블 갱신 (서버 데이터 반영)
-            this.renderTable(players);
+            // 애니메이션이 완전히 끝난 후 테이블 재렌더링
+            // (openStack은 이미 보존된 상태이므로 별도 업데이트 불필요)
+            this.renderTable(this.roundData.players);
           }
         },
       });
