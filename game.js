@@ -5967,14 +5967,8 @@ class GameScene extends Phaser.Scene {
       return;
     }
 
-    this.canClick = false;
     // 💡 2. 이미 뒤집는 중이면 무시 (연타 방지)
     if (this.isFlipping === true) return;
-
-    if (this.myTurnTimer) {
-      this.myTurnTimer.remove();
-      this.myTurnTimer = null;
-    }
 
     // 턴 인덱스 보정 (undefined 방지)
     if (typeof this.turnIndex !== "number") this.turnIndex = 0;
@@ -5982,9 +5976,17 @@ class GameScene extends Phaser.Scene {
     const currentPlayer = this.roundData.players[this.turnIndex];
     const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
 
+    // 💡 3. 턴 체크 (턴이 아니면 조용히 무시)
     if (!currentPlayer || currentPlayer.id !== myId) {
-      this.showToast("당신의 차례가 아닙니다!", "#e74c3c");
       return;
+    }
+
+    // 💡 4. 모든 체크를 통과했으므로 이제 클릭 잠금 설정
+    this.canClick = false;
+
+    if (this.myTurnTimer) {
+      this.myTurnTimer.remove();
+      this.myTurnTimer = null;
     }
 
     // --- 클라이언트 잠금 ---
