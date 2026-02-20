@@ -767,6 +767,7 @@ class LobbyScene extends Phaser.Scene {
     });
 
     socket.off("joinRoomSuccess").on("joinRoomSuccess", (data) => {
+      this.hideLoading();
       this.currentPlayers = data.players || [];
       this.roomName = data.roomName;
       this.isGameStarted = data.isGameStarted || false;
@@ -5180,7 +5181,7 @@ class GameScene extends Phaser.Scene {
         const cardCount = this.add
           .text(cardX, cardY + cardSize * 0.25, `x${count}`, {
             fontFamily: GAME_FONTS.main,
-            fontSize: `${cardSize}px`,
+            fontSize: `${cardSize * 0.3}px`,
             color: "#ffffff",
             fontWeight: "bold",
           })
@@ -7157,6 +7158,117 @@ class GameScene extends Phaser.Scene {
           });
         });
       },
+    });
+  }
+
+  showCustomAlert(message, onConfirm) {
+    const { width, height } = this.cameras.main;
+    const centerX = width / 2;
+    const centerY = height / 2;
+
+    // 1. 배경 어둡게
+    const overlay = this.add
+      .rectangle(centerX, centerY, width, height, 0x000000, 0.6)
+      .setDepth(4000)
+      .setInteractive();
+
+    // 2. 팝업 배경
+    const popupBg = this.add
+      .image(centerX, centerY, "popupbg")
+      .setDepth(4001)
+      .setDisplaySize(width * 0.75, height * 0.25);
+
+    // 3. 메시지 텍스트
+    const msgText = this.add
+      .text(centerX, centerY - 40, message, {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.045}px`,
+        color: "#ffffff",
+        align: "center",
+        wordWrap: { width: width * 0.6 },
+      })
+      .setOrigin(0.5)
+      .setDepth(4002);
+
+    // 공통 제거 함수
+    const closeAlert = () => {
+      [
+        overlay,
+        popupBg,
+        msgText,
+        confirmBtn,
+        confirmTxt,
+        cancelBtn,
+        cancelTxt,
+      ].forEach((el) => {
+        if (el) el.destroy();
+      });
+    };
+
+    const btnY = centerY + 50;
+    const btnGap = width * 0.18;
+
+    // --- 취소 버튼 ---
+    const cancelBtn = this.add
+      .image(centerX - btnGap, btnY, "uibtn")
+      .setDisplaySize(width * 0.3, height * 0.06)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(4002)
+      .setTint(0xffaaaa);
+
+    const cancelTxt = this.add
+      .text(centerX - btnGap, btnY, "취소", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.055}px`,
+        color: "#ffffff",
+      })
+      .setOrigin(0.5)
+      .setDepth(4003);
+
+    cancelBtn.on("pointerdown", () => {
+      this.sound.play("pop", { volume: 0.1 });
+      this.tweens.add({
+        targets: [cancelBtn, cancelTxt],
+        scaleX: "*=0.95",
+        scaleY: "*=0.95",
+        duration: 50,
+        yoyo: true,
+        onComplete: () => {
+          closeAlert();
+        },
+      });
+    });
+
+    // --- 확인 버튼 ---
+    const confirmBtn = this.add
+      .image(centerX + btnGap, btnY, "uibtn")
+      .setDisplaySize(width * 0.3, height * 0.06)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(4002);
+
+    const confirmTxt = this.add
+      .text(centerX + btnGap, btnY, "확인", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.055}px`,
+        color: "#ffffff",
+        fontWeight: "bold",
+      })
+      .setOrigin(0.5)
+      .setDepth(4003);
+
+    confirmBtn.on("pointerdown", () => {
+      this.sound.play("pop", { volume: 0.1 });
+      this.tweens.add({
+        targets: [confirmBtn, confirmTxt],
+        scaleX: "*=0.95",
+        scaleY: "*=0.95",
+        duration: 50,
+        yoyo: true,
+        onComplete: () => {
+          closeAlert();
+          if (onConfirm) onConfirm();
+        },
+      });
     });
   }
 
