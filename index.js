@@ -921,6 +921,145 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("getOnlineUsers", () => {
+    const room = rooms[socket.roomId];
+    if (!room) return;
+
+    // 현재 방 외의 모든 온라인 유저 목록 (대기 중인 유저만)
+    const onlineUsers = [];
+    const userIds = new Set(room.players.map((p) => p.id)); // 현재 방의 유저 ID
+
+    // 모든 방을 순회하며 대기 중인 유저 수집
+    for (const [roomId, r] of Object.entries(rooms)) {
+      if (roomId === socket.roomId) continue; // 현재 방은 제외
+      if (r.isGameStarted) continue; // 게임이 시작된 방은 제외
+      for (const player of r.players) {
+        if (!userIds.has(player.id)) {
+          onlineUsers.push({
+            id: player.id,
+            nickname: player.nickname || "알 수 없는 요리사",
+            avatarKey: player.avatarKey || "player_1",
+            level: player.level || 1,
+          });
+        }
+      }
+    }
+
+    // 최근 5명만 전송 (역순 정렬)
+    const recentUsers = onlineUsers.slice(-5).reverse();
+
+    socket.emit("onlineUsersList", {
+      users: recentUsers,
+      roomId: socket.roomId,
+      roomName: room.roomName,
+    });
+  });
+
+  socket.on("inviteUser", (data) => {
+    const targetId = data && data.targetId;
+    const inviterId = socket.id;
+    const inviterNickname = socket.nickname || "누군가";
+    const inviterRoomId = socket.roomId;
+    const room = rooms[inviterRoomId];
+
+    if (!targetId || !room) return;
+
+    // 초대받은 유저에게 팝업 전송
+    io.to(targetId).emit("receiveInvite", {
+      inviterId: inviterId,
+      inviterNickname: inviterNickname,
+      roomId: inviterRoomId,
+      roomName: room.roomName,
+      maxPlayers: room.maxPlayers,
+      currentPlayers: room.players.length,
+    });
+  });
+
+  socket.on("acceptInvite", async (data) => {
+    const roomId = data && data.roomId;
+    const room = rooms[roomId];
+
+    if (!room) {
+      return socket.emit("joinRoomError", "방이 존재하지 않습니다.");
+    }
+
+    if (room.players.length >= room.maxPlayers) {
+      return socket.emit("joinRoomError", "인원 초과");
+    }
+
+    if (room.isGameStarted) {
+      return socket.emit("joinRoomError", "이미 시작된 게임");
+    }
+
+    // 방에 입장
+    socket.join(roomId);
+    socket.roomId = roomId;
+
+    // 플레이어 정보 조회
+    const savedData = await getPlayer(socket.nickname);
+    if (savedData) {
+      socket.level = savedData.level || 1;
+      socket.coins = savedData.coins || 0;
+      socket.experience = savedData.experience || 0;
+
+      let parsedItems = [];
+      if (
+        typeof savedData.items === "object" &&
+        !Array.isArray(savedData.items)
+      ) {
+        parsedItems = Array.isArray(savedData.items.items)
+          ? savedData.items.items
+          : [];
+      } else if (Array.isArray(savedData.items)) {
+        parsedItems = savedData.items;
+      } else if (typeof savedData.items === "string") {
+        try {
+          const parsed = JSON.parse(savedData.items);
+          parsedItems = Array.isArray(parsed.items)
+            ? parsed.items
+            : Array.isArray(parsed)
+              ? parsed
+              : [];
+        } catch (e) {
+          parsedItems = [];
+        }
+      }
+      socket.items = parsedItems;
+    } else {
+      socket.level = 1;
+      socket.coins = 0;
+      socket.experience = 0;
+      socket.items = [];
+    }
+
+    // 플레이어 추가
+    room.players.push({
+      id: socket.id,
+      nickname: socket.nickname,
+      avatarKey: socket.avatarKey,
+      isReady: false,
+      level: socket.level,
+      coins: socket.coins,
+      experience: socket.experience,
+      items: socket.items,
+    });
+
+    // 방장 제외하고 모두에게 입장 공지
+    io.to(roomId).emit("playerJoined", {
+      players: room.players,
+      newPlayerNickname: socket.nickname,
+      hostId: room.host,
+      roomName: room.roomName,
+    });
+
+    socket.emit("joinRoomSuccess", {
+      players: room.players,
+      hostId: room.host,
+      roomName: room.roomName,
+      isGameStarted: room.isGameStarted,
+    });
+  });
+
   socket.on("startGameRequest", () => {
     const room = rooms[socket.roomId];
     //if (!room || room.host !== socket.id || room.players.length < 2) return;

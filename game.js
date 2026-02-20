@@ -337,6 +337,16 @@ class LobbyScene extends Phaser.Scene {
       }
     });
 
+    socket.off("onlineUsersList").on("onlineUsersList", (data) => {
+      if (!data || !data.users) return;
+      this.showInvitePopup(data.users, data.roomName);
+    });
+
+    socket.off("receiveInvite").on("receiveInvite", (data) => {
+      if (!data) return;
+      this.showInviteReceivePopup(data);
+    });
+
     this.backHandler = await App.addListener("backButton", ({ canGoBack }) => {
       // 2. 알림창(Alert)이 떠 있는지 우선 확인
       if (this.isJoinPopupOpen) {
@@ -748,6 +758,20 @@ class LobbyScene extends Phaser.Scene {
       const nickname = data.leftPlayerNickname || "알 수 없는 요리사";
       this.refreshLobbyUI(data);
       this.showToast(`${nickname}님이 나갔습니다.`, "#e74c3c");
+    });
+
+    socket.off("playerJoined").on("playerJoined", (data) => {
+      const nickname = data.newPlayerNickname || "알 수 없는 요리사";
+      this.refreshLobbyUI(data);
+      this.showToast(`${nickname}님이 입장했습니다!`, "#2ecc71");
+    });
+
+    socket.off("joinRoomSuccess").on("joinRoomSuccess", (data) => {
+      this.currentPlayers = data.players || [];
+      this.roomName = data.roomName;
+      this.isGameStarted = data.isGameStarted || false;
+      this.showToast("방에 입장했습니다!", "#3498db");
+      this.refreshLobbyUI(data);
     });
 
     socket.on("startBlocked", (msg) => {
@@ -3483,17 +3507,17 @@ class LobbyScene extends Phaser.Scene {
     });
 
     /* ======================
-     시작하기 / 준비하기 / 상점 / 나가기 버튼
+     시작하기 / 준비하기 / 상점 / 초대하기 / 나가기 버튼
      ====================== */
     const mainBtnY = height * 0.81;
-    const btnWidth = width * 0.25;
+    const btnWidth = width * 0.18;
     const btnHeight = height * 0.065;
-    const btnGap = width * 0.02;
-    const totalWidth = btnWidth * 3 + btnGap * 2;
+    const btnGap = width * 0.015;
+    const totalWidth = btnWidth * 4 + btnGap * 3;
     const startX = centerX - totalWidth / 2;
 
     if (isHost) {
-      // 방장: 시작하기 버튼 (왼쪽)
+      // 방장: 시작하기 버튼 (첫 번째)
       const startBtnImg = this.add
         .image(startX + btnWidth / 2, mainBtnY, "uibtn")
         .setDisplaySize(btnWidth, btnHeight)
@@ -3504,7 +3528,7 @@ class LobbyScene extends Phaser.Scene {
         .text(startX + btnWidth / 2, mainBtnY, "시작하기", {
           fontFamily: GAME_FONTS.main,
           color: "#fff",
-          fontSize: `${width * 0.04}px`,
+          fontSize: `${width * 0.03}px`,
           fontWeight: "bold",
         })
         .setDepth(20)
@@ -3533,7 +3557,7 @@ class LobbyScene extends Phaser.Scene {
         });
       });
     } else {
-      // 일반 유저: 준비하기 버튼 (왼쪽)
+      // 일반 유저: 준비하기 버튼 (첫 번째)
       const myReadyState =
         players.find((p) => p.id === socket.id)?.isReady || false;
       const readyBtnImg = this.add
@@ -3546,11 +3570,11 @@ class LobbyScene extends Phaser.Scene {
         .text(
           startX + btnWidth / 2,
           mainBtnY,
-          myReadyState ? "준비완료!" : "준비하기",
+          myReadyState ? "준비중!" : "준비",
           {
             fontFamily: GAME_FONTS.main,
             color: "#fff",
-            fontSize: `${width * 0.04}px`,
+            fontSize: `${width * 0.03}px`,
             fontWeight: "bold",
           },
         )
@@ -3579,18 +3603,18 @@ class LobbyScene extends Phaser.Scene {
       });
     }
 
-    // 상점 버튼 (중앙)
+    // 상점 버튼 (두 번째)
     const shopBtnImg = this.add
-      .image(startX + btnWidth * 1.5 + btnGap, mainBtnY, "uibtn")
+      .image(startX + btnWidth + btnGap + btnWidth / 2, mainBtnY, "uibtn")
       .setDisplaySize(btnWidth, btnHeight)
       .setTint(0xffd700)
       .setDepth(20)
       .setInteractive({ useHandCursor: true });
     const shopBtnText = this.add
-      .text(startX + btnWidth * 1.5 + btnGap, mainBtnY, "💰 상점", {
+      .text(startX + btnWidth + btnGap + btnWidth / 2, mainBtnY, "상점", {
         fontFamily: GAME_FONTS.main,
         color: "#fff",
-        fontSize: `${width * 0.04}px`,
+        fontSize: `${width * 0.03}px`,
         fontWeight: "bold",
       })
       .setDepth(20)
@@ -3611,19 +3635,56 @@ class LobbyScene extends Phaser.Scene {
       });
     });
 
-    // 나가기 버튼 (오른쪽)
+    // 초대하기 버튼 (세 번째)
+    const inviteBtnImg = this.add
+      .image(startX + (btnWidth + btnGap) * 2 + btnWidth / 2, mainBtnY, "uibtn")
+      .setDisplaySize(btnWidth, btnHeight)
+      .setTint(0x9b59b6)
+      .setDepth(20)
+      .setInteractive({ useHandCursor: true });
+    const inviteBtnText = this.add
+      .text(startX + (btnWidth + btnGap) * 2 + btnWidth / 2, mainBtnY, "초대", {
+        fontFamily: GAME_FONTS.main,
+        color: "#fff",
+        fontSize: `${width * 0.03}px`,
+        fontWeight: "bold",
+      })
+      .setDepth(20)
+      .setOrigin(0.5);
+    this.lobbyUIContainer.add([inviteBtnImg, inviteBtnText]);
+
+    inviteBtnImg.on("pointerdown", () => {
+      this.sound.play("pop", { volume: 0.1 });
+      this.tweens.add({
+        targets: [inviteBtnImg, inviteBtnText],
+        scale: "*=0.95",
+        duration: 100,
+        yoyo: true,
+        ease: "Quad.easeInOut",
+        onComplete: () => {
+          socket.emit("getOnlineUsers");
+        },
+      });
+    });
+
+    // 나가기 버튼 (네 번째)
     const exitBtnImg = this.add
-      .image(startX + btnWidth * 2.5 + btnGap * 2, mainBtnY, "uibtn")
+      .image(startX + (btnWidth + btnGap) * 3 + btnWidth / 2, mainBtnY, "uibtn")
       .setDisplaySize(btnWidth, btnHeight)
       .setInteractive({ useHandCursor: true })
       .setTint(0xe74c3c);
     const exitBtnText = this.add
-      .text(startX + btnWidth * 2.5 + btnGap * 2, mainBtnY, "나가기", {
-        fontFamily: GAME_FONTS.main,
-        color: "#fff",
-        fontSize: `${width * 0.04}px`,
-        fontWeight: "bold",
-      })
+      .text(
+        startX + (btnWidth + btnGap) * 3 + btnWidth / 2,
+        mainBtnY,
+        "나가기",
+        {
+          fontFamily: GAME_FONTS.main,
+          color: "#fff",
+          fontSize: `${width * 0.03}px`,
+          fontWeight: "bold",
+        },
+      )
       .setOrigin(0.5);
     this.lobbyUIContainer.add([exitBtnImg, exitBtnText]);
 
@@ -6846,6 +6907,388 @@ class GameScene extends Phaser.Scene {
           // 4. 연출이 완전히 끝난 후 알림창을 닫고 다음 동작 실행
           closeAlert();
           if (onConfirm) onConfirm();
+        },
+      });
+    });
+  }
+
+  showInvitePopup(users, roomName) {
+    const { width, height, centerX, centerY } = this.cameras.main;
+
+    // 배경
+    const popupWidth = width * 0.85;
+    const popupHeight = height * 0.55;
+    const popupBg = this.add
+      .rectangle(centerX, centerY, popupWidth, popupHeight, 0x1a1a2e, 0.95)
+      .setDepth(300)
+      .setStrokeStyle(3, 0xffd700, 1);
+
+    // 타이틀
+    const titleText = this.add
+      .text(centerX, centerY - popupHeight / 2 + height * 0.05, "초대하기", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.06}px`,
+        color: "#ffd700",
+        fontWeight: "bold",
+      })
+      .setOrigin(0.5)
+      .setDepth(301);
+
+    // 서브텍스트
+    const subText = this.add
+      .text(
+        centerX,
+        centerY - popupHeight / 2 + height * 0.1,
+        `방: ${roomName}`,
+        {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.03}px`,
+          color: "#aaa",
+          fontWeight: "normal",
+        },
+      )
+      .setOrigin(0.5)
+      .setDepth(301);
+
+    // 유저 리스트 컨테이너
+    const listContainerY = centerY;
+    const listH = height * 0.35;
+    const userButtons = [];
+
+    users.forEach((user, index) => {
+      const btnY =
+        listContainerY - listH / 2 + (index + 1) * (listH / (users.length + 1));
+
+      // 유저 배경
+      const userBg = this.add
+        .rectangle(
+          centerX,
+          btnY,
+          popupWidth * 0.8,
+          height * 0.06,
+          0x2a2a3e,
+          0.8,
+        )
+        .setStrokeStyle(2, 0x555555, 1)
+        .setDepth(301)
+        .setInteractive({ useHandCursor: true });
+
+      // 유저 아이콘
+      const userIcon = this.add
+        .image(
+          centerX - popupWidth * 0.35,
+          btnY,
+          /^player_[1-4]$/.test(user.avatarKey) ? user.avatarKey : "player_1",
+        )
+        .setDisplaySize(height * 0.045, height * 0.045)
+        .setDepth(302);
+
+      // 유저명 + 레벨
+      const userName = this.add
+        .text(
+          centerX - popupWidth * 0.25,
+          btnY - height * 0.015,
+          user.nickname,
+          {
+            fontFamily: GAME_FONTS.main,
+            fontSize: `${width * 0.035}px`,
+            color: "#fff",
+            fontWeight: "bold",
+          },
+        )
+        .setOrigin(0.5)
+        .setDepth(302);
+
+      const userLevel = this.add
+        .text(
+          centerX - popupWidth * 0.25,
+          btnY + height * 0.015,
+          `Lv. ${user.level}`,
+          {
+            fontFamily: GAME_FONTS.main,
+            fontSize: `${width * 0.025}px`,
+            color: "#f1c40f",
+          },
+        )
+        .setOrigin(0.5)
+        .setDepth(302);
+
+      // 초대 버튼
+      const inviteBtn = this.add
+        .rectangle(
+          centerX + popupWidth * 0.3,
+          btnY,
+          width * 0.12,
+          height * 0.05,
+          0x3498db,
+          1,
+        )
+        .setStrokeStyle(2, 0x2980b9, 1)
+        .setDepth(301)
+        .setInteractive({ useHandCursor: true });
+
+      const inviteBtnText = this.add
+        .text(centerX + popupWidth * 0.3, btnY, "초대", {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.03}px`,
+          color: "#fff",
+          fontWeight: "bold",
+        })
+        .setOrigin(0.5)
+        .setDepth(302);
+
+      inviteBtn.on("pointerdown", () => {
+        this.sound.play("pop", { volume: 0.1 });
+        this.tweens.add({
+          targets: [inviteBtn, inviteBtnText],
+          scaleX: "*=0.9",
+          scaleY: "*=0.9",
+          duration: 100,
+          yoyo: true,
+          ease: "Quad.easeInOut",
+          onComplete: () => {
+            socket.emit("inviteUser", { targetId: user.id });
+            this.showToast(`${user.nickname}님을 초대했습니다!`, "#3498db");
+            this.time.delayedCall(500, () => {
+              popupBg.destroy();
+              titleText.destroy();
+              subText.destroy();
+              userButtons.forEach((btn) => {
+                if (btn && btn.active) btn.destroy();
+              });
+            });
+          },
+        });
+      });
+
+      userButtons.push(
+        userBg,
+        userIcon,
+        userName,
+        userLevel,
+        inviteBtn,
+        inviteBtnText,
+      );
+    });
+
+    // 닫기 버튼
+    const closeBtn = this.add
+      .rectangle(
+        centerX + popupWidth / 2 - width * 0.06,
+        centerY - popupHeight / 2 + height * 0.03,
+        width * 0.1,
+        height * 0.04,
+        0xe74c3c,
+        1,
+      )
+      .setStrokeStyle(2, 0xc0392b, 1)
+      .setDepth(301)
+      .setInteractive({ useHandCursor: true });
+
+    const closeBtnText = this.add
+      .text(
+        centerX + popupWidth / 2 - width * 0.06,
+        centerY - popupHeight / 2 + height * 0.03,
+        "X",
+        {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.04}px`,
+          color: "#fff",
+          fontWeight: "bold",
+        },
+      )
+      .setOrigin(0.5)
+      .setDepth(302);
+
+    closeBtn.on("pointerdown", () => {
+      this.sound.play("pop", { volume: 0.1 });
+      popupBg.destroy();
+      titleText.destroy();
+      subText.destroy();
+      closeBtn.destroy();
+      closeBtnText.destroy();
+      userButtons.forEach((btn) => {
+        if (btn && btn.active) btn.destroy();
+      });
+    });
+
+    // 사용자가 클릭한 영역 외 팝업 배경 클릭 시 닫기
+    popupBg.on("pointerdown", () => {
+      this.sound.play("pop", { volume: 0.1 });
+      popupBg.destroy();
+      titleText.destroy();
+      subText.destroy();
+      closeBtn.destroy();
+      closeBtnText.destroy();
+      userButtons.forEach((btn) => {
+        if (btn && btn.active) btn.destroy();
+      });
+    });
+  }
+
+  showInviteReceivePopup(inviteData) {
+    const { width, height, centerX, centerY } = this.cameras.main;
+
+    // 배경
+    const popupWidth = width * 0.75;
+    const popupHeight = height * 0.35;
+    const popupBg = this.add
+      .rectangle(centerX, centerY, popupWidth, popupHeight, 0x1a1a2e, 0.95)
+      .setDepth(300)
+      .setStrokeStyle(3, 0x3498db, 1);
+
+    // 타이틀
+    const titleText = this.add
+      .text(
+        centerX,
+        centerY - popupHeight / 2 + height * 0.04,
+        "초대 받았습니다!",
+        {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.055}px`,
+          color: "#3498db",
+          fontWeight: "bold",
+        },
+      )
+      .setOrigin(0.5)
+      .setDepth(301);
+
+    // 초대 정보
+    const infoText = this.add
+      .text(
+        centerX,
+        centerY - height * 0.02,
+        `${inviteData.inviterNickname}\n${inviteData.roomName}`,
+        {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.04}px`,
+          color: "#fff",
+          align: "center",
+        },
+      )
+      .setOrigin(0.5)
+      .setDepth(301);
+
+    const playerCountText = this.add
+      .text(
+        centerX,
+        centerY + height * 0.08,
+        `플레이어: ${inviteData.currentPlayers}/${inviteData.maxPlayers}`,
+        {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.03}px`,
+          color: "#aaa",
+        },
+      )
+      .setOrigin(0.5)
+      .setDepth(301);
+
+    // 수락 버튼
+    const acceptBtn = this.add
+      .rectangle(
+        centerX - width * 0.15,
+        centerY + popupHeight / 2 - height * 0.05,
+        width * 0.2,
+        height * 0.06,
+        0x2ecc71,
+        1,
+      )
+      .setStrokeStyle(2, 0x27ae60, 1)
+      .setDepth(301)
+      .setInteractive({ useHandCursor: true });
+
+    const acceptBtnText = this.add
+      .text(
+        centerX - width * 0.15,
+        centerY + popupHeight / 2 - height * 0.05,
+        "수락",
+        {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.035}px`,
+          color: "#fff",
+          fontWeight: "bold",
+        },
+      )
+      .setOrigin(0.5)
+      .setDepth(302);
+
+    // 거절 버튼
+    const declineBtn = this.add
+      .rectangle(
+        centerX + width * 0.15,
+        centerY + popupHeight / 2 - height * 0.05,
+        width * 0.2,
+        height * 0.06,
+        0xe74c3c,
+        1,
+      )
+      .setStrokeStyle(2, 0xc0392b, 1)
+      .setDepth(301)
+      .setInteractive({ useHandCursor: true });
+
+    const declineBtnText = this.add
+      .text(
+        centerX + width * 0.15,
+        centerY + popupHeight / 2 - height * 0.05,
+        "거절",
+        {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.035}px`,
+          color: "#fff",
+          fontWeight: "bold",
+        },
+      )
+      .setOrigin(0.5)
+      .setDepth(302);
+
+    // 자동 닫기 (15초)
+    let autoCloseTimer = this.time.delayedCall(15000, () => {
+      if (popupBg && popupBg.active) {
+        destroyPopup();
+      }
+    });
+
+    const destroyPopup = () => {
+      if (autoCloseTimer) autoCloseTimer.remove();
+      popupBg.destroy();
+      titleText.destroy();
+      infoText.destroy();
+      playerCountText.destroy();
+      acceptBtn.destroy();
+      acceptBtnText.destroy();
+      declineBtn.destroy();
+      declineBtnText.destroy();
+    };
+
+    acceptBtn.on("pointerdown", () => {
+      this.sound.play("pop", { volume: 0.1 });
+      this.tweens.add({
+        targets: [acceptBtn, acceptBtnText],
+        scaleX: "*=0.9",
+        scaleY: "*=0.9",
+        duration: 100,
+        yoyo: true,
+        ease: "Quad.easeInOut",
+        onComplete: () => {
+          socket.emit("acceptInvite", { roomId: inviteData.roomId });
+          this.showToast("초대를 수락했습니다!", "#2ecc71");
+          destroyPopup();
+        },
+      });
+    });
+
+    declineBtn.on("pointerdown", () => {
+      this.sound.play("pop", { volume: 0.1 });
+      this.tweens.add({
+        targets: [declineBtn, declineBtnText],
+        scaleX: "*=0.9",
+        scaleY: "*=0.9",
+        duration: 100,
+        yoyo: true,
+        ease: "Quad.easeInOut",
+        onComplete: () => {
+          this.showToast("초대를 거절했습니다!", "#e74c3c");
+          destroyPopup();
         },
       });
     });
