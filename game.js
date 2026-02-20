@@ -5997,6 +5997,11 @@ class GameScene extends Phaser.Scene {
     // 1. 게임 준비 상태 확인
     if (!this.isGameReady) return;
 
+    if (!this.isSingle) {
+      const me = this.roundData.players.find((p) => p.id === socket.id);
+      if (me && me.isEliminated) return;
+    }
+
     // 2. 종 애니메이션 (반응 속도감을 위해 공통 실행)
     if (this.bellImage) {
       this.tweens.add({
