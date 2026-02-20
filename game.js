@@ -133,21 +133,39 @@ class LobbyScene extends Phaser.Scene {
 
     this.load.image("slide", `${ASSET_SERVER}/images/slide.png${VERSION}`);
     this.load.image("chef", `${ASSET_SERVER}/images/chef.png${VERSION}`);
+
+    // 플레이어 애니메이션용 이미지 (각 2프레임)
     this.load.image(
-      "player_1",
-      `${ASSET_SERVER}/images/player_1.png${VERSION}`,
+      "player_1_1",
+      `${ASSET_SERVER}/images/player_1_1.png${VERSION}`,
     );
     this.load.image(
-      "player_2",
-      `${ASSET_SERVER}/images/player_2.png${VERSION}`,
+      "player_1_2",
+      `${ASSET_SERVER}/images/player_1_2.png${VERSION}`,
     );
     this.load.image(
-      "player_3",
-      `${ASSET_SERVER}/images/player_3.png${VERSION}`,
+      "player_2_1",
+      `${ASSET_SERVER}/images/player_2_1.png${VERSION}`,
     );
     this.load.image(
-      "player_4",
-      `${ASSET_SERVER}/images/player_4.png${VERSION}`,
+      "player_2_2",
+      `${ASSET_SERVER}/images/player_2_2.png${VERSION}`,
+    );
+    this.load.image(
+      "player_3_1",
+      `${ASSET_SERVER}/images/player_3_1.png${VERSION}`,
+    );
+    this.load.image(
+      "player_3_2",
+      `${ASSET_SERVER}/images/player_3_2.png${VERSION}`,
+    );
+    this.load.image(
+      "player_4_1",
+      `${ASSET_SERVER}/images/player_4_1.png${VERSION}`,
+    );
+    this.load.image(
+      "player_4_2",
+      `${ASSET_SERVER}/images/player_4_2.png${VERSION}`,
     );
     this.load.image(
       "resultbg",
@@ -382,9 +400,24 @@ class LobbyScene extends Phaser.Scene {
       .setDisplaySize(profileSize * 2.3, profileSize * 2.1)
       .setAlpha(1.0);
 
+    // 프로필 이미지를 스프라이트로 생성하고 애니메이션 적용
+    const currentKey = this.profileAvatarKeys[this.profileAvatarIndex];
     this.profileImage = this.add
-      .image(0, 0, this.profileAvatarKeys[this.profileAvatarIndex])
+      .image(0, 0, `${currentKey}_1`)
       .setDisplaySize(profileSize, profileSize);
+
+    // 캐릭터 애니메이션 (프레임 전환)
+    this.profileAnimFrame = 1;
+    this.profileAnimTimer = this.time.addEvent({
+      delay: 500,
+      callback: () => {
+        if (!this.profileImage || !this.profileImage.active) return;
+        this.profileAnimFrame = this.profileAnimFrame === 1 ? 2 : 1;
+        const currentKey = this.profileAvatarKeys[this.profileAvatarIndex];
+        this.profileImage.setTexture(`${currentKey}_${this.profileAnimFrame}`);
+      },
+      loop: true,
+    });
 
     const avatarLeftBtn = this.add
       .circle(-profileSize * 0.75, 0, profileSize * 0.14, 0x000000, 0.55)
@@ -988,9 +1021,11 @@ class LobbyScene extends Phaser.Scene {
       return;
     }
 
-    const textureKey =
+    const baseKey =
       this.profileAvatarKeys[this.profileAvatarIndex] || "player_1";
-    this.profileImage.setTexture(textureKey);
+    // 애니메이션 프레임 유지하면서 캐릭터만 변경
+    this.profileAnimFrame = this.profileAnimFrame || 1;
+    this.profileImage.setTexture(`${baseKey}_${this.profileAnimFrame}`);
   }
 
   getSelectedAvatarKey() {
@@ -3260,15 +3295,31 @@ class LobbyScene extends Phaser.Scene {
       );
       this.lobbyUIContainer.add(cardBg);
 
-      // 프로필 이미지 (chef)
+      // 프로필 이미지 - 애니메이션 적용
+      const baseAvatarKey = /^player_[1-4]$/.test(p.avatarKey)
+        ? p.avatarKey
+        : `player_${i + 1}`;
+
       const profileImg = this.add
         .image(
           pos.x - cardW / 2 + profileSize * 1.3,
           pos.y - cardH * 0.05,
-          /^player_[1-4]$/.test(p.avatarKey) ? p.avatarKey : `player_${i + 1}`,
+          `${baseAvatarKey}_1`,
         )
         .setDisplaySize(profileSize * 2, profileSize * 2);
       this.lobbyUIContainer.add(profileImg);
+
+      // 캐릭터 애니메이션 (프레임 전환)
+      profileImg.animFrame = 1;
+      profileImg.animTimer = this.time.addEvent({
+        delay: 500,
+        callback: () => {
+          if (!profileImg || !profileImg.active) return;
+          profileImg.animFrame = profileImg.animFrame === 1 ? 2 : 1;
+          profileImg.setTexture(`${baseAvatarKey}_${profileImg.animFrame}`);
+        },
+        loop: true,
+      });
 
       if (isHost && !isThisPlayerHost) {
         profileImg.setInteractive({ useHandCursor: true });
@@ -3957,12 +4008,12 @@ class LobbyScene extends Phaser.Scene {
         .setInteractive({ useHandCursor: true });
 
       // 유저 아이콘
+      const baseUserAvatar = /^player_[1-4]$/.test(user.avatarKey)
+        ? user.avatarKey
+        : "player_1";
+
       const userIcon = this.add
-        .image(
-          centerX - popupWidth * 0.35,
-          btnY,
-          /^player_[1-4]$/.test(user.avatarKey) ? user.avatarKey : "player_1",
-        )
+        .image(centerX - popupWidth * 0.35, btnY, `${baseUserAvatar}_1`)
         .setDisplaySize(height * 0.045, height * 0.045)
         .setDepth(4002);
 
@@ -7334,12 +7385,12 @@ class GameScene extends Phaser.Scene {
         .setInteractive({ useHandCursor: true });
 
       // 유저 아이콘
+      const baseUserAvatar = /^player_[1-4]$/.test(user.avatarKey)
+        ? user.avatarKey
+        : "player_1";
+
       const userIcon = this.add
-        .image(
-          centerX - popupWidth * 0.35,
-          btnY,
-          /^player_[1-4]$/.test(user.avatarKey) ? user.avatarKey : "player_1",
-        )
+        .image(centerX - popupWidth * 0.35, btnY, `${baseUserAvatar}_1`)
         .setDisplaySize(height * 0.045, height * 0.045)
         .setDepth(302);
 
