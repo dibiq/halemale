@@ -113,30 +113,34 @@ app.get("/health", (req, res) => res.status(200).json({ status: "ok" }));
 
 // 💡 [추가] 공개 방 목록 조회 API
 app.get("/api/public-rooms", (req, res) => {
-  const publicRooms = Object.values(rooms).map((room) => ({
-    roomId: room.roomId,
-    roomName: room.roomName || `${room.players[0]?.nickname || "방장"}의 방`,
-    hostNickname: room.players[0]?.nickname || "방장",
-    playerCount: room.players.length,
-    maxPlayers: room.maxPlayers,
-    isPublic: room.isPublic,
-    isGameStarted: room.isGameStarted || false,
-  }));
+  const publicRooms = Object.values(rooms)
+    .filter((room) => room.isPublic === true)
+    .map((room) => ({
+      roomId: room.roomId,
+      roomName: room.roomName || `${room.players[0]?.nickname || "방장"}의 방`,
+      hostNickname: room.players[0]?.nickname || "방장",
+      playerCount: room.players.length,
+      maxPlayers: room.maxPlayers,
+      isPublic: room.isPublic,
+      isGameStarted: room.isGameStarted || false,
+    }));
 
   res.json(publicRooms);
 });
 
 // 공개 방 목록을 모든 클라이언트에게 브로드캐스트하는 헬퍼 함수
 function broadcastPublicRooms() {
-  const publicRooms = Object.values(rooms).map((room) => ({
-    roomId: room.roomId,
-    roomName: room.roomName || `${room.players[0]?.nickname || "방장"}의 방`,
-    hostNickname: room.players[0]?.nickname || "방장",
-    playerCount: room.players.length,
-    maxPlayers: room.maxPlayers,
-    isPublic: room.isPublic,
-    isGameStarted: room.isGameStarted || false,
-  }));
+  const publicRooms = Object.values(rooms)
+    .filter((room) => room.isPublic === true)
+    .map((room) => ({
+      roomId: room.roomId,
+      roomName: room.roomName || `${room.players[0]?.nickname || "방장"}의 방`,
+      hostNickname: room.players[0]?.nickname || "방장",
+      playerCount: room.players.length,
+      maxPlayers: room.maxPlayers,
+      isPublic: room.isPublic,
+      isGameStarted: room.isGameStarted || false,
+    }));
   io.emit("publicRoomsUpdated", publicRooms);
 }
 
