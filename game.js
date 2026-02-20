@@ -4589,6 +4589,11 @@ class GameScene extends Phaser.Scene {
           // 애니메이션 전에는 아직 넣지 않습니다 (playCardFlipAnimation 내부에서 처리)
         }
         player.cards = data.remainingCount ?? player.cards;
+
+        // 💡 탈락 상태 업데이트
+        if (typeof data.isEliminated === "boolean") {
+          player.isEliminated = data.isEliminated;
+        }
       }
 
       // 3. 애니메이션 및 테이블 갱신
@@ -4662,6 +4667,24 @@ class GameScene extends Phaser.Scene {
           this.showResultOverlay(data.ranking, false, data);
         });
       });
+    });
+
+    // 💡 실시간 플레이어 상태 업데이트 (탈락 표시)
+    socket.off("updatePlayerStatus").on("updatePlayerStatus", (data) => {
+      if (this.isSingle || !data.players) return;
+
+      data.players.forEach((serverPlayer) => {
+        const localPlayer = this.roundData.players.find(
+          (p) => p.id === serverPlayer.id,
+        );
+        if (localPlayer) {
+          localPlayer.isEliminated = serverPlayer.isEliminated;
+          localPlayer.cards = serverPlayer.cards;
+        }
+      });
+
+      // UI 즉시 반영
+      this.renderTable(this.roundData.players);
     });
 
     // ============================================
