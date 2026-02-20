@@ -443,6 +443,7 @@ io.on("connection", (socket) => {
           max: room.maxPlayers,
           roomName: room.roomName,
           newPlayerNickname: player.nickname,
+          isRejoin: true,
         });
       }
     }
@@ -738,6 +739,7 @@ io.on("connection", (socket) => {
       max: room.maxPlayers,
       roomName: room.roomName,
       newPlayerNickname: nickname,
+      isRejoin: false,
     });
   });
 
@@ -848,6 +850,7 @@ io.on("connection", (socket) => {
       max: room.maxPlayers,
       roomName: room.roomName,
       newPlayerNickname: nickname,
+      isRejoin: false,
     });
 
     // 입장한 플레이어 본인에게 입장 성공 알림

@@ -51,6 +51,10 @@ class LobbyScene extends Phaser.Scene {
     // 1. 필요한 상태를 미리 체크 (비동기)
     this.isOnline = false;
     this.pendingRoomData = data && data.fromGame ? data : null;
+    this.suppressJoinToast = !!this.pendingRoomData;
+    this.suppressJoinToastUntil = this.pendingRoomData
+      ? Date.now() + 5000
+      : null;
   }
 
   async checkConnection() {
@@ -761,17 +765,39 @@ class LobbyScene extends Phaser.Scene {
       // UI를 먼저 동기화해서 데이터 구조를 잡습니다.
       this.refreshLobbyUI(data);
 
+      if (data && data.isRejoin) {
+        return;
+      }
+
       // 🔹 0.1초 뒤에 토스트를 띄워 UI에 가려지지 않게 합니다.
       this.time.delayedCall(100, () => {
+        if (
+          this.suppressJoinToastUntil &&
+          Date.now() < this.suppressJoinToastUntil
+        ) {
+          return;
+        }
         if (data.players && data.players.length > 0) {
           const lastPlayer = data.players[data.players.length - 1];
+          const candidateNickname =
+            typeof data.newPlayerNickname === "string" &&
+            data.newPlayerNickname.trim()
+              ? data.newPlayerNickname.trim()
+              : lastPlayer && typeof lastPlayer.nickname === "string"
+                ? lastPlayer.nickname
+                : "";
+
+          if (this.suppressJoinToast) {
+            if (candidateNickname && candidateNickname !== this.myNickname) {
+              this.suppressJoinToast = false;
+            }
+            return;
+          }
+
           // 내가 방금 들어온 게 아닐 때만 알림
-          if (lastPlayer.id !== socket.id) {
+          if (lastPlayer && lastPlayer.id !== socket.id && candidateNickname) {
             console.log("새 유저 입장 토스트 실행!");
-            this.showToast(
-              `${lastPlayer.nickname}님이 입장했습니다!`,
-              "#2ecc71",
-            );
+            this.showToast(`${candidateNickname}님이 입장했습니다!`, "#2ecc71");
             console.log(
               `${lastPlayer.id}님의 레벨: ${lastPlayer.level}, 코인: ${lastPlayer.coins}`,
             );
@@ -792,12 +818,6 @@ class LobbyScene extends Phaser.Scene {
       const nickname = data.leftPlayerNickname || "알 수 없는 요리사";
       this.refreshLobbyUI(data);
       this.showToast(`${nickname}님이 나갔습니다.`, "#e74c3c");
-    });
-
-    socket.off("playerJoined").on("playerJoined", (data) => {
-      const nickname = data.newPlayerNickname || "알 수 없는 요리사";
-      this.refreshLobbyUI(data);
-      this.showToast(`${nickname}님이 입장했습니다!`, "#2ecc71");
     });
 
     socket.off("joinRoomSuccess").on("joinRoomSuccess", (data) => {
@@ -4445,8 +4465,22 @@ class GameScene extends Phaser.Scene {
     // 1. 공통 소켓 리스너 (방 관리)
     // ============================================
     socket.off("playerJoined").on("playerJoined", (data) => {
-      this.sound.play("pop", { volume: 0.2 });
-      this.showToast(`${data.nickname}님이 입장했습니다!`, "#2ecc71");
+      const lastPlayer = Array.isArray(data.players)
+        ? data.players[data.players.length - 1]
+        : null;
+      const candidateNickname =
+        typeof data.newPlayerNickname === "string" &&
+        data.newPlayerNickname.trim()
+          ? data.newPlayerNickname.trim()
+          : lastPlayer && typeof lastPlayer.nickname === "string"
+            ? lastPlayer.nickname
+            : "";
+
+      if (candidateNickname && !data.isRejoin) {
+        this.sound.play("pop", { volume: 0.2 });
+        this.showToast(`${candidateNickname}님이 입장했습니다!`, "#2ecc71");
+      }
+
       this.roundData.players = data.players;
       this.renderTable(data.players);
     });
