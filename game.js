@@ -327,6 +327,14 @@ class LobbyScene extends Phaser.Scene {
       this.addLobbyChatMessage(`${nickname}: ${message}`);
     });
 
+    socket.off("playerKicked").on("playerKicked", (data) => {
+      if (data && data.kickedId === socket.id) {
+        this.showCustomAlert("방장에 의해 강퇴되었습니다!", () => {
+          window.location.reload();
+        });
+      }
+    });
+
     this.backHandler = await App.addListener("backButton", ({ canGoBack }) => {
       // 2. 알림창(Alert)이 떠 있는지 우선 확인
       if (this.isJoinPopupOpen) {
@@ -3229,6 +3237,68 @@ class LobbyScene extends Phaser.Scene {
         .setDisplaySize(profileSize * 2, profileSize * 2);
       this.lobbyUIContainer.add(profileImg);
 
+      if (isHost && !isThisPlayerHost) {
+        profileImg.setInteractive({ useHandCursor: true });
+        profileImg.on("pointerdown", () => {
+          this.sound.play("pop", { volume: 0.1 });
+          const kickBtn = this.add
+            .rectangle(
+              pos.x - cardW / 2 + profileSize * 1.3,
+              pos.y + cardH * 0.35,
+              profileSize * 1.8,
+              height * 0.045,
+              0xe74c3c,
+              0.9,
+            )
+            .setInteractive({ useHandCursor: true })
+            .setStrokeStyle(2, 0xffffff, 1)
+            .setDepth(50);
+
+          const kickBtnText = this.add
+            .text(
+              pos.x - cardW / 2 + profileSize * 1.3,
+              pos.y + cardH * 0.35,
+              "강퇴하기",
+              {
+                fontFamily: GAME_FONTS.main,
+                fontSize: `${width * 0.035}px`,
+                color: "#ffffff",
+                fontWeight: "bold",
+                stroke: "#000000",
+                strokeThickness: 2,
+              },
+            )
+            .setOrigin(0.5)
+            .setDepth(50);
+
+          this.lobbyUIContainer.add([kickBtn, kickBtnText]);
+
+          kickBtn.on("pointerdown", () => {
+            this.sound.play("pop", { volume: 0.1 });
+            this.tweens.add({
+              targets: [kickBtn, kickBtnText],
+              scaleX: "*=0.95",
+              scaleY: "*=0.95",
+              duration: 80,
+              yoyo: true,
+              ease: "Quad.easeInOut",
+              onComplete: () => {
+                socket.emit("kickPlayer", { targetId: p.id });
+                kickBtn.destroy();
+                kickBtnText.destroy();
+              },
+            });
+          });
+
+          this.time.delayedCall(5000, () => {
+            if (kickBtn && kickBtn.active) {
+              kickBtn.destroy();
+              kickBtnText.destroy();
+            }
+          });
+        });
+      }
+
       // 레벨 배지 (프로필 왼쪽 아래 모서리)
       const levelBg = this.add.graphics();
       levelBg.fillStyle(0xe67e22, 1);
@@ -3312,24 +3382,6 @@ class LobbyScene extends Phaser.Scene {
       )
       .setStrokeStyle(2, 0xffffff, 0.2);
     this.lobbyUIContainer.add(chatBg);
-
-    /*const chatTitle = this.add
-      .text(
-        chatAreaX - chatAreaWidth / 2 + width * 0.02,
-        chatAreaY - chatAreaHeight / 2 - height * 0.035,
-        "채팅",
-        {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.035}px`,
-          color: "#ffffff",
-          fontWeight: "bold",
-          stroke: "#000000",
-          strokeThickness: 3,
-        },
-      )
-      .setOrigin(0, 0.5)
-      .setDepth(20);
-    this.lobbyUIContainer.add(chatTitle);*/
 
     this.lobbyChatLayout = {
       startX: chatAreaX - chatAreaWidth / 2 + width * 0.02,

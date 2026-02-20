@@ -877,6 +877,40 @@ io.on("connection", (socket) => {
     });
   });
 
+  socket.on("kickPlayer", (data) => {
+    const roomId = socket.roomId;
+    const room = rooms[roomId];
+    if (!room) return;
+
+    // 방장 권한 체크
+    if (room.host !== socket.id) {
+      return socket.emit("kickFailed", "방장만 플레이어를 강퇴할 수 있습니다.");
+    }
+
+    const targetId = data && data.targetId;
+    if (!targetId) return;
+
+    // 자기 자신을 강퇴할 수 없음
+    if (targetId === socket.id) return;
+
+    // 대상 플레이어가 방에 있는지 확인
+    const targetPlayerIndex = room.players.findIndex((p) => p.id === targetId);
+    if (targetPlayerIndex === -1) return;
+
+    // 대상 플레이어 제거
+    room.players.splice(targetPlayerIndex, 1);
+
+    // 강퇴된 플레이어에게 알림
+    io.to(targetId).emit("playerKicked", { kickedId: targetId });
+
+    // 방의 다른 플레이어들에게 플레이어 퇴장 알림
+    io.to(roomId).emit("playerLeft", {
+      playerId: targetId,
+      players: room.players,
+      hostId: room.host,
+    });
+  });
+
   socket.on("startGameRequest", () => {
     const room = rooms[socket.roomId];
     //if (!room || room.host !== socket.id || room.players.length < 2) return;
