@@ -329,7 +329,9 @@ class LobbyScene extends Phaser.Scene {
 
     socket.off("playerKicked").on("playerKicked", (data) => {
       if (data && data.kickedId === socket.id) {
-        this.showCustomAlert("방장에 의해 강퇴되었습니다!", () => {
+        this.kickedPlayerId = data.kickedId;
+        this.showToast("방에서 강퇴되었습니다!", "#e74c3c");
+        this.time.delayedCall(1000, () => {
           window.location.reload();
         });
       }
@@ -737,6 +739,12 @@ class LobbyScene extends Phaser.Scene {
 
     // 3. 플레이어 퇴장 리스너
     socket.off("playerLeft").on("playerLeft", (data) => {
+      // 강퇴당한 플레이어는 자신만의 토스트가 이미 표시되었으므로 여기서는 표시 안 함
+      if (this.kickedPlayerId && data.playerId === this.kickedPlayerId) {
+        this.kickedPlayerId = null;
+        this.refreshLobbyUI(data);
+        return;
+      }
       const nickname = data.leftPlayerNickname || "알 수 없는 요리사";
       this.refreshLobbyUI(data);
       this.showToast(`${nickname}님이 나갔습니다.`, "#e74c3c");
