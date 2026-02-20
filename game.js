@@ -207,6 +207,7 @@ class LobbyScene extends Phaser.Scene {
     this.lobbyChatTexts = [];
     this.lobbyChatLayout = null;
     this.lobbyChatInputElement = null;
+    this.lobbyChatLastSent = null;
 
     // 특수카드 쿨타임 추적 객체 초기화
     this.specialCardCooldowns = {}; // { cardId: endTime }
@@ -3145,10 +3146,10 @@ class LobbyScene extends Phaser.Scene {
        슬롯 위치: [0]=왼쪽위, [1]=오른쪽위, [2]=왼쪽아래, [3]=오른쪽아래
     ======================================================= */
     const slotPositions = [
-      { x: centerX - width * 0.25, y: height * 0.3 },
-      { x: centerX + width * 0.25, y: height * 0.3 },
-      { x: centerX - width * 0.25, y: height * 0.52 },
-      { x: centerX + width * 0.25, y: height * 0.52 },
+      { x: centerX - width * 0.22, y: height * 0.22 },
+      { x: centerX + width * 0.22, y: height * 0.22 },
+      { x: centerX - width * 0.22, y: height * 0.44 },
+      { x: centerX + width * 0.22, y: height * 0.44 },
     ];
 
     const cardW = width * 0.38;
@@ -3298,21 +3299,21 @@ class LobbyScene extends Phaser.Scene {
     const chatAreaWidth = width * 0.75;
     const chatAreaHeight = height * 0.14;
     const chatAreaX = centerX;
-    const chatAreaY = height * 0.64;
+    const chatAreaY = height * 0.62;
 
     const chatBg = this.add
       .rectangle(
         chatAreaX,
-        chatAreaY,
+        chatAreaY * 1.015,
         chatAreaWidth,
-        chatAreaHeight,
+        chatAreaHeight * 1.14,
         0x000000,
         0.35,
       )
       .setStrokeStyle(2, 0xffffff, 0.2);
     this.lobbyUIContainer.add(chatBg);
 
-    const chatTitle = this.add
+    /*const chatTitle = this.add
       .text(
         chatAreaX - chatAreaWidth / 2 + width * 0.02,
         chatAreaY - chatAreaHeight / 2 - height * 0.035,
@@ -3328,7 +3329,7 @@ class LobbyScene extends Phaser.Scene {
       )
       .setOrigin(0, 0.5)
       .setDepth(20);
-    this.lobbyUIContainer.add(chatTitle);
+    this.lobbyUIContainer.add(chatTitle);*/
 
     this.lobbyChatLayout = {
       startX: chatAreaX - chatAreaWidth / 2 + width * 0.02,
@@ -3339,7 +3340,7 @@ class LobbyScene extends Phaser.Scene {
 
     const chatInputY = height * 0.72;
     const chatInputW = chatAreaWidth * 0.72;
-    const chatInputH = height * 0.055;
+    const chatInputH = height * 0.03;
     const chatSendW = chatAreaWidth * 0.2;
     const chatGap = chatAreaWidth * 0.04;
 
@@ -3347,7 +3348,7 @@ class LobbyScene extends Phaser.Scene {
     const chatSendX = centerX + (chatInputW + chatGap) / 2;
 
     this.lobbyChatInputElement = this.add
-      .dom(chatInputX, chatInputY, "input")
+      .dom(chatInputX * 0.5, chatInputY * 1.01, "input")
       .setDepth(30)
       .setOrigin(0.5);
 
@@ -3368,13 +3369,13 @@ class LobbyScene extends Phaser.Scene {
     });
 
     const sendBtnImg = this.add
-      .image(chatSendX, chatInputY, "uibtn")
+      .image(chatSendX, chatInputY * 1.03, "uibtn")
       .setDisplaySize(chatSendW, chatInputH)
       .setInteractive({ useHandCursor: true })
       .setTint(0x3498db)
       .setDepth(20);
     const sendBtnText = this.add
-      .text(chatSendX, chatInputY, "전송", {
+      .text(chatSendX, chatInputY * 1.03, "전송", {
         fontFamily: GAME_FONTS.main,
         color: "#fff",
         fontSize: `${width * 0.04}px`,
@@ -3388,6 +3389,15 @@ class LobbyScene extends Phaser.Scene {
       const rawMessage = chatInputEl.value || "";
       const message = rawMessage.trim();
       if (!message) return;
+      const now = Date.now();
+      if (
+        this.lobbyChatLastSent &&
+        this.lobbyChatLastSent.message === message &&
+        now - this.lobbyChatLastSent.time < 300
+      ) {
+        return;
+      }
+      this.lobbyChatLastSent = { message, time: now };
       socket.emit("lobbyChatMessage", { message });
       chatInputEl.value = "";
     };
@@ -3405,6 +3415,7 @@ class LobbyScene extends Phaser.Scene {
     });
 
     chatInputEl.addEventListener("keydown", (event) => {
+      if (event.isComposing || event.keyCode === 229) return;
       if (event.key === "Enter") {
         event.preventDefault();
         sendLobbyChat();
@@ -3414,7 +3425,7 @@ class LobbyScene extends Phaser.Scene {
     /* ======================
      시작하기 / 준비하기 / 상점 / 나가기 버튼
      ====================== */
-    const mainBtnY = height * 0.78;
+    const mainBtnY = height * 0.81;
     const btnWidth = width * 0.25;
     const btnHeight = height * 0.065;
     const btnGap = width * 0.02;
