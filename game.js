@@ -600,55 +600,7 @@ class LobbyScene extends Phaser.Scene {
         yoyo: true,
         // LobbyScene.js 의 싱글플레이 버튼 내부
         onComplete: () => {
-          // socket.id가 없으면 고정 ID 사용 (싱글플레이 전용)
-          const myId = socket.id || "PLAYER_ME";
-          const myNickname = localStorage.getItem("nickname") || "나";
-
-          const singleGameData = {
-            roomId: "SINGLE",
-            maxPlayers: 4,
-            isSingle: true,
-            hostId: myId, // 내가 방장
-
-            // 나를 항상 0번 인덱스에 배치
-            players: [
-              {
-                id: myId,
-                nickname: myNickname,
-                cards: 25,
-                isReady: true,
-                openCard: null,
-                openCardStack: [],
-              },
-              {
-                id: "AI_1",
-                nickname: "초보 요리사",
-                cards: 25,
-                isReady: true,
-                openCard: null,
-                openCardStack: [],
-              },
-              {
-                id: "AI_2",
-                nickname: "중급 요리사",
-                cards: 25,
-                isReady: true,
-                openCard: null,
-                openCardStack: [],
-              },
-              {
-                id: "AI_3",
-                nickname: "천재 요리사",
-                cards: 25,
-                isReady: true,
-                openCard: null,
-                openCardStack: [],
-              },
-            ],
-            // ... 나머지 recipes 로직
-          };
-
-          this.scene.start("GameScene", singleGameData);
+          this.showSingleDifficultyPopup();
         },
       });
     });
@@ -1391,6 +1343,158 @@ class LobbyScene extends Phaser.Scene {
         },
       });
     });
+  }
+
+  startSingleGame(aiDifficulty) {
+    // socket.id가 없으면 고정 ID 사용 (싱글플레이 전용)
+    const myId = socket.id || "PLAYER_ME";
+    const myNickname = localStorage.getItem("nickname") || "나";
+
+    const singleGameData = {
+      roomId: "SINGLE",
+      maxPlayers: 4,
+      isSingle: true,
+      hostId: myId, // 내가 방장
+      aiDifficulty: aiDifficulty || "normal",
+
+      // 나를 항상 0번 인덱스에 배치
+      players: [
+        {
+          id: myId,
+          nickname: myNickname,
+          cards: 25,
+          isReady: true,
+          openCard: null,
+          openCardStack: [],
+        },
+        {
+          id: "AI_1",
+          nickname: "초보 요리사",
+          cards: 25,
+          isReady: true,
+          openCard: null,
+          openCardStack: [],
+        },
+        {
+          id: "AI_2",
+          nickname: "중급 요리사",
+          cards: 25,
+          isReady: true,
+          openCard: null,
+          openCardStack: [],
+        },
+        {
+          id: "AI_3",
+          nickname: "천재 요리사",
+          cards: 25,
+          isReady: true,
+          openCard: null,
+          openCardStack: [],
+        },
+      ],
+      // ... 나머지 recipes 로직
+    };
+
+    this.scene.start("GameScene", singleGameData);
+  }
+
+  showSingleDifficultyPopup() {
+    this.isJoinPopupOpen = true;
+
+    const { width, height } = this.cameras.main;
+    const centerX = width / 2;
+    const popupY = height * 0.5;
+
+    if (this.singleDifficultyPopupContainer)
+      this.singleDifficultyPopupContainer.destroy();
+    this.singleDifficultyPopupContainer = this.add
+      .container(0, 0)
+      .setDepth(200);
+
+    const overlay = this.add
+      .rectangle(centerX, height * 0.5, width, height, 0x000000, 0.5)
+      .setInteractive();
+    overlay.on("pointerdown", () => {
+      this.closeSingleDifficultyPopup();
+    });
+
+    const popupBg = this.add
+      .image(centerX, popupY, "popupbg")
+      .setDisplaySize(width * 0.7, height * 0.55);
+
+    const titleText = this.add
+      .text(centerX, popupY - height * 0.23, "난이도 선택", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.07}px`,
+        color: "#ffd700",
+        fontWeight: "bold",
+        stroke: "#000000",
+        strokeThickness: 5,
+      })
+      .setOrigin(0.5);
+
+    const difficultyButtons = [
+      { key: "easy", label: "쉬움", tint: 0x2ecc71 },
+      { key: "normal", label: "보통", tint: 0xf1c40f },
+      { key: "hard", label: "어려움", tint: 0xe74c3c },
+    ];
+
+    const btnW = width * 0.45;
+    const btnH = height * 0.075;
+    const btnGap = height * 0.11;
+    const firstY = popupY - btnGap;
+
+    const popupObjects = [overlay, popupBg, titleText];
+
+    difficultyButtons.forEach((btn, index) => {
+      const btnY = firstY + btnGap * index;
+
+      const btnImg = this.add
+        .image(centerX, btnY, "uibtn")
+        .setDisplaySize(btnW, btnH)
+        .setInteractive({ useHandCursor: true })
+        .setTint(btn.tint);
+
+      const btnText = this.add
+        .text(centerX, btnY, btn.label, {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.055}px`,
+          color: "#ffffff",
+          fontWeight: "bold",
+          stroke: "#000000",
+          strokeThickness: 3,
+        })
+        .setOrigin(0.5);
+
+      btnImg.on("pointerdown", () => {
+        this.sound.play("pop", { volume: 0.1 });
+        this.tweens.add({
+          targets: [btnImg, btnText],
+          scaleX: "*=0.95",
+          scaleY: "*=0.95",
+          duration: 80,
+          yoyo: true,
+          onComplete: () => {
+            this.closeSingleDifficultyPopup();
+            this.startSingleGame(btn.key);
+          },
+        });
+      });
+
+      popupObjects.push(btnImg, btnText);
+    });
+
+    this.singleDifficultyPopupContainer.add(popupObjects);
+    this.currentJoinPopupCloseHandler = () => this.closeSingleDifficultyPopup();
+  }
+
+  closeSingleDifficultyPopup() {
+    this.isJoinPopupOpen = false;
+    if (this.singleDifficultyPopupContainer) {
+      this.singleDifficultyPopupContainer.destroy();
+      this.singleDifficultyPopupContainer = null;
+    }
+    this.currentJoinPopupCloseHandler = null;
   }
 
   showShopPopup() {
@@ -3474,6 +3578,7 @@ class GameScene extends Phaser.Scene {
       roomId: data.roomId,
       turnIndex: 0,
       isGameStarted: false,
+      aiDifficulty: data.aiDifficulty || "normal",
     };
 
     this.isSingle = !!data.isSingle;
@@ -3498,7 +3603,15 @@ class GameScene extends Phaser.Scene {
     this.specialCardCooldowns = {}; // { cardId: endTime }
     this.specialCardCooldownTimers = {}; // { cardId: timerId }
 
-    this.aiSettings = [
+    const difficultyMultipliers = {
+      easy: 1.4,
+      normal: 1,
+      hard: 0.75,
+    };
+    const aiMultiplier =
+      difficultyMultipliers[this.roundData.aiDifficulty] || 1;
+
+    const baseAiSettings = [
       {
         id: "AI_1",
         nickname: "초보",
@@ -3518,6 +3631,12 @@ class GameScene extends Phaser.Scene {
         flipDelay: 1000,
       }, // 빠름
     ];
+
+    this.aiSettings = baseAiSettings.map((ai) => ({
+      ...ai,
+      reactionTime: Math.round(ai.reactionTime * aiMultiplier),
+      flipDelay: Math.round(ai.flipDelay * aiMultiplier),
+    }));
 
     if (this.isSingle) {
       // 싱글플레이면 소켓 ID가 아닌 "PLAYER_ME" 혹은 players[0].id를 내 ID로 강제 지정
@@ -5532,7 +5651,11 @@ class GameScene extends Phaser.Scene {
 
     // 6. 다음 차례가 AI라면 카드 뒤집기 예약
     if (nextPlayer.id.startsWith("AI_")) {
-      this.time.delayedCall(1500, () => {
+      const aiSetting = this.aiSettings.find((ai) => ai.id === nextPlayer.id);
+      const baseDelay = aiSetting ? aiSetting.flipDelay : 1500;
+      const delay = baseDelay + Math.random() * 400;
+
+      this.time.delayedCall(delay, () => {
         if (this.isGameStarted) {
           this.processSingleFlip(nextPlayer.id);
         }
