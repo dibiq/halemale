@@ -47,9 +47,10 @@ class LobbyScene extends Phaser.Scene {
     super("LobbyScene");
   }
 
-  init() {
+  init(data = {}) {
     // 1. 필요한 상태를 미리 체크 (비동기)
     this.isOnline = false;
+    this.pendingRoomData = data && data.fromGame ? data : null;
   }
 
   async checkConnection() {
@@ -916,6 +917,20 @@ class LobbyScene extends Phaser.Scene {
 
       this.scene.start("GameScene", data);
     });
+
+    if (this.pendingRoomData) {
+      const data = this.pendingRoomData;
+      this.pendingRoomData = null;
+      this.isRoomOpen = true;
+      this.createBlocker();
+      this.refreshLobbyUI({
+        roomId: data.roomId,
+        players: data.players || [],
+        max: data.maxPlayers || data.max || 4,
+        hostId: data.hostId,
+        roomName: data.roomName || "대기실",
+      });
+    }
 
     // LobbyScene의 create() 내부
     this.events.once("shutdown", () => {
@@ -4324,6 +4339,8 @@ class GameScene extends Phaser.Scene {
       players: data.players || [],
       hostId: data.hostId || null,
       roomId: data.roomId,
+      roomName: data.roomName || "대기실",
+      maxPlayers: data.maxPlayers || data.max || 4,
       turnIndex: 0,
       isGameStarted: false,
       aiDifficulty: data.aiDifficulty || "normal",
@@ -6727,24 +6744,29 @@ class GameScene extends Phaser.Scene {
     });
   }
 
-  showResultOverlay(players, isUpdate = false, data = null) {
-    // 1. 💡 기존 게임 로그 데이터 및 텍스트 객체 완전 제거
+  showResultOverlay(players, isUpdate = false) {
+    // 기존 게임 로그 데이터 및 텍스트 객체 제거
     if (this.logTexts) {
       this.logTexts.forEach((txt) => txt.destroy());
       this.logTexts = [];
     }
     if (this.gameLogs) {
-      this.gameLogs = []; // 데이터 배열도 비워야 나중에 다시 그려지지 않습니다.
+      this.gameLogs = [];
     }
 
-    // 💡 data 인자 추가    if (!this.roundData) return;
     if (!players || players.length === 0) return;
 
     const { width, height } = this.cameras.main;
-    const currentHostId = (data && data.hostId) || this.roundData.hostId; // 데이터에서 받은 hostId 우선 사용
-    const isHost = socket.id === currentHostId;
 
-    // --- 컨테이너 생성 및 초기화 로직 유지 ---
+    if (this.resultAutoLeaveTimer) {
+      this.resultAutoLeaveTimer.remove();
+      this.resultAutoLeaveTimer = null;
+    }
+    if (this.resultCountdownTimer) {
+      this.resultCountdownTimer.remove();
+      this.resultCountdownTimer = null;
+    }
+
     if (this.resultContainer) {
       const prevY = this.resultContainer.y;
       this.resultContainer.destroy();
@@ -6756,204 +6778,160 @@ class GameScene extends Phaser.Scene {
     }
 
     const container = this.resultContainer;
-    // myInfo를 찾을 때 닉네임 혼용을 피하고 socket.id로만 찾습니다.
-    const myInfo = players.find((p) => p.id === socket.id) || null;
 
-    const bg = this.add
-      .image(width / 2, height / 2, "resultbg")
-      .setDisplaySize(width * 1.2, height * 1.1);
-    container.add(bg);
-
-    // --- 플레이어 리스트 매핑 (할리갈리 버전) ---
-    const listStartY = height * 0.43; // 시작점 (원하는 만큼 조절)
-
-    players.forEach((p, i) => {
-      const y = listStartY + i * (height * 0.075);
-      const row = this.add.container(width / 2, y);
-
-      const isThisPlayerHost = p.id === currentHostId;
-      const isMe = p.id === socket.id; // 💡 내가 누구인지 명확히 판별
-
-      let displayName = p.nickname;
-      if (isThisPlayerHost) displayName = `${displayName} 👑`;
-      if (isMe) displayName = `${displayName}`;
-
-      // 1. 순위 텍스트
-      const rankTxt = this.add
-        .text(-width * 0.15, 0, `${i + 1}위`, {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.05}px`,
-          fill: "#334155",
-        })
-        .setOrigin(0.5);
-
-      // 2. 닉네임 텍스트 (색상 로직 수정)
-      let nameColor = "#0f172a"; // 기본 검정색 계열
-      if (isThisPlayerHost)
-        nameColor = "#e67e22"; // 방장은 주황색
-      else if (p.isReady) nameColor = "#2ecc71"; // 준비 완료면 초록색 (방장 아닐 때만)
-
-      const nameTxt = this.add
-        .text(-width * 0.07, 0, displayName, {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.05}px`,
-          fill: nameColor, // 💡 여기서 결정된 색상을 적용
-          fontWeight: isMe ? "bold" : "normal", // 내 이름은 굵게
-        })
-        .setOrigin(0, 0.5);
-
-      const currentCoins = Number(p.currentCoins ?? p.finalCoins ?? 0) || 0;
-      const earnedCoins = Number(p.earnedCoins) || 0;
-      const finalCoins =
-        Number(p.finalCoins ?? currentCoins + earnedCoins) || 0;
-      const currentLevel = Number(p.currentLevel ?? p.finalLevel ?? 1) || 1;
-      const finalLevel = Number(p.finalLevel ?? currentLevel) || currentLevel;
-      const finalExperience = Number(
-        p.finalExperience ?? p.currentExperience ?? 0,
-      );
-      const earnedExp = Number(p.earnedExperience) || 0;
-      const leveledUp =
-        typeof p.leveledUp === "boolean"
-          ? p.leveledUp
-          : finalLevel > currentLevel;
-
-      const coinTxt = this.add
-        .text(
-          width * 0.2,
-          -height * 0.012,
-          `코인 ${currentCoins} / +${earnedCoins} → ${finalCoins}`,
-          {
-            fontFamily: GAME_FONTS.main,
-            fontSize: `${width * 0.026}px`,
-            fill: "#0f172a",
-            fontWeight: "bold",
-          },
-        )
-        .setOrigin(0.5);
-
-      const levelLine = leveledUp
-        ? `Lv.${currentLevel} → Lv.${finalLevel} (레벨업!)`
-        : `Lv.${currentLevel}  EXP ${finalExperience} (+${earnedExp})`;
-
-      const levelTxt = this.add
-        .text(width * 0.2, height * 0.014, levelLine, {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.024}px`,
-          fill: leveledUp ? "#e67e22" : "#0f172a",
-          fontWeight: "bold",
-        })
-        .setOrigin(0.5);
-
-      row.add([rankTxt, nameTxt, coinTxt, levelTxt]);
-      container.add(row);
-    });
-
-    const btnY = height * 0.74;
-    const exitBtnY = height * 0.84;
-
-    // --- 방장/일반유저 버튼 로직 ---
-    if (isHost) {
-      const startBtn = this.add
-        .image(width / 2, btnY, "uibtn")
-        .setDisplaySize(width * 0.5, height * 0.08)
-        .setTint(0xe67e22)
-        .setInteractive({ useHandCursor: true });
-      const startTxt = this.add
-        .text(width / 2, btnY, "다시 시작", {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.055}px`,
-          color: "#ffffff",
-          fontWeight: "bold",
-        })
-        .setOrigin(0.5);
-
-      /*startBtn.on("pointerdown", () => {
-        this.sound.play("btn", { volume: 0.1 });
-        startBtn.disableInteractive();
-        startBtn.setAlpha(0.5);
-
-        // 💡 기존의 playReadyGoSequence 호출을 지우고 서버에 요청만 보냅니다.
-        // 연출은 서버 응답(gameStart)을 받은 모든 플레이어 화면에서 동시에 실행됩니다.
-        socket.emit("startGameRequest");
-      });*/
-
-      startBtn.on("pointerdown", () => {
-        this.sound.play("btn", { volume: 0.1 });
-
-        // 버튼 클릭 피드백 (눌리는 연출)
-        this.tweens.add({
-          targets: [startBtn, startTxt],
-          scale: "*=0.95",
-          duration: 50,
-          yoyo: true,
-          onComplete: () => {
-            // 💡 일단 요청을 보냅니다.
-            socket.emit("startGameRequest");
-
-            // 💡 [수정] 즉시 disable하지 말고, 연속 클릭 방지만 위해 1초 정도만 막아둡니다.
-            startBtn.disableInteractive();
-            this.time.delayedCall(1000, () => {
-              if (this.resultContainer && this.resultContainer.active) {
-                startBtn.setInteractive(); // 1초 뒤 다시 활성화 (실패했을 경우 대비)
-              }
-            });
-          },
-        });
-      });
-      container.add([startBtn, startTxt]);
-    } else {
-      const isReady = myInfo ? myInfo.isReady : false;
-      const readyBtn = this.add
-        .image(width / 2, btnY, "uibtn")
-        .setDisplaySize(width * 0.5, height * 0.08)
-        .setTint(isReady ? 0x2ecc71 : 0x94a3b8)
-        .setInteractive({ useHandCursor: true });
-      const readyTxt = this.add
-        .text(width / 2, btnY, isReady ? "준비완료!" : "준비하기", {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.055}px`,
-          color: "#ffffff",
-        })
-        .setOrigin(0.5);
-
-      readyBtn.on("pointerdown", () => {
-        this.sound.play("btn", { volume: 0.1 });
-        this.tweens.add({
-          targets: readyBtn,
-          scaleX: "*=0.95",
-          scaleY: "*=0.95",
-          duration: 50,
-          yoyo: true,
-          onComplete: () => {
-            socket.emit("toggleReady");
-          },
-        });
-      });
-      container.add([readyBtn, readyTxt]);
-    }
-
-    // --- 나가기 버튼 ---
-    const exitBtnImg = this.add
-      .image(width / 2, exitBtnY, "uibtn")
-      .setDisplaySize(width * 0.5, height * 0.08)
-      .setInteractive({ useHandCursor: true });
-    const exitBtnText = this.add
-      .text(width / 2, exitBtnY, "나가기", {
+    const overlay = this.add
+      .rectangle(width / 2, height / 2, width, height, 0x000000, 0.65)
+      .setInteractive();
+    const popupBg = this.add
+      .image(width / 2, height / 2, "popupbg")
+      .setDisplaySize(width * 0.85, height * 0.75);
+    const titleText = this.add
+      .text(width / 2, height * 0.2, "게임 결과", {
         fontFamily: GAME_FONTS.main,
-        color: "#ffffff",
+        fontSize: `${width * 0.07}px`,
+        color: "#ffd700",
         fontWeight: "bold",
-        fontSize: `${width * 0.055}px`,
+        stroke: "#000000",
+        strokeThickness: 4,
       })
       .setOrigin(0.5);
 
-    exitBtnImg.on("pointerdown", () => {
+    container.add([overlay, popupBg, titleText]);
+
+    const listStartY = height * 0.3;
+    const rowGap = height * 0.07;
+
+    players.forEach((p, i) => {
+      const y = listStartY + i * rowGap;
+      const row = this.add.container(width / 2, y);
+
+      const displayName = p.nickname || p.id || "요리사";
+      const earnedCoinsRaw =
+        typeof p.earnedCoins === "number"
+          ? p.earnedCoins
+          : Number(p.finalCoins ?? 0) - Number(p.currentCoins ?? 0);
+      const earnedExpRaw =
+        typeof p.earnedExperience === "number"
+          ? p.earnedExperience
+          : Number(p.finalExperience ?? 0) - Number(p.currentExperience ?? 0);
+
+      const earnedCoins = Number.isFinite(earnedCoinsRaw) ? earnedCoinsRaw : 0;
+      const earnedExp = Number.isFinite(earnedExpRaw) ? earnedExpRaw : 0;
+
+      const rankTxt = this.add
+        .text(-width * 0.18, 0, `${i + 1}위`, {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.045}px`,
+          color: "#ffffff",
+          stroke: "#000000",
+          strokeThickness: 3,
+        })
+        .setOrigin(0.5);
+
+      const nameTxt = this.add
+        .text(-width * 0.04, 0, displayName, {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.045}px`,
+          color: "#ffffff",
+          fontWeight: "bold",
+        })
+        .setOrigin(0, 0.5);
+
+      const coinTxt = this.add
+        .text(width * 0.18, 0, `코인 +${earnedCoins}`, {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.035}px`,
+          color: "#f1c40f",
+          fontWeight: "bold",
+        })
+        .setOrigin(0.5);
+
+      const expTxt = this.add
+        .text(width * 0.36, 0, `EXP +${earnedExp}`, {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.035}px`,
+          color: "#2ecc71",
+          fontWeight: "bold",
+        })
+        .setOrigin(0.5);
+
+      row.add([rankTxt, nameTxt, coinTxt, expTxt]);
+      container.add(row);
+    });
+
+    const countdownText = this.add
+      .text(width / 2, height * 0.68, "20초뒤 대기실로 이동합니다.. (20)", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.035}px`,
+        color: "#ffffff",
+      })
+      .setOrigin(0.5);
+
+    const confirmBtn = this.add
+      .image(width / 2, height * 0.77, "uibtn")
+      .setDisplaySize(width * 0.45, height * 0.075)
+      .setInteractive({ useHandCursor: true });
+    const confirmTxt = this.add
+      .text(width / 2, height * 0.77, "확인", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.055}px`,
+        color: "#ffffff",
+        fontWeight: "bold",
+      })
+      .setOrigin(0.5);
+
+    container.add([countdownText, confirmBtn, confirmTxt]);
+
+    const goToLobby = () => {
+      if (this.resultAutoLeaveTimer) {
+        this.resultAutoLeaveTimer.remove();
+        this.resultAutoLeaveTimer = null;
+      }
+      if (this.resultCountdownTimer) {
+        this.resultCountdownTimer.remove();
+        this.resultCountdownTimer = null;
+      }
+      this.scene.start("LobbyScene", {
+        fromGame: true,
+        roomId: this.roundData.roomId,
+        players: this.roundData.players,
+        hostId: this.roundData.hostId,
+        maxPlayers: this.roundData.maxPlayers || 4,
+        roomName: this.roundData.roomName || "대기실",
+      });
+    };
+
+    confirmBtn.on("pointerdown", () => {
       this.sound.play("btn", { volume: 0.1 });
-      this.showCustomAlert("로비로 이동합니다!", () => {
-        window.location.reload();
+      this.tweens.add({
+        targets: [confirmBtn, confirmTxt],
+        scale: "*=0.95",
+        duration: 50,
+        yoyo: true,
+        onComplete: () => {
+          goToLobby();
+        },
       });
     });
 
-    container.add([exitBtnImg, exitBtnText]);
+    let remainSeconds = 20;
+    this.resultCountdownTimer = this.time.addEvent({
+      delay: 1000,
+      loop: true,
+      callback: () => {
+        remainSeconds -= 1;
+        if (remainSeconds <= 0) {
+          remainSeconds = 0;
+        }
+        countdownText.setText(
+          `20초뒤 대기실로 이동합니다.. (${remainSeconds})`,
+        );
+      },
+    });
+
+    this.resultAutoLeaveTimer = this.time.delayedCall(20000, () => {
+      goToLobby();
+    });
 
     if (!isUpdate) {
       this.tweens.add({

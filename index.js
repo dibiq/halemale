@@ -1149,6 +1149,8 @@ io.on("connection", (socket) => {
       roomId: room.roomId,
       players: room.players,
       hostId: room.host,
+      roomName: room.roomName,
+      maxPlayers: room.maxPlayers,
       nextTurnId: room.players[0].id, // 💡 첫 번째 턴의 ID를 명시적으로 전달!
     });
   });
