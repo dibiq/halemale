@@ -442,6 +442,7 @@ io.on("connection", (socket) => {
           hostId: room.host,
           max: room.maxPlayers,
           roomName: room.roomName,
+          newPlayerNickname: player.nickname,
         });
       }
     }
@@ -736,6 +737,7 @@ io.on("connection", (socket) => {
       hostId: room.host,
       max: room.maxPlayers,
       roomName: room.roomName,
+      newPlayerNickname: nickname,
     });
   });
 
