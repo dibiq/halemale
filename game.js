@@ -2893,7 +2893,7 @@ class LobbyScene extends Phaser.Scene {
             rooms = freshRooms;
             if (currentTab === "browse") {
               updateTabContent("browse", freshRooms);
-              this.showToast("새로운 방이 생겼어요!", "#2ecc71");
+              //this.showToast("새로운 방이 생겼어요!", "#2ecc71");
             }
           });
 
@@ -3418,36 +3418,11 @@ class LobbyScene extends Phaser.Scene {
         });
       }
 
-      // 레벨 배지 (프로필 왼쪽 아래 모서리)
-      const levelBg = this.add.graphics();
-      levelBg.fillStyle(0xe67e22, 1);
-      levelBg.fillCircle(
-        pos.x - cardW / 2 + profileSize * 0.8 - profileSize * 0.35,
-        pos.y - cardH * 0.05 + profileSize * 0.35,
-        levelSize * 0.55,
-      );
-      this.lobbyUIContainer.add(levelBg);
-
-      const levelTxt = this.add
-        .text(
-          pos.x - cardW / 2 + profileSize * 0.8 - profileSize * 0.35,
-          pos.y - cardH * 0.05 + profileSize * 0.35,
-          String(p.level || 1), // 💡 플레이어의 실제 레벨 사용
-          {
-            fontFamily: GAME_FONTS.main,
-            fontSize: `${levelSize * 0.7}px`,
-            color: "#ffffff",
-            fontWeight: "bold",
-          },
-        )
-        .setOrigin(0.5);
-      this.lobbyUIContainer.add(levelTxt);
-
-      // 방장 왕관 표시
+      // 방장 왕관 표시 (박스 왼쪽 상단)
       if (isThisPlayerHost) {
         const crownTxt = this.add
-          .text(pos.x + cardW * 0.3, pos.y - cardH * 0.38, "👑", {
-            fontSize: `${width * 0.05}px`,
+          .text(pos.x * 0.5, pos.y * 0.7, "👑", {
+            fontSize: `${width * 0.08}px`,
           })
           .setOrigin(0.5);
         this.lobbyUIContainer.add(crownTxt);
@@ -3458,8 +3433,8 @@ class LobbyScene extends Phaser.Scene {
       if (displayName.length > 6)
         displayName = displayName.substring(0, 6) + "..";
 
-      // 방장 표시 포함
-      if (isThisPlayerHost) displayName = `👑 ${displayName}`;
+      const levelLabel = `Lv.${p.level || 1}`;
+      displayName = `${levelLabel} ${displayName}`;
 
       // 준비 상태에 따라 색상 결정
       let nameColor = "#aaaaaa"; // 기본: 대기 중 (회색)
@@ -3470,7 +3445,7 @@ class LobbyScene extends Phaser.Scene {
       else if (isMe) nameColor = "#ffffff"; // 나(대기): 흰색
 
       const nameTxt = this.add
-        .text(pos.x, pos.y + cardH * 0.28, displayName, {
+        .text(pos.x, pos.y + cardH / 2 + height * 0.015, displayName, {
           fontFamily: GAME_FONTS.main,
           fontSize: `${width * 0.038}px`,
           color: nameColor,
@@ -3488,7 +3463,7 @@ class LobbyScene extends Phaser.Scene {
     const chatAreaWidth = width * 0.75;
     const chatAreaHeight = height * 0.14;
     const chatAreaX = centerX;
-    const chatAreaY = height * 0.62;
+    const chatAreaY = height * 0.64;
 
     const chatBg = this.add
       .rectangle(
@@ -3509,7 +3484,7 @@ class LobbyScene extends Phaser.Scene {
     };
     this.updateLobbyChatDisplay();
 
-    const chatInputY = height * 0.72;
+    const chatInputY = height * 0.74;
     const chatInputW = chatAreaWidth * 0.72;
     const chatInputH = height * 0.03;
     const chatSendW = chatAreaWidth * 0.2;
@@ -3596,7 +3571,7 @@ class LobbyScene extends Phaser.Scene {
     /* ======================
      시작하기 / 준비하기 / 상점 / 초대하기 / 나가기 버튼
      ====================== */
-    const mainBtnY = height * 0.81;
+    const mainBtnY = height * 0.83;
     const btnWidth = width * 0.18;
     const btnHeight = height * 0.065;
     const btnGap = width * 0.015;
