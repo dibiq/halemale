@@ -897,6 +897,10 @@ io.on("connection", (socket) => {
     const targetPlayerIndex = room.players.findIndex((p) => p.id === targetId);
     if (targetPlayerIndex === -1) return;
 
+    // 강퇴당한 플레이어의 닉네임 저장
+    const kickedNickname =
+      room.players[targetPlayerIndex].nickname || "알 수 없는 요리사";
+
     // 대상 플레이어 제거
     room.players.splice(targetPlayerIndex, 1);
 
@@ -912,6 +916,7 @@ io.on("connection", (socket) => {
         playerId: targetId,
         players: room.players,
         hostId: room.host,
+        leftPlayerNickname: kickedNickname,
       });
     }
   });
@@ -1161,6 +1166,9 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => {
     const room = rooms[socket.roomId];
     if (room) {
+      // 强퇴 여부 확인 (강퇴된 경우 이미 room.players에서 제거됨)
+      const wasInRoom = room.players.some((p) => p.id === socket.id);
+
       // 1. 💡 나가는 사람의 닉네임을 소켓 객체에서 미리 가져옵니다.
       // (setNickname 등에서 socket.nickname을 저장했다면 가능합니다)
       const leftPlayerNickname = socket.nickname || "누군가";
@@ -1170,7 +1178,7 @@ io.on("connection", (socket) => {
 
       if (room.players.length === 0) {
         delete rooms[socket.roomId];
-      } else {
+      } else if (wasInRoom) {
         // 호스트 위임 로직
         if (room.host === socket.id) room.host = room.players[0].id;
 
