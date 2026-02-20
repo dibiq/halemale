@@ -12,6 +12,7 @@ const server = http.createServer(app);
 function getAllowedOrigins() {
   return [
     "https://halemale.onrender.com",
+    "https://halemale-client.onrender.com",
     "https://skewer-master.apps.tossmini.com",
     "https://skewer-master.private-apps.tossmini.com",
     "http://10.68.14.196:5173",
