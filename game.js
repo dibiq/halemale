@@ -135,6 +135,10 @@ class LobbyScene extends Phaser.Scene {
     this.load.image("itembg", `${ASSET_SERVER}/images/itembg.png${VERSION}`);
     this.load.image("uibtn", `${ASSET_SERVER}/images/ui_btn.png${VERSION}`);
     this.load.image("btnbg", `${ASSET_SERVER}/images/btnbg.png${VERSION}`);
+    this.load.image(
+      "profilebg",
+      `${ASSET_SERVER}/images/profilebg.png${VERSION}`,
+    );
 
     this.load.image("slide", `${ASSET_SERVER}/images/slide.png${VERSION}`);
     this.load.image("chef", `${ASSET_SERVER}/images/chef.png${VERSION}`);
@@ -217,6 +221,7 @@ class LobbyScene extends Phaser.Scene {
     this.load.audio("irassai", `${ASSET_SERVER}/sounds/irassai.mp3${VERSION}`);
     this.load.audio("yare", `${ASSET_SERVER}/sounds/yare.mp3${VERSION}`);
     this.load.audio("yosi", `${ASSET_SERVER}/sounds/yosi.mp3${VERSION}`);
+    this.load.audio("pass", `${ASSET_SERVER}/sounds/pass.wav${VERSION}`);
   }
 
   async create() {
@@ -401,7 +406,7 @@ class LobbyScene extends Phaser.Scene {
 
     // 프로필 배경 이미지
     const profileBg = this.add
-      .image(0, y * 0.1, "btnbg")
+      .image(0, y * 0.1, "profilebg")
       .setDisplaySize(profileSize * 2.3, profileSize * 2.1)
       .setAlpha(1.0);
 
@@ -482,7 +487,7 @@ class LobbyScene extends Phaser.Scene {
     // 코인 아이콘 이미지
     const coinIconSize = width * 0.05;
     this.profileCoinIcon = this.add
-      .text(-coinIconSize * 0.8, profileSize * 1.02, "💰", {
+      .text(-coinIconSize * 3.2, profileSize * 1.02, "💰", {
         fontFamily: "Arial",
         fontSize: `${coinIconSize}px`,
       })
@@ -491,9 +496,9 @@ class LobbyScene extends Phaser.Scene {
     // 코인 개수 텍스트 (X 1000 형태)
     this.profileCoinText = this.add
       .text(
-        coinIconSize * 1.2,
+        coinIconSize * -1.2,
         profileSize * 1.02,
-        `X ${this.myProfile.coins}`,
+        `X${this.myProfile.coins}`,
         {
           fontFamily: GAME_FONTS.main,
           fontSize: `${width * 0.04}px`,
@@ -504,7 +509,7 @@ class LobbyScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     // 경험치 표시 영역
-    const expY = profileSize * 1.24;
+    const expY = profileSize * 1.12;
     const expBarWidth = profileSize * 1.2;
     const expBarHeight = width * 0.035;
 
@@ -518,23 +523,31 @@ class LobbyScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    // 경험치 배경 막대 (회색)
-    this.profileExpBarBg = this.add
-      .rectangle(profileSize * 0.2, expY, expBarWidth, expBarHeight, 0x555555)
-      .setOrigin(0.5);
+    // 경험치 배경 막대 (회색, 테두리 둥근)
+    const expBarGraphicsBg = this.make.graphics({ x: 0, y: 0, add: true });
+    expBarGraphicsBg.fillStyle(0x555555, 1);
+    expBarGraphicsBg.fillRoundedRect(
+      profileSize * 0.2 - expBarWidth / 2,
+      expY - expBarHeight / 2,
+      expBarWidth,
+      expBarHeight,
+      15,
+    );
+    this.profileExpBarBg = expBarGraphicsBg;
 
-    // 경험치 진행 막대 (초록색)
+    // 경험치 진행 막대 (초록색, 테두리 둥근)
     const currentExp = this.myProfile.experience % XP_PER_LEVEL;
     const expRatio = currentExp / XP_PER_LEVEL;
-    this.profileExpBarFill = this.add
-      .rectangle(
-        profileSize * 0.2 - expBarWidth / 2 + (expBarWidth * expRatio) / 2,
-        expY,
-        expBarWidth * expRatio,
-        expBarHeight,
-        0x2ecc71,
-      )
-      .setOrigin(0.5);
+    const expBarGraphicsFill = this.make.graphics({ x: 0, y: 0, add: true });
+    expBarGraphicsFill.fillStyle(0x2ecc71, 1);
+    expBarGraphicsFill.fillRoundedRect(
+      profileSize * 0.2 - expBarWidth / 2,
+      expY - expBarHeight / 2,
+      expBarWidth * expRatio,
+      expBarHeight,
+      15,
+    );
+    this.profileExpBarFill = expBarGraphicsFill;
 
     // 경험치 숫자 텍스트
     this.profileExpText = this.add
@@ -1024,11 +1037,19 @@ class LobbyScene extends Phaser.Scene {
     const { width } = this.cameras.main;
     const profileSize = width * 0.2;
     const expBarWidth = profileSize * 1.2;
+    const expBarHeight = width * 0.035;
+    const expY = profileSize * 1.24;
 
-    // 진행 막대 크기 및 위치 업데이트
-    this.profileExpBarFill.width = expBarWidth * expRatio;
-    this.profileExpBarFill.x =
-      profileSize * 0.2 - expBarWidth / 2 + (expBarWidth * expRatio) / 2;
+    // 진행 막대 다시 그리기
+    this.profileExpBarFill.clear();
+    this.profileExpBarFill.fillStyle(0x2ecc71, 1);
+    this.profileExpBarFill.fillRoundedRect(
+      profileSize * 0.2 - expBarWidth / 2,
+      expY - expBarHeight / 2,
+      expBarWidth * expRatio,
+      expBarHeight,
+      6,
+    );
 
     // 경험치 숫자 텍스트 업데이트
     this.profileExpText.setText(`${currentExp}/${XP_PER_LEVEL}`);
@@ -3218,8 +3239,8 @@ class LobbyScene extends Phaser.Scene {
 
     // 배경
     const bg = this.add
-      .image(centerX, height / 2, "gamebg")
-      .setDisplaySize(width, height * 1.2)
+      .image(centerX, height * 0.47, "gamebg")
+      .setDisplaySize(width, height * 1.1)
       .setDepth(0);
     this.lobbyUIContainer.add(bg);
 
@@ -3294,7 +3315,7 @@ class LobbyScene extends Phaser.Scene {
         .text(pos.x, pos.y, "대기 중...", {
           fontFamily: GAME_FONTS.main,
           fontSize: `${width * 0.035}px`,
-          color: "#888888",
+          color: "#ffffff",
         })
         .setOrigin(0.5);
       this.lobbyUIContainer.add(emptyTxt);
@@ -3471,11 +3492,42 @@ class LobbyScene extends Phaser.Scene {
         chatAreaY * 1.015,
         chatAreaWidth,
         chatAreaHeight * 1.14,
-        0x000000,
-        0.35,
+        0xebe4d5,
+        1,
       )
-      .setStrokeStyle(2, 0xffffff, 0.2);
-    this.lobbyUIContainer.add(chatBg);
+      .setStrokeStyle(2, 0xffffff, 0.2)
+      .setOrigin(0.5)
+      .setInteractive(
+        new Phaser.Geom.Rectangle(
+          -chatAreaWidth / 2,
+          -chatAreaHeight * 0.57,
+          chatAreaWidth,
+          chatAreaHeight * 1.14,
+        ),
+        Phaser.Geom.Rectangle.Contains,
+      );
+
+    // 둥근 모서리 효과를 위해 graphics 활용
+    const chatBgRounded = this.make.graphics({ x: 0, y: 0, add: true });
+    chatBgRounded.fillStyle(0xebe4d5, 1);
+    chatBgRounded.fillRoundedRect(
+      chatAreaX - chatAreaWidth / 2,
+      chatAreaY * 1.015 - chatAreaHeight * 0.57,
+      chatAreaWidth,
+      chatAreaHeight * 1.14,
+      20, // 모서리 반지름
+    );
+    chatBgRounded.strokeRoundedRect(
+      chatAreaX - chatAreaWidth / 2,
+      chatAreaY * 1.015 - chatAreaHeight * 0.57,
+      chatAreaWidth,
+      chatAreaHeight * 1.14,
+      20,
+    );
+    chatBgRounded.lineStyle(2, 0xffffff, 0.2);
+    chatBgRounded.setDepth(5);
+
+    this.lobbyUIContainer.add(chatBgRounded);
 
     this.lobbyChatLayout = {
       startX: chatAreaX - chatAreaWidth / 2 + width * 0.02,
