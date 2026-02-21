@@ -133,38 +133,6 @@ class LobbyScene extends Phaser.Scene {
       ? `${VERSION}&mbg=20260221_3`
       : "?mbg=20260221_3";
 
-    [
-      "player_1_sprite_a",
-      "player_1_sprite_b",
-      "player_1_sprite_c",
-      "player_1_sprite_d",
-    ].forEach((textureKey) => {
-      if (this.textures.exists(textureKey)) {
-        this.textures.remove(textureKey);
-      }
-    });
-
-    const player1AnimKey = this.getAvatarAnimKey("player_1");
-    if (this.anims.exists(player1AnimKey)) {
-      this.anims.remove(player1AnimKey);
-    }
-
-    [
-      "mybg_sprite_a",
-      "mybg_sprite_b",
-      "mybg_sprite_c",
-      "mybg_sprite_d",
-    ].forEach((textureKey) => {
-      if (this.textures.exists(textureKey)) {
-        this.textures.remove(textureKey);
-      }
-    });
-
-    const mybgAnimKey = this.getMybgAnimKey();
-    if (this.anims.exists(mybgAnimKey)) {
-      this.anims.remove(mybgAnimKey);
-    }
-
     this.load.image("mybg", `${ASSET_SERVER}/images/mybg.png${VERSION}`);
     this.load.spritesheet(
       "mybg_sprite_a",
