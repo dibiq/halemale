@@ -628,7 +628,7 @@ io.on("connection", (socket) => {
     );
   });
 
-  socket.on("buyCharacter", async (data) => {
+  const handleBuyCharacter = async (data) => {
     const payload = data && typeof data === "object" ? data : {};
     const characterKey =
       normalizeCharacterKey(payload.characterKey) ||
@@ -637,16 +637,19 @@ io.on("connection", (socket) => {
     const characterPrice = Number(payload.characterPrice ?? payload.price ?? 0);
 
     if (!characterKey) {
-      return socket.emit("buyCharacterError", "유효하지 않은 캐릭터입니다.");
+      socket.emit("buyCharacterError", "유효하지 않은 캐릭터입니다.");
+      return;
     }
 
     if (!Number.isFinite(characterPrice) || characterPrice < 0) {
-      return socket.emit("buyCharacterError", "유효하지 않은 가격입니다.");
+      socket.emit("buyCharacterError", "유효하지 않은 가격입니다.");
+      return;
     }
 
     const hasEnoughCoins = (Number(socket.coins) || 0) >= characterPrice;
     if (!hasEnoughCoins) {
-      return socket.emit("buyCharacterError", "코인이 부족합니다.");
+      socket.emit("buyCharacterError", "코인이 부족합니다.");
+      return;
     }
 
     socket.coins = (Number(socket.coins) || 0) - characterPrice;
@@ -687,7 +690,11 @@ io.on("connection", (socket) => {
     console.log(
       `✅ ${socket.nickname} 캐릭터 구매 완료: ${characterKey}, 남은 코인 ${socket.coins}`,
     );
-  });
+  };
+
+  socket.on("buyCharacter", handleBuyCharacter);
+  socket.on("purchaseCharacter", handleBuyCharacter);
+  socket.on("characterPurchased", handleBuyCharacter);
 
   socket.on("setCurrentCharacter", async (data) => {
     const payload = data && typeof data === "object" ? data : {};
@@ -724,7 +731,7 @@ io.on("connection", (socket) => {
     );
   });
 
-  socket.on("syncPlayerInventory", async (data) => {
+  const handleSyncPlayerInventory = async (data) => {
     const payload = data && typeof data === "object" ? data : {};
 
     if (typeof payload.coins !== "undefined") {
@@ -775,7 +782,13 @@ io.on("connection", (socket) => {
       socket.ownedCharacters,
       socket.currentCharacter || "player_1",
     );
-  });
+  };
+
+  socket.on("syncPlayerInventory", handleSyncPlayerInventory);
+  socket.on("syncInventory", handleSyncPlayerInventory);
+  socket.on("updatePlayerInventory", handleSyncPlayerInventory);
+  socket.on("updateProfile", handleSyncPlayerInventory);
+  socket.on("savePlayerProfile", handleSyncPlayerInventory);
 
   socket.on("createRoom", async (data) => {
     console.log("🏠 createRoom 호출됨, 받은 data:", JSON.stringify(data));
