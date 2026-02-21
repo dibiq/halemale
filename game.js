@@ -484,47 +484,24 @@ class LobbyScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    // 코인 아이콘 이미지
-    const coinIconSize = width * 0.05;
-    this.profileCoinIcon = this.add
-      .text(-coinIconSize * 3.2, profileSize * 1.02, "💰", {
-        fontFamily: "Arial",
-        fontSize: `${coinIconSize}px`,
-      })
-      .setOrigin(0.5);
-
-    // 코인 개수 텍스트 (X 1000 형태)
-    this.profileCoinText = this.add
-      .text(
-        coinIconSize * -1.2,
-        profileSize * 1.02,
-        `X${this.myProfile.coins}`,
-        {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.04}px`,
-          color: "#ffd700",
-          fontWeight: "bold",
-        },
-      )
-      .setOrigin(0.5);
-
     // 경험치 표시 영역
-    const expY = profileSize * 1.12;
+    const expY = profileSize * 1.07;
     const expBarWidth = profileSize * 1.2;
     const expBarHeight = width * 0.035;
 
     // "경험치" 레이블
     this.profileExpLabel = this.add
-      .text(-profileSize * 0.7, expY, "경험치", {
+      .text(-profileSize * 0.66, expY, "경험치", {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.032}px`,
         color: "#ffffff",
         fontWeight: "bold",
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setDepth(9);
 
-    // 경험치 배경 막대 (회색, 테두리 둥근)
-    const expBarGraphicsBg = this.make.graphics({ x: 0, y: 0, add: true });
+    // 경험치 배경 막대 (회색, 둥근 모서리)
+    const expBarGraphicsBg = this.add.graphics();
     expBarGraphicsBg.fillStyle(0x555555, 1);
     expBarGraphicsBg.fillRoundedRect(
       profileSize * 0.2 - expBarWidth / 2,
@@ -533,12 +510,13 @@ class LobbyScene extends Phaser.Scene {
       expBarHeight,
       15,
     );
+    expBarGraphicsBg.setDepth(10);
     this.profileExpBarBg = expBarGraphicsBg;
 
-    // 경험치 진행 막대 (초록색, 테두리 둥근)
+    // 경험치 진행 막대 (초록색, 둥근 모서리)
     const currentExp = this.myProfile.experience % XP_PER_LEVEL;
     const expRatio = currentExp / XP_PER_LEVEL;
-    const expBarGraphicsFill = this.make.graphics({ x: 0, y: 0, add: true });
+    const expBarGraphicsFill = this.add.graphics();
     expBarGraphicsFill.fillStyle(0x2ecc71, 1);
     expBarGraphicsFill.fillRoundedRect(
       profileSize * 0.2 - expBarWidth / 2,
@@ -547,6 +525,7 @@ class LobbyScene extends Phaser.Scene {
       expBarHeight,
       15,
     );
+    expBarGraphicsFill.setDepth(11);
     this.profileExpBarFill = expBarGraphicsFill;
 
     // 경험치 숫자 텍스트
@@ -559,7 +538,8 @@ class LobbyScene extends Phaser.Scene {
         stroke: "#000000",
         strokeThickness: 2,
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setDepth(12);
 
     profileContainer.add([
       profileBg,
@@ -571,8 +551,6 @@ class LobbyScene extends Phaser.Scene {
       levelBadge,
       this.profileLevelText,
       this.profileIdText,
-      this.profileCoinIcon,
-      this.profileCoinText,
       this.profileExpLabel,
       this.profileExpBarBg,
       this.profileExpBarFill,
@@ -1029,7 +1007,6 @@ class LobbyScene extends Phaser.Scene {
 
     this.profileLevelText.setText(`${this.myProfile.level}`);
     this.profileIdText.setText(this.myProfile.nickname);
-    this.profileCoinText.setText(`X ${this.myProfile.coins}`);
 
     // 경험치 바 업데이트
     const currentExp = this.myProfile.experience % XP_PER_LEVEL;
@@ -1038,9 +1015,9 @@ class LobbyScene extends Phaser.Scene {
     const profileSize = width * 0.2;
     const expBarWidth = profileSize * 1.2;
     const expBarHeight = width * 0.035;
-    const expY = profileSize * 1.24;
+    const expY = profileSize * 1.12;
 
-    // 진행 막대 다시 그리기
+    // 진행 막대 업데이트 (둥근 모서리)
     this.profileExpBarFill.clear();
     this.profileExpBarFill.fillStyle(0x2ecc71, 1);
     this.profileExpBarFill.fillRoundedRect(
@@ -1048,7 +1025,7 @@ class LobbyScene extends Phaser.Scene {
       expY - expBarHeight / 2,
       expBarWidth * expRatio,
       expBarHeight,
-      6,
+      8,
     );
 
     // 경험치 숫자 텍스트 업데이트
