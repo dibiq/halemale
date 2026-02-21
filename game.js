@@ -7145,81 +7145,96 @@ class GameScene extends Phaser.Scene {
     const overlay = this.add
       .rectangle(width / 2, height / 2, width, height, 0x000000, 0.65)
       .setInteractive();
-    const popupBg = this.add
-      .image(width / 2, height / 2, "popupbg")
-      .setDisplaySize(width * 0.85, height * 0.75);
-    const titleText = this.add
-      .text(width / 2, height * 0.2, "게임 결과", {
-        fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.07}px`,
-        color: "#ffd700",
-        fontWeight: "bold",
-        stroke: "#000000",
-        strokeThickness: 4,
-      })
-      .setOrigin(0.5);
+    const podiumBg = this.add
+      .image(width / 2, height * 0.46, "resultbg")
+      .setDisplaySize(width * 1.0, height * 1.0);
 
-    container.add([overlay, popupBg, titleText]);
+    container.add([overlay, podiumBg]);
 
-    const listStartY = height * 0.3;
-    const rowGap = height * 0.07;
+    const resultAnimKey = "result_player_1_anim";
+    if (
+      !this.anims.exists(resultAnimKey) &&
+      [
+        "player_1_sprite_a",
+        "player_1_sprite_b",
+        "player_1_sprite_c",
+        "player_1_sprite_d",
+      ].every((key) => this.textures.exists(key))
+    ) {
+      const frameCounts = {
+        player_1_sprite_a: 25,
+        player_1_sprite_b: 25,
+        player_1_sprite_c: 21,
+        player_1_sprite_d: 20,
+      };
+      const frames = [];
+      for (let row = 0; row < 10; row += 1) {
+        for (let col = 0; col < 10; col += 1) {
+          const localRow = row < 5 ? row : row - 5;
+          const localCol = col < 5 ? col : col - 5;
+          const textureKey =
+            row < 5
+              ? col < 5
+                ? "player_1_sprite_a"
+                : "player_1_sprite_b"
+              : col < 5
+                ? "player_1_sprite_c"
+                : "player_1_sprite_d";
+          const frameIndex = localRow * 5 + localCol;
+          if (frameIndex >= frameCounts[textureKey]) {
+            continue;
+          }
+          frames.push({ key: textureKey, frame: frameIndex });
+        }
+      }
 
-    players.forEach((p, i) => {
-      const y = listStartY + i * rowGap;
-      const row = this.add.container(width / 2, y);
+      if (frames.length > 0) {
+        this.anims.create({
+          key: resultAnimKey,
+          frames,
+          frameRate: 18,
+          repeat: -1,
+        });
+      }
+    }
 
-      const displayName = p.nickname || p.id || "요리사";
-      const earnedCoinsRaw =
-        typeof p.earnedCoins === "number"
-          ? p.earnedCoins
-          : Number(p.finalCoins ?? 0) - Number(p.currentCoins ?? 0);
-      const earnedExpRaw =
-        typeof p.earnedExperience === "number"
-          ? p.earnedExperience
-          : Number(p.finalExperience ?? 0) - Number(p.currentExperience ?? 0);
+    const rankedPlayers = Array.isArray(players) ? players.slice(0, 3) : [];
+    const podiumPositions = [
+      { x: width * 0.5, y: height * 0.58 },
+      { x: width * 0.23, y: height * 0.64 },
+      { x: width * 0.735, y: height * 0.61 },
+    ];
 
-      const earnedCoins = Number.isFinite(earnedCoinsRaw) ? earnedCoinsRaw : 0;
-      const earnedExp = Number.isFinite(earnedExpRaw) ? earnedExpRaw : 0;
+    rankedPlayers.forEach((player, index) => {
+      const pos = podiumPositions[index];
+      if (!pos) return;
 
-      const rankTxt = this.add
-        .text(-width * 0.18, 0, `${i + 1}위`, {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.045}px`,
-          color: "#ffffff",
-          stroke: "#000000",
-          strokeThickness: 3,
-        })
-        .setOrigin(0.5);
+      const avatar = this.add
+        .sprite(pos.x, pos.y, "player_1_sprite_a", 0)
+        .setDisplaySize(width * 0.18, width * 0.18)
+        .setOrigin(0.5, 1);
 
-      const nameTxt = this.add
-        .text(-width * 0.04, 0, displayName, {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.045}px`,
-          color: "#ffffff",
-          fontWeight: "bold",
-        })
-        .setOrigin(0, 0.5);
+      if (this.anims.exists(resultAnimKey)) {
+        avatar.play(resultAnimKey, true);
+      }
 
-      const coinTxt = this.add
-        .text(width * 0.18, 0, `코인 +${earnedCoins}`, {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.035}px`,
-          color: "#f1c40f",
-          fontWeight: "bold",
-        })
-        .setOrigin(0.5);
+      const nameText = this.add
+        .text(
+          pos.x,
+          pos.y + width * 0.03,
+          player?.nickname || player?.id || "요리사",
+          {
+            fontFamily: GAME_FONTS.main,
+            fontSize: `${width * 0.038}px`,
+            color: "#ffffff",
+            fontWeight: "bold",
+            stroke: "#000000",
+            strokeThickness: 3,
+          },
+        )
+        .setOrigin(0.5, 0);
 
-      const expTxt = this.add
-        .text(width * 0.36, 0, `EXP +${earnedExp}`, {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.035}px`,
-          color: "#2ecc71",
-          fontWeight: "bold",
-        })
-        .setOrigin(0.5);
-
-      row.add([rankTxt, nameTxt, coinTxt, expTxt]);
-      container.add(row);
+      container.add([avatar, nameText]);
     });
 
     const countdownText = this.add
