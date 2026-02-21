@@ -7202,7 +7202,7 @@ class GameScene extends Phaser.Scene {
     const podiumPositions = [
       { x: width * 0.5, y: height * 0.58 },
       { x: width * 0.23, y: height * 0.64 },
-      { x: width * 0.735, y: height * 0.61 },
+      { x: width * 0.79, y: height * 0.66 },
     ];
 
     rankedPlayers.forEach((player, index) => {
@@ -7211,7 +7211,7 @@ class GameScene extends Phaser.Scene {
 
       const avatar = this.add
         .sprite(pos.x, pos.y, "player_1_sprite_a", 0)
-        .setDisplaySize(width * 0.18, width * 0.18)
+        .setDisplaySize(width * 0.23, width * 0.23)
         .setOrigin(0.5, 1);
 
       if (this.anims.exists(resultAnimKey)) {
@@ -7238,7 +7238,7 @@ class GameScene extends Phaser.Scene {
     });
 
     const countdownText = this.add
-      .text(width / 2, height * 0.68, "20초뒤 대기실로 이동합니다.. (20)", {
+      .text(width / 2, height * 0.76, "20초뒤 대기실로 이동합니다.. (20)", {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.035}px`,
         color: "#ffffff",
@@ -7246,11 +7246,11 @@ class GameScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     const confirmBtn = this.add
-      .image(width / 2, height * 0.77, "uibtn")
+      .image(width / 2, height * 0.83, "uibtn")
       .setDisplaySize(width * 0.45, height * 0.075)
       .setInteractive({ useHandCursor: true });
     const confirmTxt = this.add
-      .text(width / 2, height * 0.77, "확인", {
+      .text(width / 2, height * 0.83, "확인", {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.055}px`,
         color: "#ffffff",
