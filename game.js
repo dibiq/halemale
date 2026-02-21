@@ -565,11 +565,17 @@ class LobbyScene extends Phaser.Scene {
         typeof profile.avatarKey === "string" &&
         /^player_[1-4]$/.test(profile.avatarKey)
       ) {
-        const idx = this.profileAvatarKeys.indexOf(profile.avatarKey);
-        if (idx >= 0) {
-          this.profileAvatarIndex = idx;
-          localStorage.setItem("profileAvatarKey", profile.avatarKey);
-          this.updateProfileAvatarUI();
+        const canApplyAvatarKey =
+          profile.avatarKey === "player_1" ||
+          !!mergedOwnedCharacters[profile.avatarKey];
+
+        if (canApplyAvatarKey) {
+          const idx = this.profileAvatarKeys.indexOf(profile.avatarKey);
+          if (idx >= 0) {
+            this.profileAvatarIndex = idx;
+            localStorage.setItem("profileAvatarKey", profile.avatarKey);
+            this.updateProfileAvatarUI();
+          }
         }
       }
 
@@ -663,7 +669,9 @@ class LobbyScene extends Phaser.Scene {
       .setAlpha(1.0);
 
     // 프로필 이미지를 스프라이트로 생성하고 애니메이션 적용
-    const currentKey = this.profileAvatarKeys[this.profileAvatarIndex];
+    const currentKey = this.getSelectedAvatarKey();
+    const currentIdx = this.profileAvatarKeys.indexOf(currentKey);
+    this.profileAvatarIndex = currentIdx >= 0 ? currentIdx : 0;
     this.profileImage = this.add
       .sprite(0, 0, `${currentKey}_1`)
       .setDisplaySize(profileSize, profileSize);
@@ -1289,21 +1297,62 @@ class LobbyScene extends Phaser.Scene {
     this.profileExpText.setText(`${currentExp}/${XP_PER_LEVEL}`);
   }
 
+  getOwnedProfileAvatarKeys() {
+    const allKeys = Array.isArray(this.profileAvatarKeys)
+      ? this.profileAvatarKeys
+      : [];
+    if (allKeys.length === 0) {
+      return ["player_1"];
+    }
+
+    let owned = {};
+    try {
+      owned = JSON.parse(localStorage.getItem("ownedCharacters") || "{}");
+    } catch (err) {
+      owned = {};
+    }
+
+    const ownedKeys = allKeys.filter(
+      (key) => key === "player_1" || !!owned[key],
+    );
+    return ownedKeys.length > 0 ? ownedKeys : ["player_1"];
+  }
+
   changeProfileAvatar(step) {
-    if (
-      !Array.isArray(this.profileAvatarKeys) ||
-      this.profileAvatarKeys.length === 0
-    ) {
+    const ownedKeys = this.getOwnedProfileAvatarKeys();
+    if (ownedKeys.length === 0) {
       return;
     }
 
-    const total = this.profileAvatarKeys.length;
-    this.profileAvatarIndex =
-      ((Number(this.profileAvatarIndex) || 0) + step + total) % total;
+    const currentKey = this.getSelectedAvatarKey();
+    const currentOwnedIndex = ownedKeys.indexOf(currentKey);
+    const baseIndex = currentOwnedIndex >= 0 ? currentOwnedIndex : 0;
 
-    const selectedKey = this.profileAvatarKeys[this.profileAvatarIndex];
+    const total = ownedKeys.length;
+    const nextOwnedIndex =
+      (((baseIndex + step + total) % total) + total) % total;
+    const selectedKey = ownedKeys[nextOwnedIndex];
+
+    const selectedIndex = this.profileAvatarKeys.indexOf(selectedKey);
+    this.profileAvatarIndex = selectedIndex >= 0 ? selectedIndex : 0;
     localStorage.setItem("profileAvatarKey", selectedKey);
     this.updateProfileAvatarUI();
+
+    if (!this.isSingle && socket.connected) {
+      const resolvedPlayerId =
+        this.myProfile?.nickname ||
+        localStorage.getItem("nickname") ||
+        this.myNickname ||
+        "요리사";
+
+      socket.emit("setCurrentCharacter", {
+        id: resolvedPlayerId,
+        userId: resolvedPlayerId,
+        nickname: this.myProfile?.nickname,
+        currentCharacter: selectedKey,
+        current_character: selectedKey,
+      });
+    }
   }
 
   getAvatarAnimMaxFrame(baseKey) {
@@ -1604,26 +1653,32 @@ class LobbyScene extends Phaser.Scene {
       return;
     }
 
-    const baseKey =
-      this.profileAvatarKeys[this.profileAvatarIndex] || "player_1";
+    const baseKey = this.getSelectedAvatarKey();
+    const selectedIndex = this.profileAvatarKeys.indexOf(baseKey);
+    if (selectedIndex >= 0) {
+      this.profileAvatarIndex = selectedIndex;
+    }
+
     this.applyAvatarAnimation(this.profileImage, baseKey);
   }
 
   getSelectedAvatarKey() {
-    const current =
-      Array.isArray(this.profileAvatarKeys) &&
-      this.profileAvatarKeys[this.profileAvatarIndex];
+    const ownedKeys = this.getOwnedProfileAvatarKeys();
 
-    if (typeof current === "string" && /^player_[1-4]$/.test(current)) {
+    const current = Array.isArray(this.profileAvatarKeys)
+      ? this.profileAvatarKeys[this.profileAvatarIndex]
+      : null;
+
+    if (typeof current === "string" && ownedKeys.includes(current)) {
       return current;
     }
 
     const saved = localStorage.getItem("profileAvatarKey");
-    if (typeof saved === "string" && /^player_[1-4]$/.test(saved)) {
+    if (typeof saved === "string" && ownedKeys.includes(saved)) {
       return saved;
     }
 
-    return "player_1";
+    return ownedKeys[0] || "player_1";
   }
 
   showLoading(message = "로딩 중...") {
@@ -2347,31 +2402,20 @@ class LobbyScene extends Phaser.Scene {
         this.updateProfileAvatarUI();
 
         if (!this.isSingle && socket.connected) {
-          socket.emit("addCoins", { amount: -character.price });
-
           const resolvedPlayerId =
             this.myProfile.nickname ||
             localStorage.getItem("nickname") ||
             this.myNickname ||
             "요리사";
 
-          socket.emit("setNickname", {
-            id: resolvedPlayerId,
-            nickname: this.myProfile.nickname,
-            avatarKey,
-          });
-
           socket.emit("setCurrentCharacter", {
             id: resolvedPlayerId,
             userId: resolvedPlayerId,
+            nickname: this.myProfile.nickname,
             currentCharacter: avatarKey,
             current_character: avatarKey,
           });
         }
-
-        syncInventoryToServer("equipCharacter", {
-          currentCharacter: avatarKey,
-        });
       }
     };
 
@@ -5470,24 +5514,18 @@ class GameScene extends Phaser.Scene {
     socket.off("myProfile").on("myProfile", (profile) => {
       const prevLevel = Number(localStorage.getItem("profileLevel")) || 1;
       const newLevel = Number(profile?.level) || prevLevel;
+      const incomingCoins = Number(profile?.coins);
+      const incomingExperience = Number(profile?.experience);
+      const safeCoins = Number.isFinite(incomingCoins)
+        ? incomingCoins
+        : Number(localStorage.getItem("profileCoins")) || 0;
+      const safeExperience = Number.isFinite(incomingExperience)
+        ? incomingExperience
+        : Number(localStorage.getItem("profileExperience")) || 0;
 
       localStorage.setItem("profileLevel", String(newLevel));
-      localStorage.setItem(
-        "profileCoins",
-        String(
-          Number(profile?.coins) ||
-            Number(localStorage.getItem("profileCoins")) ||
-            0,
-        ),
-      );
-      localStorage.setItem(
-        "profileExperience",
-        String(
-          Number(profile?.experience) ||
-            Number(localStorage.getItem("profileExperience")) ||
-            0,
-        ),
-      );
+      localStorage.setItem("profileCoins", String(safeCoins));
+      localStorage.setItem("profileExperience", String(safeExperience));
 
       if (newLevel > prevLevel) {
         this.showToast(`레벨 업! Lv.${prevLevel} → Lv.${newLevel}`, "#2ecc71");
