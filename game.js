@@ -55,6 +55,7 @@ class LobbyScene extends Phaser.Scene {
     this.suppressJoinToastUntil = this.pendingRoomData
       ? Date.now() + 5000
       : null;
+    this.currentRoomNumber = null;
   }
 
   async checkConnection() {
@@ -782,6 +783,8 @@ class LobbyScene extends Phaser.Scene {
     });
 
     socket.off("roomCreated").on("roomCreated", (data) => {
+      this.currentRoomNumber =
+        typeof data?.roomNumber === "number" ? data.roomNumber : null;
       this.isRoomOpen = true;
 
       console.log(
@@ -800,7 +803,30 @@ class LobbyScene extends Phaser.Scene {
         max: data.maxPlayers,
         hostId: socket.id,
         roomName: data.roomName,
+        roomNumber: this.currentRoomNumber,
       });
+
+      if (typeof this.currentRoomNumber !== "number" && data?.roomId) {
+        this.resolveRoomNumberFromPublicList(data.roomId).then(
+          (resolvedRoomNumber) => {
+            if (
+              typeof resolvedRoomNumber === "number" &&
+              this.scene.isActive() &&
+              this.currentRoomId === data.roomId
+            ) {
+              this.currentRoomNumber = resolvedRoomNumber;
+              this.refreshLobbyUI({
+                roomId: this.currentRoomId,
+                players: this.currentPlayers,
+                max: this.currentMax,
+                hostId: this.hostId,
+                roomName: this.currentRoomName,
+                roomNumber: this.currentRoomNumber,
+              });
+            }
+          },
+        );
+      }
     });
 
     socket.off("joinRoomError").on("joinRoomError", (message) => {
@@ -885,6 +911,9 @@ class LobbyScene extends Phaser.Scene {
     });
 
     socket.off("joinRoomSuccess").on("joinRoomSuccess", (data) => {
+      if (typeof data?.roomNumber === "number") {
+        this.currentRoomNumber = data.roomNumber;
+      }
       this.hideLoading();
       this.currentPlayers = data.players || [];
       this.roomName = data.roomName;
@@ -1481,6 +1510,9 @@ class LobbyScene extends Phaser.Scene {
     this.currentMax = data.max || this.currentMax;
     this.hostId = data.hostId || this.hostId;
     this.currentRoomName = data.roomName || this.currentRoomName || "대기실";
+    if (typeof data.roomNumber === "number") {
+      this.currentRoomNumber = data.roomNumber;
+    }
 
     const isHost = socket.id === this.hostId;
     // 로그로 현재 상태 확인
@@ -1495,7 +1527,25 @@ class LobbyScene extends Phaser.Scene {
       isHost,
       this.currentMax,
       this.currentRoomName,
+      this.currentRoomNumber,
     );
+  }
+
+  async resolveRoomNumberFromPublicList(roomId) {
+    if (!roomId) return null;
+
+    try {
+      const response = await fetch(`${SERVER_URL}/api/public-rooms`);
+      if (!response.ok) return null;
+
+      const rooms = await response.json();
+      if (!Array.isArray(rooms)) return null;
+
+      const index = rooms.findIndex((room) => room && room.roomId === roomId);
+      return index >= 0 ? index + 1 : null;
+    } catch (error) {
+      return null;
+    }
   }
 
   // 로딩 화면 표시 및 제거 함수
@@ -2721,7 +2771,7 @@ class LobbyScene extends Phaser.Scene {
                 .setTint(isPlaying ? 0x555555 : 0xffffff)
                 .setInteractive({ useHandCursor: true });
 
-              const roomNo = startIdx + i + 1;
+              const roomNo = i + 1;
               const publicTag = room.isPublic === false ? "🔒" : "🌐";
               const playingTag = isPlaying ? " 🎮플레이중" : "";
               const roomTitle = room.roomName || `${room.hostNickname}의 방`;
@@ -2757,6 +2807,7 @@ class LobbyScene extends Phaser.Scene {
                 if (!room.isPublic) {
                   // 비공개 방: 비밀번호 입력 팝업
                   this.showPasswordPopup((pw) => {
+                    this.currentRoomNumber = roomNo;
                     this.showLoading("방 입장 중...");
                     socket.emit("joinPublicRoom", {
                       roomId: room.roomId,
@@ -2768,6 +2819,7 @@ class LobbyScene extends Phaser.Scene {
                   });
                 } else {
                   // 공개 방: 바로 입장
+                  this.currentRoomNumber = roomNo;
                   this.showLoading("방 입장 중...");
                   socket.emit("joinPublicRoom", {
                     roomId: room.roomId,
@@ -3517,6 +3569,7 @@ class LobbyScene extends Phaser.Scene {
     isHost = false,
     maxPlayers = 4,
     roomName = "대기실",
+    roomNumber = null,
   ) {
     const { width, height } = this.cameras.main;
     const centerX = width / 2;
@@ -3552,9 +3605,12 @@ class LobbyScene extends Phaser.Scene {
       .setDepth(0);
     this.lobbyUIContainer.add(bg);
 
+    const roomHeaderText =
+      typeof roomNumber === "number" ? `${roomNumber}.${roomName}` : roomName;
+
     // 입장 코드 (방 제목 표시)
     const codeText = this.add
-      .text(centerX, height * 0.08, roomName, {
+      .text(centerX, height * 0.08, roomHeaderText, {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.065}px`,
         fill: "#ffff00",
