@@ -413,6 +413,153 @@ class LobbyScene extends Phaser.Scene {
     });
 
     socket.off("myProfile").on("myProfile", (profile) => {
+      const normalizeSpecialCardId = (rawId) => {
+        if (rawId === null || rawId === undefined) return null;
+
+        const numericId = Number(rawId);
+        if (Number.isFinite(numericId) && numericId >= 1 && numericId <= 3) {
+          return numericId;
+        }
+
+        const idText = String(rawId).toLowerCase().trim();
+        const idMap = {
+          magnet: 1,
+          bomb: 2,
+          star: 3,
+          자석: 1,
+          폭탄: 2,
+          별: 3,
+        };
+        return idMap[idText] || null;
+      };
+
+      const collectSpecialCardsFromPayload = (
+        specialCardsPayload,
+        itemsPayload,
+      ) => {
+        const parsed = {};
+        let sourceHadData = false;
+
+        const addCount = (rawId, rawCount = 1) => {
+          const normalizedId = normalizeSpecialCardId(rawId);
+          const count = Number(rawCount);
+          if (!normalizedId || !Number.isFinite(count) || count <= 0) return;
+          parsed[normalizedId] = (parsed[normalizedId] || 0) + count;
+        };
+
+        if (
+          specialCardsPayload &&
+          typeof specialCardsPayload === "object" &&
+          !Array.isArray(specialCardsPayload)
+        ) {
+          const entries = Object.entries(specialCardsPayload);
+          if (entries.length > 0) {
+            sourceHadData = true;
+            entries.forEach(([key, value]) => {
+              if (value && typeof value === "object") {
+                addCount(
+                  value.id ?? value.cardId ?? key,
+                  value.count ?? value.qty ?? 1,
+                );
+              } else {
+                addCount(key, value);
+              }
+            });
+          }
+        }
+
+        if (Array.isArray(itemsPayload)) {
+          if (itemsPayload.length > 0) {
+            sourceHadData = true;
+          }
+
+          itemsPayload.forEach((item) => {
+            if (item && typeof item === "object") {
+              addCount(
+                item.id ?? item.cardId ?? item.itemId ?? item.key ?? item.name,
+                item.count ?? item.qty ?? item.quantity ?? 1,
+              );
+              return;
+            }
+
+            addCount(item, 1);
+          });
+        } else if (itemsPayload && typeof itemsPayload === "object") {
+          const entries = Object.entries(itemsPayload);
+          if (entries.length > 0) {
+            sourceHadData = true;
+            entries.forEach(([key, value]) => addCount(key, value));
+          }
+        }
+
+        return {
+          parsed,
+          sourceHadData,
+          parsedCount: Object.keys(parsed).length,
+        };
+      };
+
+      const normalizeOwnedCharacters = (rawValue) => {
+        const normalized = {};
+
+        if (Array.isArray(rawValue)) {
+          rawValue.forEach((key) => {
+            if (typeof key === "string" && /^player_[1-4]$/.test(key)) {
+              normalized[key] = true;
+            }
+          });
+        } else if (rawValue && typeof rawValue === "object") {
+          Object.entries(rawValue).forEach(([key, value]) => {
+            if (typeof key === "string" && /^player_[1-4]$/.test(key)) {
+              normalized[key] = !!value;
+            }
+          });
+        }
+
+        normalized.player_1 = true;
+        return normalized;
+      };
+
+      let mergedOwnedCharacters = normalizeOwnedCharacters(
+        JSON.parse(localStorage.getItem("ownedCharacters") || "{}"),
+      );
+
+      if (profile && Array.isArray(profile.owned_characters)) {
+        const ownedCharactersFromServer = {};
+        profile.owned_characters.forEach((key) => {
+          if (typeof key === "string" && /^player_[1-4]$/.test(key)) {
+            ownedCharactersFromServer[key] = true;
+          }
+        });
+        mergedOwnedCharacters = normalizeOwnedCharacters({
+          ...mergedOwnedCharacters,
+          ...ownedCharactersFromServer,
+        });
+        localStorage.setItem(
+          "ownedCharacters",
+          JSON.stringify(mergedOwnedCharacters),
+        );
+      }
+
+      if (
+        profile &&
+        typeof profile.current_character === "string" &&
+        /^player_[1-4]$/.test(profile.current_character)
+      ) {
+        const canApplyServerCharacter =
+          profile.current_character === "player_1" ||
+          !!mergedOwnedCharacters[profile.current_character];
+
+        if (canApplyServerCharacter) {
+          const idx = this.profileAvatarKeys.indexOf(profile.current_character);
+          if (idx >= 0) {
+            this.profileAvatarIndex = idx;
+            localStorage.setItem("profileAvatarKey", profile.current_character);
+            this.updateProfileAvatarUI();
+          }
+        }
+      }
+
       if (
         profile &&
         typeof profile.avatarKey === "string" &&
@@ -427,11 +574,21 @@ class LobbyScene extends Phaser.Scene {
       }
 
       // 특수카드 저장
-      if (profile && typeof profile.specialCards === "object") {
-        localStorage.setItem(
-          "specialCards",
-          JSON.stringify(profile.specialCards),
-        );
+      if (
+        profile &&
+        (typeof profile.specialCards === "object" ||
+          typeof profile.items !== "undefined")
+      ) {
+        const { parsed, sourceHadData, parsedCount } =
+          collectSpecialCardsFromPayload(profile.specialCards, profile.items);
+
+        if (sourceHadData && parsedCount === 0) {
+          console.warn(
+            "특수카드 데이터 파싱 실패: 기존 로컬 데이터를 유지합니다.",
+          );
+        } else {
+          localStorage.setItem("specialCards", JSON.stringify(parsed));
+        }
       }
 
       this.updateMyProfileUI(profile);
@@ -1099,8 +1256,6 @@ class LobbyScene extends Phaser.Scene {
     if (
       !this.profileLevelText ||
       !this.profileIdText ||
-      !this.profileCoinIcon ||
-      !this.profileCoinText ||
       !this.profileExpBarFill ||
       !this.profileExpText
     ) {
@@ -1117,7 +1272,7 @@ class LobbyScene extends Phaser.Scene {
     const profileSize = width * 0.2;
     const expBarWidth = profileSize * 1.2;
     const expBarHeight = width * 0.035;
-    const expY = profileSize * 1.12;
+    const expY = profileSize * 1.07;
 
     // 진행 막대 업데이트 (둥근 모서리)
     this.profileExpBarFill.clear();
@@ -1369,6 +1524,24 @@ class LobbyScene extends Phaser.Scene {
       return;
     }
 
+    if (typeof target.getData === "function") {
+      if (target.getData("avatarDisplayWidth") === undefined) {
+        target.setData("avatarDisplayWidth", target.displayWidth);
+      }
+      if (target.getData("avatarDisplayHeight") === undefined) {
+        target.setData("avatarDisplayHeight", target.displayHeight);
+      }
+    }
+
+    const avatarDisplayWidth =
+      typeof target.getData === "function"
+        ? target.getData("avatarDisplayWidth")
+        : target.displayWidth;
+    const avatarDisplayHeight =
+      typeof target.getData === "function"
+        ? target.getData("avatarDisplayHeight")
+        : target.displayHeight;
+
     if (
       typeof target.getData === "function" &&
       target.getData("avatarBaseY") === undefined
@@ -1385,10 +1558,19 @@ class LobbyScene extends Phaser.Scene {
 
     if (baseKey === "player_1" && this.canUsePlayer1SpriteSheets()) {
       target.setOrigin(0.5, 1);
+      if (avatarDisplayWidth > 0 && avatarDisplayHeight > 0) {
+        target.setDisplaySize(avatarDisplayWidth, avatarDisplayHeight);
+      }
       target.y = avatarBaseY + target.displayHeight * 0.5;
       target.setTexture(this.getPlayer1SpriteSheets()[0].key, 0);
+      if (avatarDisplayWidth > 0 && avatarDisplayHeight > 0) {
+        target.setDisplaySize(avatarDisplayWidth, avatarDisplayHeight);
+      }
       if (animKey) {
         target.play(animKey, true);
+        if (avatarDisplayWidth > 0 && avatarDisplayHeight > 0) {
+          target.setDisplaySize(avatarDisplayWidth, avatarDisplayHeight);
+        }
       }
       return;
     }
@@ -1404,10 +1586,16 @@ class LobbyScene extends Phaser.Scene {
 
     if (this.textures.exists(firstFrameKey)) {
       target.setTexture(firstFrameKey);
+      if (avatarDisplayWidth > 0 && avatarDisplayHeight > 0) {
+        target.setDisplaySize(avatarDisplayWidth, avatarDisplayHeight);
+      }
     }
 
     if (animKey) {
       target.play(animKey, true);
+      if (avatarDisplayWidth > 0 && avatarDisplayHeight > 0) {
+        target.setDisplaySize(avatarDisplayWidth, avatarDisplayHeight);
+      }
     }
   }
 
@@ -2009,7 +2197,6 @@ class LobbyScene extends Phaser.Scene {
     const centerX = width / 2;
     const popupY = height * 0.5;
 
-    // 특수카드 데이터 (가격과 설명 포함)
     const specialCards = [
       {
         id: 1,
@@ -2031,10 +2218,166 @@ class LobbyScene extends Phaser.Scene {
       },
     ];
 
+    const characterItems = [
+      {
+        key: "player_1",
+        name: "🍳 기본 요리사",
+        description: "기본 제공 캐릭터",
+        price: 0,
+      },
+      {
+        key: "player_2",
+        name: "🧑‍🍳 요리사 2",
+        description: "단단한 스킬의 베테랑",
+        price: 300,
+      },
+      {
+        key: "player_3",
+        name: "👨‍🍳 요리사 3",
+        description: "빠른 손놀림의 셰프",
+        price: 450,
+      },
+      {
+        key: "player_4",
+        name: "👩‍🍳 요리사 4",
+        description: "화려한 플레이의 장인",
+        price: 600,
+      },
+    ];
+
+    const coinProducts = [
+      { amount: 500, display: "$0.99" },
+      { amount: 1000, display: "$1.99" },
+      { amount: 3000, display: "$4.99" },
+    ];
+
+    const normalizeOwnedCharacters = (rawValue) => {
+      const normalized = {};
+
+      if (Array.isArray(rawValue)) {
+        rawValue.forEach((key) => {
+          if (typeof key === "string" && /^player_[1-4]$/.test(key)) {
+            normalized[key] = true;
+          }
+        });
+      } else if (rawValue && typeof rawValue === "object") {
+        Object.entries(rawValue).forEach(([key, value]) => {
+          if (typeof key === "string" && /^player_[1-4]$/.test(key)) {
+            normalized[key] = !!value;
+          }
+        });
+      }
+
+      normalized.player_1 = true;
+      return normalized;
+    };
+
+    const getOwnedCharacters = () => {
+      const owned = normalizeOwnedCharacters(
+        JSON.parse(localStorage.getItem("ownedCharacters") || "{}"),
+      );
+      localStorage.setItem("ownedCharacters", JSON.stringify(owned));
+      return owned;
+    };
+
+    const saveOwnedCharacters = (ownedCharacters) => {
+      const normalized = normalizeOwnedCharacters(ownedCharacters);
+      localStorage.setItem("ownedCharacters", JSON.stringify(normalized));
+    };
+
+    const getCharacterIdFromKey = (characterKey) => {
+      const match = /^player_(\d+)$/.exec(String(characterKey || ""));
+      return match ? Number(match[1]) : null;
+    };
+
+    const syncInventoryToServer = (reason, extra = {}) => {
+      if (this.isSingle || !socket.connected) return;
+
+      const resolvedPlayerId =
+        this.myProfile.nickname ||
+        localStorage.getItem("nickname") ||
+        this.myNickname ||
+        "요리사";
+
+      const specialCardsOwned = JSON.parse(
+        localStorage.getItem("specialCards") || "{}",
+      );
+
+      const items = Object.entries(specialCardsOwned)
+        .map(([id, count]) => ({
+          id: Number(id),
+          count: Number(count) || 0,
+        }))
+        .filter((item) => Number.isFinite(item.id) && item.count > 0);
+
+      const ownedCharacters = Object.entries(getOwnedCharacters())
+        .filter(([, owned]) => !!owned)
+        .map(([key]) => key);
+
+      const currentCharacter = this.getSelectedAvatarKey();
+      const payload = {
+        reason,
+        id: resolvedPlayerId,
+        userId: resolvedPlayerId,
+        player_id: resolvedPlayerId,
+        nickname: this.myProfile.nickname,
+        playerId: socket.id,
+        coins: Number(this.myProfile.coins) || 0,
+        items,
+        specialCards: specialCardsOwned,
+        ownedCharacters,
+        currentCharacter,
+        owned_characters: ownedCharacters,
+        current_character: currentCharacter,
+        ...extra,
+      };
+
+      socket.emit("syncPlayerInventory", payload);
+      socket.emit("syncInventory", payload);
+      socket.emit("updatePlayerInventory", payload);
+      socket.emit("updateProfile", payload);
+      socket.emit("savePlayerProfile", payload);
+    };
+
+    const equipCharacter = (avatarKey) => {
+      const idx = this.profileAvatarKeys.indexOf(avatarKey);
+      if (idx >= 0) {
+        this.profileAvatarIndex = idx;
+        localStorage.setItem("profileAvatarKey", avatarKey);
+        this.updateProfileAvatarUI();
+
+        if (!this.isSingle && socket.connected) {
+          socket.emit("addCoins", { amount: -character.price });
+
+          const resolvedPlayerId =
+            this.myProfile.nickname ||
+            localStorage.getItem("nickname") ||
+            this.myNickname ||
+            "요리사";
+
+          socket.emit("setNickname", {
+            id: resolvedPlayerId,
+            nickname: this.myProfile.nickname,
+            avatarKey,
+          });
+
+          socket.emit("setCurrentCharacter", {
+            id: resolvedPlayerId,
+            userId: resolvedPlayerId,
+            currentCharacter: avatarKey,
+            current_character: avatarKey,
+          });
+        }
+
+        syncInventoryToServer("equipCharacter", {
+          currentCharacter: avatarKey,
+        });
+      }
+    };
+
     if (this.shopPopupContainer) this.shopPopupContainer.destroy();
     this.shopPopupContainer = this.add.container(0, 0).setDepth(200);
 
-    // 반투명 배경
     const overlay = this.add
       .rectangle(centerX, height * 0.5, width, height, 0x000000, 0.5)
       .setInteractive();
@@ -2042,12 +2385,10 @@ class LobbyScene extends Phaser.Scene {
       this.closeShopPopup();
     });
 
-    // 팝업 배경 (이미지 사용)
     const popupBg = this.add
       .image(centerX, popupY, "popupbg")
       .setDisplaySize(width * 0.85, height * 0.7);
 
-    // 제목
     const titleText = this.add
       .text(centerX, popupY - height * 0.28, "✨ 상점 ✨", {
         fontFamily: GAME_FONTS.main,
@@ -2059,12 +2400,10 @@ class LobbyScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    // 현재 코인 표시 배경
     const coinDisplayBg = this.add
       .image(centerX - width * 0.1, popupY - height * 0.2, "itembg")
       .setDisplaySize(width * 0.35, height * 0.06);
 
-    // 현재 코인 표시
     this.shopCoinText = this.add
       .text(
         centerX - width * 0.1,
@@ -2081,121 +2420,68 @@ class LobbyScene extends Phaser.Scene {
       )
       .setOrigin(0.5);
 
-    // 코인 구매 버튼 (이미지 사용)
-    const coinBuyBtn = this.add
-      .image(centerX + width * 0.22, popupY - height * 0.2, "uibtn")
-      .setDisplaySize(width * 0.12, height * 0.06)
-      .setInteractive({ useHandCursor: true });
+    const tabs = [
+      { key: "special", label: "특수카드" },
+      { key: "character", label: "케릭터" },
+      { key: "coin", label: "코인" },
+    ];
+    let currentTab = "special";
+    const tabIndexes = { special: 0, character: 0, coin: 0 };
 
-    const coinBuyBtnText = this.add
-      .text(centerX + width * 0.22, popupY - height * 0.2, "💰+", {
-        fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.04}px`,
-        color: "#ffffff",
-        fontWeight: "bold",
-        stroke: "#000000",
-        strokeThickness: 3,
-      })
-      .setOrigin(0.5);
+    const tabButtonWidth = width * 0.22;
+    const tabButtonHeight = height * 0.055;
+    const tabStartX = centerX - width * 0.24;
+    const tabY = popupY - height * 0.12;
+    const tabButtons = [];
 
-    coinBuyBtn.on("pointerdown", () => {
-      this.sound.play("pop", { volume: 0.1 });
-      this.tweens.add({
-        targets: coinBuyBtn,
-        scale: "*=0.95",
-        duration: 100,
-        yoyo: true,
-        ease: "Quad.easeInOut",
+    tabs.forEach((tab, idx) => {
+      const tabX = tabStartX + idx * width * 0.24;
+      const tabBg = this.add
+        .image(tabX, tabY, "uibtn")
+        .setDisplaySize(tabButtonWidth, tabButtonHeight)
+        .setInteractive({ useHandCursor: true });
+
+      const tabText = this.add
+        .text(tabX, tabY, tab.label, {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.034}px`,
+          color: "#ffffff",
+          fontWeight: "bold",
+          stroke: "#000000",
+          strokeThickness: 3,
+        })
+        .setOrigin(0.5);
+
+      tabBg.on("pointerdown", () => {
+        this.sound.play("pop", { volume: 0.08 });
+        currentTab = tab.key;
+        updateTabVisuals();
+        renderShopContent();
       });
-      this.showCoinShopPopup();
+
+      tabButtons.push({ key: tab.key, bg: tabBg, text: tabText });
     });
 
-    // 카드 표시 영역 초기화
-    let currentCardIndex = 0;
-    const cardDisplayContainer = this.add.container(centerX, popupY);
-
-    const updateCardDisplay = () => {
-      // 기존 카드 객체들 제거
-      cardDisplayContainer.removeAll(true);
-
-      // localStorage에서 보유 수량 읽기
-      const specialCardsOwned =
-        JSON.parse(localStorage.getItem("specialCards")) || {};
-      const ownedCount =
-        specialCardsOwned[specialCards[currentCardIndex].id] || 0;
-
-      const card = specialCards[currentCardIndex];
-
-      // 카드 배경 (이미지 사용)
-      const cardBg = this.add
-        .image(0, -10, "itembg")
-        .setDisplaySize(width * 0.65, height * 0.28);
-
-      const cardName = this.add
-        .text(0, -80, card.name, {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.07}px`,
-          color: "#39ff14",
-          fontWeight: "bold",
-          stroke: "#000000",
-          strokeThickness: 5,
-        })
-        .setOrigin(0.5);
-
-      const cardDesc = this.add
-        .text(0, -25, card.description, {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.04}px`,
-          color: "#ffffff",
-          align: "center",
-          stroke: "#000000",
-          strokeThickness: 3,
-          wordWrap: { width: width * 0.5 },
-        })
-        .setOrigin(0.5);
-
-      const cardPrice = this.add
-        .text(0, 25, `💰 ${card.price}`, {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.05}px`,
-          color: "#ffd700",
-          fontWeight: "bold",
-          stroke: "#000000",
-          strokeThickness: 4,
-        })
-        .setOrigin(0.5);
-
-      // 보유 수량 표시
-      const ownedText = this.add
-        .text(0, 65, `보유중: ${ownedCount}개`, {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.035}px`,
-          color: "#2ecc71",
-          fontWeight: "bold",
-          stroke: "#000000",
-          strokeThickness: 3,
-        })
-        .setOrigin(0.5);
-
-      cardDisplayContainer.add([
-        cardBg,
-        cardName,
-        cardDesc,
-        cardPrice,
-        ownedText,
-      ]);
+    const updateTabVisuals = () => {
+      tabButtons.forEach((tabButton) => {
+        const isActive = tabButton.key === currentTab;
+        tabButton.bg.setTint(isActive ? 0x2ecc71 : 0x7f8c8d);
+        tabButton.text.setAlpha(isActive ? 1 : 0.85);
+      });
     };
 
-    updateCardDisplay();
+    const cardDisplayContainer = this.add.container(
+      centerX,
+      popupY + height * 0.03,
+    );
 
-    // 왼쪽 버튼 (이미지 사용)
     const leftBtn = this.add
-      .image(centerX - width * 0.38, popupY, "uibtn")
+      .image(centerX - width * 0.38, popupY + height * 0.03, "uibtn")
       .setDisplaySize(width * 0.12, width * 0.12)
       .setInteractive({ useHandCursor: true });
 
     const leftIcon = this.add
-      .text(centerX - width * 0.38, popupY, "◀", {
+      .text(centerX - width * 0.38, popupY + height * 0.03, "◀", {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.05}px`,
         color: "#ffffff",
@@ -2205,28 +2491,13 @@ class LobbyScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    leftBtn.on("pointerdown", () => {
-      this.sound.play("pop", { volume: 0.08 });
-      this.tweens.add({
-        targets: leftBtn,
-        scale: "*=0.95",
-        duration: 100,
-        yoyo: true,
-        ease: "Quad.easeInOut",
-      });
-      currentCardIndex =
-        (currentCardIndex - 1 + specialCards.length) % specialCards.length;
-      updateCardDisplay();
-    });
-
-    // 오른쪽 버튼 (이미지 사용)
     const rightBtn = this.add
-      .image(centerX + width * 0.38, popupY, "uibtn")
+      .image(centerX + width * 0.38, popupY + height * 0.03, "uibtn")
       .setDisplaySize(width * 0.12, width * 0.12)
       .setInteractive({ useHandCursor: true });
 
     const rightIcon = this.add
-      .text(centerX + width * 0.38, popupY, "▶", {
+      .text(centerX + width * 0.38, popupY + height * 0.03, "▶", {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.05}px`,
         color: "#ffffff",
@@ -2236,27 +2507,13 @@ class LobbyScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    rightBtn.on("pointerdown", () => {
-      this.sound.play("pop", { volume: 0.08 });
-      this.tweens.add({
-        targets: rightBtn,
-        scale: "*=0.95",
-        duration: 100,
-        yoyo: true,
-        ease: "Quad.easeInOut",
-      });
-      currentCardIndex = (currentCardIndex + 1) % specialCards.length;
-      updateCardDisplay();
-    });
-
-    // 구매 버튼 (이미지 사용)
     const buyBtn = this.add
-      .image(centerX, popupY + height * 0.21, "btnbg")
+      .image(centerX, popupY + height * 0.24, "btnbg")
       .setDisplaySize(width * 0.45, height * 0.08)
       .setInteractive({ useHandCursor: true });
 
     const buyBtnText = this.add
-      .text(centerX, popupY + height * 0.21, "💳 구매하기", {
+      .text(centerX, popupY + height * 0.24, "💳 구매하기", {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.05}px`,
         color: "#ffffff",
@@ -2266,51 +2523,379 @@ class LobbyScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    buyBtn.on("pointerdown", () => {
-      const card = specialCards[currentCardIndex];
-      if (this.myProfile.coins >= card.price) {
-        this.sound.play("pop", { volume: 0.1 });
-        this.tweens.add({
-          targets: buyBtn,
-          scale: "*=0.95",
-          duration: 100,
-          yoyo: true,
-          ease: "Quad.easeInOut",
-        });
-        this.myProfile.coins -= card.price;
-        localStorage.setItem("profileCoins", String(this.myProfile.coins));
+    const renderShopContent = () => {
+      cardDisplayContainer.removeAll(true);
 
-        // 특수카드 저장 (로컬)
-        let specialCardsOwned =
+      const index = tabIndexes[currentTab];
+      const detailBg = this.add
+        .image(0, -8, "itembg")
+        .setDisplaySize(width * 0.65, height * 0.29);
+
+      if (currentTab === "special") {
+        const card = specialCards[index];
+        const specialCardsOwned =
           JSON.parse(localStorage.getItem("specialCards")) || {};
-        if (!specialCardsOwned[card.id]) {
-          specialCardsOwned[card.id] = 0;
-        }
-        specialCardsOwned[card.id] += 1;
-        localStorage.setItem("specialCards", JSON.stringify(specialCardsOwned));
+        const ownedCount = specialCardsOwned[card.id] || 0;
 
-        // 💰 코인 텍스트 실시간 업데이트
+        const nameText = this.add
+          .text(0, -80, card.name, {
+            fontFamily: GAME_FONTS.main,
+            fontSize: `${width * 0.07}px`,
+            color: "#39ff14",
+            fontWeight: "bold",
+            stroke: "#000000",
+            strokeThickness: 5,
+          })
+          .setOrigin(0.5);
+
+        const descText = this.add
+          .text(0, -25, card.description, {
+            fontFamily: GAME_FONTS.main,
+            fontSize: `${width * 0.04}px`,
+            color: "#ffffff",
+            align: "center",
+            stroke: "#000000",
+            strokeThickness: 3,
+            wordWrap: { width: width * 0.5 },
+          })
+          .setOrigin(0.5);
+
+        const priceText = this.add
+          .text(0, 25, `💰 ${card.price}`, {
+            fontFamily: GAME_FONTS.main,
+            fontSize: `${width * 0.05}px`,
+            color: "#ffd700",
+            fontWeight: "bold",
+            stroke: "#000000",
+            strokeThickness: 4,
+          })
+          .setOrigin(0.5);
+
+        const ownedText = this.add
+          .text(0, 65, `보유중: ${ownedCount}개`, {
+            fontFamily: GAME_FONTS.main,
+            fontSize: `${width * 0.035}px`,
+            color: "#2ecc71",
+            fontWeight: "bold",
+            stroke: "#000000",
+            strokeThickness: 3,
+          })
+          .setOrigin(0.5);
+
+        cardDisplayContainer.add([
+          detailBg,
+          nameText,
+          descText,
+          priceText,
+          ownedText,
+        ]);
+
+        buyBtnText.setText("💳 구매하기");
+      }
+
+      if (currentTab === "character") {
+        const character = characterItems[index];
+        const ownedCharacters = getOwnedCharacters();
+        const isOwned = !!ownedCharacters[character.key];
+        const isEquipped =
+          this.profileAvatarKeys[this.profileAvatarIndex] === character.key;
+
+        const nameText = this.add
+          .text(0, -80, character.name, {
+            fontFamily: GAME_FONTS.main,
+            fontSize: `${width * 0.065}px`,
+            color: "#4ecdc4",
+            fontWeight: "bold",
+            stroke: "#000000",
+            strokeThickness: 5,
+          })
+          .setOrigin(0.5);
+
+        const descText = this.add
+          .text(0, -25, character.description, {
+            fontFamily: GAME_FONTS.main,
+            fontSize: `${width * 0.04}px`,
+            color: "#ffffff",
+            align: "center",
+            stroke: "#000000",
+            strokeThickness: 3,
+            wordWrap: { width: width * 0.5 },
+          })
+          .setOrigin(0.5);
+
+        const priceText = this.add
+          .text(0, 25, character.price > 0 ? `💰 ${character.price}` : "무료", {
+            fontFamily: GAME_FONTS.main,
+            fontSize: `${width * 0.05}px`,
+            color: "#ffd700",
+            fontWeight: "bold",
+            stroke: "#000000",
+            strokeThickness: 4,
+          })
+          .setOrigin(0.5);
+
+        const ownedText = this.add
+          .text(0, 65, isOwned ? "보유중" : "미보유", {
+            fontFamily: GAME_FONTS.main,
+            fontSize: `${width * 0.035}px`,
+            color: isOwned ? "#2ecc71" : "#ff6b6b",
+            fontWeight: "bold",
+            stroke: "#000000",
+            strokeThickness: 3,
+          })
+          .setOrigin(0.5);
+
+        cardDisplayContainer.add([
+          detailBg,
+          nameText,
+          descText,
+          priceText,
+          ownedText,
+        ]);
+
+        if (isOwned) {
+          buyBtnText.setText(isEquipped ? "✅ 착용중" : "🎮 착용하기");
+        } else {
+          buyBtnText.setText("💳 구매하기");
+        }
+      }
+
+      if (currentTab === "coin") {
+        const product = coinProducts[index];
+
+        const nameText = this.add
+          .text(0, -80, "💎 코인 패키지", {
+            fontFamily: GAME_FONTS.main,
+            fontSize: `${width * 0.065}px`,
+            color: "#ffd700",
+            fontWeight: "bold",
+            stroke: "#000000",
+            strokeThickness: 5,
+          })
+          .setOrigin(0.5);
+
+        const amountText = this.add
+          .text(0, -25, `💰 ${product.amount} 충전`, {
+            fontFamily: GAME_FONTS.main,
+            fontSize: `${width * 0.05}px`,
+            color: "#4ecdc4",
+            fontWeight: "bold",
+            stroke: "#000000",
+            strokeThickness: 3,
+          })
+          .setOrigin(0.5);
+
+        const priceText = this.add
+          .text(0, 25, product.display, {
+            fontFamily: GAME_FONTS.main,
+            fontSize: `${width * 0.05}px`,
+            color: "#ffffff",
+            fontWeight: "bold",
+            stroke: "#000000",
+            strokeThickness: 4,
+          })
+          .setOrigin(0.5);
+
+        const tipText = this.add
+          .text(0, 65, "구매 시 즉시 코인 추가", {
+            fontFamily: GAME_FONTS.main,
+            fontSize: `${width * 0.032}px`,
+            color: "#2ecc71",
+            fontWeight: "bold",
+            stroke: "#000000",
+            strokeThickness: 3,
+          })
+          .setOrigin(0.5);
+
+        cardDisplayContainer.add([
+          detailBg,
+          nameText,
+          amountText,
+          priceText,
+          tipText,
+        ]);
+
+        buyBtnText.setText("💎 충전하기");
+      }
+    };
+
+    leftBtn.on("pointerdown", () => {
+      const activeLength =
+        currentTab === "special"
+          ? specialCards.length
+          : currentTab === "character"
+            ? characterItems.length
+            : coinProducts.length;
+
+      this.sound.play("pop", { volume: 0.08 });
+      this.tweens.add({
+        targets: leftBtn,
+        scale: "*=0.95",
+        duration: 100,
+        yoyo: true,
+        ease: "Quad.easeInOut",
+      });
+      tabIndexes[currentTab] =
+        (tabIndexes[currentTab] - 1 + activeLength) % activeLength;
+      renderShopContent();
+    });
+
+    rightBtn.on("pointerdown", () => {
+      const activeLength =
+        currentTab === "special"
+          ? specialCards.length
+          : currentTab === "character"
+            ? characterItems.length
+            : coinProducts.length;
+
+      this.sound.play("pop", { volume: 0.08 });
+      this.tweens.add({
+        targets: rightBtn,
+        scale: "*=0.95",
+        duration: 100,
+        yoyo: true,
+        ease: "Quad.easeInOut",
+      });
+      tabIndexes[currentTab] = (tabIndexes[currentTab] + 1) % activeLength;
+      renderShopContent();
+    });
+
+    buyBtn.on("pointerdown", () => {
+      this.sound.play("pop", { volume: 0.1 });
+      this.tweens.add({
+        targets: buyBtn,
+        scale: "*=0.95",
+        duration: 100,
+        yoyo: true,
+        ease: "Quad.easeInOut",
+      });
+
+      if (currentTab === "special") {
+        const card = specialCards[tabIndexes.special];
+        if (this.myProfile.coins >= card.price) {
+          this.myProfile.coins -= card.price;
+          localStorage.setItem("profileCoins", String(this.myProfile.coins));
+
+          const specialCardsOwned =
+            JSON.parse(localStorage.getItem("specialCards")) || {};
+          if (!specialCardsOwned[card.id]) {
+            specialCardsOwned[card.id] = 0;
+          }
+          specialCardsOwned[card.id] += 1;
+          localStorage.setItem(
+            "specialCards",
+            JSON.stringify(specialCardsOwned),
+          );
+
+          this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
+          this.updateMyProfileUI();
+
+          if (!this.isSingle && socket.connected) {
+            socket.emit("buySpecialCard", {
+              cardId: card.id,
+              cardPrice: card.price,
+            });
+          }
+
+          syncInventoryToServer("buySpecialCard", {
+            boughtItemId: card.id,
+          });
+
+          this.showToast(`${card.name} 구매 완료!`, "#2ecc71");
+          renderShopContent();
+        } else {
+          this.showToast("코인이 부족합니다!", "#e74c3c");
+        }
+        return;
+      }
+
+      if (currentTab === "character") {
+        const character = characterItems[tabIndexes.character];
+        const characterId = getCharacterIdFromKey(character.key);
+        const ownedCharacters = getOwnedCharacters();
+        const isOwned = !!ownedCharacters[character.key];
+
+        if (isOwned) {
+          equipCharacter(character.key);
+          this.showToast(`${character.name} 착용 완료!`, "#2ecc71");
+          renderShopContent();
+          return;
+        }
+
+        if (this.myProfile.coins < character.price) {
+          this.showToast("코인이 부족합니다!", "#e74c3c");
+          return;
+        }
+
+        this.myProfile.coins -= character.price;
+        localStorage.setItem("profileCoins", String(this.myProfile.coins));
         this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
 
-        // 카드 표시 업데이트 (보유 수량 변경 반영)
-        updateCardDisplay();
-
+        ownedCharacters[character.key] = true;
+        saveOwnedCharacters(ownedCharacters);
+        equipCharacter(character.key);
         this.updateMyProfileUI();
 
-        // 🔹 서버에 구매 정보 전송 (멀티플레이인 경우)
         if (!this.isSingle && socket.connected) {
-          socket.emit("buySpecialCard", {
-            cardId: card.id,
-            cardPrice: card.price,
+          const resolvedPlayerId =
+            this.myProfile.nickname ||
+            localStorage.getItem("nickname") ||
+            this.myNickname ||
+            "요리사";
+
+          socket.emit("addCoins", {
+            id: resolvedPlayerId,
+            nickname: resolvedPlayerId,
+            amount: -character.price,
           });
+
+          const characterPayload = {
+            id: resolvedPlayerId,
+            userId: resolvedPlayerId,
+            player_id: resolvedPlayerId,
+            nickname: this.myProfile.nickname,
+            playerId: socket.id,
+            characterKey: character.key,
+            characterId,
+            characterPrice: character.price,
+            currentCharacter: character.key,
+            current_character: character.key,
+            ownedCharacters: Object.keys(ownedCharacters).filter(
+              (key) => ownedCharacters[key],
+            ),
+            owned_characters: Object.keys(ownedCharacters).filter(
+              (key) => ownedCharacters[key],
+            ),
+            coins: Number(this.myProfile.coins) || 0,
+          };
+
+          socket.emit("buyCharacter", characterPayload);
+          socket.emit("purchaseCharacter", characterPayload);
+          socket.emit("characterPurchased", characterPayload);
         }
 
-        this.showToast(`${card.name} 구매 완료!`, "#2ecc71");
-      } else {
-        this.sound.play("pop", { volume: 0.08 });
-        this.showToast("코인이 부족합니다!", "#e74c3c");
+        syncInventoryToServer("buyCharacter", {
+          boughtCharacter: character.key,
+          bought_character: character.key,
+        });
+        this.showToast(`${character.name} 구매 완료!`, "#2ecc71");
+        renderShopContent();
+        return;
+      }
+
+      if (currentTab === "coin") {
+        const product = coinProducts[tabIndexes.coin];
+        this.buyCoin(product.amount);
+        this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
+        syncInventoryToServer("buyCoin", {
+          boughtCoinAmount: product.amount,
+        });
+        renderShopContent();
       }
     });
+
+    updateTabVisuals();
+    renderShopContent();
 
     // 닫기 버튼 (이미지 사용)
     const closeBtn = this.add
@@ -2347,8 +2932,7 @@ class LobbyScene extends Phaser.Scene {
       titleText,
       coinDisplayBg,
       this.shopCoinText,
-      coinBuyBtn,
-      coinBuyBtnText,
+      ...tabButtons.flatMap((tabButton) => [tabButton.bg, tabButton.text]),
       cardDisplayContainer,
       leftBtn,
       leftIcon,

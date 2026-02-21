@@ -34,26 +34,67 @@ const pool = new Pool({
 });
 
 // 2. [저장하기] 플레이어 데이터 저장/업데이트 (UPSERT)
-async function savePlayer(id, level, coins, items, experience) {
+async function savePlayer(
+  id,
+  level,
+  coins,
+  items,
+  experience,
+  ownedCharacters = null,
+  currentCharacter = null,
+) {
+  const normalizedOwnedCharacters = Array.isArray(ownedCharacters)
+    ? ownedCharacters.filter((key) => /^player_[1-4]$/.test(String(key)))
+    : null;
+
+  const normalizedCurrentCharacter = /^player_[1-4]$/.test(
+    String(currentCharacter || ""),
+  )
+    ? currentCharacter
+    : null;
+
   const query = `
-    INSERT INTO players (id, level, coins, items, experience, updated_at)
-    VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+    INSERT INTO players (
+      id,
+      level,
+      coins,
+      items,
+      experience,
+      owned_characters,
+      current_character,
+      updated_at
+    )
+    VALUES (
+      $1,
+      $2,
+      $3,
+      $4,
+      $5,
+      COALESCE($6::jsonb, '[]'::jsonb),
+      COALESCE($7, 'player_1'),
+      CURRENT_TIMESTAMP
+    )
     ON CONFLICT (id) 
     DO UPDATE SET 
       level = EXCLUDED.level,
       coins = EXCLUDED.coins,
       items = EXCLUDED.items,
       experience = EXCLUDED.experience,
+      owned_characters = COALESCE($6::jsonb, players.owned_characters),
+      current_character = COALESCE($7, players.current_character),
       updated_at = CURRENT_TIMESTAMP;
   `;
   try {
-    // items는 배열 ['potion', 'sword'] 형태 그대로 넣으면 pg가 처리합니다.
     await pool.query(query, [
       id,
       level,
       coins,
       JSON.stringify(items),
       experience,
+      normalizedOwnedCharacters
+        ? JSON.stringify(normalizedOwnedCharacters)
+        : null,
+      normalizedCurrentCharacter,
     ]);
     console.log(`✅ ${id} 데이터 저장 성공`);
   } catch (err) {
@@ -66,6 +107,14 @@ async function ensurePlayersSchema() {
     await pool.query(`
       ALTER TABLE players
       ADD COLUMN IF NOT EXISTS experience INTEGER NOT NULL DEFAULT 0;
+    `);
+    await pool.query(`
+      ALTER TABLE players
+      ADD COLUMN IF NOT EXISTS owned_characters JSONB NOT NULL DEFAULT '[]'::jsonb;
+    `);
+    await pool.query(`
+      ALTER TABLE players
+      ADD COLUMN IF NOT EXISTS current_character TEXT NOT NULL DEFAULT 'player_1';
     `);
     console.log("✅ players.experience 컬럼 확인 완료");
   } catch (err) {
@@ -106,6 +155,36 @@ const XP_PER_LEVEL = 100;
 
 function getLevelFromExperience(experience) {
   return Math.floor((Number(experience) || 0) / XP_PER_LEVEL) + 1;
+}
+
+function normalizeCharacterKey(value) {
+  return /^player_[1-4]$/.test(String(value || "")) ? String(value) : null;
+}
+
+function normalizeOwnedCharacters(value) {
+  const normalized = new Set(["player_1"]);
+
+  if (Array.isArray(value)) {
+    value.forEach((key) => {
+      const normalizedKey = normalizeCharacterKey(key);
+      if (normalizedKey) normalized.add(normalizedKey);
+    });
+  } else if (value && typeof value === "object") {
+    Object.entries(value).forEach(([key, owned]) => {
+      const normalizedKey = normalizeCharacterKey(key);
+      if (normalizedKey && owned) normalized.add(normalizedKey);
+    });
+  } else if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return normalizeOwnedCharacters(parsed);
+    } catch (err) {
+      const normalizedKey = normalizeCharacterKey(value);
+      if (normalizedKey) normalized.add(normalizedKey);
+    }
+  }
+
+  return Array.from(normalized);
 }
 
 // 헬스체크
@@ -343,6 +422,8 @@ io.on("connection", (socket) => {
     socket.experience = 0;
     socket.items = [];
     socket.specialCards = {}; // 특수카드 초기화
+    socket.ownedCharacters = ["player_1"];
+    socket.currentCharacter = avatarKey;
 
     // 💡 [추가] DB에서 유저 데이터 불러오기
     const savedData = await getPlayer(socket.nickname);
@@ -394,6 +475,14 @@ io.on("connection", (socket) => {
         Math.max((Number(savedData.level) || 1) - 1, 0) * XP_PER_LEVEL;
       socket.items = parsedItems;
       socket.specialCards = parsedSpecialCards; // 특수카드 할당
+      socket.ownedCharacters = normalizeOwnedCharacters(
+        savedData.owned_characters,
+      );
+      socket.currentCharacter =
+        normalizeCharacterKey(savedData.current_character) ||
+        socket.currentCharacter ||
+        "player_1";
+      socket.avatarKey = socket.currentCharacter;
       console.log(`✅ setNickname - ${socket.nickname} DB 로드 완료:`, {
         level: socket.level,
         coins: socket.coins,
@@ -418,8 +507,10 @@ io.on("connection", (socket) => {
       coins: Number(socket.coins) || 0,
       items: Array.isArray(socket.items) ? socket.items : [],
       experience: Number(socket.experience) || 0,
-      avatarKey: socket.avatarKey || "player_1",
+      avatarKey: socket.currentCharacter || socket.avatarKey || "player_1",
       specialCards: socket.specialCards || {},
+      owned_characters: socket.ownedCharacters || ["player_1"],
+      current_character: socket.currentCharacter || "player_1",
     });
 
     if (socket.roomId && rooms[socket.roomId]) {
@@ -474,6 +565,8 @@ io.on("connection", (socket) => {
       socket.coins,
       mergedItems,
       socket.experience,
+      socket.ownedCharacters,
+      socket.currentCharacter,
     );
 
     // 4. 클라이언트에 최신 프로필 전송
@@ -483,8 +576,10 @@ io.on("connection", (socket) => {
       coins: Number(socket.coins) || 0,
       items: Array.isArray(socket.items) ? socket.items : [],
       experience: Number(socket.experience) || 0,
-      avatarKey: socket.avatarKey || "player_1",
+      avatarKey: socket.currentCharacter || socket.avatarKey || "player_1",
       specialCards: socket.specialCards || {},
+      owned_characters: socket.ownedCharacters || ["player_1"],
+      current_character: socket.currentCharacter || "player_1",
     });
 
     console.log(
@@ -511,6 +606,8 @@ io.on("connection", (socket) => {
       socket.coins,
       mergedItems,
       socket.experience,
+      socket.ownedCharacters,
+      socket.currentCharacter,
     );
 
     // 3. 클라이언트에 최신 프로필 전송
@@ -520,12 +617,163 @@ io.on("connection", (socket) => {
       coins: Number(socket.coins) || 0,
       items: Array.isArray(socket.items) ? socket.items : [],
       experience: Number(socket.experience) || 0,
-      avatarKey: socket.avatarKey || "player_1",
+      avatarKey: socket.currentCharacter || socket.avatarKey || "player_1",
       specialCards: socket.specialCards || {},
+      owned_characters: socket.ownedCharacters || ["player_1"],
+      current_character: socket.currentCharacter || "player_1",
     });
 
     console.log(
       `✅ ${socket.nickname}이(가) 코인 ${amount}개 구매 (현재 보유: ${socket.coins}개)`,
+    );
+  });
+
+  socket.on("buyCharacter", async (data) => {
+    const payload = data && typeof data === "object" ? data : {};
+    const characterKey =
+      normalizeCharacterKey(payload.characterKey) ||
+      normalizeCharacterKey(payload.currentCharacter) ||
+      normalizeCharacterKey(payload.current_character);
+    const characterPrice = Number(payload.characterPrice ?? payload.price ?? 0);
+
+    if (!characterKey) {
+      return socket.emit("buyCharacterError", "유효하지 않은 캐릭터입니다.");
+    }
+
+    if (!Number.isFinite(characterPrice) || characterPrice < 0) {
+      return socket.emit("buyCharacterError", "유효하지 않은 가격입니다.");
+    }
+
+    const hasEnoughCoins = (Number(socket.coins) || 0) >= characterPrice;
+    if (!hasEnoughCoins) {
+      return socket.emit("buyCharacterError", "코인이 부족합니다.");
+    }
+
+    socket.coins = (Number(socket.coins) || 0) - characterPrice;
+    socket.ownedCharacters = normalizeOwnedCharacters([
+      ...(socket.ownedCharacters || ["player_1"]),
+      characterKey,
+    ]);
+    socket.currentCharacter = characterKey;
+    socket.avatarKey = characterKey;
+
+    const mergedItems = {
+      items: Array.isArray(socket.items) ? socket.items : [],
+      specialCards: socket.specialCards || {},
+    };
+
+    await savePlayer(
+      socket.nickname,
+      socket.level,
+      socket.coins,
+      mergedItems,
+      socket.experience,
+      socket.ownedCharacters,
+      socket.currentCharacter,
+    );
+
+    socket.emit("myProfile", {
+      nickname: socket.nickname,
+      level: Number(socket.level) || 1,
+      coins: Number(socket.coins) || 0,
+      items: Array.isArray(socket.items) ? socket.items : [],
+      experience: Number(socket.experience) || 0,
+      avatarKey: socket.currentCharacter || socket.avatarKey || "player_1",
+      specialCards: socket.specialCards || {},
+      owned_characters: socket.ownedCharacters || ["player_1"],
+      current_character: socket.currentCharacter || "player_1",
+    });
+
+    console.log(
+      `✅ ${socket.nickname} 캐릭터 구매 완료: ${characterKey}, 남은 코인 ${socket.coins}`,
+    );
+  });
+
+  socket.on("setCurrentCharacter", async (data) => {
+    const payload = data && typeof data === "object" ? data : {};
+    const characterKey =
+      normalizeCharacterKey(payload.currentCharacter) ||
+      normalizeCharacterKey(payload.current_character) ||
+      normalizeCharacterKey(payload.characterKey);
+
+    if (!characterKey) return;
+
+    const ownedCharacters = normalizeOwnedCharacters(
+      socket.ownedCharacters || ["player_1"],
+    );
+    if (!ownedCharacters.includes(characterKey)) {
+      return;
+    }
+
+    socket.currentCharacter = characterKey;
+    socket.avatarKey = characterKey;
+
+    const mergedItems = {
+      items: Array.isArray(socket.items) ? socket.items : [],
+      specialCards: socket.specialCards || {},
+    };
+
+    await savePlayer(
+      socket.nickname,
+      socket.level,
+      socket.coins,
+      mergedItems,
+      socket.experience,
+      ownedCharacters,
+      socket.currentCharacter,
+    );
+  });
+
+  socket.on("syncPlayerInventory", async (data) => {
+    const payload = data && typeof data === "object" ? data : {};
+
+    if (typeof payload.coins !== "undefined") {
+      const incomingCoins = Number(payload.coins);
+      if (Number.isFinite(incomingCoins)) {
+        socket.coins = incomingCoins;
+      }
+    }
+
+    const incomingOwnedCharacters =
+      payload.owned_characters || payload.ownedCharacters;
+    if (typeof incomingOwnedCharacters !== "undefined") {
+      socket.ownedCharacters = normalizeOwnedCharacters(
+        incomingOwnedCharacters,
+      );
+    } else {
+      socket.ownedCharacters = normalizeOwnedCharacters(
+        socket.ownedCharacters || ["player_1"],
+      );
+    }
+
+    const incomingCurrentCharacter =
+      normalizeCharacterKey(payload.current_character) ||
+      normalizeCharacterKey(payload.currentCharacter);
+    if (
+      incomingCurrentCharacter &&
+      socket.ownedCharacters.includes(incomingCurrentCharacter)
+    ) {
+      socket.currentCharacter = incomingCurrentCharacter;
+      socket.avatarKey = incomingCurrentCharacter;
+    }
+
+    if (payload.specialCards && typeof payload.specialCards === "object") {
+      socket.specialCards = payload.specialCards;
+    }
+
+    const mergedItems = {
+      items: Array.isArray(socket.items) ? socket.items : [],
+      specialCards: socket.specialCards || {},
+    };
+
+    await savePlayer(
+      socket.nickname,
+      socket.level,
+      socket.coins,
+      mergedItems,
+      socket.experience,
+      socket.ownedCharacters,
+      socket.currentCharacter || "player_1",
     );
   });
 
