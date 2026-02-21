@@ -126,7 +126,79 @@ class LobbyScene extends Phaser.Scene {
       VERSION = "";
     }
 
+    const PLAYER1_SPRITE_VERSION = VERSION
+      ? `${VERSION}&p1=20260221_8`
+      : "?p1=20260221_8";
+    const MYBG_SPRITE_VERSION = VERSION
+      ? `${VERSION}&mbg=20260221_3`
+      : "?mbg=20260221_3";
+
+    [
+      "player_1_sprite_a",
+      "player_1_sprite_b",
+      "player_1_sprite_c",
+      "player_1_sprite_d",
+    ].forEach((textureKey) => {
+      if (this.textures.exists(textureKey)) {
+        this.textures.remove(textureKey);
+      }
+    });
+
+    const player1AnimKey = this.getAvatarAnimKey("player_1");
+    if (this.anims.exists(player1AnimKey)) {
+      this.anims.remove(player1AnimKey);
+    }
+
+    [
+      "mybg_sprite_a",
+      "mybg_sprite_b",
+      "mybg_sprite_c",
+      "mybg_sprite_d",
+    ].forEach((textureKey) => {
+      if (this.textures.exists(textureKey)) {
+        this.textures.remove(textureKey);
+      }
+    });
+
+    const mybgAnimKey = this.getMybgAnimKey();
+    if (this.anims.exists(mybgAnimKey)) {
+      this.anims.remove(mybgAnimKey);
+    }
+
     this.load.image("mybg", `${ASSET_SERVER}/images/mybg.png${VERSION}`);
+    this.load.spritesheet(
+      "mybg_sprite_a",
+      `${ASSET_SERVER}/images/mybg_sprite_a.png${MYBG_SPRITE_VERSION}`,
+      {
+        frameWidth: 416,
+        frameHeight: 752,
+      },
+    );
+    this.load.spritesheet(
+      "mybg_sprite_b",
+      `${ASSET_SERVER}/images/mybg_sprite_b.png${MYBG_SPRITE_VERSION}`,
+      {
+        frameWidth: 416,
+        frameHeight: 752,
+      },
+    );
+    this.load.spritesheet(
+      "mybg_sprite_c",
+      `${ASSET_SERVER}/images/mybg_sprite_c.png${MYBG_SPRITE_VERSION}`,
+      {
+        frameWidth: 416,
+        frameHeight: 752,
+      },
+    );
+    this.load.spritesheet(
+      "mybg_sprite_d",
+      `${ASSET_SERVER}/images/mybg_sprite_d.png${MYBG_SPRITE_VERSION}`,
+      {
+        frameWidth: 416,
+        frameHeight: 752,
+      },
+    );
+
     this.load.image("gamebg", `${ASSET_SERVER}/images/gamebg.png${VERSION}`);
 
     this.load.image("roombg", `${ASSET_SERVER}/images/roombg.png${VERSION}`);
@@ -142,8 +214,40 @@ class LobbyScene extends Phaser.Scene {
 
     this.load.image("slide", `${ASSET_SERVER}/images/slide.png${VERSION}`);
     this.load.image("chef", `${ASSET_SERVER}/images/chef.png${VERSION}`);
+    this.load.spritesheet(
+      "player_1_sprite_a",
+      `${ASSET_SERVER}/images/player_1_sprite_a.png${PLAYER1_SPRITE_VERSION}`,
+      {
+        frameWidth: 480,
+        frameHeight: 640,
+      },
+    );
+    this.load.spritesheet(
+      "player_1_sprite_b",
+      `${ASSET_SERVER}/images/player_1_sprite_b.png${PLAYER1_SPRITE_VERSION}`,
+      {
+        frameWidth: 480,
+        frameHeight: 640,
+      },
+    );
+    this.load.spritesheet(
+      "player_1_sprite_c",
+      `${ASSET_SERVER}/images/player_1_sprite_c.png${PLAYER1_SPRITE_VERSION}`,
+      {
+        frameWidth: 480,
+        frameHeight: 640,
+      },
+    );
+    this.load.spritesheet(
+      "player_1_sprite_d",
+      `${ASSET_SERVER}/images/player_1_sprite_d.png${PLAYER1_SPRITE_VERSION}`,
+      {
+        frameWidth: 480,
+        frameHeight: 640,
+      },
+    );
 
-    // 플레이어 애니메이션용 이미지 (각 2프레임)
+    // 플레이어 애니메이션용 이미지
     this.load.image(
       "player_1_1",
       `${ASSET_SERVER}/images/player_1_1.png${VERSION}`,
@@ -151,6 +255,14 @@ class LobbyScene extends Phaser.Scene {
     this.load.image(
       "player_1_2",
       `${ASSET_SERVER}/images/player_1_2.png${VERSION}`,
+    );
+    this.load.image(
+      "player_1_3",
+      `${ASSET_SERVER}/images/player_1_3.png${VERSION}`,
+    );
+    this.load.image(
+      "player_1_4",
+      `${ASSET_SERVER}/images/player_1_4.png${VERSION}`,
     );
     this.load.image(
       "player_2_1",
@@ -301,11 +413,21 @@ class LobbyScene extends Phaser.Scene {
       }
     }
 
-    this.add
-      .image(centerX, height / 2, "mybg")
+    const lobbyBg = this.add
+      .sprite(centerX, height / 2, "mybg")
       .setDisplaySize(width, height * 1.1)
-      .setDepth(0) // 레이어 순서를 가장 뒤로
-      .setAlpha(1); // 게임 화면은 집중을 위해 약간 어둡게 처리(선택사항)
+      .setDepth(0)
+      .setAlpha(1);
+
+    const mybgAnimKey = this.ensureMybgAnimation();
+    if (mybgAnimKey && this.canUseMybgSpriteSheets()) {
+      lobbyBg.setTexture("mybg_sprite_a", 0);
+      lobbyBg.play(mybgAnimKey, true);
+      lobbyBg.setDisplaySize(width, height * 1.1);
+    } else if (this.textures.exists("mybg")) {
+      lobbyBg.setTexture("mybg");
+      lobbyBg.setDisplaySize(width, height * 1.1);
+    }
 
     socket.off("hostChanged").on("hostChanged", (data) => {
       if (data.players) this.currentPlayers = data.players;
@@ -395,39 +517,31 @@ class LobbyScene extends Phaser.Scene {
 ======================================================= */
     const x = centerX; // 화면 중앙
     const y = height * 0.42;
-    const btnW = width * 0.5; // 단일 버튼이므로 크기를 조금 더 키움
     const btnH = height * 0.07;
 
-    const multiBtn = this.add.container(x, y);
+    const actionBtnY = height * 0.8;
+    const actionBtnW = width * 0.28;
+    const actionBtnGap = width * 0.03;
+    const actionBtnOffset = actionBtnW + actionBtnGap;
 
-    const profileCenterY = y - height * 0.02;
+    const multiBtn = this.add.container(centerX - actionBtnOffset, actionBtnY);
+
+    const profileCenterY = y;
     const profileSize = width * 0.2;
     const profileContainer = this.add.container(centerX, profileCenterY);
 
     // 프로필 배경 이미지
     const profileBg = this.add
       .image(0, y * 0.1, "profilebg")
-      .setDisplaySize(profileSize * 2.3, profileSize * 2.1)
+      .setDisplaySize(profileSize * 2.3, profileSize * 2.5)
       .setAlpha(1.0);
 
     // 프로필 이미지를 스프라이트로 생성하고 애니메이션 적용
     const currentKey = this.profileAvatarKeys[this.profileAvatarIndex];
     this.profileImage = this.add
-      .image(0, 0, `${currentKey}_1`)
+      .sprite(0, 0, `${currentKey}_1`)
       .setDisplaySize(profileSize, profileSize);
-
-    // 캐릭터 애니메이션 (프레임 전환)
-    this.profileAnimFrame = 1;
-    this.profileAnimTimer = this.time.addEvent({
-      delay: 500,
-      callback: () => {
-        if (!this.profileImage || !this.profileImage.active) return;
-        this.profileAnimFrame = this.profileAnimFrame === 1 ? 2 : 1;
-        const currentKey = this.profileAvatarKeys[this.profileAvatarIndex];
-        this.profileImage.setTexture(`${currentKey}_${this.profileAnimFrame}`);
-      },
-      loop: true,
-    });
+    this.applyAvatarAnimation(this.profileImage, currentKey);
 
     const avatarLeftBtn = this.add
       .circle(-profileSize * 0.75, 0, profileSize * 0.14, 0x000000, 0.55)
@@ -589,15 +703,15 @@ class LobbyScene extends Phaser.Scene {
     this.updateProfileAvatarUI();
 
     const multiBtnImg = this.add
-      .image(0, y * 0.47, "uibtn")
-      .setDisplaySize(btnW, btnH * 1.2)
+      .image(0, 0, "uibtn")
+      .setDisplaySize(actionBtnW, btnH * 1.2)
       .setInteractive();
 
     // 2. 버튼 텍스트
     const multiBtnText = this.add
-      .text(0, y * 0.47, "멀티플레이", {
+      .text(0, 0, "멀티플레이", {
         fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.06}px`,
+        fontSize: `${width * 0.042}px`,
         color: "#ffffff",
         fontWeight: "bold",
       })
@@ -630,24 +744,19 @@ class LobbyScene extends Phaser.Scene {
       });
     });
 
-    // 인원 선택 버튼들 [2, 3, 4] 아래에 추가
-    const singleBtnY = height * 0.5; // 싱글플레이 버튼 위치
-    const singleBtnW = width * 0.5;
-    const singleBtnH = height * 0.07;
-
-    const singleBtn = this.add.container(centerX, singleBtnY);
+    const singleBtn = this.add.container(centerX, actionBtnY);
     const singleBtnImg = this.add
-      .image(0, y * 0.5, "uibtn")
-      .setDisplaySize(singleBtnW, singleBtnH * 1.2)
+      .image(0, 0, "uibtn")
+      .setDisplaySize(actionBtnW, btnH * 1.2)
       .setInteractive()
       .setTint(0xffd700); // 금색 포인트
 
     singleBtn.add([
       singleBtnImg,
       this.add
-        .text(0, y * 0.5, "싱글플레이", {
+        .text(0, 0, "싱글플레이", {
           fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.06}px`,
+          fontSize: `${width * 0.042}px`,
           color: "#ffffff",
           fontWeight: "bold",
         })
@@ -672,21 +781,17 @@ class LobbyScene extends Phaser.Scene {
     /* =======================================================
    상점 버튼 추가
 ======================================================= */
-    const shopBtnY = height * 0.58; // 싱글플레이 버튼 아래
-    const shopBtnW = width * 0.5;
-    const shopBtnH = height * 0.07;
-
-    const shopBtn = this.add.container(centerX, shopBtnY);
+    const shopBtn = this.add.container(centerX + actionBtnOffset, actionBtnY);
     const shopBtnImg = this.add
-      .image(0, y * 0.53, "uibtn")
-      .setDisplaySize(shopBtnW, shopBtnH * 1.2)
+      .image(0, 0, "uibtn")
+      .setDisplaySize(actionBtnW, btnH * 1.2)
       .setInteractive()
       .setTint(0xff69b4); // 핑크 포인트
 
     const shopBtnText = this.add
-      .text(0, y * 0.53, "🎁 상점", {
+      .text(0, 0, "🎁 상점", {
         fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.06}px`,
+        fontSize: `${width * 0.042}px`,
         color: "#ffffff",
         fontWeight: "bold",
       })
@@ -1049,6 +1154,266 @@ class LobbyScene extends Phaser.Scene {
     this.updateProfileAvatarUI();
   }
 
+  getAvatarAnimMaxFrame(baseKey) {
+    return baseKey === "player_1" ? 4 : 2;
+  }
+
+  getMybgAnimKey() {
+    return "mybg_anim";
+  }
+
+  getMybgSpriteSheets() {
+    return [
+      { key: "mybg_sprite_a", frameCount: 25 },
+      { key: "mybg_sprite_b", frameCount: 25 },
+      { key: "mybg_sprite_c", frameCount: 25 },
+      { key: "mybg_sprite_d", frameCount: 16 },
+    ];
+  }
+
+  canUseMybgSpriteSheets() {
+    const spriteSheetKeys = this.getMybgSpriteSheets().map((item) => item.key);
+    if (!spriteSheetKeys.every((key) => this.textures.exists(key))) {
+      return false;
+    }
+
+    const renderer = this.sys?.game?.renderer;
+    const maxTextureSize =
+      typeof renderer?.maxTextureSize === "number"
+        ? renderer.maxTextureSize
+        : 4096;
+
+    return spriteSheetKeys.every((key) => {
+      const texture = this.textures.get(key);
+      const source = texture?.getSourceImage();
+      const width = Number(source?.width) || 0;
+      const height = Number(source?.height) || 0;
+
+      return (
+        width > 0 &&
+        height > 0 &&
+        width <= maxTextureSize &&
+        height <= maxTextureSize
+      );
+    });
+  }
+
+  ensureMybgAnimation() {
+    const animKey = this.getMybgAnimKey();
+    if (this.anims.exists(animKey)) {
+      return animKey;
+    }
+
+    if (!this.canUseMybgSpriteSheets()) {
+      return null;
+    }
+
+    const frames = [];
+    this.getMybgSpriteSheets().forEach(({ key: textureKey, frameCount }) => {
+      const texture = this.textures.get(textureKey);
+      const availableFrames = Math.max(0, (texture.frameTotal || 1) - 1);
+      const totalFrames = Math.min(frameCount, availableFrames);
+      if (totalFrames <= 0) {
+        return;
+      }
+
+      frames.push(
+        ...this.anims.generateFrameNumbers(textureKey, {
+          start: 0,
+          end: totalFrames - 1,
+        }),
+      );
+    });
+
+    if (frames.length === 0) {
+      return null;
+    }
+
+    this.anims.create({
+      key: animKey,
+      frames,
+      frameRate: 12,
+      skipMissedFrames: false,
+      repeat: -1,
+    });
+
+    return animKey;
+  }
+
+  getAvatarAnimKey(baseKey) {
+    return `avatar_anim_${baseKey}`;
+  }
+
+  getAvatarAnimFrameRate(baseKey) {
+    return baseKey === "player_1" ? 18 : 2;
+  }
+
+  getPlayer1SpriteSheets() {
+    return [
+      { key: "player_1_sprite_a", frameCount: 25 },
+      { key: "player_1_sprite_b", frameCount: 25 },
+      { key: "player_1_sprite_c", frameCount: 21 },
+      { key: "player_1_sprite_d", frameCount: 20 },
+    ];
+  }
+
+  canUsePlayer1SpriteSheets() {
+    const spriteSheetKeys = this.getPlayer1SpriteSheets().map(
+      (item) => item.key,
+    );
+    if (!spriteSheetKeys.every((key) => this.textures.exists(key))) {
+      return false;
+    }
+
+    const renderer = this.sys?.game?.renderer;
+    const maxTextureSize =
+      typeof renderer?.maxTextureSize === "number"
+        ? renderer.maxTextureSize
+        : 4096;
+
+    return spriteSheetKeys.every((key) => {
+      const texture = this.textures.get(key);
+      const source = texture?.getSourceImage();
+      const width = Number(source?.width) || 0;
+      const height = Number(source?.height) || 0;
+
+      return (
+        width > 0 &&
+        height > 0 &&
+        width <= maxTextureSize &&
+        height <= maxTextureSize
+      );
+    });
+  }
+
+  ensureAvatarAnimation(baseKey) {
+    const animKey = this.getAvatarAnimKey(baseKey);
+    if (this.anims.exists(animKey)) {
+      return animKey;
+    }
+
+    if (baseKey === "player_1" && this.canUsePlayer1SpriteSheets()) {
+      const sheetMetas = this.getPlayer1SpriteSheets()
+        .map(({ key: textureKey, frameCount }) => {
+          const texture = this.textures.get(textureKey);
+          const availableFrames = Math.max(0, (texture.frameTotal || 1) - 1);
+          const totalFrames = Math.min(
+            Math.max(0, frameCount),
+            availableFrames,
+          );
+          return { textureKey, totalFrames };
+        })
+        .filter((item) => item.totalFrames > 0);
+
+      const sheetMap = new Map(
+        sheetMetas.map((item) => [item.textureKey, item.totalFrames]),
+      );
+      const frames = [];
+      for (let row = 0; row < 10; row += 1) {
+        for (let col = 0; col < 10; col += 1) {
+          const localRow = row < 5 ? row : row - 5;
+          const localCol = col < 5 ? col : col - 5;
+          const textureKey =
+            row < 5
+              ? col < 5
+                ? "player_1_sprite_a"
+                : "player_1_sprite_b"
+              : col < 5
+                ? "player_1_sprite_c"
+                : "player_1_sprite_d";
+          const frameIndex = localRow * 5 + localCol;
+          const totalFrames = sheetMap.get(textureKey) || 0;
+          if (frameIndex >= totalFrames) {
+            continue;
+          }
+          frames.push({ key: textureKey, frame: frameIndex });
+        }
+      }
+
+      if (frames.length === 0) {
+        return null;
+      }
+
+      this.anims.create({
+        key: animKey,
+        frames,
+        frameRate: this.getAvatarAnimFrameRate(baseKey),
+        repeat: -1,
+      });
+
+      return animKey;
+    }
+
+    const maxFrame = this.getAvatarAnimMaxFrame(baseKey);
+    const frames = [];
+    for (let frame = 1; frame <= maxFrame; frame += 1) {
+      const textureKey = `${baseKey}_${frame}`;
+      if (this.textures.exists(textureKey)) {
+        frames.push({ key: textureKey });
+      }
+    }
+
+    if (frames.length === 0) {
+      return null;
+    }
+
+    this.anims.create({
+      key: animKey,
+      frames,
+      frameRate: this.getAvatarAnimFrameRate(baseKey),
+      repeat: -1,
+    });
+
+    return animKey;
+  }
+
+  applyAvatarAnimation(target, baseKey) {
+    if (!target || !target.active) {
+      return;
+    }
+
+    if (
+      typeof target.getData === "function" &&
+      target.getData("avatarBaseY") === undefined
+    ) {
+      target.setData("avatarBaseY", target.y);
+    }
+
+    const avatarBaseY =
+      typeof target.getData === "function"
+        ? target.getData("avatarBaseY")
+        : target.y;
+
+    const animKey = this.ensureAvatarAnimation(baseKey);
+
+    if (baseKey === "player_1" && this.canUsePlayer1SpriteSheets()) {
+      target.setOrigin(0.5, 1);
+      target.y = avatarBaseY + target.displayHeight * 0.5;
+      target.setTexture(this.getPlayer1SpriteSheets()[0].key, 0);
+      if (animKey) {
+        target.play(animKey, true);
+      }
+      return;
+    }
+
+    if (baseKey === "player_1") {
+      return;
+    }
+
+    target.setOrigin(0.5, 0.5);
+    target.y = avatarBaseY;
+
+    const firstFrameKey = `${baseKey}_1`;
+
+    if (this.textures.exists(firstFrameKey)) {
+      target.setTexture(firstFrameKey);
+    }
+
+    if (animKey) {
+      target.play(animKey, true);
+    }
+  }
+
   updateProfileAvatarUI() {
     if (!this.profileImage || !this.profileAvatarKeys) {
       return;
@@ -1056,9 +1421,7 @@ class LobbyScene extends Phaser.Scene {
 
     const baseKey =
       this.profileAvatarKeys[this.profileAvatarIndex] || "player_1";
-    // 애니메이션 프레임 유지하면서 캐릭터만 변경
-    this.profileAnimFrame = this.profileAnimFrame || 1;
-    this.profileImage.setTexture(`${baseKey}_${this.profileAnimFrame}`);
+    this.applyAvatarAnimation(this.profileImage, baseKey);
   }
 
   getSelectedAvatarKey() {
@@ -3334,25 +3697,14 @@ class LobbyScene extends Phaser.Scene {
         : `player_${i + 1}`;
 
       const profileImg = this.add
-        .image(
+        .sprite(
           pos.x - cardW / 2 + profileSize * 1.3,
           pos.y - cardH * 0.05,
           `${baseAvatarKey}_1`,
         )
         .setDisplaySize(profileSize * 2, profileSize * 2);
       this.lobbyUIContainer.add(profileImg);
-
-      // 캐릭터 애니메이션 (프레임 전환)
-      profileImg.animFrame = 1;
-      profileImg.animTimer = this.time.addEvent({
-        delay: 500,
-        callback: () => {
-          if (!profileImg || !profileImg.active) return;
-          profileImg.animFrame = profileImg.animFrame === 1 ? 2 : 1;
-          profileImg.setTexture(`${baseAvatarKey}_${profileImg.animFrame}`);
-        },
-        loop: true,
-      });
+      this.applyAvatarAnimation(profileImg, baseAvatarKey);
 
       if (isHost && !isThisPlayerHost) {
         profileImg.setInteractive({ useHandCursor: true });
