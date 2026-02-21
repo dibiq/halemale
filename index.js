@@ -85,7 +85,7 @@ async function savePlayer(
       updated_at = CURRENT_TIMESTAMP;
   `;
   try {
-    await pool.query(query, [
+    const result = await pool.query(query, [
       id,
       level,
       coins,
@@ -96,7 +96,9 @@ async function savePlayer(
         : null,
       normalizedCurrentCharacter,
     ]);
-    console.log(`✅ ${id} 데이터 저장 성공`);
+    console.log(
+      `✅ ${id} 데이터 저장 성공 (coins=${coins}, owned=${JSON.stringify(normalizedOwnedCharacters)}, current=${normalizedCurrentCharacter}, rowCount=${result.rowCount})`,
+    );
   } catch (err) {
     console.error("❌ 저장 에러:", err);
   }
@@ -631,11 +633,21 @@ io.on("connection", (socket) => {
   const handleBuyCharacter = async (data) => {
     const payload = data && typeof data === "object" ? data : {};
     const targetPlayerId =
-      typeof payload.id === "string" && payload.id.trim()
-        ? payload.id.trim()
-        : typeof payload.nickname === "string" && payload.nickname.trim()
-          ? payload.nickname.trim()
-          : socket.nickname;
+      typeof socket.nickname === "string" && socket.nickname.trim()
+        ? socket.nickname.trim()
+        : typeof payload.id === "string" && payload.id.trim()
+          ? payload.id.trim()
+          : typeof payload.nickname === "string" && payload.nickname.trim()
+            ? payload.nickname.trim()
+            : socket.nickname;
+
+    console.log("🛒 buyCharacter 수신:", {
+      socketNickname: socket.nickname,
+      payloadId: payload.id,
+      payloadNickname: payload.nickname,
+      targetPlayerId,
+      payload,
+    });
 
     if (!targetPlayerId) {
       socket.emit("buyCharacterError", "유효하지 않은 플레이어입니다.");
@@ -763,11 +775,13 @@ io.on("connection", (socket) => {
   const handleSyncPlayerInventory = async (data) => {
     const payload = data && typeof data === "object" ? data : {};
     const targetPlayerId =
-      typeof payload.id === "string" && payload.id.trim()
-        ? payload.id.trim()
-        : typeof payload.nickname === "string" && payload.nickname.trim()
-          ? payload.nickname.trim()
-          : socket.nickname;
+      typeof socket.nickname === "string" && socket.nickname.trim()
+        ? socket.nickname.trim()
+        : typeof payload.id === "string" && payload.id.trim()
+          ? payload.id.trim()
+          : typeof payload.nickname === "string" && payload.nickname.trim()
+            ? payload.nickname.trim()
+            : socket.nickname;
 
     if (!targetPlayerId) {
       return;
