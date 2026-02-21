@@ -630,6 +630,35 @@ io.on("connection", (socket) => {
 
   const handleBuyCharacter = async (data) => {
     const payload = data && typeof data === "object" ? data : {};
+    const targetPlayerId =
+      typeof payload.id === "string" && payload.id.trim()
+        ? payload.id.trim()
+        : typeof payload.nickname === "string" && payload.nickname.trim()
+          ? payload.nickname.trim()
+          : socket.nickname;
+
+    if (!targetPlayerId) {
+      socket.emit("buyCharacterError", "유효하지 않은 플레이어입니다.");
+      return;
+    }
+
+    if (socket.nickname !== targetPlayerId) {
+      socket.nickname = targetPlayerId;
+      const latest = await getPlayer(targetPlayerId);
+      if (latest) {
+        socket.level = latest.level || socket.level || 1;
+        socket.coins = Number(latest.coins) || 0;
+        socket.experience = Number(latest.experience) || 0;
+        socket.ownedCharacters = normalizeOwnedCharacters(
+          latest.owned_characters,
+        );
+        socket.currentCharacter =
+          normalizeCharacterKey(latest.current_character) ||
+          socket.currentCharacter ||
+          "player_1";
+      }
+    }
+
     const characterKey =
       normalizeCharacterKey(payload.characterKey) ||
       normalizeCharacterKey(payload.currentCharacter) ||
@@ -666,7 +695,7 @@ io.on("connection", (socket) => {
     };
 
     await savePlayer(
-      socket.nickname,
+      targetPlayerId,
       socket.level,
       socket.coins,
       mergedItems,
@@ -676,7 +705,7 @@ io.on("connection", (socket) => {
     );
 
     socket.emit("myProfile", {
-      nickname: socket.nickname,
+      nickname: targetPlayerId,
       level: Number(socket.level) || 1,
       coins: Number(socket.coins) || 0,
       items: Array.isArray(socket.items) ? socket.items : [],
@@ -688,7 +717,7 @@ io.on("connection", (socket) => {
     });
 
     console.log(
-      `✅ ${socket.nickname} 캐릭터 구매 완료: ${characterKey}, 남은 코인 ${socket.coins}`,
+      `✅ ${targetPlayerId} 캐릭터 구매 완료: ${characterKey}, 남은 코인 ${socket.coins}`,
     );
   };
 
@@ -733,6 +762,20 @@ io.on("connection", (socket) => {
 
   const handleSyncPlayerInventory = async (data) => {
     const payload = data && typeof data === "object" ? data : {};
+    const targetPlayerId =
+      typeof payload.id === "string" && payload.id.trim()
+        ? payload.id.trim()
+        : typeof payload.nickname === "string" && payload.nickname.trim()
+          ? payload.nickname.trim()
+          : socket.nickname;
+
+    if (!targetPlayerId) {
+      return;
+    }
+
+    if (socket.nickname !== targetPlayerId) {
+      socket.nickname = targetPlayerId;
+    }
 
     if (typeof payload.coins !== "undefined") {
       const incomingCoins = Number(payload.coins);
@@ -774,7 +817,7 @@ io.on("connection", (socket) => {
     };
 
     await savePlayer(
-      socket.nickname,
+      targetPlayerId,
       socket.level,
       socket.coins,
       mergedItems,

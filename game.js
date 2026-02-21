@@ -2843,12 +2843,6 @@ class LobbyScene extends Phaser.Scene {
             this.myNickname ||
             "요리사";
 
-          socket.emit("addCoins", {
-            id: resolvedPlayerId,
-            nickname: resolvedPlayerId,
-            amount: -character.price,
-          });
-
           const characterPayload = {
             id: resolvedPlayerId,
             userId: resolvedPlayerId,
