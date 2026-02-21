@@ -175,6 +175,7 @@ class LobbyScene extends Phaser.Scene {
     this.load.image("bar", `${ASSET_SERVER}/images/bar.png${VERSION}`);
     this.load.image("itembg", `${ASSET_SERVER}/images/itembg.png${VERSION}`);
     this.load.image("uibtn", `${ASSET_SERVER}/images/ui_btn.png${VERSION}`);
+    this.load.image("ui_btn", `${ASSET_SERVER}/images/ui_btn.png${VERSION}`);
     this.load.image("btnbg", `${ASSET_SERVER}/images/btnbg.png${VERSION}`);
     this.load.image(
       "profilebg",
@@ -183,6 +184,8 @@ class LobbyScene extends Phaser.Scene {
 
     this.load.image("slide", `${ASSET_SERVER}/images/slide.png${VERSION}`);
     this.load.image("chef", `${ASSET_SERVER}/images/chef.png${VERSION}`);
+    this.load.image("storebg", `${ASSET_SERVER}/images/storebg.png${VERSION}`);
+
     this.load.spritesheet(
       "player_1_sprite_a",
       `${ASSET_SERVER}/images/player_1_sprite_a.png${PLAYER1_SPRITE_VERSION}`,
@@ -2430,11 +2433,11 @@ class LobbyScene extends Phaser.Scene {
     });
 
     const popupBg = this.add
-      .image(centerX, popupY, "popupbg")
+      .image(centerX, popupY, "storebg")
       .setDisplaySize(width * 0.85, height * 0.7);
 
     const titleText = this.add
-      .text(centerX, popupY - height * 0.28, "✨ 상점 ✨", {
+      .text(centerX, popupY - height * 0.28, "", {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.08}px`,
         color: "#ffd700",
@@ -2445,23 +2448,18 @@ class LobbyScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     const coinDisplayBg = this.add
-      .image(centerX - width * 0.1, popupY - height * 0.2, "itembg")
-      .setDisplaySize(width * 0.35, height * 0.06);
+      .image(centerX * 0.75, popupY * 0.67, "itembg")
+      .setDisplaySize(width * 0.3, height * 0.04);
 
     this.shopCoinText = this.add
-      .text(
-        centerX - width * 0.1,
-        popupY - height * 0.2,
-        `💰 ${this.myProfile.coins}`,
-        {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.045}px`,
-          color: "#ffffff",
-          fontWeight: "bold",
-          stroke: "#000000",
-          strokeThickness: 3,
-        },
-      )
+      .text(centerX * 0.7, popupY * 0.67, `💰 ${this.myProfile.coins}`, {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.045}px`,
+        color: "#ffffff",
+        fontWeight: "bold",
+        stroke: "#000000",
+        strokeThickness: 3,
+      })
       .setOrigin(0.5);
 
     const tabs = [
@@ -2472,14 +2470,14 @@ class LobbyScene extends Phaser.Scene {
     let currentTab = "special";
     const tabIndexes = { special: 0, character: 0, coin: 0 };
 
-    const tabButtonWidth = width * 0.22;
-    const tabButtonHeight = height * 0.055;
-    const tabStartX = centerX - width * 0.24;
-    const tabY = popupY - height * 0.12;
+    const tabButtonWidth = width * 0.2;
+    const tabButtonHeight = height * 0.05;
+    const tabStartX = centerX * 0.56;
+    const tabY = popupY - height * 0.105;
     const tabButtons = [];
 
     tabs.forEach((tab, idx) => {
-      const tabX = tabStartX + idx * width * 0.24;
+      const tabX = tabStartX + idx * width * 0.22;
       const tabBg = this.add
         .image(tabX, tabY, "uibtn")
         .setDisplaySize(tabButtonWidth, tabButtonHeight)
@@ -2552,8 +2550,8 @@ class LobbyScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     const buyBtn = this.add
-      .image(centerX, popupY + height * 0.24, "btnbg")
-      .setDisplaySize(width * 0.45, height * 0.08)
+      .image(centerX, popupY + height * 0.24, "ui_btn")
+      .setDisplaySize(width * 0.4, height * 0.07)
       .setInteractive({ useHandCursor: true });
 
     const buyBtnText = this.add
@@ -2571,9 +2569,6 @@ class LobbyScene extends Phaser.Scene {
       cardDisplayContainer.removeAll(true);
 
       const index = tabIndexes[currentTab];
-      const detailBg = this.add
-        .image(0, -8, "itembg")
-        .setDisplaySize(width * 0.65, height * 0.29);
 
       if (currentTab === "special") {
         const card = specialCards[index];
@@ -2626,13 +2621,7 @@ class LobbyScene extends Phaser.Scene {
           })
           .setOrigin(0.5);
 
-        cardDisplayContainer.add([
-          detailBg,
-          nameText,
-          descText,
-          priceText,
-          ownedText,
-        ]);
+        cardDisplayContainer.add([nameText, descText, priceText, ownedText]);
 
         buyBtnText.setText("💳 구매하기");
       }
@@ -2689,13 +2678,7 @@ class LobbyScene extends Phaser.Scene {
           })
           .setOrigin(0.5);
 
-        cardDisplayContainer.add([
-          detailBg,
-          nameText,
-          descText,
-          priceText,
-          ownedText,
-        ]);
+        cardDisplayContainer.add([nameText, descText, priceText, ownedText]);
 
         if (isOwned) {
           buyBtnText.setText(isEquipped ? "✅ 착용중" : "🎮 착용하기");
@@ -2751,13 +2734,7 @@ class LobbyScene extends Phaser.Scene {
           })
           .setOrigin(0.5);
 
-        cardDisplayContainer.add([
-          detailBg,
-          nameText,
-          amountText,
-          priceText,
-          tipText,
-        ]);
+        cardDisplayContainer.add([nameText, amountText, priceText, tipText]);
 
         buyBtnText.setText("💎 충전하기");
       }
