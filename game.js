@@ -98,13 +98,18 @@ class LobbyScene extends Phaser.Scene {
     loadingContainer.add([spinner, loadingText]);
 
     // 진행률 표시 (선택사항 - % 숫자가 올라감)
-    this.load.on("progress", (value) => {
+    const onLoadProgress = (value) => {
+      if (!loadingText || !loadingText.active) return;
       loadingText.setText(`로딩 중... ${Math.floor(value * 100)}%`);
-    });
+    };
+    this.load.on("progress", onLoadProgress);
 
     // 로드 완료 시 컨테이너 제거
-    this.load.on("complete", () => {
-      loadingContainer.destroy();
+    this.load.once("complete", () => {
+      this.load.off("progress", onLoadProgress);
+      if (loadingContainer && loadingContainer.active) {
+        loadingContainer.destroy();
+      }
     });
 
     // 1. CORS 설정 (이미지뿐만 아니라 오디오 로드 시에도 영향을 줄 수 있음)
@@ -176,6 +181,10 @@ class LobbyScene extends Phaser.Scene {
 
     this.load.image("roombg", `${ASSET_SERVER}/images/roombg.png${VERSION}`);
     this.load.image("chatbg", `${ASSET_SERVER}/images/chatbg.png${VERSION}`);
+    this.load.image(
+      "playerbg",
+      `${ASSET_SERVER}/images/playerbg.png${VERSION}`,
+    );
 
     this.load.image("bar", `${ASSET_SERVER}/images/bar.png${VERSION}`);
     this.load.image("itembg", `${ASSET_SERVER}/images/itembg.png${VERSION}`);
@@ -678,10 +687,13 @@ class LobbyScene extends Phaser.Scene {
 
     // 프로필 이미지를 스프라이트로 생성하고 애니메이션 적용
     const currentKey = this.getSelectedAvatarKey();
+    const currentAvatarTexture = this.textures.exists(`${currentKey}_1`)
+      ? `${currentKey}_1`
+      : "player_1_1";
     const currentIdx = this.profileAvatarKeys.indexOf(currentKey);
     this.profileAvatarIndex = currentIdx >= 0 ? currentIdx : 0;
     this.profileImage = this.add
-      .sprite(0, 0, `${currentKey}_1`)
+      .sprite(0, 0, currentAvatarTexture)
       .setDisplaySize(profileSize, profileSize);
     this.applyAvatarAnimation(this.profileImage, currentKey);
 
@@ -4248,37 +4260,36 @@ class LobbyScene extends Phaser.Scene {
        슬롯 위치: [0]=왼쪽위, [1]=오른쪽위, [2]=왼쪽아래, [3]=오른쪽아래
     ======================================================= */
     const slotPositions = [
-      { x: centerX - width * 0.22, y: height * 0.22 },
-      { x: centerX + width * 0.22, y: height * 0.22 },
-      { x: centerX - width * 0.22, y: height * 0.44 },
-      { x: centerX + width * 0.22, y: height * 0.44 },
+      { x: centerX - width * 0.18, y: height * 0.24 },
+      { x: centerX + width * 0.18, y: height * 0.24 },
+      { x: centerX - width * 0.18, y: height * 0.44 },
+      { x: centerX + width * 0.18, y: height * 0.44 },
     ];
 
     const cardW = width * 0.3;
     const cardH = height * 0.18;
     const profileSize = width * 0.14;
     const levelSize = width * 0.07;
+    const hasPlayerBgTexture = this.textures.exists("playerbg");
 
     // 빈 슬롯 4개 먼저 그리기
     for (let i = 0; i < 4; i++) {
       const pos = slotPositions[i];
-      const emptyCard = this.add.graphics();
-      emptyCard.fillStyle(0x000000, 0.25);
-      emptyCard.fillRoundedRect(
-        pos.x - cardW * 0.45,
-        pos.y - cardH / 2,
-        cardW,
-        cardH,
-        20,
-      );
-      emptyCard.lineStyle(2, 0xffffff, 0.2);
-      emptyCard.strokeRoundedRect(
-        pos.x - cardW * 0.45,
-        pos.y - cardH / 2,
-        cardW,
-        cardH,
-        20,
-      );
+      const cardLeft = pos.x - cardW / 2;
+      const cardTop = pos.y - cardH / 2;
+      let emptyCard;
+      if (hasPlayerBgTexture) {
+        emptyCard = this.add
+          .image(pos.x, pos.y, "playerbg")
+          .setDisplaySize(cardW, cardH)
+          .setAlpha(1.0);
+      } else {
+        emptyCard = this.add.graphics();
+        emptyCard.fillStyle(0x000000, 0.25);
+        emptyCard.fillRoundedRect(cardLeft, cardTop, cardW, cardH, 20);
+        emptyCard.lineStyle(2, 0xffffff, 0.2);
+        emptyCard.strokeRoundedRect(cardLeft, cardTop, cardW, cardH, 20);
+      }
       this.lobbyUIContainer.add(emptyCard);
 
       const emptyTxt = this.add
@@ -4295,43 +4306,42 @@ class LobbyScene extends Phaser.Scene {
     players.forEach((p, i) => {
       if (i >= 4) return;
       const pos = slotPositions[i];
+      const cardLeft = pos.x - cardW / 2;
+      const cardTop = pos.y - cardH / 2;
       const isThisPlayerHost = p.id === this.hostId;
       const isMe = p.id === socket.id;
       const isReady = isThisPlayerHost || p.isReady;
 
       // 카드 배경 (준비 상태에 따라 색상 변경)
-      const cardBg = this.add.graphics();
-      const bgColor = isReady ? 0x1a4a1a : 0x1a1a2e;
       const borderColor = isReady ? 0x2ecc71 : isMe ? 0xf1c40f : 0x4a4a6a;
-      cardBg.fillStyle(bgColor, 0.9);
-      cardBg.fillRoundedRect(
-        pos.x - cardW * 0.45,
-        pos.y - cardH / 2,
-        cardW,
-        cardH,
-        20,
-      );
-      cardBg.lineStyle(3, borderColor, 1);
-      cardBg.strokeRoundedRect(
-        pos.x - cardW * 0.45,
-        pos.y - cardH / 2,
-        cardW,
-        cardH,
-        20,
-      );
+      let cardBg;
+      if (hasPlayerBgTexture) {
+        cardBg = this.add
+          .image(pos.x, pos.y, "playerbg")
+          .setDisplaySize(cardW, cardH)
+          .setTint(borderColor)
+          .setAlpha(1.0);
+      } else {
+        cardBg = this.add.graphics();
+        const bgColor = isReady ? 0x1a4a1a : 0x1a1a2e;
+        cardBg.fillStyle(bgColor, 0.9);
+        cardBg.fillRoundedRect(cardLeft, cardTop, cardW, cardH, 20);
+        cardBg.lineStyle(3, borderColor, 1);
+        cardBg.strokeRoundedRect(cardLeft, cardTop, cardW, cardH, 20);
+      }
       this.lobbyUIContainer.add(cardBg);
 
       // 프로필 이미지 - 애니메이션 적용
       const baseAvatarKey = /^player_[1-4]$/.test(p.avatarKey)
         ? p.avatarKey
         : `player_${i + 1}`;
+      const avatarTextureKey = this.textures.exists(`${baseAvatarKey}_1`)
+        ? `${baseAvatarKey}_1`
+        : "player_1_1";
+      const profileX = cardLeft + profileSize * 1.1;
 
       const profileImg = this.add
-        .sprite(
-          pos.x - cardW * 0.45 + profileSize * 1.3,
-          pos.y - cardH * 0.05,
-          `${baseAvatarKey}_1`,
-        )
+        .sprite(profileX, pos.y - cardH * 0.05, avatarTextureKey)
         .setDisplaySize(profileSize * 2, profileSize * 2);
       this.lobbyUIContainer.add(profileImg);
       this.applyAvatarAnimation(profileImg, baseAvatarKey);
@@ -4340,10 +4350,11 @@ class LobbyScene extends Phaser.Scene {
         profileImg.setInteractive({ useHandCursor: true });
         profileImg.on("pointerdown", () => {
           this.sound.play("pop", { volume: 0.1 });
+          const kickBtnY = cardTop + cardH - height * 0.03;
           const kickBtn = this.add
             .rectangle(
-              pos.x - cardW * 0.45 + profileSize * 1.3,
-              pos.y + cardH * 0.5,
+              profileX,
+              kickBtnY,
               profileSize * 1.8,
               height * 0.045,
               0xe74c3c,
@@ -4354,19 +4365,14 @@ class LobbyScene extends Phaser.Scene {
             .setDepth(50);
 
           const kickBtnText = this.add
-            .text(
-              pos.x - cardW * 0.45 + profileSize * 1.3,
-              pos.y + cardH * 0.35,
-              "강퇴하기",
-              {
-                fontFamily: GAME_FONTS.main,
-                fontSize: `${width * 0.035}px`,
-                color: "#ffffff",
-                fontWeight: "bold",
-                stroke: "#000000",
-                strokeThickness: 2,
-              },
-            )
+            .text(profileX, kickBtnY, "강퇴하기", {
+              fontFamily: GAME_FONTS.main,
+              fontSize: `${width * 0.035}px`,
+              color: "#ffffff",
+              fontWeight: "bold",
+              stroke: "#000000",
+              strokeThickness: 2,
+            })
             .setOrigin(0.5)
             .setDepth(50);
 
@@ -4401,7 +4407,7 @@ class LobbyScene extends Phaser.Scene {
       // 방장 왕관 표시 (박스 왼쪽 상단)
       if (isThisPlayerHost) {
         const crownTxt = this.add
-          .text(pos.x * 0.5, pos.y * 0.7, "👑", {
+          .text(cardLeft + width * 0.03, cardTop + height * 0.03, "👑", {
             fontSize: `${width * 0.08}px`,
           })
           .setOrigin(0.5);
@@ -4469,7 +4475,7 @@ class LobbyScene extends Phaser.Scene {
     const chatSendX = centerX + (chatInputW + chatGap) / 2;
 
     this.lobbyChatInputElement = this.add
-      .dom(chatInputX * 0.5, chatInputY * 1.01, "input")
+      .dom(chatInputX * 0.51, chatInputY * 1.01, "input")
       .setDepth(30)
       .setOrigin(0.5);
 
@@ -5017,7 +5023,13 @@ class LobbyScene extends Phaser.Scene {
         : "player_1";
 
       const userIcon = this.add
-        .image(centerX - popupWidth * 0.35, btnY, `${baseUserAvatar}_1`)
+        .image(
+          centerX - popupWidth * 0.35,
+          btnY,
+          this.textures.exists(`${baseUserAvatar}_1`)
+            ? `${baseUserAvatar}_1`
+            : "player_1_1",
+        )
         .setDisplaySize(height * 0.045, height * 0.045)
         .setDepth(4002);
 
@@ -8412,7 +8424,13 @@ class GameScene extends Phaser.Scene {
         : "player_1";
 
       const userIcon = this.add
-        .image(centerX - popupWidth * 0.35, btnY, `${baseUserAvatar}_1`)
+        .image(
+          centerX - popupWidth * 0.35,
+          btnY,
+          this.textures.exists(`${baseUserAvatar}_1`)
+            ? `${baseUserAvatar}_1`
+            : "player_1_1",
+        )
         .setDisplaySize(height * 0.045, height * 0.045)
         .setDepth(302);
 
