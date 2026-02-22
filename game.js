@@ -139,6 +139,11 @@ class LobbyScene extends Phaser.Scene {
       ? `${VERSION}&mbg=20260221_3`
       : "?mbg=20260221_3";
 
+    this.load.image(
+      "popupclose",
+      `${ASSET_SERVER}/images/popupclose.png${VERSION}`,
+    );
+
     this.load.image("mybg", `${ASSET_SERVER}/images/mybg.png${VERSION}`);
     this.load.spritesheet(
       "mybg_sprite_a",
@@ -2447,7 +2452,7 @@ class LobbyScene extends Phaser.Scene {
     this.shopPopupContainer = this.add.container(0, 0).setDepth(200);
 
     const overlay = this.add
-      .rectangle(centerX, height * 0.5, width, height, 0x000000, 0.5)
+      .rectangle(centerX, height * 0.5, width, height, 0x000000, 0.8)
       .setInteractive();
     overlay.on("pointerdown", () => {
       this.closeShopPopup();
@@ -2468,12 +2473,15 @@ class LobbyScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
+    const coinDisplayY = popupY + height * 0.25;
+    const buyButtonY = popupY + height * 0.31;
+
     const coinDisplayBg = this.add
-      .image(centerX * 0.75, popupY * 0.67, "itembg")
+      .image(centerX, coinDisplayY, "itembg")
       .setDisplaySize(width * 0.3, height * 0.04);
 
     this.shopCoinText = this.add
-      .text(centerX * 0.7, popupY * 0.67, `💰 ${this.myProfile.coins}`, {
+      .text(centerX, coinDisplayY, `💰 ${this.myProfile.coins}`, {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.045}px`,
         color: "#ffffff",
@@ -2491,14 +2499,14 @@ class LobbyScene extends Phaser.Scene {
     let currentTab = "special";
     const tabIndexes = { special: 0, character: 0, coin: 0 };
 
-    const tabButtonWidth = width * 0.2;
+    const tabButtonWidth = width * 0.18;
     const tabButtonHeight = height * 0.05;
-    const tabStartX = centerX * 0.56;
-    const tabY = popupY - height * 0.105;
+    const tabStartX = centerX * 0.62;
+    const tabY = popupY - height * 0.16;
     const tabButtons = [];
 
     tabs.forEach((tab, idx) => {
-      const tabX = tabStartX + idx * width * 0.22;
+      const tabX = tabStartX + idx * width * 0.19;
       const tabBg = this.add
         .image(tabX, tabY, "uibtn")
         .setDisplaySize(tabButtonWidth, tabButtonHeight)
@@ -2571,12 +2579,12 @@ class LobbyScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     const buyBtn = this.add
-      .image(centerX, popupY + height * 0.24, "ui_btn")
+      .image(centerX, buyButtonY, "ui_btn")
       .setDisplaySize(width * 0.4, height * 0.07)
       .setInteractive({ useHandCursor: true });
 
     const buyBtnText = this.add
-      .text(centerX, popupY + height * 0.24, "💳 구매하기", {
+      .text(centerX, buyButtonY, "💳 구매하기", {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.05}px`,
         color: "#ffffff",
@@ -2933,22 +2941,11 @@ class LobbyScene extends Phaser.Scene {
     updateTabVisuals();
     renderShopContent();
 
-    // 닫기 버튼 (이미지 사용)
+    // 닫기 버튼 (popupclose 이미지)
     const closeBtn = this.add
-      .image(centerX + width * 0.37, popupY - height * 0.31, "uibtn")
-      .setDisplaySize(width * 0.1, width * 0.1)
+      .image(centerX + width * 0.37, popupY - height * 0.31, "popupclose")
+      .setDisplaySize(width * 0.11, width * 0.11)
       .setInteractive({ useHandCursor: true });
-
-    const closeBtnIcon = this.add
-      .text(centerX + width * 0.37, popupY - height * 0.31, "✕", {
-        fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.06}px`,
-        color: "#ff6b6b",
-        fontWeight: "bold",
-        stroke: "#000000",
-        strokeThickness: 3,
-      })
-      .setOrigin(0.5);
 
     closeBtn.on("pointerdown", () => {
       this.sound.play("pop", { volume: 0.08 });
@@ -2977,7 +2974,6 @@ class LobbyScene extends Phaser.Scene {
       buyBtn,
       buyBtnText,
       closeBtn,
-      closeBtnIcon,
     ]);
 
     this.currentShopPopupCloseHandler = () => {
@@ -5003,11 +4999,14 @@ class LobbyScene extends Phaser.Scene {
     users.forEach((user, index) => {
       const btnY =
         listContainerY - listH / 2 + (index + 1) * (listH / (users.length + 1));
+      const userIconX = centerX - popupWidth * 0.28;
+      const userTextX = centerX - popupWidth * 0.05;
+      const inviteBtnX = centerX + popupWidth * 0.25;
 
-      // 유저 배경 (itembg 이미지)
+      // 유저 배경 (roombg 이미지)
       const userBg = this.add
-        .image(centerX, btnY, "itembg")
-        .setDisplaySize(popupWidth * 0.8, height * 0.06)
+        .image(centerX, btnY, "roombg")
+        .setDisplaySize(popupWidth * 0.8, height * 0.083)
         .setDepth(4001)
         .setInteractive({ useHandCursor: true });
 
@@ -5018,7 +5017,7 @@ class LobbyScene extends Phaser.Scene {
 
       const userIcon = this.add
         .image(
-          centerX - popupWidth * 0.35,
+          userIconX,
           btnY,
           this.textures.exists(`${baseUserAvatar}_1`)
             ? `${baseUserAvatar}_1`
@@ -5027,46 +5026,27 @@ class LobbyScene extends Phaser.Scene {
         .setDisplaySize(height * 0.045, height * 0.045)
         .setDepth(4002);
 
-      // 유저명 + 레벨
-      const userName = this.add
-        .text(
-          centerX - popupWidth * 0.25,
-          btnY - height * 0.015,
-          user.nickname,
-          {
-            fontFamily: GAME_FONTS.main,
-            fontSize: `${width * 0.035}px`,
-            color: "#fff",
-            fontWeight: "bold",
-          },
-        )
-        .setOrigin(0.5)
-        .setDepth(4002);
-
-      const userLevel = this.add
-        .text(
-          centerX - popupWidth * 0.25,
-          btnY + height * 0.015,
-          `Lv. ${user.level}`,
-          {
-            fontFamily: GAME_FONTS.main,
-            fontSize: `${width * 0.025}px`,
-            color: "#f1c40f",
-          },
-        )
+      // 유저명 + 레벨 (한 줄)
+      const userInfo = this.add
+        .text(userTextX, btnY, `Lv.${user.level} ${user.nickname}`, {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.032}px`,
+          color: "#fff",
+          fontWeight: "bold",
+        })
         .setOrigin(0.5)
         .setDepth(4002);
 
       // 초대 버튼 (uibtn 이미지)
       const inviteBtn = this.add
-        .image(centerX + popupWidth * 0.3, btnY, "uibtn")
+        .image(inviteBtnX, btnY, "uibtn")
         .setDisplaySize(width * 0.12, height * 0.05)
         .setTint(0x3498db)
         .setDepth(4001)
         .setInteractive({ useHandCursor: true });
 
       const inviteBtnText = this.add
-        .text(centerX + popupWidth * 0.3, btnY, "초대", {
+        .text(inviteBtnX, btnY, "초대", {
           fontFamily: GAME_FONTS.main,
           fontSize: `${width * 0.03}px`,
           color: "#fff",
@@ -5091,44 +5071,21 @@ class LobbyScene extends Phaser.Scene {
         });
       });
 
-      allObjects.push(
-        userBg,
-        userIcon,
-        userName,
-        userLevel,
-        inviteBtn,
-        inviteBtnText,
-      );
+      allObjects.push(userBg, userIcon, userInfo, inviteBtn, inviteBtnText);
     });
 
-    // 닫기 버튼 (uibtn 이미지)
+    // 닫기 버튼 (popupclose 이미지)
     const closeBtn = this.add
       .image(
         centerX + popupWidth / 2 - width * 0.06,
         centerY - popupHeight / 2 + height * 0.03,
-        "uibtn",
+        "popupclose",
       )
-      .setDisplaySize(width * 0.1, height * 0.04)
-      .setTint(0xe74c3c)
-      .setDepth(4001)
+      .setDisplaySize(width * 0.085, width * 0.085)
+      .setDepth(4002)
       .setInteractive({ useHandCursor: true });
 
-    const closeBtnText = this.add
-      .text(
-        centerX + popupWidth / 2 - width * 0.06,
-        centerY - popupHeight / 2 + height * 0.03,
-        "X",
-        {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.04}px`,
-          color: "#fff",
-          fontWeight: "bold",
-        },
-      )
-      .setOrigin(0.5)
-      .setDepth(4002);
-
-    allObjects.push(closeBtn, closeBtnText);
+    allObjects.push(closeBtn);
 
     closeBtn.on("pointerdown", () => {
       this.sound.play("pop", { volume: 0.1 });
@@ -8498,9 +8455,10 @@ class GameScene extends Phaser.Scene {
     const popupWidth = width * 0.85;
     const popupHeight = height * 0.55;
     const popupBg = this.add
-      .rectangle(centerX, centerY, popupWidth, popupHeight, 0x1a1a2e, 0.95)
+      .image(centerX, centerY, "invitebg")
+      .setDisplaySize(popupWidth, popupHeight)
       .setDepth(300)
-      .setStrokeStyle(3, 0xffd700, 1);
+      .setInteractive();
 
     // 타이틀
     const titleText = this.add
@@ -8537,18 +8495,14 @@ class GameScene extends Phaser.Scene {
     users.forEach((user, index) => {
       const btnY =
         listContainerY - listH / 2 + (index + 1) * (listH / (users.length + 1));
+      const userIconX = centerX - popupWidth * 0.31;
+      const userTextX = centerX - popupWidth * 0.21;
+      const inviteBtnX = centerX + popupWidth * 0.26;
 
       // 유저 배경
       const userBg = this.add
-        .rectangle(
-          centerX,
-          btnY,
-          popupWidth * 0.8,
-          height * 0.06,
-          0x2a2a3e,
-          0.8,
-        )
-        .setStrokeStyle(2, 0x555555, 1)
+        .image(centerX, btnY, "roombg")
+        .setDisplaySize(popupWidth * 0.8, height * 0.068)
         .setDepth(301)
         .setInteractive({ useHandCursor: true });
 
@@ -8559,7 +8513,7 @@ class GameScene extends Phaser.Scene {
 
       const userIcon = this.add
         .image(
-          centerX - popupWidth * 0.35,
+          userIconX,
           btnY,
           this.textures.exists(`${baseUserAvatar}_1`)
             ? `${baseUserAvatar}_1`
@@ -8568,52 +8522,26 @@ class GameScene extends Phaser.Scene {
         .setDisplaySize(height * 0.045, height * 0.045)
         .setDepth(302);
 
-      // 유저명 + 레벨
-      const userName = this.add
-        .text(
-          centerX - popupWidth * 0.25,
-          btnY - height * 0.015,
-          user.nickname,
-          {
-            fontFamily: GAME_FONTS.main,
-            fontSize: `${width * 0.035}px`,
-            color: "#fff",
-            fontWeight: "bold",
-          },
-        )
-        .setOrigin(0.5)
-        .setDepth(302);
-
-      const userLevel = this.add
-        .text(
-          centerX - popupWidth * 0.25,
-          btnY + height * 0.015,
-          `Lv. ${user.level}`,
-          {
-            fontFamily: GAME_FONTS.main,
-            fontSize: `${width * 0.025}px`,
-            color: "#f1c40f",
-          },
-        )
+      // 유저명 + 레벨 (한 줄)
+      const userInfo = this.add
+        .text(userTextX, btnY, `Lv.${user.level} ${user.nickname}`, {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.032}px`,
+          color: "#fff",
+          fontWeight: "bold",
+        })
         .setOrigin(0.5)
         .setDepth(302);
 
       // 초대 버튼
       const inviteBtn = this.add
-        .rectangle(
-          centerX + popupWidth * 0.3,
-          btnY,
-          width * 0.12,
-          height * 0.05,
-          0x3498db,
-          1,
-        )
+        .rectangle(inviteBtnX, btnY, width * 0.12, height * 0.05, 0x3498db, 1)
         .setStrokeStyle(2, 0x2980b9, 1)
         .setDepth(301)
         .setInteractive({ useHandCursor: true });
 
       const inviteBtnText = this.add
-        .text(centerX + popupWidth * 0.3, btnY, "초대", {
+        .text(inviteBtnX, btnY, "초대", {
           fontFamily: GAME_FONTS.main,
           fontSize: `${width * 0.03}px`,
           color: "#fff",
@@ -8646,44 +8574,19 @@ class GameScene extends Phaser.Scene {
         });
       });
 
-      userButtons.push(
-        userBg,
-        userIcon,
-        userName,
-        userLevel,
-        inviteBtn,
-        inviteBtnText,
-      );
+      userButtons.push(userBg, userIcon, userInfo, inviteBtn, inviteBtnText);
     });
 
-    // 닫기 버튼
+    // 닫기 버튼 (popupclose 이미지)
     const closeBtn = this.add
-      .rectangle(
+      .image(
         centerX + popupWidth / 2 - width * 0.06,
         centerY - popupHeight / 2 + height * 0.03,
-        width * 0.1,
-        height * 0.04,
-        0xe74c3c,
-        1,
+        "popupclose",
       )
-      .setStrokeStyle(2, 0xc0392b, 1)
-      .setDepth(301)
+      .setDisplaySize(width * 0.085, width * 0.085)
+      .setDepth(302)
       .setInteractive({ useHandCursor: true });
-
-    const closeBtnText = this.add
-      .text(
-        centerX + popupWidth / 2 - width * 0.06,
-        centerY - popupHeight / 2 + height * 0.03,
-        "X",
-        {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.04}px`,
-          color: "#fff",
-          fontWeight: "bold",
-        },
-      )
-      .setOrigin(0.5)
-      .setDepth(302);
 
     closeBtn.on("pointerdown", () => {
       this.sound.play("pop", { volume: 0.1 });
@@ -8691,7 +8594,6 @@ class GameScene extends Phaser.Scene {
       titleText.destroy();
       subText.destroy();
       closeBtn.destroy();
-      closeBtnText.destroy();
       userButtons.forEach((btn) => {
         if (btn && btn.active) btn.destroy();
       });
@@ -8704,7 +8606,6 @@ class GameScene extends Phaser.Scene {
       titleText.destroy();
       subText.destroy();
       closeBtn.destroy();
-      closeBtnText.destroy();
       userButtons.forEach((btn) => {
         if (btn && btn.active) btn.destroy();
       });
