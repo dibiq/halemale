@@ -188,6 +188,8 @@ class LobbyScene extends Phaser.Scene {
     );
 
     this.load.image("bar", `${ASSET_SERVER}/images/bar.png${VERSION}`);
+    this.load.image("multbg", `${ASSET_SERVER}/images/multbg.png${VERSION}`);
+
     this.load.image("itembg", `${ASSET_SERVER}/images/itembg.png${VERSION}`);
     this.load.image("uibtn", `${ASSET_SERVER}/images/ui_btn.png${VERSION}`);
     this.load.image("ui_btn", `${ASSET_SERVER}/images/ui_btn.png${VERSION}`);
@@ -3214,20 +3216,10 @@ class LobbyScene extends Phaser.Scene {
 
         // 3. 팝업 배경 이미지
         const popupBg = this.add
-          .image(centerX, popupY, "popupbg")
+          .image(centerX, popupY, "multbg")
           .setDisplaySize(width * 0.7, height * 0.5);
 
         // 4. 제목 텍스트
-        const titleText = this.add
-          .text(centerX, popupY * 0.48, "멀티플레이", {
-            fontFamily: "Jua",
-            fontSize: `${width * 0.08}px`,
-            color: "#ffffff",
-            align: "center",
-            stroke: "#000000",
-            strokeThickness: 3,
-          })
-          .setOrigin(0.5);
 
         // 5. 탭 버튼들 (3가지 선택) - popupbg 하단에 uibtn 이미지로 배치
         // popupbg 하단 = popupY + popupbg높이/2 부근
@@ -3236,19 +3228,20 @@ class LobbyScene extends Phaser.Scene {
         const tabBtnW = width * 0.16;
         const tabBtnH = height * 0.05;
         const tabGap = width * 0.195;
+        const activeTabTint = 0xf5b041;
 
         let currentTab = "browse"; // 기본 탭
         const allTabs = []; // 모든 탭 저장
 
         // 먼저 배경과 제목을 컨테이너에 추가
-        this.joinPopupContainer.add([overlay, popupBg, titleText]);
+        this.joinPopupContainer.add([overlay, popupBg]);
 
         const createTabButton = (label, tabName, posX) => {
           const isActive = currentTab === tabName;
           const tabImg = this.add
             .image(posX, tabY, "uibtn")
             .setDisplaySize(tabBtnW, tabBtnH * 1.1)
-            .setTint(isActive ? 0x2ecc71 : 0x7f8c8d)
+            .setTint(isActive ? activeTabTint : 0x7f8c8d)
             .setInteractive({ useHandCursor: true });
 
           const tabText = this.add
@@ -3266,7 +3259,7 @@ class LobbyScene extends Phaser.Scene {
 
             // 모든 탭 색상 업데이트
             allTabs.forEach((tab) => {
-              tab.img.setTint(tab.name === tabName ? 0x2ecc71 : 0x7f8c8d);
+              tab.img.setTint(tab.name === tabName ? activeTabTint : 0x7f8c8d);
             });
 
             // 콘텐츠 업데이트
@@ -3359,7 +3352,7 @@ class LobbyScene extends Phaser.Scene {
           const roomItemHeight = height * 0.065;
           const maxVisibleRooms = 4;
           const roomsPerPage = 4;
-          const listWidth = width * 0.6;
+          const listWidth = width * 0.58;
 
           // 페이지 상태 관리
           let currentPage = 0;
@@ -3396,7 +3389,7 @@ class LobbyScene extends Phaser.Scene {
               const roomTitle = room.roomName || `${room.hostNickname}의 방`;
               const roomInfo = `${roomNo}. ${publicTag} ${roomTitle}${playingTag}  (${room.playerCount}/${room.maxPlayers})`;
               const roomText = this.add
-                .text(-listWidth / 2 + 10, itemY, roomInfo, {
+                .text(-listWidth * 0.4, itemY, roomInfo, {
                   fontFamily: "Jua",
                   fontSize: `${width * 0.028}px`,
                   color: isPlaying ? "#aaaaaa" : "#ffffff",
@@ -3588,7 +3581,7 @@ class LobbyScene extends Phaser.Scene {
         const showRoomCreateForm = (container) => {
           // 방 이름 입력창 (DOM 절대 좌표)
           const roomNameInput = this.add
-            .dom(centerX * -0.35, contentY * -0.25, "input")
+            .dom(centerX * -0.36, contentY * -0.25, "input")
             .setDepth(1102);
           const nameEl = roomNameInput.node;
           nameEl.placeholder = "방 이름 입력 (선택, 최대10자)";
@@ -3872,7 +3865,7 @@ class LobbyScene extends Phaser.Scene {
           const onTabClick = () => {
             this.sound.play("pop", { volume: 0.1 });
             allTabs.forEach((t) => {
-              t.img.setTint(t.name === tab.name ? 0x2ecc71 : 0x7f8c8d);
+              t.img.setTint(t.name === tab.name ? activeTabTint : 0x7f8c8d);
             });
             currentTab = tab.name;
             updateTabContent(tab.name);
@@ -7860,7 +7853,6 @@ class GameScene extends Phaser.Scene {
       { x: width * 0.23, y: height * 0.64 },
       { x: width * 0.79, y: height * 0.66 },
     ];
-    const winnerPos = podiumPositions[0];
 
     rankedPlayers.forEach((player, index) => {
       const pos = podiumPositions[index];
@@ -7918,45 +7910,67 @@ class GameScene extends Phaser.Scene {
     container.add([countdownText, confirmBtn, confirmTxt]);
 
     const playCoinCollectAnimation = () => {
-      if (isUpdate || !winnerPos || !this.textures.exists("coin")) {
+      if (isUpdate || !this.textures.exists("coin")) {
         return;
       }
 
-      const coinCount = 50;
+      const coinCountByRank = [30, 20, 10];
       const floorYMin = height * 0.72;
       const floorYMax = height * 0.86;
       const floorXMin = width * 0.2;
       const floorXMax = width * 0.8;
-      const targetX = winnerPos.x;
-      const targetY = winnerPos.y - width * 0.14;
+      let coinSequence = 0;
 
-      for (let index = 0; index < coinCount; index += 1) {
-        const startX = Phaser.Math.FloatBetween(floorXMin, floorXMax);
-        const startY = Phaser.Math.FloatBetween(floorYMin, floorYMax);
-        const coin = this.add
-          .image(startX, startY, "coin")
-          .setDisplaySize(width * 0.038, width * 0.038)
-          .setAlpha(0.95);
+      rankedPlayers.forEach((_, rankIndex) => {
+        const targetPos = podiumPositions[rankIndex];
+        const coinCount = coinCountByRank[rankIndex] || 0;
+        if (!targetPos || coinCount <= 0) {
+          return;
+        }
 
-        container.add(coin);
+        const targetX = targetPos.x;
+        const targetY = targetPos.y - width * 0.14;
+        let didShowRewardText = false;
 
-        const bounceDelay = 450 + index * 45;
-        const bounceHeight = Phaser.Math.Between(10, 18);
-        const bounceDuration = Phaser.Math.Between(120, 160);
-        const bounceRepeat = Phaser.Math.Between(2, 3);
+        for (let index = 0; index < coinCount; index += 1) {
+          const startX = Phaser.Math.FloatBetween(floorXMin, floorXMax);
+          const startY = Phaser.Math.FloatBetween(floorYMin, floorYMax);
+          const coin = this.add
+            .image(startX, startY, "coin")
+            .setDisplaySize(width * 0.038, width * 0.038)
+            .setAlpha(0.95);
 
-        this.tweens.add({
-          targets: coin,
-          y: startY - bounceHeight,
-          angle: Phaser.Math.Between(-10, 10),
-          duration: bounceDuration,
-          delay: bounceDelay,
-          yoyo: true,
-          repeat: bounceRepeat,
-          ease: "Sine.easeOut",
-          onComplete: () => {
+          container.add(coin);
+
+          const bounceDelay = Phaser.Math.Between(0, 120);
+          const flyDelay = 800 + coinSequence * 24;
+          coinSequence += 1;
+          const bounceHeight = Phaser.Math.Between(10, 18);
+          const bounceDuration = Phaser.Math.Between(120, 160);
+          const bounceTween = this.tweens.add({
+            targets: coin,
+            y: startY - bounceHeight,
+            angle: Phaser.Math.Between(-10, 10),
+            duration: bounceDuration,
+            delay: bounceDelay,
+            yoyo: true,
+            repeat: -1,
+            ease: "Sine.easeInOut",
+          });
+
+          if (!didShowRewardText) {
+            didShowRewardText = true;
+            this.time.delayedCall(flyDelay, () => {
+              playRewardTextAnimation(rankIndex, coinCount);
+            });
+          }
+
+          this.time.delayedCall(flyDelay, () => {
             if (!coin || !coin.active) {
               return;
+            }
+            if (bounceTween) {
+              bounceTween.stop();
             }
 
             this.tweens.add({
@@ -7974,9 +7988,62 @@ class GameScene extends Phaser.Scene {
                 }
               },
             });
-          },
-        });
+          });
+        }
+      });
+    };
+
+    const playRewardTextAnimation = (rankIndex, rewardCoin) => {
+      if (isUpdate) {
+        return;
       }
+
+      const pos = podiumPositions[rankIndex];
+      if (!pos || rewardCoin <= 0) {
+        return;
+      }
+
+      const rewardText = this.add
+        .text(pos.x, pos.y - width * 0.2, `+${rewardCoin}`, {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.058}px`,
+          color: "#ffd84d",
+          fontWeight: "bold",
+          stroke: "#5a3b00",
+          strokeThickness: 6,
+        })
+        .setOrigin(0.5)
+        .setAlpha(0)
+        .setScale(0.6);
+
+      container.add(rewardText);
+
+      this.tweens.add({
+        targets: rewardText,
+        alpha: 1,
+        scale: 1,
+        duration: 220,
+        ease: "Back.easeOut",
+        onComplete: () => {
+          if (!rewardText || !rewardText.active) {
+            return;
+          }
+
+          this.tweens.add({
+            targets: rewardText,
+            y: rewardText.y - width * 0.09,
+            alpha: 0,
+            scale: 1.08,
+            duration: 820,
+            ease: "Sine.easeOut",
+            onComplete: () => {
+              if (rewardText && rewardText.active) {
+                rewardText.destroy();
+              }
+            },
+          });
+        },
+      });
     };
 
     const goToLobby = () => {

@@ -151,7 +151,7 @@ const io = new Server(server, {
 });
 
 let rooms = {};
-const WIN_REWARD_COINS = 20;
+const RANK_REWARD_COINS = [30, 20, 10];
 const WIN_REWARD_XP = 40;
 const XP_PER_LEVEL = 100;
 
@@ -279,8 +279,15 @@ function checkGameOver(room, io) {
       (a, b) => (b.myDeck?.length || 0) - (a.myDeck?.length || 0),
     );
 
-    // 승자에게 고정 코인/경험치 보상을 지급하고 레벨을 갱신
-    winner.coins = (Number(winner.coins) || 0) + WIN_REWARD_COINS;
+    // 순위별 코인 보상(1등 30, 2등 20, 3등 10)
+    sorted.forEach((player, rankIndex) => {
+      const coinReward = RANK_REWARD_COINS[rankIndex] || 0;
+      if (coinReward > 0) {
+        player.coins = (Number(player.coins) || 0) + coinReward;
+      }
+    });
+
+    // 승자에게 경험치 보상을 지급하고 레벨을 갱신
     winner.experience = (Number(winner.experience) || 0) + WIN_REWARD_XP;
     winner.level = getLevelFromExperience(winner.experience);
 
@@ -318,7 +325,9 @@ function checkGameOver(room, io) {
           beforeLevel: Number(p.level) || 1,
         };
 
-        const earnedCoins = p.id === winner.id ? WIN_REWARD_COINS : 0;
+        const rankIndex = sorted.findIndex((sp) => sp.id === p.id);
+        const earnedCoins =
+          rankIndex >= 0 ? RANK_REWARD_COINS[rankIndex] || 0 : 0;
         const earnedExperience = p.id === winner.id ? WIN_REWARD_XP : 0;
         const finalCoins = Number(p.coins) || 0;
         const finalExperience = Number(p.experience) || 0;
@@ -343,7 +352,12 @@ function checkGameOver(room, io) {
       }),
       winner: winner.nickname,
       winnerId: winner.id,
-      rewardCoins: WIN_REWARD_COINS,
+      rewardCoins: RANK_REWARD_COINS[0],
+      rewardCoinsByRank: {
+        1: RANK_REWARD_COINS[0] || 0,
+        2: RANK_REWARD_COINS[1] || 0,
+        3: RANK_REWARD_COINS[2] || 0,
+      },
       winnerCoins: winner.coins,
       rewardExperience: WIN_REWARD_XP,
       winnerExperience: winner.experience,
