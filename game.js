@@ -184,6 +184,7 @@ class LobbyScene extends Phaser.Scene {
       `${ASSET_SERVER}/images/invitebg.png${VERSION}`,
     );
     this.load.image("coin", `${ASSET_SERVER}/images/coin.png${VERSION}`);
+    this.load.image("exp", `${ASSET_SERVER}/images/exp.png${VERSION}`);
 
     this.load.image("roombg", `${ASSET_SERVER}/images/roombg.png${VERSION}`);
     this.load.image("chatbg", `${ASSET_SERVER}/images/chatbg.png${VERSION}`);
@@ -760,28 +761,57 @@ class LobbyScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    // 경험치 표시 영역
-    const expY = profileSize * 1.07;
-    const expBarWidth = profileSize * 1.2;
-    const expBarHeight = width * 0.035;
+    // 코인 + 경험치 표시 영역 (한 줄)
+    const statY = profileSize * 1.07;
+    const coinIconX = -profileSize * 0.78;
+    const coinBgX = -profileSize * 0.47;
+    const coinBgWidth = profileSize * 0.5;
+    const coinBgHeight = width * 0.05;
+    const expIconX = -profileSize * 0.04;
+    const expBarCenterX = profileSize * 0.45;
+    const expBarWidth = profileSize * 0.82;
+    const expBarHeight = width * 0.05;
 
-    // "경험치" 레이블
-    this.profileExpLabel = this.add
-      .text(-profileSize * 0.66, expY, "경험치", {
+    this.profileCoinIcon = this.add
+      .image(coinIconX, statY, "coin")
+      .setDisplaySize(width * 0.055, width * 0.055)
+      .setDepth(10);
+
+    const coinBadgeBg = this.add.graphics();
+    coinBadgeBg.fillStyle(0x1f1f1f, 0.92);
+    coinBadgeBg.fillRoundedRect(
+      coinBgX - coinBgWidth / 2,
+      statY - coinBgHeight / 2,
+      coinBgWidth,
+      coinBgHeight,
+      14,
+    );
+    coinBadgeBg.setDepth(9);
+    this.profileCoinBg = coinBadgeBg;
+
+    this.profileCoinText = this.add
+      .text(coinBgX, statY, `${this.myProfile.coins}`, {
         fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.032}px`,
+        fontSize: `${width * 0.033}px`,
         color: "#ffffff",
         fontWeight: "bold",
+        stroke: "#000000",
+        strokeThickness: 2,
       })
       .setOrigin(0.5)
-      .setDepth(9);
+      .setDepth(11);
+
+    this.profileExpIcon = this.add
+      .image(expIconX, statY, "exp")
+      .setDisplaySize(width * 0.07, width * 0.07)
+      .setDepth(13);
 
     // 경험치 배경 막대 (회색, 둥근 모서리)
     const expBarGraphicsBg = this.add.graphics();
     expBarGraphicsBg.fillStyle(0x555555, 1);
     expBarGraphicsBg.fillRoundedRect(
-      profileSize * 0.2 - expBarWidth / 2,
-      expY - expBarHeight / 2,
+      expBarCenterX - expBarWidth / 2,
+      statY - expBarHeight / 2,
       expBarWidth,
       expBarHeight,
       15,
@@ -795,8 +825,8 @@ class LobbyScene extends Phaser.Scene {
     const expBarGraphicsFill = this.add.graphics();
     expBarGraphicsFill.fillStyle(0x2ecc71, 1);
     expBarGraphicsFill.fillRoundedRect(
-      profileSize * 0.2 - expBarWidth / 2,
-      expY - expBarHeight / 2,
+      expBarCenterX - expBarWidth / 2,
+      statY - expBarHeight / 2,
       expBarWidth * expRatio,
       expBarHeight,
       15,
@@ -806,7 +836,7 @@ class LobbyScene extends Phaser.Scene {
 
     // 경험치 숫자 텍스트
     this.profileExpText = this.add
-      .text(profileSize * 0.2, expY, `${currentExp}/${XP_PER_LEVEL}`, {
+      .text(expBarCenterX, statY, `${currentExp}/${XP_PER_LEVEL}`, {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.028}px`,
         color: "#ffffff",
@@ -827,7 +857,10 @@ class LobbyScene extends Phaser.Scene {
       levelBadge,
       this.profileLevelText,
       this.profileIdText,
-      this.profileExpLabel,
+      this.profileCoinBg,
+      this.profileCoinIcon,
+      this.profileCoinText,
+      this.profileExpIcon,
       this.profileExpBarBg,
       this.profileExpBarFill,
       this.profileExpText,
@@ -1175,8 +1208,8 @@ class LobbyScene extends Phaser.Scene {
     // 3️⃣ BGM ON/OFF 버튼
     // ======================================
     const bgmBtn = this.add
-      .image(250, 150, bgmOn ? "soundon" : "soundoff")
-      .setOrigin(1, 0)
+      .image(centerX, profileCenterY * 0.7, bgmOn ? "soundon" : "soundoff")
+      .setOrigin(0.5)
       .setDepth(10)
       .setScale(1.4)
       .setInteractive();
@@ -1292,6 +1325,7 @@ class LobbyScene extends Phaser.Scene {
     if (
       !this.profileLevelText ||
       !this.profileIdText ||
+      !this.profileCoinText ||
       !this.profileExpBarFill ||
       !this.profileExpText
     ) {
@@ -1300,22 +1334,24 @@ class LobbyScene extends Phaser.Scene {
 
     this.profileLevelText.setText(`${this.myProfile.level}`);
     this.profileIdText.setText(this.myProfile.nickname);
+    this.profileCoinText.setText(`${this.myProfile.coins}`);
 
     // 경험치 바 업데이트
     const currentExp = this.myProfile.experience % XP_PER_LEVEL;
     const expRatio = currentExp / XP_PER_LEVEL;
     const { width } = this.cameras.main;
     const profileSize = width * 0.2;
-    const expBarWidth = profileSize * 1.2;
-    const expBarHeight = width * 0.035;
-    const expY = profileSize * 1.07;
+    const expBarWidth = profileSize * 0.82;
+    const expBarHeight = width * 0.05;
+    const statY = profileSize * 1.07;
+    const expBarCenterX = profileSize * 0.45;
 
     // 진행 막대 업데이트 (둥근 모서리)
     this.profileExpBarFill.clear();
     this.profileExpBarFill.fillStyle(0x2ecc71, 1);
     this.profileExpBarFill.fillRoundedRect(
-      profileSize * 0.2 - expBarWidth / 2,
-      expY - expBarHeight / 2,
+      expBarCenterX - expBarWidth / 2,
+      statY - expBarHeight / 2,
       expBarWidth * expRatio,
       expBarHeight,
       8,
@@ -2195,24 +2231,13 @@ class LobbyScene extends Phaser.Scene {
     });
 
     const popupBg = this.add
-      .image(centerX, popupY, "popupbg")
-      .setDisplaySize(width * 0.7, height * 0.55);
-
-    const titleText = this.add
-      .text(centerX, popupY - height * 0.23, "난이도 선택", {
-        fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.07}px`,
-        color: "#ffd700",
-        fontWeight: "bold",
-        stroke: "#000000",
-        strokeThickness: 5,
-      })
-      .setOrigin(0.5);
+      .image(centerX, popupY, "invitebg")
+      .setDisplaySize(width * 0.7, height * 0.5);
 
     const difficultyButtons = [
-      { key: "easy", label: "쉬움", tint: 0x2ecc71 },
-      { key: "normal", label: "보통", tint: 0xf1c40f },
-      { key: "hard", label: "어려움", tint: 0xe74c3c },
+      { key: "easy", label: "EASY", tint: 0x2ecc71 },
+      { key: "normal", label: "NORMAL", tint: 0xf1c40f },
+      { key: "hard", label: "HARD", tint: 0xe74c3c },
     ];
 
     const btnW = width * 0.45;
@@ -2220,7 +2245,21 @@ class LobbyScene extends Phaser.Scene {
     const btnGap = height * 0.11;
     const firstY = popupY - btnGap;
 
-    const popupObjects = [overlay, popupBg, titleText];
+    const closeBtn = this.add
+      .image(
+        centerX + width * 0.7 * 0.5 - width * 0.06,
+        popupY - height * 0.5 * 0.5 + height * 0.045,
+        "popupclose",
+      )
+      .setDisplaySize(width * 0.1, width * 0.1)
+      .setInteractive({ useHandCursor: true });
+
+    closeBtn.on("pointerdown", () => {
+      this.sound.play("pop", { volume: 0.1 });
+      this.closeSingleDifficultyPopup();
+    });
+
+    const popupObjects = [overlay, popupBg, closeBtn];
 
     difficultyButtons.forEach((btn, index) => {
       const btnY = firstY + btnGap * index;
@@ -2545,10 +2584,13 @@ class LobbyScene extends Phaser.Scene {
       centerX,
       popupY + height * 0.03,
     );
+    const shopNavBtnTint = 0xd2d2d2;
+    const shopBuyBtnTint = 0xd9be86;
 
     const leftBtn = this.add
       .image(centerX - width * 0.38, popupY + height * 0.03, "uibtn")
-      .setDisplaySize(width * 0.12, width * 0.12)
+      .setDisplaySize(width * 0.1, width * 0.1)
+      .setTint(shopNavBtnTint)
       .setInteractive({ useHandCursor: true });
 
     const leftIcon = this.add
@@ -2564,7 +2606,8 @@ class LobbyScene extends Phaser.Scene {
 
     const rightBtn = this.add
       .image(centerX + width * 0.38, popupY + height * 0.03, "uibtn")
-      .setDisplaySize(width * 0.12, width * 0.12)
+      .setDisplaySize(width * 0.1, width * 0.1)
+      .setTint(shopNavBtnTint)
       .setInteractive({ useHandCursor: true });
 
     const rightIcon = this.add
@@ -2580,11 +2623,12 @@ class LobbyScene extends Phaser.Scene {
 
     const buyBtn = this.add
       .image(centerX, buyButtonY, "ui_btn")
-      .setDisplaySize(width * 0.4, height * 0.07)
+      .setDisplaySize(width * 0.35, height * 0.07)
+      .setTint(shopBuyBtnTint)
       .setInteractive({ useHandCursor: true });
 
     const buyBtnText = this.add
-      .text(centerX, buyButtonY, "💳 구매하기", {
+      .text(centerX, buyButtonY, "구매하기", {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.05}px`,
         color: "#ffffff",
@@ -2652,7 +2696,7 @@ class LobbyScene extends Phaser.Scene {
 
         cardDisplayContainer.add([nameText, descText, priceText, ownedText]);
 
-        buyBtnText.setText("💳 구매하기");
+        buyBtnText.setText("구매하기");
       }
 
       if (currentTab === "character") {
@@ -2710,9 +2754,9 @@ class LobbyScene extends Phaser.Scene {
         cardDisplayContainer.add([nameText, descText, priceText, ownedText]);
 
         if (isOwned) {
-          buyBtnText.setText(isEquipped ? "✅ 착용중" : "🎮 착용하기");
+          buyBtnText.setText(isEquipped ? "착용중" : "착용하기");
         } else {
-          buyBtnText.setText("💳 구매하기");
+          buyBtnText.setText("구매하기");
         }
       }
 
@@ -2765,7 +2809,7 @@ class LobbyScene extends Phaser.Scene {
 
         cardDisplayContainer.add([nameText, amountText, priceText, tipText]);
 
-        buyBtnText.setText("💎 충전하기");
+        buyBtnText.setText("충전하기");
       }
     };
 
@@ -3339,6 +3383,8 @@ class LobbyScene extends Phaser.Scene {
                 fontFamily: "Jua",
                 fontSize: `${width * 0.05}px`,
                 color: "#ffffff",
+                stroke: "#000000",
+                strokeThickness: 4,
               })
               .setOrigin(0.5);
             container.add(emptyText);
@@ -4995,6 +5041,26 @@ class LobbyScene extends Phaser.Scene {
     // 유저 리스트 컨테이너
     const listContainerY = centerY;
     const listH = height * 0.35;
+
+    if (!Array.isArray(users) || users.length === 0) {
+      const emptyText = this.add
+        .text(
+          centerX,
+          centerY + height * 0.02,
+          "초대가능한 플레이어가 없습니다",
+          {
+            fontFamily: GAME_FONTS.main,
+            fontSize: `${width * 0.04}px`,
+            color: "#ffffff",
+            stroke: "#000000",
+            strokeThickness: 3,
+          },
+        )
+        .setOrigin(0.5)
+        .setDepth(4002);
+
+      allObjects.push(emptyText);
+    }
 
     users.forEach((user, index) => {
       const btnY =
@@ -8491,6 +8557,26 @@ class GameScene extends Phaser.Scene {
     const listContainerY = centerY;
     const listH = height * 0.35;
     const userButtons = [];
+
+    if (!Array.isArray(users) || users.length === 0) {
+      const emptyText = this.add
+        .text(
+          centerX,
+          centerY + height * 0.02,
+          "초대가능한 플레이어가 없습니다",
+          {
+            fontFamily: GAME_FONTS.main,
+            fontSize: `${width * 0.04}px`,
+            color: "#ffffff",
+            stroke: "#000000",
+            strokeThickness: 3,
+          },
+        )
+        .setOrigin(0.5)
+        .setDepth(302);
+
+      userButtons.push(emptyText);
+    }
 
     users.forEach((user, index) => {
       const btnY =
