@@ -169,8 +169,13 @@ class LobbyScene extends Phaser.Scene {
     );
 
     this.load.image("gamebg", `${ASSET_SERVER}/images/gamebg.png${VERSION}`);
+    this.load.image(
+      "invitebg",
+      `${ASSET_SERVER}/images/invitebg.png${VERSION}`,
+    );
 
     this.load.image("roombg", `${ASSET_SERVER}/images/roombg.png${VERSION}`);
+    this.load.image("chatbg", `${ASSET_SERVER}/images/chatbg.png${VERSION}`);
 
     this.load.image("bar", `${ASSET_SERVER}/images/bar.png${VERSION}`);
     this.load.image("itembg", `${ASSET_SERVER}/images/itembg.png${VERSION}`);
@@ -2250,6 +2255,7 @@ class LobbyScene extends Phaser.Scene {
 
   showShopPopup() {
     this.isJoinPopupOpen = true;
+    this.setLobbyChatInputHidden(true);
 
     const { width, height } = this.cameras.main;
     const centerX = width / 2;
@@ -3163,6 +3169,7 @@ class LobbyScene extends Phaser.Scene {
       this.shopPopupContainer.destroy();
       this.shopPopupContainer = null;
     }
+    this.setLobbyChatInputHidden(false);
   }
 
   showPublicRoomsPopup() {
@@ -4199,8 +4206,8 @@ class LobbyScene extends Phaser.Scene {
 
     // 배경
     const bg = this.add
-      .image(centerX, height * 0.47, "gamebg")
-      .setDisplaySize(width, height * 1.1)
+      .image(centerX, height * 0.5, "gamebg")
+      .setDisplaySize(width, height * 1.0)
       .setDepth(0);
     this.lobbyUIContainer.add(bg);
 
@@ -4209,7 +4216,7 @@ class LobbyScene extends Phaser.Scene {
 
     // 입장 코드 (방 제목 표시)
     const codeText = this.add
-      .text(centerX, height * 0.08, roomHeaderText, {
+      .text(centerX, height * 0.075, roomHeaderText, {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.065}px`,
         fill: "#ffff00",
@@ -4247,7 +4254,7 @@ class LobbyScene extends Phaser.Scene {
       { x: centerX + width * 0.22, y: height * 0.44 },
     ];
 
-    const cardW = width * 0.38;
+    const cardW = width * 0.3;
     const cardH = height * 0.18;
     const profileSize = width * 0.14;
     const levelSize = width * 0.07;
@@ -4258,7 +4265,7 @@ class LobbyScene extends Phaser.Scene {
       const emptyCard = this.add.graphics();
       emptyCard.fillStyle(0x000000, 0.25);
       emptyCard.fillRoundedRect(
-        pos.x - cardW / 2,
+        pos.x - cardW * 0.45,
         pos.y - cardH / 2,
         cardW,
         cardH,
@@ -4266,7 +4273,7 @@ class LobbyScene extends Phaser.Scene {
       );
       emptyCard.lineStyle(2, 0xffffff, 0.2);
       emptyCard.strokeRoundedRect(
-        pos.x - cardW / 2,
+        pos.x - cardW * 0.45,
         pos.y - cardH / 2,
         cardW,
         cardH,
@@ -4298,7 +4305,7 @@ class LobbyScene extends Phaser.Scene {
       const borderColor = isReady ? 0x2ecc71 : isMe ? 0xf1c40f : 0x4a4a6a;
       cardBg.fillStyle(bgColor, 0.9);
       cardBg.fillRoundedRect(
-        pos.x - cardW / 2,
+        pos.x - cardW * 0.45,
         pos.y - cardH / 2,
         cardW,
         cardH,
@@ -4306,7 +4313,7 @@ class LobbyScene extends Phaser.Scene {
       );
       cardBg.lineStyle(3, borderColor, 1);
       cardBg.strokeRoundedRect(
-        pos.x - cardW / 2,
+        pos.x - cardW * 0.45,
         pos.y - cardH / 2,
         cardW,
         cardH,
@@ -4321,7 +4328,7 @@ class LobbyScene extends Phaser.Scene {
 
       const profileImg = this.add
         .sprite(
-          pos.x - cardW / 2 + profileSize * 1.3,
+          pos.x - cardW * 0.45 + profileSize * 1.3,
           pos.y - cardH * 0.05,
           `${baseAvatarKey}_1`,
         )
@@ -4335,8 +4342,8 @@ class LobbyScene extends Phaser.Scene {
           this.sound.play("pop", { volume: 0.1 });
           const kickBtn = this.add
             .rectangle(
-              pos.x - cardW / 2 + profileSize * 1.3,
-              pos.y + cardH * 0.35,
+              pos.x - cardW * 0.45 + profileSize * 1.3,
+              pos.y + cardH * 0.5,
               profileSize * 1.8,
               height * 0.045,
               0xe74c3c,
@@ -4348,7 +4355,7 @@ class LobbyScene extends Phaser.Scene {
 
           const kickBtnText = this.add
             .text(
-              pos.x - cardW / 2 + profileSize * 1.3,
+              pos.x - cardW * 0.45 + profileSize * 1.3,
               pos.y + cardH * 0.35,
               "강퇴하기",
               {
@@ -4439,50 +4446,14 @@ class LobbyScene extends Phaser.Scene {
     const chatAreaY = height * 0.64;
 
     const chatBg = this.add
-      .rectangle(
-        chatAreaX,
-        chatAreaY * 1.015,
-        chatAreaWidth,
-        chatAreaHeight * 1.14,
-        0xebe4d5,
-        1,
-      )
-      .setStrokeStyle(2, 0xffffff, 0.2)
-      .setOrigin(0.5)
-      .setInteractive(
-        new Phaser.Geom.Rectangle(
-          -chatAreaWidth / 2,
-          -chatAreaHeight * 0.57,
-          chatAreaWidth,
-          chatAreaHeight * 1.14,
-        ),
-        Phaser.Geom.Rectangle.Contains,
-      );
+      .image(chatAreaX, chatAreaY * 1.012, "chatbg")
+      .setDisplaySize(chatAreaWidth, chatAreaHeight * 1.3)
+      .setDepth(5);
 
-    // 둥근 모서리 효과를 위해 graphics 활용
-    const chatBgRounded = this.make.graphics({ x: 0, y: 0, add: true });
-    chatBgRounded.fillStyle(0xebe4d5, 1);
-    chatBgRounded.fillRoundedRect(
-      chatAreaX - chatAreaWidth / 2,
-      chatAreaY * 1.015 - chatAreaHeight * 0.57,
-      chatAreaWidth,
-      chatAreaHeight * 1.14,
-      20, // 모서리 반지름
-    );
-    chatBgRounded.strokeRoundedRect(
-      chatAreaX - chatAreaWidth / 2,
-      chatAreaY * 1.015 - chatAreaHeight * 0.57,
-      chatAreaWidth,
-      chatAreaHeight * 1.14,
-      20,
-    );
-    chatBgRounded.lineStyle(2, 0xffffff, 0.2);
-    chatBgRounded.setDepth(5);
-
-    this.lobbyUIContainer.add(chatBgRounded);
+    this.lobbyUIContainer.add(chatBg);
 
     this.lobbyChatLayout = {
-      startX: chatAreaX - chatAreaWidth / 2 + width * 0.02,
+      startX: chatAreaX - chatAreaWidth / 2 + width * 0.05,
       startY: chatAreaY - chatAreaHeight / 2 + height * 0.01,
       lineSpacing: chatAreaHeight / 5,
     };
@@ -4504,6 +4475,7 @@ class LobbyScene extends Phaser.Scene {
 
     const chatInputEl = this.lobbyChatInputElement.node;
     chatInputEl.placeholder = "메시지 입력";
+    chatInputEl.maxLength = 20;
     Object.assign(chatInputEl.style, {
       width: `${chatInputW}px`,
       height: `${chatInputH}px`,
@@ -4537,7 +4509,7 @@ class LobbyScene extends Phaser.Scene {
 
     const sendLobbyChat = () => {
       const rawMessage = chatInputEl.value || "";
-      const message = rawMessage.trim();
+      const message = rawMessage.trim().slice(0, 20);
       if (!message) return;
       const now = Date.now();
       if (
@@ -4810,6 +4782,20 @@ class LobbyScene extends Phaser.Scene {
     });
   }
 
+  setLobbyChatInputHidden(hidden) {
+    if (!this.lobbyChatInputElement || !this.lobbyChatInputElement.node) {
+      return;
+    }
+
+    const inputEl = this.lobbyChatInputElement.node;
+    inputEl.style.visibility = hidden ? "hidden" : "visible";
+    inputEl.style.pointerEvents = hidden ? "none" : "auto";
+
+    if (hidden && typeof inputEl.blur === "function") {
+      inputEl.blur();
+    }
+  }
+
   showCustomAlert(message, onConfirm) {
     const { width, height } = this.cameras.main;
     const centerX = width / 2;
@@ -4945,23 +4931,25 @@ class LobbyScene extends Phaser.Scene {
   showInvitePopup(users, roomName) {
     const { width, height, centerX, centerY } = this.cameras.main;
 
+    this.setLobbyChatInputHidden(true);
+
     // 배경 어둡게
     const overlay = this.add
       .rectangle(centerX, centerY, width, height, 0x000000, 0.5)
       .setDepth(4000)
       .setInteractive();
 
-    // 팝업 배경 (popupbg 이미지)
+    // 팝업 배경 (invitebg 이미지)
     const popupWidth = width * 0.85;
     const popupHeight = height * 0.55;
     const popupBg = this.add
-      .image(centerX, centerY, "popupbg")
+      .image(centerX, centerY, "invitebg")
       .setDisplaySize(popupWidth, popupHeight)
       .setDepth(4001);
 
     // 타이틀
     const titleText = this.add
-      .text(centerX, centerY - popupHeight / 2 + height * 0.05, "초대하기", {
+      .text(centerX, centerY - popupHeight / 2 + height * 0.05, "", {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.06}px`,
         color: "#ffd700",
@@ -4971,7 +4959,7 @@ class LobbyScene extends Phaser.Scene {
       .setDepth(4002);
 
     // 서브텍스트
-    const subText = this.add
+    /*const subText = this.add
       .text(
         centerX,
         centerY - popupHeight / 2 + height * 0.1,
@@ -4984,16 +4972,18 @@ class LobbyScene extends Phaser.Scene {
         },
       )
       .setOrigin(0.5)
-      .setDepth(4002);
+      .setDepth(4002);*/
 
     // 모든 객체 저장 배열
-    const allObjects = [overlay, popupBg, titleText, subText];
+    const allObjects = [overlay, popupBg, titleText];
 
     // 삭제 함수 (한 번만 실행)
     let isDestroyed = false;
     const destroyPopup = () => {
       if (isDestroyed) return;
       isDestroyed = true;
+
+      this.setLobbyChatInputHidden(false);
 
       allObjects.forEach((obj) => {
         if (obj && obj.active) obj.destroy();
@@ -5143,6 +5133,8 @@ class LobbyScene extends Phaser.Scene {
   showInviteReceivePopup(inviteData) {
     const { width, height, centerX, centerY } = this.cameras.main;
 
+    this.setLobbyChatInputHidden(true);
+
     // 배경 어둡게
     const overlay = this.add
       .rectangle(centerX, centerY, width, height, 0x000000, 0.5)
@@ -5165,6 +5157,8 @@ class LobbyScene extends Phaser.Scene {
     const destroyPopup = () => {
       if (isDestroyed) return;
       isDestroyed = true;
+
+      this.setLobbyChatInputHidden(false);
 
       allObjects.forEach((obj) => {
         if (obj && obj.active) obj.destroy();
