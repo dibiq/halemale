@@ -178,6 +178,7 @@ class LobbyScene extends Phaser.Scene {
       "invitebg",
       `${ASSET_SERVER}/images/invitebg.png${VERSION}`,
     );
+    this.load.image("coin", `${ASSET_SERVER}/images/coin.png${VERSION}`);
 
     this.load.image("roombg", `${ASSET_SERVER}/images/roombg.png${VERSION}`);
     this.load.image("chatbg", `${ASSET_SERVER}/images/chatbg.png${VERSION}`);
@@ -7859,6 +7860,7 @@ class GameScene extends Phaser.Scene {
       { x: width * 0.23, y: height * 0.64 },
       { x: width * 0.79, y: height * 0.66 },
     ];
+    const winnerPos = podiumPositions[0];
 
     rankedPlayers.forEach((player, index) => {
       const pos = podiumPositions[index];
@@ -7914,6 +7916,68 @@ class GameScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     container.add([countdownText, confirmBtn, confirmTxt]);
+
+    const playCoinCollectAnimation = () => {
+      if (isUpdate || !winnerPos || !this.textures.exists("coin")) {
+        return;
+      }
+
+      const coinCount = 50;
+      const floorYMin = height * 0.72;
+      const floorYMax = height * 0.86;
+      const floorXMin = width * 0.2;
+      const floorXMax = width * 0.8;
+      const targetX = winnerPos.x;
+      const targetY = winnerPos.y - width * 0.14;
+
+      for (let index = 0; index < coinCount; index += 1) {
+        const startX = Phaser.Math.FloatBetween(floorXMin, floorXMax);
+        const startY = Phaser.Math.FloatBetween(floorYMin, floorYMax);
+        const coin = this.add
+          .image(startX, startY, "coin")
+          .setDisplaySize(width * 0.038, width * 0.038)
+          .setAlpha(0.95);
+
+        container.add(coin);
+
+        const bounceDelay = 450 + index * 45;
+        const bounceHeight = Phaser.Math.Between(10, 18);
+        const bounceDuration = Phaser.Math.Between(120, 160);
+        const bounceRepeat = Phaser.Math.Between(2, 3);
+
+        this.tweens.add({
+          targets: coin,
+          y: startY - bounceHeight,
+          angle: Phaser.Math.Between(-10, 10),
+          duration: bounceDuration,
+          delay: bounceDelay,
+          yoyo: true,
+          repeat: bounceRepeat,
+          ease: "Sine.easeOut",
+          onComplete: () => {
+            if (!coin || !coin.active) {
+              return;
+            }
+
+            this.tweens.add({
+              targets: coin,
+              x: targetX + Phaser.Math.Between(-10, 10),
+              y: targetY + Phaser.Math.Between(-10, 10),
+              angle: Phaser.Math.Between(-180, 180),
+              scale: 0.2,
+              alpha: 0,
+              duration: 500,
+              ease: "Cubic.easeIn",
+              onComplete: () => {
+                if (coin && coin.active) {
+                  coin.destroy();
+                }
+              },
+            });
+          },
+        });
+      }
+    };
 
     const goToLobby = () => {
       if (this.resultAutoLeaveTimer) {
@@ -7972,6 +8036,9 @@ class GameScene extends Phaser.Scene {
         y: 0,
         duration: 800,
         ease: "Back.easeOut",
+        onComplete: () => {
+          playCoinCollectAnimation();
+        },
       });
     } else {
       container.y = 0;
