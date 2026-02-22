@@ -1675,7 +1675,12 @@ io.on("connection", (socket) => {
           roomName: room.roomName,
         });
 
-        if (room.isGameStarted) processSkipTurn(room, io);
+        if (room.isGameStarted) {
+          if (checkGameOver(room, io)) {
+            return;
+          }
+          processSkipTurn(room, io);
+        }
       }
     }
   });
