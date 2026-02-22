@@ -185,6 +185,10 @@ class LobbyScene extends Phaser.Scene {
     );
     this.load.image("coin", `${ASSET_SERVER}/images/coin.png${VERSION}`);
     this.load.image("exp", `${ASSET_SERVER}/images/exp.png${VERSION}`);
+    this.load.image(
+      "statusbg",
+      `${ASSET_SERVER}/images/statusbg.png${VERSION}`,
+    );
 
     this.load.image("roombg", `${ASSET_SERVER}/images/roombg.png${VERSION}`);
     this.load.image("chatbg", `${ASSET_SERVER}/images/chatbg.png${VERSION}`);
@@ -762,35 +766,19 @@ class LobbyScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     // 코인 + 경험치 표시 영역 (한 줄)
-    const statY = profileSize * 1.07;
-    const coinIconX = -profileSize * 0.78;
+    const statY = profileSize * 1.06;
     const coinBgX = -profileSize * 0.47;
-    const coinBgWidth = profileSize * 0.5;
-    const coinBgHeight = width * 0.05;
-    const expIconX = -profileSize * 0.04;
-    const expBarCenterX = profileSize * 0.45;
-    const expBarWidth = profileSize * 0.82;
-    const expBarHeight = width * 0.05;
+    const expBarCenterX = profileSize * 0.4;
+    const expBarWidth = profileSize * 0.9;
+    const expBarHeight = width * 0.032;
 
-    this.profileCoinIcon = this.add
-      .image(coinIconX, statY, "coin")
-      .setDisplaySize(width * 0.055, width * 0.055)
-      .setDepth(10);
-
-    const coinBadgeBg = this.add.graphics();
-    coinBadgeBg.fillStyle(0x1f1f1f, 0.92);
-    coinBadgeBg.fillRoundedRect(
-      coinBgX - coinBgWidth / 2,
-      statY - coinBgHeight / 2,
-      coinBgWidth,
-      coinBgHeight,
-      14,
-    );
-    coinBadgeBg.setDepth(9);
-    this.profileCoinBg = coinBadgeBg;
+    this.profileStatusBg = this.add
+      .image(0, statY, "statusbg")
+      .setDisplaySize(profileSize * 1.9, width * 0.07)
+      .setDepth(8);
 
     this.profileCoinText = this.add
-      .text(coinBgX, statY, `${this.myProfile.coins}`, {
+      .text(coinBgX * 1.03, statY, `X ${this.myProfile.coins}`, {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.033}px`,
         color: "#ffffff",
@@ -800,11 +788,6 @@ class LobbyScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setDepth(11);
-
-    this.profileExpIcon = this.add
-      .image(expIconX, statY, "exp")
-      .setDisplaySize(width * 0.07, width * 0.07)
-      .setDepth(13);
 
     // 경험치 배경 막대 (회색, 둥근 모서리)
     const expBarGraphicsBg = this.add.graphics();
@@ -836,7 +819,7 @@ class LobbyScene extends Phaser.Scene {
 
     // 경험치 숫자 텍스트
     this.profileExpText = this.add
-      .text(expBarCenterX, statY, `${currentExp}/${XP_PER_LEVEL}`, {
+      .text(expBarCenterX, statY, `EXP  ${currentExp}/${XP_PER_LEVEL}`, {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.028}px`,
         color: "#ffffff",
@@ -857,10 +840,8 @@ class LobbyScene extends Phaser.Scene {
       levelBadge,
       this.profileLevelText,
       this.profileIdText,
-      this.profileCoinBg,
-      this.profileCoinIcon,
+      this.profileStatusBg,
       this.profileCoinText,
-      this.profileExpIcon,
       this.profileExpBarBg,
       this.profileExpBarFill,
       this.profileExpText,
@@ -1334,17 +1315,17 @@ class LobbyScene extends Phaser.Scene {
 
     this.profileLevelText.setText(`${this.myProfile.level}`);
     this.profileIdText.setText(this.myProfile.nickname);
-    this.profileCoinText.setText(`${this.myProfile.coins}`);
+    this.profileCoinText.setText(`X ${this.myProfile.coins}`);
 
     // 경험치 바 업데이트
     const currentExp = this.myProfile.experience % XP_PER_LEVEL;
     const expRatio = currentExp / XP_PER_LEVEL;
     const { width } = this.cameras.main;
     const profileSize = width * 0.2;
-    const expBarWidth = profileSize * 0.82;
-    const expBarHeight = width * 0.05;
-    const statY = profileSize * 1.07;
-    const expBarCenterX = profileSize * 0.45;
+    const expBarWidth = profileSize * 0.9;
+    const expBarHeight = width * 0.032;
+    const statY = profileSize * 1.06;
+    const expBarCenterX = profileSize * 0.4;
 
     // 진행 막대 업데이트 (둥근 모서리)
     this.profileExpBarFill.clear();
@@ -1358,7 +1339,7 @@ class LobbyScene extends Phaser.Scene {
     );
 
     // 경험치 숫자 텍스트 업데이트
-    this.profileExpText.setText(`${currentExp}/${XP_PER_LEVEL}`);
+    this.profileExpText.setText(`EXP  ${currentExp}/${XP_PER_LEVEL}`);
   }
 
   getOwnedProfileAvatarKeys() {
