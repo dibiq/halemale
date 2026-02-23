@@ -339,6 +339,8 @@ class LobbyScene extends Phaser.Scene {
     this.isJoinPopupOpen = false;
     this.isToastOpen = false;
     this.isRoomOpen = false;
+    this.lastBackPressedAt = 0;
+    this.backPressExitWindowMs = 2000;
     this.isSingle = false; // 로비는 항상 멀티플레이
     this.coinShopElements = []; // 코인 팝업 요소들
 
@@ -353,6 +355,7 @@ class LobbyScene extends Phaser.Scene {
     this.specialCardCooldownTimers = {}; // { cardId: timerId }
 
     this.currentJoinPopupCloseHandler = null;
+    this.currentShopPopupCloseHandler = null;
 
     const savedNickname = localStorage.getItem("nickname");
 
@@ -659,19 +662,38 @@ class LobbyScene extends Phaser.Scene {
       this.showInviteReceivePopup(data);
     });
 
-    this.backHandler = await App.addListener("backButton", ({ canGoBack }) => {
-      // 2. 알림창(Alert)이 떠 있는지 우선 확인
-      if (this.isJoinPopupOpen) {
+    this.backHandler = await App.addListener("backButton", () => {
+      if (typeof this.currentJoinPopupCloseHandler === "function") {
         this.currentJoinPopupCloseHandler();
-      } else if (this.isRoomOpen) {
+        this.lastBackPressedAt = 0;
+        return;
+      }
+
+      if (typeof this.currentShopPopupCloseHandler === "function") {
+        this.currentShopPopupCloseHandler();
+        this.lastBackPressedAt = 0;
+        return;
+      }
+
+      if (this.isRoomOpen) {
         this.showCustomAlert("로비로 이동합니다!", () => {
           window.location.reload();
         });
-      } else if (this.isToastOpen) {
-        App.exitApp();
-      } else {
-        this.showToast("한 번더 누르면 종료됩니다", "#f1c40f");
+        this.lastBackPressedAt = 0;
+        return;
       }
+
+      const now = Date.now();
+      const isSecondPress =
+        now - this.lastBackPressedAt <= this.backPressExitWindowMs;
+
+      if (isSecondPress) {
+        App.exitApp();
+        return;
+      }
+
+      this.lastBackPressedAt = now;
+      this.showToast("한번 더 누르면 앱이 종료됩니다", "#f1c40f");
     });
 
     /* =======================================================
@@ -1259,7 +1281,10 @@ class LobbyScene extends Phaser.Scene {
       socket.off("roomCreated");
       socket.off("joinRoomError");
       socket.off("recipeEnded");
-      this.backHandler.remove();
+      this.lastBackPressedAt = 0;
+      if (this.backHandler && typeof this.backHandler.remove === "function") {
+        this.backHandler.remove();
+      }
     });
   }
 
@@ -3007,6 +3032,10 @@ class LobbyScene extends Phaser.Scene {
   }
 
   showCoinShopPopup() {
+    this.isJoinPopupOpen = true;
+    this.coinShopBackCloseHandler = () => this.closeCoinShopPopup();
+    this.currentJoinPopupCloseHandler = this.coinShopBackCloseHandler;
+
     const { width, height } = this.cameras.main;
     const centerX = width / 2;
     const popupY = height * 0.5;
@@ -3197,6 +3226,12 @@ class LobbyScene extends Phaser.Scene {
       });
       this.coinShopElements = [];
     }
+
+    if (this.currentJoinPopupCloseHandler === this.coinShopBackCloseHandler) {
+      this.currentJoinPopupCloseHandler = null;
+    }
+    this.coinShopBackCloseHandler = null;
+    this.isJoinPopupOpen = !!this.shopPopupContainer;
   }
 
   closeShopPopup() {
@@ -3205,6 +3240,7 @@ class LobbyScene extends Phaser.Scene {
       this.shopPopupContainer.destroy();
       this.shopPopupContainer = null;
     }
+    this.currentShopPopupCloseHandler = null;
     this.setLobbyChatInputHidden(false);
   }
 
@@ -3972,6 +4008,8 @@ class LobbyScene extends Phaser.Scene {
   }
 
   showPasswordPopup(callback) {
+    this.isJoinPopupOpen = true;
+
     const { width, height } = this.cameras.main;
     const centerX = width / 2;
     const popupY = height * 0.4;
@@ -4060,7 +4098,13 @@ class LobbyScene extends Phaser.Scene {
     const closePwPopup = () => {
       pwPopupContainer.destroy();
       pwInput.destroy();
+      this.isJoinPopupOpen = false;
+      if (this.currentJoinPopupCloseHandler === closePwPopup) {
+        this.currentJoinPopupCloseHandler = null;
+      }
     };
+
+    this.currentJoinPopupCloseHandler = closePwPopup;
 
     cancelBtnImg.on("pointerdown", () => {
       this.sound.play("pop", { volume: 0.1 });
@@ -4104,6 +4148,8 @@ class LobbyScene extends Phaser.Scene {
   }
 
   showNicknamePopup(callback) {
+    this.isJoinPopupOpen = true;
+
     const { width, height } = this.cameras.main;
     const centerX = width / 2;
     const popupY = height * 0.4;
@@ -4185,14 +4231,22 @@ class LobbyScene extends Phaser.Scene {
       confirmBtnText,
     ]);
 
+    const closeNicknamePopup = () => {
+      if (popupContainer && popupContainer.active) popupContainer.destroy();
+      if (overlay && overlay.active) overlay.destroy();
+      this.isJoinPopupOpen = false;
+      if (this.currentJoinPopupCloseHandler === closeNicknamePopup) {
+        this.currentJoinPopupCloseHandler = null;
+      }
+    };
+
+    this.currentJoinPopupCloseHandler = closeNicknamePopup;
+
     // --- 이벤트 처리 ---
     confirmBtnImg.once("pointerdown", () => {
       const nickname = el.value.trim() || "요리사";
 
-      // 컨테이너와 오버레이만 지우면 끝!
-      // 개별 요소(텍스트, 이미지 등)를 일일이 destroy할 필요가 없습니다.
-      popupContainer.destroy();
-      overlay.destroy();
+      closeNicknamePopup();
 
       if (callback) callback(nickname);
     });
@@ -4820,6 +4874,8 @@ class LobbyScene extends Phaser.Scene {
   }
 
   showCustomAlert(message, onConfirm) {
+    this.isJoinPopupOpen = true;
+
     const { width, height } = this.cameras.main;
     const centerX = width / 2;
     const centerY = height / 2;
@@ -4862,7 +4918,14 @@ class LobbyScene extends Phaser.Scene {
       ].forEach((el) => {
         if (el) el.destroy();
       });
+
+      this.isJoinPopupOpen = false;
+      if (this.currentJoinPopupCloseHandler === closeAlert) {
+        this.currentJoinPopupCloseHandler = null;
+      }
     };
+
+    this.currentJoinPopupCloseHandler = closeAlert;
 
     const btnY = centerY + 50;
     const btnGap = width * 0.18;
@@ -4952,6 +5015,8 @@ class LobbyScene extends Phaser.Scene {
   }
 
   showInvitePopup(users, roomName) {
+    this.isJoinPopupOpen = true;
+
     const { width, height, centerX, centerY } = this.cameras.main;
 
     this.setLobbyChatInputHidden(true);
@@ -5011,7 +5076,14 @@ class LobbyScene extends Phaser.Scene {
       allObjects.forEach((obj) => {
         if (obj && obj.active) obj.destroy();
       });
+
+      this.isJoinPopupOpen = false;
+      if (this.currentJoinPopupCloseHandler === destroyPopup) {
+        this.currentJoinPopupCloseHandler = null;
+      }
     };
+
+    this.currentJoinPopupCloseHandler = destroyPopup;
 
     overlay.setInteractive();
     overlay.on("pointerdown", () => {
@@ -5141,6 +5213,8 @@ class LobbyScene extends Phaser.Scene {
   }
 
   showInviteReceivePopup(inviteData) {
+    this.isJoinPopupOpen = true;
+
     const { width, height, centerX, centerY } = this.cameras.main;
 
     this.setLobbyChatInputHidden(true);
@@ -5173,7 +5247,14 @@ class LobbyScene extends Phaser.Scene {
       allObjects.forEach((obj) => {
         if (obj && obj.active) obj.destroy();
       });
+
+      this.isJoinPopupOpen = false;
+      if (this.currentJoinPopupCloseHandler === destroyPopup) {
+        this.currentJoinPopupCloseHandler = null;
+      }
     };
+
+    this.currentJoinPopupCloseHandler = destroyPopup;
 
     overlay.setInteractive();
     overlay.on("pointerdown", () => {
