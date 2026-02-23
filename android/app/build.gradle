@@ -1,10 +1,10 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace = "com.topstudio.skewermaster"
+    namespace = "com.topstudio.halemale"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.topstudio.skewermaster"
+        applicationId "com.topstudio.halemale"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 3

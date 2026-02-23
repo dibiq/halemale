@@ -1,4 +1,4 @@
-package com.topstudio.skewermaster;
+package com.topstudio.halemale;
 
 import com.getcapacitor.BridgeActivity;
 
