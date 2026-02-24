@@ -596,13 +596,44 @@ function processSkipTurn(room, io) {
   let loopCount = 0;
   room.turnIndex = getSafeNextIndex(room);
 
+  const activeSocketIds =
+    io.sockets.adapter.rooms.get(room.roomId) || new Set();
+  const activeSockets = [...activeSocketIds]
+    .map((id) => io.sockets.sockets.get(id))
+    .filter(Boolean);
+
+  const isPlayerConnected = (player) => {
+    if (!player) return false;
+    if (activeSocketIds.has(player.id)) return true;
+
+    const playerNickname =
+      typeof player.nickname === "string" ? player.nickname.trim() : "";
+    if (!playerNickname) return false;
+
+    return activeSockets.some((activeSocket) => {
+      const activeNickname =
+        typeof activeSocket.nickname === "string"
+          ? activeSocket.nickname.trim()
+          : "";
+      if (!activeNickname || activeNickname !== playerNickname) return false;
+
+      const previousId = player.id;
+      player.id = activeSocket.id;
+      if (room.host === previousId) {
+        room.host = activeSocket.id;
+      }
+      return true;
+    });
+  };
+
   // 단순히 덱이 있는 다음 플레이어를 찾습니다.
   while (loopCount < room.players.length) {
     let currentPlayer = room.players[room.turnIndex];
     if (
       currentPlayer &&
       currentPlayer.myDeck &&
-      currentPlayer.myDeck.length > 0
+      currentPlayer.myDeck.length > 0 &&
+      isPlayerConnected(currentPlayer)
     ) {
       break;
     } else {
