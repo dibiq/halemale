@@ -255,9 +255,8 @@ function normalizeOwnedCharacters(value) {
 app.get("/", (req, res) => res.status(200).send("서버 가동 중"));
 app.get("/health", (req, res) => res.status(200).json({ status: "ok" }));
 
-// 💡 [추가] 공개 방 목록 조회 API
-app.get("/api/public-rooms", (req, res) => {
-  const publicRooms = Object.values(rooms).map((room) => ({
+function getRoomListPayload() {
+  return Object.values(rooms).map((room) => ({
     roomId: room.roomId,
     roomName: room.roomName || `${room.players[0]?.nickname || "방장"}의 방`,
     hostNickname: room.players[0]?.nickname || "방장",
@@ -266,21 +265,27 @@ app.get("/api/public-rooms", (req, res) => {
     isPublic: room.isPublic,
     isGameStarted: room.isGameStarted || false,
   }));
+}
 
-  res.json(publicRooms);
+// 방 목록 조회 API (공개/비공개 모두 반환)
+app.get("/api/rooms", (req, res) => {
+  res.set("Cache-Control", "no-store, no-cache, must-revalidate, private");
+  res.set("Pragma", "no-cache");
+  res.set("Expires", "0");
+  res.json(getRoomListPayload());
+});
+
+// 기존 경로 호환 유지
+app.get("/api/public-rooms", (req, res) => {
+  res.set("Cache-Control", "no-store, no-cache, must-revalidate, private");
+  res.set("Pragma", "no-cache");
+  res.set("Expires", "0");
+  res.json(getRoomListPayload());
 });
 
 // 공개 방 목록을 모든 클라이언트에게 브로드캐스트하는 헬퍼 함수
 function broadcastPublicRooms() {
-  const publicRooms = Object.values(rooms).map((room) => ({
-    roomId: room.roomId,
-    roomName: room.roomName || `${room.players[0]?.nickname || "방장"}의 방`,
-    hostNickname: room.players[0]?.nickname || "방장",
-    playerCount: room.players.length,
-    maxPlayers: room.maxPlayers,
-    isPublic: room.isPublic,
-    isGameStarted: room.isGameStarted || false,
-  }));
+  const publicRooms = getRoomListPayload();
   io.emit("publicRoomsUpdated", publicRooms);
 }
 

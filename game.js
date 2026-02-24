@@ -17,10 +17,17 @@ function handleGetUserKey() {
   }
 }
 
-const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "0.0.0.0"]);
+const PRODUCTION_HOSTS = new Set([
+  "halemale.onrender.com",
+  "halemale-client.onrender.com",
+  "halemale.apps.tossmini.com",
+  "halemale.private-apps.tossmini.com",
+  "skewer-master.apps.tossmini.com",
+  "skewer-master.private-apps.tossmini.com",
+]);
 const browserHost =
   typeof window !== "undefined" ? window.location.hostname : "";
-const isLocalBrowser = LOCAL_HOSTS.has(browserHost);
+const isProductionBrowser = PRODUCTION_HOSTS.has(browserHost);
 const envServerUrl =
   typeof import.meta !== "undefined" && import.meta.env
     ? import.meta.env.VITE_SERVER_URL
@@ -33,7 +40,7 @@ const queryServerUrl =
 const SERVER_URL =
   queryServerUrl ||
   envServerUrl ||
-  (isLocalBrowser
+  (!isProductionBrowser
     ? `${window.location.protocol}//${window.location.hostname}:8080`
     : "https://halemale.onrender.com");
 
@@ -1866,7 +1873,7 @@ class LobbyScene extends Phaser.Scene {
     if (!roomId) return null;
 
     try {
-      const response = await fetch(`${SERVER_URL}/api/public-rooms`);
+      const response = await fetch(`${SERVER_URL}/api/rooms`);
       if (!response.ok) return null;
 
       const rooms = await response.json();
@@ -3273,7 +3280,7 @@ class LobbyScene extends Phaser.Scene {
     this.showLoading("방 목록 로딩 중...");
 
     // 공개 방 목록 가져오기
-    fetch(`${SERVER_URL}/api/public-rooms`)
+    fetch(`${SERVER_URL}/api/rooms`)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
@@ -3923,7 +3930,7 @@ class LobbyScene extends Phaser.Scene {
         // 새로고침 실행 함수
         const doRefresh = () => {
           if (!this.joinPopupContainer) return;
-          fetch(`${SERVER_URL}/api/public-rooms`)
+          fetch(`${SERVER_URL}/api/rooms`)
             .then((res) => res.json())
             .then((freshRooms) => {
               if (!this.joinPopupContainer) return;
