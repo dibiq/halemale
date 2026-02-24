@@ -7130,6 +7130,19 @@ class GameScene extends Phaser.Scene {
     // 1. 게임 준비 상태 확인
     if (!this.isGameReady) return;
 
+    const hasOpenCards = Array.isArray(this.roundData?.players)
+      ? this.roundData.players.some((player) => {
+          const hasOpenStack =
+            Array.isArray(player?.openStack) && player.openStack.length > 0;
+          const hasOpenCard = Boolean(player?.openCard);
+          return hasOpenStack || hasOpenCard;
+        })
+      : false;
+
+    if (!hasOpenCards) {
+      return;
+    }
+
     if (!this.isSingle) {
       const me = this.roundData.players.find((p) => p.id === socket.id);
       if (me && me.isEliminated) return;

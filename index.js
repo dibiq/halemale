@@ -1629,10 +1629,12 @@ io.on("connection", (socket) => {
     if (!room || !room.isGameStarted) return;
     if (room.bellLocked) return;
 
-    const hasOpenCards = room.players.some(
-      (player) =>
-        Array.isArray(player.openCardStack) && player.openCardStack.length > 0,
-    );
+    const hasOpenCards = room.players.some((player) => {
+      const hasOpenStack =
+        Array.isArray(player.openCardStack) && player.openCardStack.length > 0;
+      const hasOpenCard = Boolean(player.openCard);
+      return hasOpenStack || hasOpenCard;
+    });
     if (!hasOpenCards) {
       return;
     }
