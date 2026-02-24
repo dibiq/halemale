@@ -995,6 +995,7 @@ io.on("connection", (socket) => {
       players: [],
       maxPlayers: data.maxPlayers || 4,
       isGameStarted: false,
+      bellLocked: false,
       isPublic: isPublic,
       roomName: roomName,
       password: password, // 💡 비밀번호 저장 (비공개 방만)
@@ -1523,6 +1524,7 @@ io.on("connection", (socket) => {
 
     room.isGameStarted = true;
     room.turnIndex = 0;
+    room.bellLocked = false;
     const total = room.players.length;
     // 테스트를 위해 덱 크기 조절 가능 (실제 운영 시 deck 사용)
     const gameDeck = deck.slice(0, total * 30);
@@ -1557,6 +1559,11 @@ io.on("connection", (socket) => {
   socket.on("flipCard", () => {
     const room = rooms[socket.roomId];
     if (!room || !room.isGameStarted || room.isFlipping) return;
+
+    if (room.bellLocked) {
+      room.bellLocked = false;
+      console.log("🔓 bell 잠금 해제: 다음 카드 제출 감지");
+    }
 
     room.turnIndex = getSafeNextIndex(room);
     let p = room.players[room.turnIndex];
@@ -1620,11 +1627,14 @@ io.on("connection", (socket) => {
   socket.on("ringBell", () => {
     const room = rooms[socket.roomId];
     if (!room || !room.isGameStarted) return;
+    if (room.bellLocked) return;
 
     const totals = getFruitTotals(room.players);
     const isFive = Object.values(totals).some((t) => t === 5);
 
     if (isFive) {
+      room.bellLocked = true;
+
       // 만약 시작하자마자 종을 누르는 경우를 대비해 기본값 0 설정
       const reactionTimeMs = room.lastFlipTime
         ? Date.now() - room.lastFlipTime
