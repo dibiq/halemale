@@ -1228,7 +1228,7 @@ io.on("connection", (socket) => {
     if (!room) return socket.emit("joinRoomError", "방이 존재하지 않습니다.");
     if (!isRejoin && room.players.length >= room.maxPlayers)
       return socket.emit("joinRoomError", "인원 초과");
-    if (room.isGameStarted)
+    if (room.isGameStarted && !isRejoin)
       return socket.emit("joinRoomError", "이미 시작된 게임");
 
     socket.join(roomId);
@@ -1347,7 +1347,7 @@ io.on("connection", (socket) => {
     }
     if (!isRejoin && room.players.length >= room.maxPlayers)
       return socket.emit("joinRoomError", "인원 초과");
-    if (room.isGameStarted)
+    if (room.isGameStarted && !isRejoin)
       return socket.emit("joinRoomError", "이미 시작된 게임");
 
     socket.join(roomId);
@@ -1873,6 +1873,8 @@ io.on("connection", (socket) => {
     const room = rooms[socket.roomId];
     if (!room || !room.isGameStarted || room.isFlipping) return;
 
+    syncRoomPlayersWithActiveSockets(room, io);
+
     if (room.bellLocked) {
       room.bellLocked = false;
       console.log("🔓 bell 잠금 해제: 다음 카드 제출 감지");
@@ -1880,6 +1882,46 @@ io.on("connection", (socket) => {
 
     room.turnIndex = getSafeNextIndex(room);
     let p = room.players[room.turnIndex];
+
+    const activeSocketIds =
+      io.sockets.adapter.rooms.get(room.roomId) || new Set();
+    let turnGuard = 0;
+    while (
+      p &&
+      p.myDeck &&
+      p.myDeck.length > 0 &&
+      !activeSocketIds.has(p.id) &&
+      turnGuard < room.players.length
+    ) {
+      const matchedActiveSocket = [...activeSocketIds]
+        .map((id) => io.sockets.sockets.get(id))
+        .find((activeSocket) => {
+          const activeNickname =
+            typeof activeSocket?.nickname === "string"
+              ? activeSocket.nickname.trim()
+              : "";
+          const playerNickname =
+            typeof p.nickname === "string" ? p.nickname.trim() : "";
+          return (
+            activeNickname &&
+            playerNickname &&
+            activeNickname === playerNickname
+          );
+        });
+
+      if (matchedActiveSocket) {
+        const previousId = p.id;
+        p.id = matchedActiveSocket.id;
+        if (room.host === previousId) {
+          room.host = matchedActiveSocket.id;
+        }
+        break;
+      }
+
+      room.turnIndex = (room.turnIndex + 1) % room.players.length;
+      p = room.players[room.turnIndex];
+      turnGuard += 1;
+    }
 
     // 카드가 없는 사람은 이미 탈락자이므로 요청 무시
     if (!p || p.myDeck.length === 0) return;
