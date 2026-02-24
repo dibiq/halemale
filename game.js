@@ -5,7 +5,7 @@ import { App } from "@capacitor/app";
 import { Network } from "@capacitor/network";
 
 const THUNDER_CARD_TYPE = "thunder";
-const THUNDER_CARD_PROBABILITY = 3 / 59;
+const SINGLE_THUNDER_CARD_COUNT = 3;
 
 function handleGetUserKey() {
   // ReactNativeWebView가 있는지 먼저 확인
@@ -228,6 +228,11 @@ class LobbyScene extends Phaser.Scene {
     this.load.image("bar", `${ASSET_SERVER}/images/bar.png${VERSION}`);
     this.load.image("multbg", `${ASSET_SERVER}/images/multbg.png${VERSION}`);
 
+    this.load.image(
+      "thun",
+      `${ASSET_SERVER}/images/cards/special/ongame_thun.png${VERSION}`,
+    );
+
     this.load.image("itembg", `${ASSET_SERVER}/images/itembg.png${VERSION}`);
     this.load.image("uibtn", `${ASSET_SERVER}/images/ui_btn.png${VERSION}`);
     this.load.image("ui_btn", `${ASSET_SERVER}/images/ui_btn.png${VERSION}`);
@@ -345,10 +350,6 @@ class LobbyScene extends Phaser.Scene {
     this.load.image(
       "card_back",
       `${ASSET_SERVER}/images/cards/card_back.png${VERSION}`,
-    );
-    this.load.image(
-      "thunder_card",
-      `${ASSET_SERVER}/images/cards/thunder_card.png${VERSION}`,
     );
 
     // ============================================
@@ -5524,6 +5525,7 @@ class GameScene extends Phaser.Scene {
       this.myId = this.roundData.players[0].id;
       this.turnIndex = 0; // 내 차례부터 시작
       this.isGameStarted = true;
+      this.initializeSingleDecks();
     } else {
       this.myId = socket.id;
     }
@@ -5945,7 +5947,7 @@ class GameScene extends Phaser.Scene {
 
   getCardKey(card) {
     if (card && card.type === THUNDER_CARD_TYPE) {
-      return "thunder_card";
+      return "thun";
     }
 
     const fruitNames = { 1: "strawberry", 2: "banana", 3: "lime", 4: "plum" };
@@ -6981,10 +6983,13 @@ class GameScene extends Phaser.Scene {
       p.cards = initialCardCount;
       p.remainingCards = initialCardCount;
       p.openCard = null;
+      p.openStack = [];
       p.openStackCount = 0;
       p.isEliminated = false;
       p.isReady = true; // 싱글플레이어는 항상 준비 상태
     });
+
+    this.initializeSingleDecks();
 
     // 4. 바닥에 깔린 카드 잔상 제거를 위한 렌더링
     this.renderTable(this.roundData.players);
@@ -7266,14 +7271,10 @@ class GameScene extends Phaser.Scene {
     // 💡 [수정] 카드 장수가 변했으므로 상태 갱신
     this.updateEliminationStatus();
 
-    // 3. 랜덤 카드 생성 및 데이터 설정
+    // 3. 플레이어 덱에서 카드 1장 추출 (싱글도 고정 덱 사용)
+    const playerDeck = this.getSingleDeck(playerId);
     const randomCard =
-      Math.random() < THUNDER_CARD_PROBABILITY
-        ? { type: THUNDER_CARD_TYPE }
-        : {
-            fruit: Math.floor(Math.random() * 4) + 1,
-            count: Math.floor(Math.random() * 5) + 1,
-          };
+      playerDeck.length > 0 ? playerDeck.pop() : this.createRandomFruitCard();
 
     // 즉시 현재 보여지는 카드로 설정
     player.openCard = randomCard;
@@ -7617,6 +7618,7 @@ class GameScene extends Phaser.Scene {
     // 3. 페널티 실행 (받을 사람이 없어도 내 카드는 깎여야 규칙에 맞음)
     const penaltyAmount = recipients.length; // 생존자 수만큼 차감
     const myCurrentCards = Number(loser.cards) || 0;
+    const loserDeck = this.getSingleDeck(failedPlayerId);
 
     if (penaltyAmount > 0) {
       // 생존자들에게 줄 카드가 충분할 때
@@ -7625,6 +7627,13 @@ class GameScene extends Phaser.Scene {
         recipients.forEach((p) => {
           p.cards = (Number(p.cards) || 0) + 1;
           p.remainingCards = p.cards;
+
+          const recipientDeck = this.getSingleDeck(p.id);
+          const movedCard =
+            loserDeck.length > 0
+              ? loserDeck.pop()
+              : this.createRandomFruitCard();
+          recipientDeck.unshift(movedCard);
         });
       } else {
         // 카드가 부족하면 가진 걸 다 줌 (0장이 됨)
@@ -7632,7 +7641,17 @@ class GameScene extends Phaser.Scene {
         loser.cards = 0;
         // 한 장씩 순서대로 배분
         for (let i = 0; i < cardsToGive; i++) {
-          if (recipients[i]) recipients[i].cards += 1;
+          if (recipients[i]) {
+            recipients[i].cards += 1;
+            recipients[i].remainingCards = recipients[i].cards;
+
+            const recipientDeck = this.getSingleDeck(recipients[i].id);
+            const movedCard =
+              loserDeck.length > 0
+                ? loserDeck.pop()
+                : this.createRandomFruitCard();
+            recipientDeck.unshift(movedCard);
+          }
         }
       }
       this.addGameLog("틀렸습니다! 카드를 나눠줍니다", "#e74c3c");
@@ -7728,15 +7747,21 @@ class GameScene extends Phaser.Scene {
 
     this.time.removeAllEvents();
 
-    // 1. 💡 바닥에 실제로 쌓인 카드 장수 모두 합산
-    let totalCollected = 0;
-    this.roundData.players.forEach((p) => {
-      if (p.openStackCount && p.openStackCount > 0) {
-        totalCollected += p.openStackCount;
-        p.openStackCount = 0; // 가져갔으므로 초기화
+    // 1. 애니메이션 기준이 되는 이전 상태를 먼저 보존
+    const prevPlayers = this.roundData.players.map((p) => ({
+      ...p,
+      openStack: p.openStack ? [...p.openStack] : [],
+    }));
+
+    // 2. 바닥 카드(실제 객체)를 수집
+    const collectedCards = [];
+    prevPlayers.forEach((p) => {
+      if (Array.isArray(p.openStack) && p.openStack.length > 0) {
+        collectedCards.push(...p.openStack);
       }
-      p.openCard = null; // 현재 보여지는 카드 이미지 정보 초기화
     });
+
+    const totalCollected = collectedCards.length;
 
     // 가져갈 카드가 없으면 리턴 (중복 실행 방지)
     if (totalCollected === 0) return;
@@ -7746,40 +7771,38 @@ class GameScene extends Phaser.Scene {
     );
     const winner = this.roundData.players[winnerIdx];
 
-    if (winner) {
-      winner.cards = (Number(winner.cards) || 0) + totalCollected;
-      winner.remainingCards = winner.cards;
+    if (!winner) return;
 
-      // 2. 💡 턴 인덱스를 승자로 강제 고정
-      this.turnIndex = winnerIdx;
+    winner.cards = (Number(winner.cards) || 0) + totalCollected;
+    winner.remainingCards = winner.cards;
+    const winnerDeck = this.getSingleDeck(winner.id);
+    winnerDeck.unshift(...collectedCards);
 
-      this.addGameLog(
-        `${winner.nickname}님이 카드 ${totalCollected}장을 획득!`,
-        "#f1c40f",
-      );
-    }
+    // 3. 턴 인덱스를 승자로 고정
+    this.turnIndex = winnerIdx;
+    this.addGameLog(
+      `${winner.nickname}님이 카드 ${totalCollected}장을 획득!`,
+      "#f1c40f",
+    );
 
-    // --- 멀티플레이와 동일한 시각적 처리 적용 (애니메이션 + 데이터 교체)
-    const prevPlayers = this.roundData.players.map((p) => ({
-      ...p,
-      openStack: p.openStack ? [...p.openStack] : [],
-    }));
-
+    // 4. 애니메이션 이후 상태(바닥 초기화)를 생성
     const updatedPlayers = this.roundData.players.map((p) => {
       const clone = { ...p };
-      if (p.id === (winner && winner.id)) {
+      if (p.id === winner.id) {
         clone.cards = winner.cards;
         clone.remainingCards = winner.remainingCards;
       }
-      // playWinAnimation은 prevPlayers의 openStack을 사용해 애니메이션을 수행하고,
-      // 완료 시 this.roundData.players의 openStack을 비우므로 여기에는 기존 스택을 넣어둡니다.
-      clone.openStack = p.openStack ? [...p.openStack] : [];
+
+      clone.openCard = null;
+      clone.openStack = [];
+      clone.openStackCount = 0;
+
       return clone;
     });
 
-    // 애니메이션 실행 (멀티와 동일한 흐름)
+    // 5. 애니메이션 실행 (멀티와 동일한 흐름)
     this.playWinAnimation({
-      winnerId: winner ? winner.id : null,
+      winnerId: winner.id,
       players: updatedPlayers,
       prevPlayers: prevPlayers,
     });
@@ -7801,6 +7824,55 @@ class GameScene extends Phaser.Scene {
     } else {
       this.canClick = true;
       this.isFlipping = false;
+    }
+  }
+
+  createRandomFruitCard() {
+    return {
+      fruit: Math.floor(Math.random() * 4) + 1,
+      count: Math.floor(Math.random() * 5) + 1,
+    };
+  }
+
+  getSingleDeck(playerId) {
+    if (!this.singleDeckByPlayer) {
+      this.singleDeckByPlayer = {};
+    }
+
+    if (!Array.isArray(this.singleDeckByPlayer[playerId])) {
+      this.singleDeckByPlayer[playerId] = [];
+    }
+
+    return this.singleDeckByPlayer[playerId];
+  }
+
+  initializeSingleDecks() {
+    if (!this.isSingle || !Array.isArray(this.roundData?.players)) return;
+
+    this.singleDeckByPlayer = {};
+
+    const deckSlots = [];
+    this.roundData.players.forEach((player) => {
+      const cardCount = Math.max(0, Number(player.cards) || 0);
+      const deck = [];
+
+      for (let index = 0; index < cardCount; index += 1) {
+        deck.push(this.createRandomFruitCard());
+        deckSlots.push({ playerId: player.id, slotIndex: index });
+      }
+
+      this.singleDeckByPlayer[player.id] = deck;
+    });
+
+    const thunderCount = Math.min(SINGLE_THUNDER_CARD_COUNT, deckSlots.length);
+    for (let index = 0; index < thunderCount; index += 1) {
+      const pickIndex = Math.floor(Math.random() * deckSlots.length);
+      const picked = deckSlots.splice(pickIndex, 1)[0];
+      if (!picked) continue;
+
+      const deck = this.singleDeckByPlayer[picked.playerId];
+      if (!Array.isArray(deck)) continue;
+      deck[picked.slotIndex] = { type: THUNDER_CARD_TYPE };
     }
   }
 
