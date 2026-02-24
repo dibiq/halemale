@@ -307,6 +307,92 @@ function syncRoomPlayersWithActiveSockets(room, io) {
   room.players = uniquePlayers;
 }
 
+function normalizeRoomBeforeStart(room, io) {
+  if (!room || !Array.isArray(room.players) || room.players.length === 0) {
+    return;
+  }
+
+  syncRoomPlayersWithActiveSockets(room, io);
+
+  const activeSocketIds =
+    io.sockets.adapter.rooms.get(room.roomId) || new Set();
+
+  const byNickname = new Map();
+  const passthroughPlayers = [];
+
+  room.players.forEach((player) => {
+    const nickname =
+      typeof player.nickname === "string" ? player.nickname.trim() : "";
+
+    if (!nickname) {
+      passthroughPlayers.push(player);
+      return;
+    }
+
+    const existing = byNickname.get(nickname);
+    if (!existing) {
+      byNickname.set(nickname, player);
+      return;
+    }
+
+    const existingActive = activeSocketIds.has(existing.id);
+    const playerActive = activeSocketIds.has(player.id);
+
+    if (!existingActive && playerActive) {
+      byNickname.set(nickname, player);
+      return;
+    }
+
+    if (
+      existingActive === playerActive &&
+      (Array.isArray(player.myDeck) ? player.myDeck.length : 0) >
+        (Array.isArray(existing.myDeck) ? existing.myDeck.length : 0)
+    ) {
+      byNickname.set(nickname, player);
+    }
+  });
+
+  const mergedPlayers = [...byNickname.values(), ...passthroughPlayers];
+
+  const uniqueById = [];
+  const seenIds = new Set();
+  mergedPlayers.forEach((player) => {
+    if (!player || seenIds.has(player.id)) return;
+    seenIds.add(player.id);
+    uniqueById.push(player);
+  });
+
+  room.players = uniqueById;
+
+  const hostPlayerById = room.players.find((player) => player.id === room.host);
+  const hostPlayerByActiveId = room.players.find((player) =>
+    activeSocketIds.has(player.id),
+  );
+
+  if (!hostPlayerById) {
+    room.host = (hostPlayerByActiveId || room.players[0])?.id;
+  }
+
+  if (typeof room.turnIndex !== "number" || Number.isNaN(room.turnIndex)) {
+    room.turnIndex = 0;
+  }
+
+  if (room.players.length > 0) {
+    room.turnIndex = room.turnIndex % room.players.length;
+  }
+
+  const currentTurnPlayer = room.players[room.turnIndex];
+  const currentTurnConnected =
+    currentTurnPlayer && activeSocketIds.has(currentTurnPlayer.id);
+
+  if (!currentTurnConnected) {
+    const hostIndex = room.players.findIndex(
+      (player) => player.id === room.host,
+    );
+    room.turnIndex = hostIndex >= 0 ? hostIndex : 0;
+  }
+}
+
 function normalizeCharacterKey(value) {
   return /^player_[1-4]$/.test(String(value || "")) ? String(value) : null;
 }
@@ -1339,6 +1425,9 @@ io.on("connection", (socket) => {
       room.players.push(playerData);
       joinedPlayer = playerData;
     }
+
+    normalizeRoomBeforeStart(room, io);
+
     io.to(roomId).emit("playerJoined", {
       roomId,
       players: room.players,
@@ -1462,6 +1551,8 @@ io.on("connection", (socket) => {
       room.players.push(playerData);
       joinedPlayer = playerData;
     }
+
+    normalizeRoomBeforeStart(room, io);
 
     // 방에 있는 모든 플레이어에게 새 플레이어 입장 알림
     io.to(roomId).emit("playerJoined", {
@@ -1749,9 +1840,23 @@ io.on("connection", (socket) => {
       requesterId: socket.id,
     });
 
-    syncRoomPlayersWithActiveSockets(room, io);
+    normalizeRoomBeforeStart(room, io);
 
     // 1. 방장 권한 체크
+    if (room.host !== socket.id) {
+      const hostPlayer = room.players.find((player) => player.id === room.host);
+      const sameAsHostNickname =
+        hostPlayer &&
+        typeof hostPlayer.nickname === "string" &&
+        typeof socket.nickname === "string" &&
+        hostPlayer.nickname.trim() &&
+        hostPlayer.nickname.trim() === socket.nickname.trim();
+
+      if (sameAsHostNickname) {
+        room.host = socket.id;
+      }
+    }
+
     if (room.host !== socket.id) {
       emitServerDebug(room, "startGameRequest.blocked", {
         reason: "NOT_HOST",
@@ -2226,6 +2331,8 @@ io.on("connection", (socket) => {
       } else if (wasInRoom) {
         // 호스트 위임 로직
         if (room.host === socket.id) room.host = room.players[0].id;
+
+        normalizeRoomBeforeStart(room, io);
 
         // 3. 💡 이벤트를 보낼 때 나간 사람의 닉네임을 명시적으로 포함!
         io.to(socket.roomId).emit("playerLeft", {
