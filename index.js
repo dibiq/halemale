@@ -1669,14 +1669,28 @@ io.on("connection", (socket) => {
     });
   });
 
-  socket.on("startGameRequest", () => {
+  socket.on("startGameRequest", (ack) => {
+    const respond =
+      typeof ack === "function"
+        ? (payload) => {
+            try {
+              ack(payload);
+            } catch (error) {
+              console.error("startGameRequest ack error:", error);
+            }
+          }
+        : () => {};
+
     const room = rooms[socket.roomId];
     //if (!room || room.host !== socket.id || room.players.length < 2) return;
     //if (!room.players.filter((p) => p.id !== room.host).every((p) => p.isReady))
     // return;
 
     // 0. 방이 없으면 무시 (최소한의 안전장치)
-    if (!room) return;
+    if (!room) {
+      respond({ ok: false, reason: "NO_ROOM", socketRoomId: socket.roomId });
+      return;
+    }
 
     emitServerDebug(room, "startGameRequest.received", {
       requesterId: socket.id,
@@ -1689,6 +1703,13 @@ io.on("connection", (socket) => {
         isReady: Boolean(p.isReady),
       })),
     });
+    respond({
+      ok: true,
+      stage: "RECEIVED",
+      roomId: room.roomId,
+      hostId: room.host,
+      requesterId: socket.id,
+    });
 
     syncRoomPlayersWithActiveSockets(room, io);
 
@@ -1699,12 +1720,23 @@ io.on("connection", (socket) => {
         requesterId: socket.id,
         hostId: room.host,
       });
+      respond({
+        ok: false,
+        reason: "NOT_HOST",
+        requesterId: socket.id,
+        hostId: room.host,
+      });
       return socket.emit("startBlocked", "방장만 게임을 시작할 수 있습니다.");
     }
 
     // 2. 인원 수 체크 (2명 미만)
     if (room.players.length < 2) {
       emitServerDebug(room, "startGameRequest.blocked", {
+        reason: "NOT_ENOUGH_PLAYERS",
+        playerCount: room.players.length,
+      });
+      respond({
+        ok: false,
         reason: "NOT_ENOUGH_PLAYERS",
         playerCount: room.players.length,
       });
@@ -1720,6 +1752,14 @@ io.on("connection", (socket) => {
     );
     if (notReadyPlayers.length > 0) {
       emitServerDebug(room, "startGameRequest.blocked", {
+        reason: "PLAYERS_NOT_READY",
+        notReadyPlayers: notReadyPlayers.map((p) => ({
+          id: p.id,
+          nickname: p.nickname,
+        })),
+      });
+      respond({
+        ok: false,
         reason: "PLAYERS_NOT_READY",
         notReadyPlayers: notReadyPlayers.map((p) => ({
           id: p.id,
@@ -1809,6 +1849,13 @@ io.on("connection", (socket) => {
     emitServerDebug(room, "gameStart.emitted", {
       nextTurnId: room.players[room.turnIndex].id,
       totalPlayers: room.players.length,
+    });
+    respond({
+      ok: true,
+      stage: "GAME_STARTED",
+      roomId: room.roomId,
+      nextTurnId: room.players[room.turnIndex].id,
+      thunderCount,
     });
   });
 

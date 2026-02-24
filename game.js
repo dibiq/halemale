@@ -59,6 +59,20 @@ socket.off("serverDebug").on("serverDebug", (payload) => {
   console.log(`🛰️ [serverDebug][${ts}][room:${roomId}] ${event}`, payload);
 });
 
+socket.off("connect").on("connect", () => {
+  console.log("🔌 socket connected", {
+    serverUrl: SERVER_URL,
+    socketId: socket.id,
+  });
+});
+
+socket.off("disconnect").on("disconnect", (reason) => {
+  console.warn("🔌 socket disconnected", {
+    serverUrl: SERVER_URL,
+    reason,
+  });
+});
+
 // --- 전역 설정 변수 추가 ---
 const GAME_FONTS = {
   main: "Jua", // HTML에서 로드한 폰트 이름
@@ -4715,7 +4729,22 @@ class LobbyScene extends Phaser.Scene {
                   isReady: !!p.isReady,
                 })),
               });
-              socket.emit("startGameRequest");
+              let ackArrived = false;
+              socket.emit("startGameRequest", (ackPayload) => {
+                ackArrived = true;
+                console.log("🛰️ startGameRequest ack", ackPayload);
+              });
+              setTimeout(() => {
+                if (!ackArrived) {
+                  console.warn(
+                    "⚠️ startGameRequest ack 미수신 (서버 미도달/구버전 서버 가능)",
+                    {
+                      serverUrl: SERVER_URL,
+                      myId: socket.id,
+                    },
+                  );
+                }
+              }, 1200);
             }
           },
         });
