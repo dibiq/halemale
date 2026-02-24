@@ -5733,6 +5733,14 @@ class GameScene extends Phaser.Scene {
     socket.off("cardFlipped").on("cardFlipped", (data) => {
       if (this.isSingle) return;
 
+      if (data?.card?.type === THUNDER_CARD_TYPE) {
+        console.log("⚡ [client] THUNDER cardFlipped:", {
+          playerId: data.playerId,
+          nextTurnId: data.nextTurnId,
+          remainingCount: data.remainingCount,
+        });
+      }
+
       // 1. 데이터 갱신
       const player = this.roundData.players.find((p) => p.id === data.playerId);
       if (player) {

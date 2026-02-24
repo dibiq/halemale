@@ -262,6 +262,11 @@ function injectThunderCardsToPlayers(players, thunderCount) {
 
     targetPlayer.myDeck[targetIndex] = { type: THUNDER_CARD_TYPE };
     injectedByPlayer.set(targetPlayer.id, usedTailSlots + 1);
+
+    const drawOrderFromNow = targetPlayer.myDeck.length - targetIndex;
+    console.log(
+      `⚡ inject thunder -> ${targetPlayer.nickname || targetPlayer.id} (deckIndex=${targetIndex}, after ${drawOrderFromNow} draws)`,
+    );
   }
 }
 
@@ -1727,6 +1732,15 @@ io.on("connection", (socket) => {
       0,
     );
     console.log(`⚡ 멀티 썬더카드 배치 완료: ${thunderCount}장`);
+    room.players.forEach((player) => {
+      const deck = Array.isArray(player.myDeck) ? player.myDeck : [];
+      const thunderIndices = deck
+        .map((card, index) => (isThunderCard(card) ? index : -1))
+        .filter((index) => index >= 0);
+      console.log(
+        `⚡ ${player.nickname || player.id} thunderIndices=${JSON.stringify(thunderIndices)} deckSize=${deck.length}`,
+      );
+    });
 
     console.log(
       "📊 게임 시작 - room.players 레벨 확인:",
@@ -1784,6 +1798,11 @@ io.on("connection", (socket) => {
 
     // 카드 한 장을 뒤집음
     const card = p.myDeck.pop();
+    if (isThunderCard(card)) {
+      console.log(
+        `⚡ THUNDER DRAWN by ${p.nickname}(${p.id}) remaining=${p.myDeck.length} turnIndex=${room.turnIndex}`,
+      );
+    }
     p.openCard = card;
     p.openCardStack.push(card);
 
