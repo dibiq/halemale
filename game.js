@@ -308,22 +308,7 @@ class LobbyScene extends Phaser.Scene {
     );
 
     // 플레이어 애니메이션용 이미지
-    this.load.image(
-      "player_1_1",
-      `${ASSET_SERVER}/images/player_1_1.png${VERSION}`,
-    );
-    this.load.image(
-      "player_1_2",
-      `${ASSET_SERVER}/images/player_1_2.png${VERSION}`,
-    );
-    this.load.image(
-      "player_1_3",
-      `${ASSET_SERVER}/images/player_1_3.png${VERSION}`,
-    );
-    this.load.image(
-      "player_1_4",
-      `${ASSET_SERVER}/images/player_1_4.png${VERSION}`,
-    );
+    // ...player_1_1~4 이미지 로드 코드 삭제...
     this.load.image(
       "player_2_1",
       `${ASSET_SERVER}/images/player_2_1.png${VERSION}`,
@@ -417,6 +402,8 @@ class LobbyScene extends Phaser.Scene {
 
     this.currentJoinPopupCloseHandler = null;
     this.currentShopPopupCloseHandler = null;
+    this.startRequestPending = false;
+    this.startRequestCooldownUntil = 0;
 
     const savedNickname = localStorage.getItem("nickname");
 
@@ -782,16 +769,7 @@ class LobbyScene extends Phaser.Scene {
       .setAlpha(1.0);
 
     // 프로필 이미지를 스프라이트로 생성하고 애니메이션 적용
-    const currentKey = this.getSelectedAvatarKey();
-    const currentAvatarTexture = this.textures.exists(`${currentKey}_1`)
-      ? `${currentKey}_1`
-      : "player_1_1";
-    const currentIdx = this.profileAvatarKeys.indexOf(currentKey);
-    this.profileAvatarIndex = currentIdx >= 0 ? currentIdx : 0;
-    this.profileImage = this.add
-      .sprite(0, 0, currentAvatarTexture)
-      .setDisplaySize(profileSize, profileSize);
-    this.applyAvatarAnimation(this.profileImage, currentKey);
+    // ...player_1_1~4 사용 코드 삭제 (프로필)...
 
     const avatarLeftBtn = this.add
       .circle(-profileSize * 0.75, 0, profileSize * 0.14, 0x000000, 0.55)
@@ -1137,10 +1115,10 @@ class LobbyScene extends Phaser.Scene {
 
       this.cleanupPopup();
 
-      console.log(
+      /*console.log(
         "📥 playerJoined 받은 데이터:",
         JSON.stringify(data.players, null, 2),
-      );
+      );*/
 
       // UI를 먼저 동기화해서 데이터 구조를 잡습니다.
       this.refreshLobbyUI(data);
@@ -1212,8 +1190,10 @@ class LobbyScene extends Phaser.Scene {
       this.refreshLobbyUI(data);
     });
 
-    socket.on("startBlocked", (msg) => {
+    socket.off("startBlocked").on("startBlocked", (msg) => {
       console.log("startblock");
+
+      this.startRequestPending = false;
 
       this.showToast(
         msg || "아직 준비되지 않은 플레이어가 있습니다!",
@@ -4464,19 +4444,7 @@ class LobbyScene extends Phaser.Scene {
       this.lobbyUIContainer.add(cardBg);
 
       // 프로필 이미지 - 애니메이션 적용
-      const baseAvatarKey = /^player_[1-4]$/.test(p.avatarKey)
-        ? p.avatarKey
-        : `player_${i + 1}`;
-      const avatarTextureKey = this.textures.exists(`${baseAvatarKey}_1`)
-        ? `${baseAvatarKey}_1`
-        : "player_1_1";
-      const profileX = cardLeft + profileSize * 1.1;
-
-      const profileImg = this.add
-        .sprite(profileX, pos.y - cardH * 0.05, avatarTextureKey)
-        .setDisplaySize(profileSize * 2, profileSize * 2);
-      this.lobbyUIContainer.add(profileImg);
-      this.applyAvatarAnimation(profileImg, baseAvatarKey);
+      // ...player_1_1~4 사용 코드 삭제 (로비 프로필)...
 
       if (isHost && !isThisPlayerHost) {
         profileImg.setInteractive({ useHandCursor: true });
@@ -4712,6 +4680,12 @@ class LobbyScene extends Phaser.Scene {
       this.lobbyUIContainer.add([startBtnImg, startBtnText]);
 
       startBtnImg.on("pointerdown", () => {
+        const now = Date.now();
+        if (this.startRequestPending || now < this.startRequestCooldownUntil) {
+          this.showToast("시작 요청 처리 중입니다...", "#f1c40f");
+          return;
+        }
+
         this.sound.play("pop", { volume: 0.1 });
         this.tweens.add({
           targets: [startBtnImg, startBtnText],
@@ -4727,8 +4701,28 @@ class LobbyScene extends Phaser.Scene {
                 "#e74c3c",
               );
             } else {
+              if (!this.currentRoomId) {
+                this.showToast(
+                  "방 정보가 아직 동기화되지 않았습니다.",
+                  "#e74c3c",
+                );
+                return;
+              }
+
+              if (typeof this.currentRoomNumber !== "number") {
+                this.showToast(
+                  "방 번호 동기화 중입니다. 잠시 후 다시 시도해주세요.",
+                  "#e67e22",
+                );
+                return;
+              }
+
+              this.startRequestPending = true;
+              this.startRequestCooldownUntil = Date.now() + 1500;
+
               console.log("🚀 startGameRequest emit", {
-                roomId: this.currentRoomNumber,
+                roomId: this.currentRoomId,
+                roomNumber: this.currentRoomNumber,
                 myId: socket.id,
                 players: (this.currentPlayers || []).map((p) => ({
                   id: p.id,
@@ -4739,10 +4733,18 @@ class LobbyScene extends Phaser.Scene {
               let ackArrived = false;
               socket.emit("startGameRequest", (ackPayload) => {
                 ackArrived = true;
+                this.startRequestPending = false;
                 console.log("🛰️ startGameRequest ack", ackPayload);
+
+                if (ackPayload && ackPayload.ok === false) {
+                  if (ackPayload.reason === "ALREADY_STARTED") {
+                    this.showToast("이미 시작된 게임입니다.", "#f1c40f");
+                  }
+                }
               });
               setTimeout(() => {
                 if (!ackArrived) {
+                  this.startRequestPending = false;
                   console.warn(
                     "⚠️ startGameRequest ack 미수신 (서버 미도달/구버전 서버 가능)",
                     {
@@ -5219,16 +5221,8 @@ class LobbyScene extends Phaser.Scene {
         ? user.avatarKey
         : "player_1";
 
-      const userIcon = this.add
-        .image(
-          userIconX,
-          btnY,
-          this.textures.exists(`${baseUserAvatar}_1`)
-            ? `${baseUserAvatar}_1`
-            : "player_1_1",
-        )
-        .setDisplaySize(height * 0.045, height * 0.045)
-        .setDepth(4002);
+      const userIcon = this.add;
+      // ...player_1_1~4 사용 코드 삭제 (유저 아이콘)...
 
       // 유저명 + 레벨 (한 줄)
       const userInfo = this.add
@@ -8935,16 +8929,7 @@ class GameScene extends Phaser.Scene {
         ? user.avatarKey
         : "player_1";
 
-      const userIcon = this.add
-        .image(
-          userIconX,
-          btnY,
-          this.textures.exists(`${baseUserAvatar}_1`)
-            ? `${baseUserAvatar}_1`
-            : "player_1_1",
-        )
-        .setDisplaySize(height * 0.045, height * 0.045)
-        .setDepth(302);
+      const userIcon = this.add.image(userIconX, btnY, baseUserAvatar);
 
       // 유저명 + 레벨 (한 줄)
       const userInfo = this.add

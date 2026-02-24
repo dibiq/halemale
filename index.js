@@ -1368,6 +1368,7 @@ io.on("connection", (socket) => {
       isPublic: isPublic,
       roomName: roomName,
       password: password, // 💡 비밀번호 저장 (비공개 방만)
+      roomNumber: Object.keys(rooms).length, // 방 생성 시 순번 부여
     };
     const playerData = {
       id: socket.id,
@@ -1398,6 +1399,7 @@ io.on("connection", (socket) => {
       max: rooms[roomId].maxPlayers,
       isPublic: isPublic,
       roomName: rooms[roomId].roomName,
+      roomNumber: rooms[roomId].roomNumber,
     });
 
     // 방 생성 시 목록 브로드캐스트 (공개/비공개 모두)
@@ -1543,6 +1545,7 @@ io.on("connection", (socket) => {
       roomName: room.roomName,
       newPlayerNickname: nickname,
       isRejoin,
+      roomNumber: room.roomNumber,
     });
   });
 
@@ -1705,6 +1708,7 @@ io.on("connection", (socket) => {
       maxPlayers: room.maxPlayers,
       roomName: room.roomName,
       isGameStarted: room.isGameStarted || false,
+      roomNumber: room.roomNumber,
     });
   });
 
