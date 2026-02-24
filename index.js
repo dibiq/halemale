@@ -216,9 +216,25 @@ let rooms = {};
 const RANK_REWARD_COINS = [30, 20, 10];
 const WIN_REWARD_XP = 40;
 const XP_PER_LEVEL = 100;
+const THUNDER_CARD_TYPE = "thunder";
+const THUNDER_CARD_COUNT = 3;
 
 function getLevelFromExperience(experience) {
   return Math.floor((Number(experience) || 0) / XP_PER_LEVEL) + 1;
+}
+
+function isThunderCard(card) {
+  return Boolean(card) && card.type === THUNDER_CARD_TYPE;
+}
+
+function hasThunderCardOnTable(players) {
+  return players.some((player) => {
+    if (isThunderCard(player.openCard)) return true;
+    return (
+      Array.isArray(player.openCardStack) &&
+      player.openCardStack.some((card) => isThunderCard(card))
+    );
+  });
 }
 
 function normalizeCharacterKey(value) {
@@ -294,7 +310,13 @@ function broadcastPublicRooms() {
 function getFruitTotals(players) {
   let totals = { 1: 0, 2: 0, 3: 0, 4: 0 };
   players.forEach((p) => {
-    if (p.openCard) totals[p.openCard.fruit] += p.openCard.count;
+    if (
+      p.openCard &&
+      Number.isFinite(Number(p.openCard.fruit)) &&
+      Number.isFinite(Number(p.openCard.count))
+    ) {
+      totals[p.openCard.fruit] += p.openCard.count;
+    }
   });
   return totals;
 }
@@ -1519,6 +1541,11 @@ io.on("connection", (socket) => {
         deck.push({ fruit: f, count: c }),
       ),
     );
+
+    for (let index = 0; index < THUNDER_CARD_COUNT; index += 1) {
+      deck.push({ type: THUNDER_CARD_TYPE });
+    }
+
     deck.sort(() => Math.random() - 0.5);
 
     room.isGameStarted = true;
@@ -1583,14 +1610,18 @@ io.on("connection", (socket) => {
     // 💡 5 완성 여부 확인
     const totals = getFruitTotals(room.players);
     const isFive = Object.values(totals).some((t) => t === 5);
+    const hasThunder = hasThunderCardOnTable(room.players);
+    const isBellSuccessWindow = isFive || hasThunder;
 
     // 💡 [수정] 탈락 로직 변경
     if (p.myDeck.length === 0) {
-      if (!isFive) {
+      if (!isBellSuccessWindow) {
         console.log(`💀 ${p.nickname} 즉시 탈락 (덱 0 & 5 아님)`);
         p.isEliminated = true;
       } else {
-        console.log(`🔔 ${p.nickname} 기사회생 기회 부여 (덱 0 & 5 완성!)`);
+        console.log(
+          `🔔 ${p.nickname} 기사회생 기회 부여 (덱 0 & 5/썬더 조건 충족)`,
+        );
       }
     }
 
@@ -1640,8 +1671,10 @@ io.on("connection", (socket) => {
 
     const totals = getFruitTotals(room.players);
     const isFive = Object.values(totals).some((t) => t === 5);
+    const hasThunder = hasThunderCardOnTable(room.players);
+    const isCorrectBell = isFive || hasThunder;
 
-    if (isFive) {
+    if (isCorrectBell) {
       room.bellLocked = true;
 
       // 만약 시작하자마자 종을 누르는 경우를 대비해 기본값 0 설정

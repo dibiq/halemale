@@ -4,6 +4,9 @@ import { title } from "process";
 import { App } from "@capacitor/app";
 import { Network } from "@capacitor/network";
 
+const THUNDER_CARD_TYPE = "thunder";
+const THUNDER_CARD_PROBABILITY = 3 / 59;
+
 function handleGetUserKey() {
   // ReactNativeWebView가 있는지 먼저 확인
   if (typeof ReactNativeWebView !== "undefined") {
@@ -342,6 +345,10 @@ class LobbyScene extends Phaser.Scene {
     this.load.image(
       "card_back",
       `${ASSET_SERVER}/images/cards/card_back.png${VERSION}`,
+    );
+    this.load.image(
+      "thunder_card",
+      `${ASSET_SERVER}/images/cards/thunder_card.png${VERSION}`,
     );
 
     // ============================================
@@ -5937,6 +5944,10 @@ class GameScene extends Phaser.Scene {
   }
 
   getCardKey(card) {
+    if (card && card.type === THUNDER_CARD_TYPE) {
+      return "thunder_card";
+    }
+
     const fruitNames = { 1: "strawberry", 2: "banana", 3: "lime", 4: "plum" };
     const fruitName = fruitNames[card.fruit] || "strawberry";
     return `${fruitName}_${card.count}`;
@@ -6549,10 +6560,8 @@ class GameScene extends Phaser.Scene {
     const baseX = layout.x + Math.cos(rad) * dist * 0.7;
     const baseY = layout.y + Math.sin(rad) * dist;
 
-    const fruitNames = { 1: "strawberry", 2: "banana", 3: "lime", 4: "plum" };
-
     cardsToDraw.forEach((card, index) => {
-      const cardKey = `${fruitNames[card.fruit] || "strawberry"}_${card.count}`;
+      const cardKey = this.getCardKey(card);
 
       if (this.textures.exists(cardKey)) {
         // 💡 [핵심 수정] 플레이어 위치(rotation)에 따라 쌓이는 방향 결정
@@ -6573,6 +6582,31 @@ class GameScene extends Phaser.Scene {
           .setDepth(150 + index); // 나중 카드가 위로 오게
 
         this.playerTableGroup.add(openCardImg);
+      } else if (card && card.type === THUNDER_CARD_TYPE) {
+        const thunderCardBg = this.add
+          .rectangle(
+            baseX + offsetX,
+            baseY + offsetY,
+            width * 0.18,
+            width * 0.25,
+            0x4f46e5,
+            0.95,
+          )
+          .setStrokeStyle(4, 0xfde047, 1)
+          .setDepth(150 + index);
+
+        const thunderIcon = this.add
+          .text(baseX + offsetX, baseY + offsetY, "⚡", {
+            fontFamily: GAME_FONTS.main,
+            fontSize: `${width * 0.08}px`,
+            color: "#ffffff",
+            stroke: "#111111",
+            strokeThickness: 4,
+          })
+          .setOrigin(0.5)
+          .setDepth(151 + index);
+
+        this.playerTableGroup.add([thunderCardBg, thunderIcon]);
       }
     });
   }
@@ -7169,8 +7203,9 @@ class GameScene extends Phaser.Scene {
     if (this.isSingle) {
       const totals = this.calculateTotalFruits();
       const isFive = Object.values(totals).some((count) => count === 5);
+      const hasThunder = this.hasThunderOnTable();
 
-      if (isFive) {
+      if (isFive || hasThunder) {
         // 💥 성공 시 스펙타클한 이펙트 추가
         this.playSuccessEffect();
         // 성공 사운드
@@ -7191,8 +7226,9 @@ class GameScene extends Phaser.Scene {
 
     const totals = this.calculateTotalFruits();
     const isFive = Object.values(totals).some((count) => count === 5);
+    const hasThunder = this.hasThunderOnTable();
 
-    if (isFive) {
+    if (isFive || hasThunder) {
       this.aiSettings.forEach((ai) => {
         const aiData = this.roundData.players.find((p) => p.id === ai.id);
         // 카드가 있는 AI만 종을 침
@@ -7231,10 +7267,13 @@ class GameScene extends Phaser.Scene {
     this.updateEliminationStatus();
 
     // 3. 랜덤 카드 생성 및 데이터 설정
-    const randomCard = {
-      fruit: Math.floor(Math.random() * 4) + 1,
-      count: Math.floor(Math.random() * 5) + 1,
-    };
+    const randomCard =
+      Math.random() < THUNDER_CARD_PROBABILITY
+        ? { type: THUNDER_CARD_TYPE }
+        : {
+            fruit: Math.floor(Math.random() * 4) + 1,
+            count: Math.floor(Math.random() * 5) + 1,
+          };
 
     // 즉시 현재 보여지는 카드로 설정
     player.openCard = randomCard;
@@ -7277,7 +7316,8 @@ class GameScene extends Phaser.Scene {
     // 1. 과일이 여전히 5개인지 다시 확인 (이미 플레이어가 쳤을 수 있음)
     const totals = this.calculateTotalFruits();
     const isFive = Object.values(totals).some((count) => count === 5);
-    if (!isFive) return;
+    const hasThunder = this.hasThunderOnTable();
+    if (!isFive && !hasThunder) return;
 
     // 💥 AI도 정답 시 스펙타클한 이펙트
     this.playSuccessEffect();
@@ -7769,6 +7809,8 @@ class GameScene extends Phaser.Scene {
 
     const totals = this.calculateTotalFruits();
     const isFiveExists = Object.values(totals).some((count) => count === 5);
+    const hasThunder = this.hasThunderOnTable();
+    const hasBellSuccessWindow = isFiveExists || hasThunder;
 
     this.roundData.players.forEach((p) => {
       // 이미 탈락한 사람은 상태를 유지 (한번 죽으면 끝)
@@ -7777,7 +7819,7 @@ class GameScene extends Phaser.Scene {
       const hasDeck = (Number(p.cards) || 0) > 0;
 
       // 1. 낼 카드가 없고 바닥에 5도 없으면 -> 즉시 탈락
-      if (!hasDeck && !isFiveExists) {
+      if (!hasDeck && !hasBellSuccessWindow) {
         p.isEliminated = true;
       }
       // 2. 낼 카드가 생기면 (종을 쳐서 먹었을 때) -> 생존 유지
@@ -7792,11 +7834,27 @@ class GameScene extends Phaser.Scene {
   calculateTotalFruits() {
     const totals = { 1: 0, 2: 0, 3: 0, 4: 0 };
     this.roundData.players.forEach((p) => {
-      if (p.openCard) {
+      if (
+        p.openCard &&
+        Number.isFinite(Number(p.openCard.fruit)) &&
+        Number.isFinite(Number(p.openCard.count))
+      ) {
         totals[p.openCard.fruit] += p.openCard.count;
       }
     });
     return totals;
+  }
+
+  hasThunderOnTable() {
+    if (!this.roundData || !Array.isArray(this.roundData.players)) return false;
+
+    return this.roundData.players.some((player) => {
+      if (player?.openCard?.type === THUNDER_CARD_TYPE) return true;
+      return (
+        Array.isArray(player?.openStack) &&
+        player.openStack.some((card) => card?.type === THUNDER_CARD_TYPE)
+      );
+    });
   }
 
   // 닉네임 가져오기 보조 함수
