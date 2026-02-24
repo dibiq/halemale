@@ -1077,10 +1077,10 @@ class LobbyScene extends Phaser.Scene {
         typeof data?.roomNumber === "number" ? data.roomNumber : null;
       this.isRoomOpen = true;
 
-      console.log(
+      /*console.log(
         "📥 roomCreated 받은 데이터:",
         JSON.stringify(data.players, null, 2),
-      );
+      );*/
 
       this.hideLoading(); // 🔹 로딩창 끄기
       this.showToast("방 생성 성공!", "#2ecc71"); // 초록색 토스트

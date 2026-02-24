@@ -818,13 +818,21 @@ function getTurnDebugSnapshot(room, io) {
 }
 
 function logTurnDebug(room, io, event, extra = {}) {
+  const snapshot = getTurnDebugSnapshot(room, io);
   const payload = {
     ts: Date.now(),
     event,
     ...extra,
-    snapshot: getTurnDebugSnapshot(room, io),
+    snapshot,
   };
   console.log("[TURN_DEBUG]", JSON.stringify(payload));
+
+  if (room && room.roomId) {
+    emitServerDebug(room, `turnDebug.${event}`, {
+      ...extra,
+      snapshot,
+    });
+  }
 }
 
 // 2. 소켓 로직
@@ -1943,6 +1951,26 @@ io.on("connection", (socket) => {
     if (!room) {
       respond({ ok: false, reason: "NO_ROOM", socketRoomId: socket.roomId });
       return;
+    }
+
+    if (room.isGameStarted) {
+      emitServerDebug(room, "startGameRequest.blocked", {
+        reason: "ALREADY_STARTED",
+        requesterId: socket.id,
+        hostId: room.host,
+      });
+      logTurnDebug(room, io, "startGameRequest.blocked", {
+        reason: "ALREADY_STARTED",
+        requesterId: socket.id,
+        requesterNickname: socket.nickname || null,
+      });
+      respond({
+        ok: false,
+        reason: "ALREADY_STARTED",
+        requesterId: socket.id,
+        hostId: room.host,
+      });
+      return socket.emit("startBlocked", "이미 시작된 게임입니다.");
     }
 
     emitServerDebug(room, "startGameRequest.received", {
