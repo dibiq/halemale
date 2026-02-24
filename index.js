@@ -243,7 +243,9 @@ function injectThunderCardsToPlayers(players, thunderCount) {
   const candidateSlots = [];
   players.forEach((player, playerIndex) => {
     const deckSize = Array.isArray(player.myDeck) ? player.myDeck.length : 0;
-    for (let cardIndex = 0; cardIndex < deckSize; cardIndex += 1) {
+    const headWindow = Math.min(deckSize, 12);
+    const startIndex = Math.max(0, deckSize - headWindow);
+    for (let cardIndex = startIndex; cardIndex < deckSize; cardIndex += 1) {
       candidateSlots.push({ playerIndex, cardIndex });
     }
   });
@@ -258,6 +260,48 @@ function injectThunderCardsToPlayers(players, thunderCount) {
     if (!targetPlayer || !Array.isArray(targetPlayer.myDeck)) continue;
     targetPlayer.myDeck[picked.cardIndex] = { type: THUNDER_CARD_TYPE };
   }
+}
+
+function syncRoomPlayersWithActiveSockets(room, io) {
+  if (!room || !Array.isArray(room.players)) return;
+
+  const activeSocketIds = io.sockets.adapter.rooms.get(room.roomId);
+  if (!activeSocketIds || activeSocketIds.size === 0) return;
+
+  const activeSockets = [...activeSocketIds]
+    .map((id) => io.sockets.sockets.get(id))
+    .filter(Boolean);
+
+  room.players.forEach((player) => {
+    const matchedSocket = activeSockets.find((activeSocket) => {
+      const activeNickname =
+        typeof activeSocket.nickname === "string"
+          ? activeSocket.nickname.trim()
+          : "";
+      const playerNickname =
+        typeof player.nickname === "string" ? player.nickname.trim() : "";
+      return (
+        activeNickname && playerNickname && activeNickname === playerNickname
+      );
+    });
+
+    if (matchedSocket) {
+      const previousId = player.id;
+      player.id = matchedSocket.id;
+      if (room.host === previousId) {
+        room.host = matchedSocket.id;
+      }
+    }
+  });
+
+  const uniquePlayers = [];
+  const seenIds = new Set();
+  room.players.forEach((player) => {
+    if (seenIds.has(player.id)) return;
+    seenIds.add(player.id);
+    uniquePlayers.push(player);
+  });
+  room.players = uniquePlayers;
 }
 
 function normalizeCharacterKey(value) {
@@ -1616,6 +1660,8 @@ io.on("connection", (socket) => {
     // 0. 방이 없으면 무시 (최소한의 안전장치)
     if (!room) return;
 
+    syncRoomPlayersWithActiveSockets(room, io);
+
     // 1. 방장 권한 체크
     if (room.host !== socket.id) {
       return socket.emit("startBlocked", "방장만 게임을 시작할 수 있습니다.");
@@ -1710,7 +1756,23 @@ io.on("connection", (socket) => {
     let p = room.players[room.turnIndex];
 
     // 카드가 없는 사람은 이미 탈락자이므로 요청 무시
-    if (!p || p.id !== socket.id || p.myDeck.length === 0) return;
+    if (!p || p.myDeck.length === 0) return;
+
+    if (p.id !== socket.id) {
+      const sameNickname =
+        typeof socket.nickname === "string" &&
+        typeof p.nickname === "string" &&
+        socket.nickname.trim() &&
+        socket.nickname.trim() === p.nickname.trim();
+
+      if (!sameNickname) return;
+
+      const previousId = p.id;
+      p.id = socket.id;
+      if (room.host === previousId) {
+        room.host = socket.id;
+      }
+    }
 
     room.isFlipping = true;
 
