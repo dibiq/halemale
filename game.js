@@ -52,6 +52,13 @@ const socket = io(SERVER_URL, {
   withCredentials: true,
 });
 
+socket.off("serverDebug").on("serverDebug", (payload) => {
+  const event = payload?.event || "unknown";
+  const roomId = payload?.roomId || "-";
+  const ts = payload?.ts ? new Date(payload.ts).toLocaleTimeString() : "-";
+  console.log(`🛰️ [serverDebug][${ts}][room:${roomId}] ${event}`, payload);
+});
+
 // --- 전역 설정 변수 추가 ---
 const GAME_FONTS = {
   main: "Jua", // HTML에서 로드한 폰트 이름
@@ -4699,6 +4706,15 @@ class LobbyScene extends Phaser.Scene {
                 "#e74c3c",
               );
             } else {
+              console.log("🚀 startGameRequest emit", {
+                roomId: this.currentRoomNumber,
+                myId: socket.id,
+                players: (this.currentPlayers || []).map((p) => ({
+                  id: p.id,
+                  nickname: p.nickname,
+                  isReady: !!p.isReady,
+                })),
+              });
               socket.emit("startGameRequest");
             }
           },

@@ -624,6 +624,16 @@ function processSkipTurn(room, io) {
   }
 }
 
+function emitServerDebug(room, event, payload = {}) {
+  if (!room || !room.roomId) return;
+  io.to(room.roomId).emit("serverDebug", {
+    ts: Date.now(),
+    roomId: room.roomId,
+    event,
+    ...payload,
+  });
+}
+
 // 2. 소켓 로직
 io.on("connection", (socket) => {
   socket.on("setNickname", async (nickname) => {
@@ -1668,15 +1678,36 @@ io.on("connection", (socket) => {
     // 0. 방이 없으면 무시 (최소한의 안전장치)
     if (!room) return;
 
+    emitServerDebug(room, "startGameRequest.received", {
+      requesterId: socket.id,
+      requesterNickname: socket.nickname || null,
+      hostId: room.host,
+      playerCount: room.players.length,
+      players: room.players.map((p) => ({
+        id: p.id,
+        nickname: p.nickname,
+        isReady: Boolean(p.isReady),
+      })),
+    });
+
     syncRoomPlayersWithActiveSockets(room, io);
 
     // 1. 방장 권한 체크
     if (room.host !== socket.id) {
+      emitServerDebug(room, "startGameRequest.blocked", {
+        reason: "NOT_HOST",
+        requesterId: socket.id,
+        hostId: room.host,
+      });
       return socket.emit("startBlocked", "방장만 게임을 시작할 수 있습니다.");
     }
 
     // 2. 인원 수 체크 (2명 미만)
     if (room.players.length < 2) {
+      emitServerDebug(room, "startGameRequest.blocked", {
+        reason: "NOT_ENOUGH_PLAYERS",
+        playerCount: room.players.length,
+      });
       return socket.emit(
         "startBlocked",
         "최소 2명 이상의 플레이어가 필요합니다.",
@@ -1688,6 +1719,13 @@ io.on("connection", (socket) => {
       (p) => p.id !== room.host && !p.isReady,
     );
     if (notReadyPlayers.length > 0) {
+      emitServerDebug(room, "startGameRequest.blocked", {
+        reason: "PLAYERS_NOT_READY",
+        notReadyPlayers: notReadyPlayers.map((p) => ({
+          id: p.id,
+          nickname: p.nickname,
+        })),
+      });
       return socket.emit(
         "startBlocked",
         "모든 인원이 준비 완료 상태여야 합니다.",
@@ -1732,6 +1770,9 @@ io.on("connection", (socket) => {
       0,
     );
     console.log(`⚡ 멀티 썬더카드 배치 완료: ${thunderCount}장`);
+    emitServerDebug(room, "thunder.injected", {
+      thunderCount,
+    });
     room.players.forEach((player) => {
       const deck = Array.isArray(player.myDeck) ? player.myDeck : [];
       const thunderIndices = deck
@@ -1740,6 +1781,12 @@ io.on("connection", (socket) => {
       console.log(
         `⚡ ${player.nickname || player.id} thunderIndices=${JSON.stringify(thunderIndices)} deckSize=${deck.length}`,
       );
+      emitServerDebug(room, "thunder.playerDeck", {
+        playerId: player.id,
+        nickname: player.nickname,
+        deckSize: deck.length,
+        thunderIndices,
+      });
     });
 
     console.log(
@@ -1757,6 +1804,11 @@ io.on("connection", (socket) => {
       roomName: room.roomName,
       maxPlayers: room.maxPlayers,
       nextTurnId: room.players[room.turnIndex].id,
+    });
+
+    emitServerDebug(room, "gameStart.emitted", {
+      nextTurnId: room.players[room.turnIndex].id,
+      totalPlayers: room.players.length,
     });
   });
 
@@ -1802,6 +1854,12 @@ io.on("connection", (socket) => {
       console.log(
         `⚡ THUNDER DRAWN by ${p.nickname}(${p.id}) remaining=${p.myDeck.length} turnIndex=${room.turnIndex}`,
       );
+      emitServerDebug(room, "thunder.drawn", {
+        playerId: p.id,
+        nickname: p.nickname,
+        remaining: p.myDeck.length,
+        turnIndex: room.turnIndex,
+      });
     }
     p.openCard = card;
     p.openCardStack.push(card);
