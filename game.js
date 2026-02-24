@@ -5441,7 +5441,7 @@ class GameScene extends Phaser.Scene {
     this.openCards = {}; // 각 플레이어별 바닥에 오픈된 카드 { playerId: card }
   }
 
-  create() {
+  async create() {
     // GameScene의 init 혹은 create 상단에 추가
     if (this.resultContainer) {
       this.resultContainer.destroy();
@@ -5498,6 +5498,7 @@ class GameScene extends Phaser.Scene {
 
     this.isPopupOpen = false;
     this.currentJoinPopupCloseHandler = null;
+    this.currentGamePopupCloseHandler = null;
 
     if (!this.roundData) {
       this.roundData = { players: [], hostId: null };
@@ -5803,6 +5804,17 @@ class GameScene extends Phaser.Scene {
     // [대체함] 할리갈리용 버튼 배치
     this.createHaliGaliButtons(height);
 
+    const moveToLobby = () => {
+      if (typeof this.currentGamePopupCloseHandler === "function") {
+        this.currentGamePopupCloseHandler();
+        return;
+      }
+
+      this.showCustomAlert("로비로 이동합니다!", () => {
+        window.location.reload();
+      });
+    };
+
     // 홈 버튼 (나가기)
     const exitBtn = this.add
       .image(width * 0.13, height * 0.077, "home")
@@ -5810,11 +5822,15 @@ class GameScene extends Phaser.Scene {
       .setInteractive({ useHandCursor: true })
       .setDepth(100);
 
-    exitBtn.on("pointerdown", () => {
-      this.showCustomAlert("로비로 이동합니다!", () => {
-        window.location.reload();
+    exitBtn.on("pointerdown", moveToLobby);
+
+    try {
+      this.backHandler = await App.addListener("backButton", () => {
+        moveToLobby();
       });
-    });
+    } catch (error) {
+      console.warn("게임 씬 백버튼 리스너 등록 실패", error);
+    }
 
     // 초기 테이블 렌더링
     this.renderTable(this.roundData.players);
@@ -5831,6 +5847,9 @@ class GameScene extends Phaser.Scene {
       socket.off("gameEnded");
       socket.off("startBlocked");
       socket.off("myProfile");
+      if (this.backHandler && typeof this.backHandler.remove === "function") {
+        this.backHandler.remove();
+      }
     });
   }
 
@@ -8507,7 +8526,13 @@ class GameScene extends Phaser.Scene {
       ].forEach((el) => {
         if (el) el.destroy();
       });
+
+      if (this.currentGamePopupCloseHandler === closeAlert) {
+        this.currentGamePopupCloseHandler = null;
+      }
     };
+
+    this.currentGamePopupCloseHandler = closeAlert;
 
     const btnY = centerY + 50;
     const btnGap = width * 0.18;

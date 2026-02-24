@@ -6,7 +6,10 @@
     "start": "node index.js",
     "build": "granite build",
     "dev": "granite dev",
-    "deploy": "ait deploy"
+    "deploy": "ait deploy",
+    "dev:local:server": "PORT=${PORT:-8080} node index.js",
+    "dev:local:web": "vite --host 0.0.0.0 --port ${VITE_PORT:-5173}",
+    "dev:local": "npm run dev:local:server & npm run dev:local:web"
   },
   "dependencies": {
     "@apps-in-toss/web-framework": "^1.9.1",

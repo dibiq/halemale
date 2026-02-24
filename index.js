@@ -7,6 +7,11 @@ const { Pool } = require("pg");
 
 const app = express();
 const server = http.createServer(app);
+const DATABASE_URL = process.env.DATABASE_URL;
+const hasPgConfig =
+  Boolean(process.env.PGHOST) ||
+  Boolean(process.env.PGUSER) ||
+  Boolean(process.env.PGDATABASE);
 
 // 1. CORS 설정
 function getAllowedOrigins() {
@@ -19,6 +24,7 @@ function getAllowedOrigins() {
     "https://halemale.private-apps.tossmini.com",
     "http://localhost",
     "https://localhost",
+    "http://localhost:5174/",
     "capacitor://localhost",
     "http://10.68.14.196:5173",
     "http://localhost:5173",
@@ -31,12 +37,30 @@ function getAllowedOrigins() {
 }
 
 // 1. DB 연결 설정
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL, // Render 환경변수에 등록한 주소
-  ssl: {
-    rejectUnauthorized: false, // Render DB 접속 시 필수 설정
-  },
-});
+const isDatabaseEnabled = Boolean(DATABASE_URL) || hasPgConfig;
+
+const pool = isDatabaseEnabled
+  ? new Pool({
+      ...(DATABASE_URL ? { connectionString: DATABASE_URL } : {}),
+      ...(DATABASE_URL
+        ? {
+            ssl: {
+              rejectUnauthorized: false,
+            },
+          }
+        : {}),
+    })
+  : null;
+
+if (!isDatabaseEnabled) {
+  console.warn(
+    "⚠️ DATABASE_URL 미설정: DB 저장/조회 기능을 비활성화하고 서버를 실행합니다.",
+  );
+} else if (!DATABASE_URL && hasPgConfig) {
+  console.log(
+    "ℹ️ DATABASE_URL 없이 PG 환경변수(PGHOST/PGUSER/PGDATABASE)로 DB 연결을 시도합니다.",
+  );
+}
 
 // 2. [저장하기] 플레이어 데이터 저장/업데이트 (UPSERT)
 async function savePlayer(
@@ -48,6 +72,8 @@ async function savePlayer(
   ownedCharacters = null,
   currentCharacter = null,
 ) {
+  if (!pool) return;
+
   const normalizedOwnedCharacters = Array.isArray(ownedCharacters)
     ? ownedCharacters.filter((key) => /^player_[1-4]$/.test(String(key)))
     : null;
@@ -110,6 +136,11 @@ async function savePlayer(
 }
 
 async function ensurePlayersSchema() {
+  if (!pool) {
+    console.log("ℹ️ players 스키마 확인 건너뜀 (DB 비활성화)");
+    return;
+  }
+
   try {
     await pool.query(`
       ALTER TABLE players
@@ -131,6 +162,8 @@ async function ensurePlayersSchema() {
 
 // 3. [불러오기] 플레이어 데이터 조회
 async function getPlayer(id) {
+  if (!pool) return null;
+
   try {
     const res = await pool.query("SELECT * FROM players WHERE id = $1", [id]);
     if (res.rows.length > 0) {
