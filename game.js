@@ -6630,19 +6630,17 @@ class GameScene extends Phaser.Scene {
     cardsToDraw.forEach((card, index) => {
       const cardKey = this.getCardKey(card);
 
+      let offsetX = 0;
+      let offsetY = 0;
+      const step = 3;
+
+      if (layout.rotation === 0) offsetY = -index * step;
+      else if (layout.rotation === 90) offsetX = index * step;
+      else if (layout.rotation === 180) offsetY = index * step;
+      else if (layout.rotation === -90 || layout.rotation === 270)
+        offsetX = -index * step;
+
       if (this.textures.exists(cardKey)) {
-        // 💡 [핵심 수정] 플레이어 위치(rotation)에 따라 쌓이는 방향 결정
-        // rotation 0(하단): 위로(-Y), 90(좌측): 오른쪽(+X), 180(상단): 아래로(+Y), -90(우측): 왼쪽(-X)
-        let offsetX = 0;
-        let offsetY = 0;
-        const step = 3; // 카드 한 장당 어긋나는 픽셀 거리 (취향껏 조절)
-
-        if (layout.rotation === 0) offsetY = -index * step;
-        else if (layout.rotation === 90) offsetX = index * step;
-        else if (layout.rotation === 180) offsetY = index * step;
-        else if (layout.rotation === -90 || layout.rotation === 270)
-          offsetX = -index * step;
-
         const openCardImg = this.add
           .image(baseX + offsetX, baseY + offsetY, cardKey)
           .setDisplaySize(width * 0.18, width * 0.25)

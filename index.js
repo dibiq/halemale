@@ -218,7 +218,7 @@ const WIN_REWARD_XP = 40;
 const XP_PER_LEVEL = 100;
 const THUNDER_CARD_TYPE = "thunder";
 const THUNDER_CARD_COUNT = 3;
-const SERVER_BUILD = "2026-02-24-ack-debug-v1";
+const SERVER_BUILD = "2026-02-24-thunder-insert-v1";
 
 function getLevelFromExperience(experience) {
   return Math.floor((Number(experience) || 0) / XP_PER_LEVEL) + 1;
@@ -246,27 +246,21 @@ function injectThunderCardsToPlayers(players, thunderCount) {
   );
   if (drawablePlayers.length === 0) return;
 
-  const injectedByPlayer = new Map();
-  const count = Math.min(
-    thunderCount,
-    drawablePlayers.reduce((sum, p) => sum + p.myDeck.length, 0),
-  );
+  const count = Math.max(0, Number(thunderCount) || 0);
 
   for (let index = 0; index < count; index += 1) {
     const targetPlayer =
       drawablePlayers[Math.floor(Math.random() * drawablePlayers.length)];
     if (!targetPlayer || !Array.isArray(targetPlayer.myDeck)) continue;
 
-    const usedTailSlots = injectedByPlayer.get(targetPlayer.id) || 0;
-    const deckLength = targetPlayer.myDeck.length;
-    const targetIndex = Math.max(0, deckLength - 1 - usedTailSlots);
+    const insertIndex = Math.floor(
+      Math.random() * (targetPlayer.myDeck.length + 1),
+    );
+    targetPlayer.myDeck.splice(insertIndex, 0, { type: THUNDER_CARD_TYPE });
 
-    targetPlayer.myDeck[targetIndex] = { type: THUNDER_CARD_TYPE };
-    injectedByPlayer.set(targetPlayer.id, usedTailSlots + 1);
-
-    const drawOrderFromNow = targetPlayer.myDeck.length - targetIndex;
+    const drawOrderFromNow = targetPlayer.myDeck.length - insertIndex;
     console.log(
-      `⚡ inject thunder -> ${targetPlayer.nickname || targetPlayer.id} (deckIndex=${targetIndex}, after ${drawOrderFromNow} draws)`,
+      `⚡ inject thunder -> ${targetPlayer.nickname || targetPlayer.id} (deckIndex=${insertIndex}, after ${drawOrderFromNow} draws)`,
     );
   }
 }
@@ -1814,6 +1808,9 @@ io.on("connection", (socket) => {
     });
 
     injectThunderCardsToPlayers(room.players, THUNDER_CARD_COUNT);
+    room.players.forEach((player) => {
+      player.cards = Array.isArray(player.myDeck) ? player.myDeck.length : 0;
+    });
     const thunderCount = room.players.reduce(
       (sum, player) =>
         sum +
