@@ -240,25 +240,28 @@ function hasThunderCardOnTable(players) {
 function injectThunderCardsToPlayers(players, thunderCount) {
   if (!Array.isArray(players) || players.length === 0) return;
 
-  const candidateSlots = [];
-  players.forEach((player, playerIndex) => {
-    const deckSize = Array.isArray(player.myDeck) ? player.myDeck.length : 0;
-    const headWindow = Math.min(deckSize, 12);
-    const startIndex = Math.max(0, deckSize - headWindow);
-    for (let cardIndex = startIndex; cardIndex < deckSize; cardIndex += 1) {
-      candidateSlots.push({ playerIndex, cardIndex });
-    }
-  });
+  const drawablePlayers = players.filter(
+    (player) => Array.isArray(player.myDeck) && player.myDeck.length > 0,
+  );
+  if (drawablePlayers.length === 0) return;
 
-  const count = Math.min(thunderCount, candidateSlots.length);
+  const injectedByPlayer = new Map();
+  const count = Math.min(
+    thunderCount,
+    drawablePlayers.reduce((sum, p) => sum + p.myDeck.length, 0),
+  );
+
   for (let index = 0; index < count; index += 1) {
-    const pickIndex = Math.floor(Math.random() * candidateSlots.length);
-    const picked = candidateSlots.splice(pickIndex, 1)[0];
-    if (!picked) continue;
-
-    const targetPlayer = players[picked.playerIndex];
+    const targetPlayer =
+      drawablePlayers[Math.floor(Math.random() * drawablePlayers.length)];
     if (!targetPlayer || !Array.isArray(targetPlayer.myDeck)) continue;
-    targetPlayer.myDeck[picked.cardIndex] = { type: THUNDER_CARD_TYPE };
+
+    const usedTailSlots = injectedByPlayer.get(targetPlayer.id) || 0;
+    const deckLength = targetPlayer.myDeck.length;
+    const targetIndex = Math.max(0, deckLength - 1 - usedTailSlots);
+
+    targetPlayer.myDeck[targetIndex] = { type: THUNDER_CARD_TYPE };
+    injectedByPlayer.set(targetPlayer.id, usedTailSlots + 1);
   }
 }
 
