@@ -17,7 +17,25 @@ function handleGetUserKey() {
   }
 }
 
-const SERVER_URL = "https://halemale.onrender.com";
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "0.0.0.0"]);
+const browserHost =
+  typeof window !== "undefined" ? window.location.hostname : "";
+const isLocalBrowser = LOCAL_HOSTS.has(browserHost);
+const envServerUrl =
+  typeof import.meta !== "undefined" && import.meta.env
+    ? import.meta.env.VITE_SERVER_URL
+    : "";
+const queryServerUrl =
+  typeof window !== "undefined"
+    ? new URLSearchParams(window.location.search).get("server")
+    : "";
+
+const SERVER_URL =
+  queryServerUrl ||
+  envServerUrl ||
+  (isLocalBrowser
+    ? `${window.location.protocol}//${window.location.hostname}:8080`
+    : "https://halemale.onrender.com");
 
 const socket = io(SERVER_URL, {
   transports: ["websocket", "polling"], // 웹소켓 우선 사용
@@ -5670,9 +5688,11 @@ class GameScene extends Phaser.Scene {
 
       if (nextIdx !== -1) {
         this.turnIndex = nextIdx;
+        const isMyTurnNow =
+          data.nextTurnId === (this.isSingle ? this.myId : socket.id);
 
         // 💡 내 차례가 왔을 때 띵! 소리나 진동(모바일) 주기
-        if (data.nextTurnId === (this.isSingle ? this.myId : socket.id)) {
+        if (isMyTurnNow) {
           this.canClick = true;
           this.sound.play("pop", { volume: 0.5 }); // 기존에 있는 pop 사운드 활용
 
@@ -5680,6 +5700,9 @@ class GameScene extends Phaser.Scene {
           if (window.navigator.vibrate) {
             window.navigator.vibrate(100);
           }
+        } else {
+          this.canClick = false;
+          this.clearMyTurnTimer();
         }
 
         this.renderTable(this.roundData.players);
@@ -5919,6 +5942,10 @@ class GameScene extends Phaser.Scene {
 
     // 싱글/멀티 통합 ID 판정
     const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
+    const isMyTurnNow = players[this.turnIndex]?.id === myId;
+    if (!isMyTurnNow) {
+      this.clearMyTurnTimer();
+    }
 
     // 내 위치 인덱스 찾기
     let myIndex = players.findIndex((p) => p.id === myId);
@@ -6096,12 +6123,16 @@ class GameScene extends Phaser.Scene {
     }
   }
 
-  startMyAutoTimer(p, layout) {
-    // 1. 기존 타이머가 있다면 즉시 제거
+  clearMyTurnTimer() {
     if (this.myTurnTimer) {
       this.myTurnTimer.remove();
       this.myTurnTimer = null;
     }
+  }
+
+  startMyAutoTimer(p, layout) {
+    // 1. 기존 타이머가 있다면 즉시 제거
+    this.clearMyTurnTimer();
 
     //const { width } = this.cameras.main;
     const { width, height } = this.cameras.main;
@@ -7575,6 +7606,11 @@ class GameScene extends Phaser.Scene {
   nextTurn() {
     if (!this.isSingle || !this.isGameStarted) return;
 
+    if (this.myTurnTimer) {
+      this.myTurnTimer.remove();
+      this.myTurnTimer = null;
+    }
+
     this.canClick = true;
     this.isFlipping = false; // 혹시 남아있을 수 있는 뒤집기 잠금도 해제
 
@@ -7610,6 +7646,8 @@ class GameScene extends Phaser.Scene {
       }
       return;
     }
+
+    this.renderTable(this.roundData.players);
 
     // 6. 다음 차례가 AI라면 카드 뒤집기 예약
     if (nextPlayer.id.startsWith("AI_")) {

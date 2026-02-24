@@ -24,7 +24,6 @@ function getAllowedOrigins() {
     "https://halemale.private-apps.tossmini.com",
     "http://localhost",
     "https://localhost",
-    "http://localhost:5174/",
     "capacitor://localhost",
     "http://10.68.14.196:5173",
     "http://localhost:5173",
@@ -34,6 +33,20 @@ function getAllowedOrigins() {
     "http://192.168.10.113:5173",
     "http://localhost:3000",
   ];
+}
+
+function isAllowedOrigin(origin) {
+  if (!origin) return true;
+
+  const allowedOrigins = getAllowedOrigins();
+  if (allowedOrigins.includes(origin)) return true;
+
+  try {
+    const parsed = new URL(origin);
+    return ["localhost", "127.0.0.1", "0.0.0.0"].includes(parsed.hostname);
+  } catch (error) {
+    return false;
+  }
 }
 
 // 1. DB 연결 설정
@@ -175,12 +188,23 @@ async function getPlayer(id) {
   }
 }
 
-app.use(cors({ origin: getAllowedOrigins(), credentials: true }));
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (isAllowedOrigin(origin)) return callback(null, true);
+      return callback(new Error(`CORS 차단 origin: ${origin}`));
+    },
+    credentials: true,
+  }),
+);
 app.use(express.static(path.join(__dirname, "public")));
 
 const io = new Server(server, {
   cors: {
-    origin: getAllowedOrigins(),
+    origin: (origin, callback) => {
+      if (isAllowedOrigin(origin)) return callback(null, true);
+      return callback(new Error(`Socket.IO CORS 차단 origin: ${origin}`));
+    },
     methods: ["GET", "POST"],
     credentials: true,
   },
