@@ -1629,6 +1629,14 @@ io.on("connection", (socket) => {
     if (!room || !room.isGameStarted) return;
     if (room.bellLocked) return;
 
+    const hasOpenCards = room.players.some(
+      (player) =>
+        Array.isArray(player.openCardStack) && player.openCardStack.length > 0,
+    );
+    if (!hasOpenCards) {
+      return;
+    }
+
     const totals = getFruitTotals(room.players);
     const isFive = Object.values(totals).some((t) => t === 5);
 
