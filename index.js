@@ -1916,6 +1916,9 @@ io.on("connection", (socket) => {
 
     const activeSocketIds =
       io.sockets.adapter.rooms.get(room.roomId) || new Set();
+    const activeSockets = [...activeSocketIds]
+      .map((id) => io.sockets.sockets.get(id))
+      .filter(Boolean);
     let turnGuard = 0;
     while (
       p &&
@@ -1964,7 +1967,49 @@ io.on("connection", (socket) => {
         socket.nickname.trim() &&
         socket.nickname.trim() === p.nickname.trim();
 
-      if (!sameNickname) return;
+      if (!sameNickname) {
+        const turnPlayerConnected =
+          activeSocketIds.has(p.id) ||
+          activeSockets.some((activeSocket) => {
+            const activeNickname =
+              typeof activeSocket?.nickname === "string"
+                ? activeSocket.nickname.trim()
+                : "";
+            const playerNickname =
+              typeof p.nickname === "string" ? p.nickname.trim() : "";
+            return (
+              activeNickname &&
+              playerNickname &&
+              activeNickname === playerNickname
+            );
+          });
+
+        if (!turnPlayerConnected || !p.myDeck || p.myDeck.length === 0) {
+          processSkipTurn(room, io);
+          room.turnIndex = getSafeNextIndex(room);
+          p = room.players[room.turnIndex];
+
+          if (!p || !p.myDeck || p.myDeck.length === 0) return;
+
+          const sameNicknameAfterResync =
+            typeof socket.nickname === "string" &&
+            typeof p.nickname === "string" &&
+            socket.nickname.trim() &&
+            socket.nickname.trim() === p.nickname.trim();
+
+          if (p.id !== socket.id && !sameNicknameAfterResync) return;
+
+          if (sameNicknameAfterResync && p.id !== socket.id) {
+            const previousId = p.id;
+            p.id = socket.id;
+            if (room.host === previousId) {
+              room.host = socket.id;
+            }
+          }
+        } else {
+          return;
+        }
+      }
 
       const previousId = p.id;
       p.id = socket.id;
