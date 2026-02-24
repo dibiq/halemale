@@ -267,6 +267,57 @@ function normalizeOwnedCharacters(value) {
   return Array.from(normalized);
 }
 
+function reconcileRoomPlayerByNickname(room, socket, payload = {}) {
+  if (!room || !Array.isArray(room.players)) return null;
+
+  const nicknameFromPayload =
+    typeof payload.nickname === "string" ? payload.nickname.trim() : "";
+  const socketNickname =
+    typeof socket.nickname === "string" ? socket.nickname.trim() : "";
+  const targetNickname = nicknameFromPayload || socketNickname;
+
+  if (!targetNickname) return null;
+
+  let player = room.players.find((p) => p.id === socket.id);
+  if (!player) {
+    player = room.players.find(
+      (p) =>
+        typeof p.nickname === "string" && p.nickname.trim() === targetNickname,
+    );
+  }
+  if (!player) return null;
+
+  const previousId = player.id;
+
+  player.id = socket.id;
+  player.nickname = targetNickname;
+  player.avatarKey = payload.avatarKey || socket.avatarKey || player.avatarKey;
+  player.level = socket.level || player.level || 1;
+  player.coins = socket.coins || player.coins || 0;
+  player.experience = socket.experience || player.experience || 0;
+  player.items = socket.items || player.items || [];
+
+  if (room.host === previousId) {
+    room.host = socket.id;
+  }
+
+  if (
+    typeof room.turnIndex === "number" &&
+    room.players[room.turnIndex] &&
+    room.players[room.turnIndex].id === previousId
+  ) {
+    const nextTurnIndex = room.players.findIndex((p) => p.id === socket.id);
+    room.turnIndex = nextTurnIndex >= 0 ? nextTurnIndex : room.turnIndex;
+  }
+
+  room.players = room.players.filter(
+    (p) =>
+      p === player || (p.id !== socket.id && p.nickname !== targetNickname),
+  );
+
+  return player;
+}
+
 // 헬스체크
 app.get("/", (req, res) => res.status(200).send("서버 가동 중"));
 app.get("/health", (req, res) => res.status(200).json({ status: "ok" }));
@@ -616,7 +667,10 @@ io.on("connection", (socket) => {
 
     if (socket.roomId && rooms[socket.roomId]) {
       const room = rooms[socket.roomId];
-      const player = room.players.find((p) => p.id === socket.id);
+      const player = reconcileRoomPlayerByNickname(room, socket, {
+        nickname: socket.nickname,
+        avatarKey: socket.avatarKey,
+      });
 
       if (player) {
         player.nickname = socket.nickname;
@@ -1070,9 +1124,17 @@ io.on("connection", (socket) => {
         ? data.avatarKey
         : socket.avatarKey || "player_1";
     const room = rooms[roomId];
+    const existingByNickname = room
+      ? room.players.find(
+          (p) =>
+            typeof p.nickname === "string" &&
+            p.nickname.trim() === String(nickname || "").trim(),
+        )
+      : null;
+    const isRejoin = Boolean(existingByNickname);
 
     if (!room) return socket.emit("joinRoomError", "방이 존재하지 않습니다.");
-    if (room.players.length >= room.maxPlayers)
+    if (!isRejoin && room.players.length >= room.maxPlayers)
       return socket.emit("joinRoomError", "인원 초과");
     if (room.isGameStarted)
       return socket.emit("joinRoomError", "이미 시작된 게임");
@@ -1127,7 +1189,12 @@ io.on("connection", (socket) => {
       socket.items = socket.items || [];
     }
 
-    if (!room.players.find((p) => p.id === socket.id)) {
+    let joinedPlayer = reconcileRoomPlayerByNickname(room, socket, {
+      nickname,
+      avatarKey,
+    });
+
+    if (!joinedPlayer) {
       const playerData = {
         id: socket.id,
         nickname,
@@ -1147,6 +1214,7 @@ io.on("connection", (socket) => {
         coins: playerData.coins,
       });
       room.players.push(playerData);
+      joinedPlayer = playerData;
     }
     io.to(roomId).emit("playerJoined", {
       roomId,
@@ -1155,7 +1223,7 @@ io.on("connection", (socket) => {
       max: room.maxPlayers,
       roomName: room.roomName,
       newPlayerNickname: nickname,
-      isRejoin: false,
+      isRejoin,
     });
   });
 
@@ -1169,6 +1237,14 @@ io.on("connection", (socket) => {
       : socket.avatarKey || "player_1";
     const inputPassword = data.password || null;
     const room = rooms[roomId];
+    const existingByNickname = room
+      ? room.players.find(
+          (p) =>
+            typeof p.nickname === "string" &&
+            p.nickname.trim() === String(nickname || "").trim(),
+        )
+      : null;
+    const isRejoin = Boolean(existingByNickname);
 
     if (!room) return socket.emit("joinRoomError", "방이 존재하지 않습니다.");
     // 비공개 방이면 비밀번호 검증
@@ -1177,7 +1253,7 @@ io.on("connection", (socket) => {
         return socket.emit("joinRoomError", "비밀번호가 틀렸습니다.");
       }
     }
-    if (room.players.length >= room.maxPlayers)
+    if (!isRejoin && room.players.length >= room.maxPlayers)
       return socket.emit("joinRoomError", "인원 초과");
     if (room.isGameStarted)
       return socket.emit("joinRoomError", "이미 시작된 게임");
@@ -1236,7 +1312,12 @@ io.on("connection", (socket) => {
       socket.items = socket.items || [];
     }
 
-    if (!room.players.find((p) => p.id === socket.id)) {
+    let joinedPlayer = reconcileRoomPlayerByNickname(room, socket, {
+      nickname,
+      avatarKey,
+    });
+
+    if (!joinedPlayer) {
       const playerData = {
         id: socket.id,
         nickname,
@@ -1256,6 +1337,7 @@ io.on("connection", (socket) => {
         coins: playerData.coins,
       });
       room.players.push(playerData);
+      joinedPlayer = playerData;
     }
 
     // 방에 있는 모든 플레이어에게 새 플레이어 입장 알림
@@ -1266,7 +1348,7 @@ io.on("connection", (socket) => {
       max: room.maxPlayers,
       roomName: room.roomName,
       newPlayerNickname: nickname,
-      isRejoin: false,
+      isRejoin,
     });
 
     // 입장한 플레이어 본인에게 입장 성공 알림
@@ -1549,7 +1631,8 @@ io.on("connection", (socket) => {
     deck.sort(() => Math.random() - 0.5);
 
     room.isGameStarted = true;
-    room.turnIndex = 0;
+    const hostIndex = room.players.findIndex((p) => p.id === room.host);
+    room.turnIndex = hostIndex >= 0 ? hostIndex : 0;
     room.bellLocked = false;
     const total = room.players.length;
     // 테스트를 위해 덱 크기 조절 가능 (실제 운영 시 deck 사용)
@@ -1578,7 +1661,7 @@ io.on("connection", (socket) => {
       hostId: room.host,
       roomName: room.roomName,
       maxPlayers: room.maxPlayers,
-      nextTurnId: room.players[0].id, // 💡 첫 번째 턴의 ID를 명시적으로 전달!
+      nextTurnId: room.players[room.turnIndex].id,
     });
   });
 
