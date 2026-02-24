@@ -317,6 +317,18 @@ function normalizeRoomBeforeStart(room, io) {
   const activeSocketIds =
     io.sockets.adapter.rooms.get(room.roomId) || new Set();
 
+  // 새 게임 시작 전에는 현재 방에 실제로 연결된 플레이어만 유지합니다.
+  // (게임 중 이탈로 남아 있는 유령 슬롯이 다음 시작 턴을 꼬이게 하는 것을 방지)
+  if (activeSocketIds.size > 0) {
+    room.players = room.players.filter((player) =>
+      activeSocketIds.has(player.id),
+    );
+  }
+
+  if (!Array.isArray(room.players) || room.players.length === 0) {
+    return;
+  }
+
   const byNickname = new Map();
   const passthroughPlayers = [];
 
@@ -363,6 +375,9 @@ function normalizeRoomBeforeStart(room, io) {
   });
 
   room.players = uniqueById;
+  room.players.forEach((player) => {
+    player.isDisconnected = false;
+  });
 
   const hostPlayerById = room.players.find((player) => player.id === room.host);
   const hostPlayerByActiveId = room.players.find((player) =>
