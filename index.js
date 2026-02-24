@@ -218,6 +218,7 @@ const WIN_REWARD_XP = 40;
 const XP_PER_LEVEL = 100;
 const THUNDER_CARD_TYPE = "thunder";
 const THUNDER_CARD_COUNT = 3;
+const SERVER_BUILD = "2026-02-24-ack-debug-v1";
 
 function getLevelFromExperience(experience) {
   return Math.floor((Number(experience) || 0) / XP_PER_LEVEL) + 1;
@@ -395,7 +396,13 @@ function reconcileRoomPlayerByNickname(room, socket, payload = {}) {
 
 // 헬스체크
 app.get("/", (req, res) => res.status(200).send("서버 가동 중"));
-app.get("/health", (req, res) => res.status(200).json({ status: "ok" }));
+app.get("/health", (req, res) =>
+  res.status(200).json({
+    status: "ok",
+    build: SERVER_BUILD,
+    pid: process.pid,
+  }),
+);
 
 function getRoomListPayload() {
   return Object.values(rooms).map((room) => ({
@@ -636,6 +643,12 @@ function emitServerDebug(room, event, payload = {}) {
 
 // 2. 소켓 로직
 io.on("connection", (socket) => {
+  socket.emit("serverHello", {
+    build: SERVER_BUILD,
+    pid: process.pid,
+    socketId: socket.id,
+  });
+
   socket.on("setNickname", async (nickname) => {
     const nicknamePayload =
       typeof nickname === "object" && nickname !== null ? nickname : {};

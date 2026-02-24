@@ -73,6 +73,13 @@ socket.off("disconnect").on("disconnect", (reason) => {
   });
 });
 
+socket.off("serverHello").on("serverHello", (payload) => {
+  console.log("🧭 serverHello", {
+    serverUrl: SERVER_URL,
+    ...payload,
+  });
+});
+
 // --- 전역 설정 변수 추가 ---
 const GAME_FONTS = {
   main: "Jua", // HTML에서 로드한 폰트 이름
