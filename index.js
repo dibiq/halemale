@@ -452,6 +452,7 @@ function reconcileRoomPlayerByNickname(room, socket, payload = {}) {
   player.coins = socket.coins || player.coins || 0;
   player.experience = socket.experience || player.experience || 0;
   player.items = socket.items || player.items || [];
+  player.isDisconnected = false;
 
   if (room.host === previousId) {
     room.host = socket.id;
@@ -1416,6 +1417,7 @@ io.on("connection", (socket) => {
         openCard: null,
         openCardStack: [],
         isReady: false,
+        isDisconnected: false,
       };
       console.log(`✅ joinRoom - 플레이어 추가:`, {
         nickname: playerData.nickname,
@@ -1425,8 +1427,17 @@ io.on("connection", (socket) => {
       room.players.push(playerData);
       joinedPlayer = playerData;
     }
+    if (joinedPlayer) {
+      joinedPlayer.isDisconnected = false;
+    }
 
-    normalizeRoomBeforeStart(room, io);
+    if (room.isGameStarted) {
+      syncRoomPlayersWithActiveSockets(room, io);
+      room.turnIndex = getSafeNextIndex(room);
+      processSkipTurn(room, io);
+    } else {
+      normalizeRoomBeforeStart(room, io);
+    }
 
     io.to(roomId).emit("playerJoined", {
       roomId,
@@ -1542,6 +1553,7 @@ io.on("connection", (socket) => {
         openCard: null,
         openCardStack: [],
         isReady: false,
+        isDisconnected: false,
       };
       console.log(`✅ joinPublicRoom - 플레이어 추가:`, {
         nickname: playerData.nickname,
@@ -1552,7 +1564,17 @@ io.on("connection", (socket) => {
       joinedPlayer = playerData;
     }
 
-    normalizeRoomBeforeStart(room, io);
+    if (joinedPlayer) {
+      joinedPlayer.isDisconnected = false;
+    }
+
+    if (room.isGameStarted) {
+      syncRoomPlayersWithActiveSockets(room, io);
+      room.turnIndex = getSafeNextIndex(room);
+      processSkipTurn(room, io);
+    } else {
+      normalizeRoomBeforeStart(room, io);
+    }
 
     // 방에 있는 모든 플레이어에게 새 플레이어 입장 알림
     io.to(roomId).emit("playerJoined", {
@@ -2317,22 +2339,42 @@ io.on("connection", (socket) => {
     const room = rooms[socket.roomId];
     if (room) {
       // 强퇴 여부 확인 (강퇴된 경우 이미 room.players에서 제거됨)
-      const wasInRoom = room.players.some((p) => p.id === socket.id);
+      const disconnectedPlayer = room.players.find((p) => p.id === socket.id);
+      const wasInRoom = Boolean(disconnectedPlayer);
 
       // 1. 💡 나가는 사람의 닉네임을 소켓 객체에서 미리 가져옵니다.
       // (setNickname 등에서 socket.nickname을 저장했다면 가능합니다)
       const leftPlayerNickname = socket.nickname || "누군가";
 
-      // 2. 플레이어 제거
-      room.players = room.players.filter((p) => p.id !== socket.id);
+      // 2. 플레이어 처리
+      // 게임 중 이탈은 슬롯/덱/턴 순서를 보존하기 위해 제거하지 않고 오프라인 상태로 유지합니다.
+      if (room.isGameStarted && disconnectedPlayer) {
+        disconnectedPlayer.isDisconnected = true;
+      } else {
+        room.players = room.players.filter((p) => p.id !== socket.id);
+      }
 
       if (room.players.length === 0) {
         delete rooms[socket.roomId];
       } else if (wasInRoom) {
         // 호스트 위임 로직
-        if (room.host === socket.id) room.host = room.players[0].id;
+        if (room.host === socket.id) {
+          const activeSocketIds =
+            io.sockets.adapter.rooms.get(room.roomId) || new Set();
+          const nextHost = room.players.find((player) => {
+            if (!player) return false;
+            if (activeSocketIds.has(player.id)) return true;
+            return !player.isDisconnected;
+          });
+          room.host = (nextHost || room.players[0])?.id;
+        }
 
-        normalizeRoomBeforeStart(room, io);
+        if (!room.isGameStarted) {
+          normalizeRoomBeforeStart(room, io);
+        } else {
+          syncRoomPlayersWithActiveSockets(room, io);
+          room.turnIndex = getSafeNextIndex(room);
+        }
 
         // 3. 💡 이벤트를 보낼 때 나간 사람의 닉네임을 명시적으로 포함!
         io.to(socket.roomId).emit("playerLeft", {
