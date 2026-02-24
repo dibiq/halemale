@@ -237,6 +237,29 @@ function hasThunderCardOnTable(players) {
   });
 }
 
+function injectThunderCardsToPlayers(players, thunderCount) {
+  if (!Array.isArray(players) || players.length === 0) return;
+
+  const candidateSlots = [];
+  players.forEach((player, playerIndex) => {
+    const deckSize = Array.isArray(player.myDeck) ? player.myDeck.length : 0;
+    for (let cardIndex = 0; cardIndex < deckSize; cardIndex += 1) {
+      candidateSlots.push({ playerIndex, cardIndex });
+    }
+  });
+
+  const count = Math.min(thunderCount, candidateSlots.length);
+  for (let index = 0; index < count; index += 1) {
+    const pickIndex = Math.floor(Math.random() * candidateSlots.length);
+    const picked = candidateSlots.splice(pickIndex, 1)[0];
+    if (!picked) continue;
+
+    const targetPlayer = players[picked.playerIndex];
+    if (!targetPlayer || !Array.isArray(targetPlayer.myDeck)) continue;
+    targetPlayer.myDeck[picked.cardIndex] = { type: THUNDER_CARD_TYPE };
+  }
+}
+
 function normalizeCharacterKey(value) {
   return /^player_[1-4]$/.test(String(value || "")) ? String(value) : null;
 }
@@ -1624,16 +1647,14 @@ io.on("connection", (socket) => {
       ),
     );
 
-    for (let index = 0; index < THUNDER_CARD_COUNT; index += 1) {
-      deck.push({ type: THUNDER_CARD_TYPE });
-    }
-
     deck.sort(() => Math.random() - 0.5);
 
     room.isGameStarted = true;
     const hostIndex = room.players.findIndex((p) => p.id === room.host);
     room.turnIndex = hostIndex >= 0 ? hostIndex : 0;
     room.bellLocked = false;
+    room.isFlipping = false;
+    room.lastFlipTime = null;
     const total = room.players.length;
     // 테스트를 위해 덱 크기 조절 가능 (실제 운영 시 deck 사용)
     const gameDeck = deck.slice(0, total * 30);
@@ -1646,6 +1667,17 @@ io.on("connection", (socket) => {
       p.isReady = false;
       p.isEliminated = false; // 시작할 때 초기화
     });
+
+    injectThunderCardsToPlayers(room.players, THUNDER_CARD_COUNT);
+    const thunderCount = room.players.reduce(
+      (sum, player) =>
+        sum +
+        (Array.isArray(player.myDeck)
+          ? player.myDeck.filter((card) => isThunderCard(card)).length
+          : 0),
+      0,
+    );
+    console.log(`⚡ 멀티 썬더카드 배치 완료: ${thunderCount}장`);
 
     console.log(
       "📊 게임 시작 - room.players 레벨 확인:",

@@ -5657,7 +5657,10 @@ class GameScene extends Phaser.Scene {
       this.isSingle = false; // 멀티플레이임을 명시
       this.isGameStarted = true;
       this.isGameReady = true;
-      this.turnIndex = 0;
+      const initialTurnIndex = Array.isArray(data.players)
+        ? data.players.findIndex((p) => p.id === data.nextTurnId)
+        : -1;
+      this.turnIndex = initialTurnIndex >= 0 ? initialTurnIndex : 0;
       this.canClick = false; // 💡 시작 직후엔 클릭 금지
 
       // 2. 모든 플레이어에게 공통 연출 실행
@@ -5668,7 +5671,9 @@ class GameScene extends Phaser.Scene {
 
         // 💡 Ready-Go(약 1.2초)가 완전히 끝난 뒤에 클릭 허용
         this.time.delayedCall(2000, () => {
-          this.canClick = true;
+          const myId = this.isSingle ? this.myId : socket.id;
+          const currentTurnId = this.roundData?.players?.[this.turnIndex]?.id;
+          this.canClick = currentTurnId === myId;
           console.log("🎮 이제 카드를 제출할 수 있습니다.");
         });
       });
