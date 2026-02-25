@@ -261,55 +261,61 @@ function isPlus2Card(card) {
 
 function hasThunderCardOnTable(players) {
   return players.some((player) => {
-    if (player && player.isEliminated) return false;
+    if (!player) return false;
     const top =
       Array.isArray(player.openCardStack) && player.openCardStack.length > 0
         ? player.openCardStack[player.openCardStack.length - 1]
         : player.openCard;
+    if (player.isEliminated && isBombCard(top)) return false;
     return isThunderCard(top);
   });
 }
 
 function hasBombCardOnTable(players) {
   return players.some((player) => {
-    if (player && player.isEliminated) return false;
+    if (!player) return false;
     const top =
       Array.isArray(player.openCardStack) && player.openCardStack.length > 0
         ? player.openCardStack[player.openCardStack.length - 1]
         : player.openCard;
+    // If eliminated and top is bomb, ignore (treat as not on table)
+    if (player.isEliminated && isBombCard(top)) return false;
     return isBombCard(top);
   });
 }
 
 function hasPenCardOnTable(players) {
   return players.some((player) => {
-    if (player && player.isEliminated) return false;
+    if (!player) return false;
     const top =
       Array.isArray(player.openCardStack) && player.openCardStack.length > 0
         ? player.openCardStack[player.openCardStack.length - 1]
         : player.openCard;
+    if (player.isEliminated && isBombCard(top)) return false;
     return isPenCard(top);
   });
 }
 
 function hasPlus1CardOnTable(players) {
   return players.some((player) => {
-    if (player && player.isEliminated) return false;
+    if (!player) return false;
     const top =
       Array.isArray(player.openCardStack) && player.openCardStack.length > 0
         ? player.openCardStack[player.openCardStack.length - 1]
         : player.openCard;
+    if (player.isEliminated && isBombCard(top)) return false;
     return isPlus1Card(top);
   });
 }
 
 function hasPlus2CardOnTable(players) {
   return players.some((player) => {
-    if (player && player.isEliminated) return false;
+    if (!player) return false;
     const top =
       Array.isArray(player.openCardStack) && player.openCardStack.length > 0
         ? player.openCardStack[player.openCardStack.length - 1]
         : player.openCard;
+    if (player.isEliminated && isBombCard(top)) return false;
     return isPlus2Card(top);
   });
 }
@@ -520,14 +526,20 @@ function getFruitTotals(players) {
   const plus2Active = hasPlus2CardOnTable(players);
   const extraPerCard = (plus1Active ? 1 : 0) + (plus2Active ? 2 : 0);
   players.forEach((p) => {
-    if (p && p.isEliminated) return; // 탈락한 플레이어의 오픈카드는 계산에서 제외
+    if (!p) return;
+    const top =
+      Array.isArray(p.openCardStack) && p.openCardStack.length > 0
+        ? p.openCardStack[p.openCardStack.length - 1]
+        : p.openCard;
+    // If player is eliminated and their top is a bomb, ignore it for totals.
+    if (p.isEliminated && isBombCard(top)) return;
     if (
-      p.openCard &&
-      Number.isFinite(Number(p.openCard.fruit)) &&
-      Number.isFinite(Number(p.openCard.count))
+      top &&
+      Number.isFinite(Number(top.fruit)) &&
+      Number.isFinite(Number(top.count))
     ) {
-      const base = Number(p.openCard.count) || 0;
-      totals[p.openCard.fruit] += base + extraPerCard;
+      const base = Number(top.count) || 0;
+      totals[top.fruit] += base + extraPerCard;
     }
   });
   return totals;
