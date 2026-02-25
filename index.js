@@ -225,6 +225,8 @@ const TON_CARD_TYPE = "ton";
 const TON_CARD_COUNT = 1;
 const PEN_CARD_TYPE = "pen";
 const PEN_CARD_COUNT = 1;
+const PLUS1_CARD_TYPE = "plus1";
+const PLUS1_CARD_COUNT = 1;
 const SERVER_BUILD = "2026-02-24-thunder-insert-v1";
 
 function getLevelFromExperience(experience) {
@@ -245,6 +247,10 @@ function isTonCard(card) {
 
 function isPenCard(card) {
   return Boolean(card) && card.type === PEN_CARD_TYPE;
+}
+
+function isPlus1Card(card) {
+  return Boolean(card) && card.type === PLUS1_CARD_TYPE;
 }
 
 function hasThunderCardOnTable(players) {
@@ -274,6 +280,16 @@ function hasPenCardOnTable(players) {
         ? player.openCardStack[player.openCardStack.length - 1]
         : player.openCard;
     return isPenCard(top);
+  });
+}
+
+function hasPlus1CardOnTable(players) {
+  return players.some((player) => {
+    const top =
+      Array.isArray(player.openCardStack) && player.openCardStack.length > 0
+        ? player.openCardStack[player.openCardStack.length - 1]
+        : player.openCard;
+    return isPlus1Card(top);
   });
 }
 
@@ -475,13 +491,15 @@ function broadcastPublicRooms() {
 
 function getFruitTotals(players) {
   let totals = { 1: 0, 2: 0, 3: 0, 4: 0 };
+  const plus1Active = hasPlus1CardOnTable(players);
   players.forEach((p) => {
     if (
       p.openCard &&
       Number.isFinite(Number(p.openCard.fruit)) &&
       Number.isFinite(Number(p.openCard.count))
     ) {
-      totals[p.openCard.fruit] += p.openCard.count;
+      const base = Number(p.openCard.count) || 0;
+      totals[p.openCard.fruit] += base + (plus1Active ? 1 : 0);
     }
   });
   return totals;
@@ -1940,6 +1958,31 @@ io.on("connection", (socket) => {
       }
     }
     injectPenCardsToPlayers(room.players, PEN_CARD_COUNT);
+    // Plus1 카드 주입
+    function injectPlus1CardsToPlayers(players, plus1Count) {
+      if (!Array.isArray(players) || players.length === 0) return;
+
+      const drawablePlayers = players.filter(
+        (player) => Array.isArray(player.myDeck) && player.myDeck.length > 0,
+      );
+      if (drawablePlayers.length === 0) return;
+
+      const count = Math.max(0, Number(plus1Count) || 0);
+      for (let i = 0; i < count; i += 1) {
+        const targetPlayer =
+          drawablePlayers[Math.floor(Math.random() * drawablePlayers.length)];
+        if (!targetPlayer || !Array.isArray(targetPlayer.myDeck)) continue;
+
+        const insertIndex = Math.floor(
+          Math.random() * (targetPlayer.myDeck.length + 1),
+        );
+        targetPlayer.myDeck.splice(insertIndex, 0, { type: PLUS1_CARD_TYPE });
+        console.log(
+          `➕ inject plus1 -> ${targetPlayer.nickname || targetPlayer.id} (deckIndex=${insertIndex})`,
+        );
+      }
+    }
+    injectPlus1CardsToPlayers(room.players, PLUS1_CARD_COUNT);
     room.players.forEach((player) => {
       player.cards = Array.isArray(player.myDeck) ? player.myDeck.length : 0;
     });
@@ -1969,8 +2012,11 @@ io.on("connection", (socket) => {
       const penIndices = deck
         .map((card, index) => (isPenCard(card) ? index : -1))
         .filter((index) => index >= 0);
+      const plus1Indices = deck
+        .map((card, index) => (isPlus1Card(card) ? index : -1))
+        .filter((index) => index >= 0);
       console.log(
-        `⚡ ${player.nickname || player.id} thunderIndices=${JSON.stringify(thunderIndices)} bombIndices=${JSON.stringify(bombIndices)} tonIndices=${JSON.stringify(tonIndices)} penIndices=${JSON.stringify(penIndices)} deckSize=${deck.length}`,
+        `⚡ ${player.nickname || player.id} thunderIndices=${JSON.stringify(thunderIndices)} bombIndices=${JSON.stringify(bombIndices)} tonIndices=${JSON.stringify(tonIndices)} penIndices=${JSON.stringify(penIndices)} plus1Indices=${JSON.stringify(plus1Indices)} deckSize=${deck.length}`,
       );
       emitServerDebug(room, "thunder.playerDeck", {
         playerId: player.id,
@@ -1999,6 +2045,16 @@ io.on("connection", (socket) => {
       0,
     );
     emitServerDebug(room, "pen.injected", { penCount });
+
+    const plus1Count = room.players.reduce(
+      (sum, player) =>
+        sum +
+        (Array.isArray(player.myDeck)
+          ? player.myDeck.filter((c) => isPlus1Card(c)).length
+          : 0),
+      0,
+    );
+    emitServerDebug(room, "plus1.injected", { plus1Count });
 
     // 추가 디버그: 각 플레이어 덱의 폭탄 인덱스와 덱 요약을 상세히 로깅/전송
     const deckSummaries = room.players.map((player) => {
