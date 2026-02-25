@@ -311,11 +311,15 @@ function injectThunderCardsToPlayers(players, thunderCount) {
     const insertIndex = Math.floor(
       Math.random() * (targetPlayer.myDeck.length + 1),
     );
-    targetPlayer.myDeck.splice(insertIndex, 0, { type: THUNDER_CARD_TYPE });
+    // Preserve deck size by replacing if index within range, otherwise push
+    if (insertIndex < targetPlayer.myDeck.length) {
+      targetPlayer.myDeck[insertIndex] = { type: THUNDER_CARD_TYPE };
+    } else {
+      targetPlayer.myDeck.push({ type: THUNDER_CARD_TYPE });
+    }
 
-    const drawOrderFromNow = targetPlayer.myDeck.length - insertIndex;
     console.log(
-      `⚡ inject thunder -> ${targetPlayer.nickname || targetPlayer.id} (deckIndex=${insertIndex}, after ${drawOrderFromNow} draws)`,
+      `⚡ inject thunder -> ${targetPlayer.nickname || targetPlayer.id} (deckIndex=${insertIndex})`,
     );
   }
 }
@@ -1901,7 +1905,11 @@ io.on("connection", (socket) => {
         const insertIndex = Math.floor(
           Math.random() * (targetPlayer.myDeck.length + 1),
         );
-        targetPlayer.myDeck.splice(insertIndex, 0, { type: BOMB_CARD_TYPE });
+        if (insertIndex < targetPlayer.myDeck.length) {
+          targetPlayer.myDeck[insertIndex] = { type: BOMB_CARD_TYPE };
+        } else {
+          targetPlayer.myDeck.push({ type: BOMB_CARD_TYPE });
+        }
         console.log(
           `💣 inject bomb -> ${targetPlayer.nickname || targetPlayer.id} (deckIndex=${insertIndex})`,
         );
@@ -1926,7 +1934,11 @@ io.on("connection", (socket) => {
         const insertIndex = Math.floor(
           Math.random() * (targetPlayer.myDeck.length + 1),
         );
-        targetPlayer.myDeck.splice(insertIndex, 0, { type: TON_CARD_TYPE });
+        if (insertIndex < targetPlayer.myDeck.length) {
+          targetPlayer.myDeck[insertIndex] = { type: TON_CARD_TYPE };
+        } else {
+          targetPlayer.myDeck.push({ type: TON_CARD_TYPE });
+        }
         console.log(
           `🔁 inject ton -> ${targetPlayer.nickname || targetPlayer.id} (deckIndex=${insertIndex})`,
         );
@@ -1951,7 +1963,11 @@ io.on("connection", (socket) => {
         const insertIndex = Math.floor(
           Math.random() * (targetPlayer.myDeck.length + 1),
         );
-        targetPlayer.myDeck.splice(insertIndex, 0, { type: PEN_CARD_TYPE });
+        if (insertIndex < targetPlayer.myDeck.length) {
+          targetPlayer.myDeck[insertIndex] = { type: PEN_CARD_TYPE };
+        } else {
+          targetPlayer.myDeck.push({ type: PEN_CARD_TYPE });
+        }
         console.log(
           `🖊️ inject pen -> ${targetPlayer.nickname || targetPlayer.id} (deckIndex=${insertIndex})`,
         );
@@ -1976,7 +1992,11 @@ io.on("connection", (socket) => {
         const insertIndex = Math.floor(
           Math.random() * (targetPlayer.myDeck.length + 1),
         );
-        targetPlayer.myDeck.splice(insertIndex, 0, { type: PLUS1_CARD_TYPE });
+        if (insertIndex < targetPlayer.myDeck.length) {
+          targetPlayer.myDeck[insertIndex] = { type: PLUS1_CARD_TYPE };
+        } else {
+          targetPlayer.myDeck.push({ type: PLUS1_CARD_TYPE });
+        }
         console.log(
           `➕ inject plus1 -> ${targetPlayer.nickname || targetPlayer.id} (deckIndex=${insertIndex})`,
         );
