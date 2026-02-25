@@ -237,7 +237,6 @@ function isBombCard(card) {
 
 function hasThunderCardOnTable(players) {
   return players.some((player) => {
-    if (isThunderCard(player.openCard)) return true;
     if (
       Array.isArray(player.openCardStack) &&
       player.openCardStack.length > 0
@@ -245,7 +244,7 @@ function hasThunderCardOnTable(players) {
       const top = player.openCardStack[player.openCardStack.length - 1];
       return isThunderCard(top);
     }
-    return false;
+    return isThunderCard(player.openCard);
   });
 }
 
@@ -475,8 +474,21 @@ function getFruitTotals(players) {
 
 function checkGameOver(room, io) {
   // 덱이 0장인 사람들을 판별
+  // If there's an active bell-success window (5 or thunder on table),
+  // players with 0 cards are given a temporary reprieve.
+  const totals = getFruitTotals(room.players);
+  const isFive = Object.values(totals).some((t) => t === 5);
+  const hasThunder = hasThunderCardOnTable(room.players);
+  const isBellSuccessWindow = isFive || hasThunder;
+
   room.players.forEach((p) => {
-    p.isEliminated = !p.myDeck || p.myDeck.length === 0;
+    const hasNoDeck = !p.myDeck || p.myDeck.length === 0;
+    if (hasNoDeck) {
+      // Only mark eliminated when there is no active success window
+      p.isEliminated = !isBellSuccessWindow;
+    } else {
+      p.isEliminated = false;
+    }
   });
 
   const survivors = room.players.filter((p) => !p.isEliminated);
@@ -1901,6 +1913,33 @@ io.on("connection", (socket) => {
       0,
     );
     emitServerDebug(room, "bomb.injected", { bombCount });
+
+    // 추가 디버그: 각 플레이어 덱의 폭탄 인덱스와 덱 요약을 상세히 로깅/전송
+    const deckSummaries = room.players.map((player) => {
+      const deck = Array.isArray(player.myDeck) ? player.myDeck : [];
+      const bombIndices = deck
+        .map((card, idx) => (isBombCard(card) ? idx : -1))
+        .filter((i) => i >= 0);
+      const thunderIndices = deck
+        .map((card, idx) => (isThunderCard(card) ? idx : -1))
+        .filter((i) => i >= 0);
+      // 샘플로 앞/뒤 일부 타입만 보냄(민감 정보 아님)
+      const sample = deck
+        .slice(0, 20)
+        .map((c) => (c && c.type ? c.type : `${c.fruit}_${c.count}`));
+      console.log(
+        `🔍 [bomb.debug] ${player.nickname || player.id} bombs=${JSON.stringify(bombIndices)} thunders=${JSON.stringify(thunderIndices)} deckSize=${deck.length}`,
+      );
+      return {
+        playerId: player.id,
+        nickname: player.nickname,
+        deckSize: deck.length,
+        bombIndices,
+        thunderIndices,
+        sample,
+      };
+    });
+    emitServerDebug(room, "bomb.debugDecks", { deckSummaries });
 
     console.log(
       "📊 게임 시작 - room.players 레벨 확인:",
