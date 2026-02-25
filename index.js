@@ -218,6 +218,8 @@ const WIN_REWARD_XP = 40;
 const XP_PER_LEVEL = 100;
 const THUNDER_CARD_TYPE = "thunder";
 const THUNDER_CARD_COUNT = 3;
+const BOMB_CARD_TYPE = "bomb";
+const BOMB_CARD_COUNT = 1;
 const SERVER_BUILD = "2026-02-24-thunder-insert-v1";
 
 function getLevelFromExperience(experience) {
@@ -228,12 +230,26 @@ function isThunderCard(card) {
   return Boolean(card) && card.type === THUNDER_CARD_TYPE;
 }
 
+function isBombCard(card) {
+  return Boolean(card) && card.type === BOMB_CARD_TYPE;
+}
+
 function hasThunderCardOnTable(players) {
   return players.some((player) => {
     if (isThunderCard(player.openCard)) return true;
     return (
       Array.isArray(player.openCardStack) &&
       player.openCardStack.some((card) => isThunderCard(card))
+    );
+  });
+}
+
+function hasBombCardOnTable(players) {
+  return players.some((player) => {
+    if (isBombCard(player.openCard)) return true;
+    return (
+      Array.isArray(player.openCardStack) &&
+      player.openCardStack.some((card) => isBombCard(card))
     );
   });
 }
@@ -1808,6 +1824,31 @@ io.on("connection", (socket) => {
     });
 
     injectThunderCardsToPlayers(room.players, THUNDER_CARD_COUNT);
+    // Bomb 카드도 동일한 방식으로 덱에 주입 (옵션: 게임당 1장)
+    function injectBombCardsToPlayers(players, bombCount) {
+      if (!Array.isArray(players) || players.length === 0) return;
+
+      const drawablePlayers = players.filter(
+        (player) => Array.isArray(player.myDeck) && player.myDeck.length > 0,
+      );
+      if (drawablePlayers.length === 0) return;
+
+      const count = Math.max(0, Number(bombCount) || 0);
+      for (let i = 0; i < count; i += 1) {
+        const targetPlayer =
+          drawablePlayers[Math.floor(Math.random() * drawablePlayers.length)];
+        if (!targetPlayer || !Array.isArray(targetPlayer.myDeck)) continue;
+
+        const insertIndex = Math.floor(
+          Math.random() * (targetPlayer.myDeck.length + 1),
+        );
+        targetPlayer.myDeck.splice(insertIndex, 0, { type: BOMB_CARD_TYPE });
+        console.log(
+          `💣 inject bomb -> ${targetPlayer.nickname || targetPlayer.id} (deckIndex=${insertIndex})`,
+        );
+      }
+    }
+    injectBombCardsToPlayers(room.players, BOMB_CARD_COUNT);
     room.players.forEach((player) => {
       player.cards = Array.isArray(player.myDeck) ? player.myDeck.length : 0;
     });
@@ -1828,8 +1869,11 @@ io.on("connection", (socket) => {
       const thunderIndices = deck
         .map((card, index) => (isThunderCard(card) ? index : -1))
         .filter((index) => index >= 0);
+      const bombIndices = deck
+        .map((card, index) => (isBombCard(card) ? index : -1))
+        .filter((index) => index >= 0);
       console.log(
-        `⚡ ${player.nickname || player.id} thunderIndices=${JSON.stringify(thunderIndices)} deckSize=${deck.length}`,
+        `⚡ ${player.nickname || player.id} thunderIndices=${JSON.stringify(thunderIndices)} bombIndices=${JSON.stringify(bombIndices)} deckSize=${deck.length}`,
       );
       emitServerDebug(room, "thunder.playerDeck", {
         playerId: player.id,
@@ -1838,6 +1882,16 @@ io.on("connection", (socket) => {
         thunderIndices,
       });
     });
+    // emit bomb info for debugging
+    const bombCount = room.players.reduce(
+      (sum, player) =>
+        sum +
+        (Array.isArray(player.myDeck)
+          ? player.myDeck.filter((c) => isBombCard(c)).length
+          : 0),
+      0,
+    );
+    emitServerDebug(room, "bomb.injected", { bombCount });
 
     console.log(
       "📊 게임 시작 - room.players 레벨 확인:",
@@ -2037,7 +2091,15 @@ io.on("connection", (socket) => {
     const totals = getFruitTotals(room.players);
     const isFive = Object.values(totals).some((t) => t === 5);
     const hasThunder = hasThunderCardOnTable(room.players);
-    const isCorrectBell = isFive || hasThunder;
+    const hasBomb = hasBombCardOnTable(room.players);
+    // bomb가 테이블에 있으면 어떤 경우에도 종은 실패(패널티)
+    const isCorrectBell = !hasBomb && (isFive || hasThunder);
+    if (hasBomb) {
+      emitServerDebug(room, "bomb.presentOnTable", {
+        ts: Date.now(),
+        roomId: room.roomId,
+      });
+    }
 
     if (isCorrectBell) {
       room.bellLocked = true;

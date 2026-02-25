@@ -6,6 +6,8 @@ import { Network } from "@capacitor/network";
 
 const THUNDER_CARD_TYPE = "thunder";
 const SINGLE_THUNDER_CARD_COUNT = 3;
+const BOMB_CARD_TYPE = "bomb";
+const SINGLE_BOMB_CARD_COUNT = 1;
 
 function handleGetUserKey() {
   // ReactNativeWebView가 있는지 먼저 확인
@@ -259,6 +261,10 @@ class LobbyScene extends Phaser.Scene {
     this.load.image(
       "thun",
       `${ASSET_SERVER}/images/cards/special/ongame_thun.png${VERSION}`,
+    );
+    this.load.image(
+      "bomb",
+      `${ASSET_SERVER}/images/cards/special/ongame_bomb.png${VERSION}`,
     );
 
     this.load.image("itembg", `${ASSET_SERVER}/images/itembg.png${VERSION}`);
@@ -7355,6 +7361,14 @@ class GameScene extends Phaser.Scene {
       const totals = this.calculateTotalFruits();
       const isFive = Object.values(totals).some((count) => count === 5);
       const hasThunder = this.hasThunderOnTable();
+      const hasBomb = this.hasBombOnTable();
+
+      // bomb이 테이블에 있으면 어떤 경우에도 종은 실패
+      if (hasBomb) {
+        this.playFailureEffect();
+        this.processPenaltySingle(this.myId || "PLAYER_ME");
+        return;
+      }
 
       if (isFive || hasThunder) {
         // 💥 성공 시 스펙타클한 이펙트 추가
@@ -7368,6 +7382,13 @@ class GameScene extends Phaser.Scene {
         this.processPenaltySingle(this.myId || "PLAYER_ME");
       }
     } else {
+      const hasBomb = this.hasBombOnTable();
+      if (hasBomb) {
+        // UX: 즉시 실패 이펙트 보여주고 서버로도 요청 보내어 일관된 상태 유지
+        this.playFailureEffect();
+        socket.emit("ringBell");
+        return;
+      }
       socket.emit("ringBell");
     }
   }
@@ -7378,6 +7399,9 @@ class GameScene extends Phaser.Scene {
     const totals = this.calculateTotalFruits();
     const isFive = Object.values(totals).some((count) => count === 5);
     const hasThunder = this.hasThunderOnTable();
+    const hasBomb = this.hasBombOnTable();
+
+    if (hasBomb) return; // bomb이 있으면 AI는 절대 종을 치지 않음
 
     if (isFive || hasThunder) {
       this.aiSettings.forEach((ai) => {
@@ -8020,6 +8044,17 @@ class GameScene extends Phaser.Scene {
       if (!Array.isArray(deck)) continue;
       deck[picked.slotIndex] = { type: THUNDER_CARD_TYPE };
     }
+    // Bomb 카드도 동일하게 주입 (옵션)
+    const bombCount = Math.min(SINGLE_BOMB_CARD_COUNT, deckSlots.length);
+    for (let index = 0; index < bombCount; index += 1) {
+      const pickIndex = Math.floor(Math.random() * deckSlots.length);
+      const picked = deckSlots.splice(pickIndex, 1)[0];
+      if (!picked) continue;
+
+      const deck = this.singleDeckByPlayer[picked.playerId];
+      if (!Array.isArray(deck)) continue;
+      deck[picked.slotIndex] = { type: BOMB_CARD_TYPE };
+    }
   }
 
   updateEliminationStatus() {
@@ -8071,6 +8106,18 @@ class GameScene extends Phaser.Scene {
       return (
         Array.isArray(player?.openStack) &&
         player.openStack.some((card) => card?.type === THUNDER_CARD_TYPE)
+      );
+    });
+  }
+
+  hasBombOnTable() {
+    if (!this.roundData || !Array.isArray(this.roundData.players)) return false;
+
+    return this.roundData.players.some((player) => {
+      if (player?.openCard?.type === BOMB_CARD_TYPE) return true;
+      return (
+        Array.isArray(player?.openStack) &&
+        player.openStack.some((card) => card?.type === BOMB_CARD_TYPE)
       );
     });
   }
