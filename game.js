@@ -10,6 +10,8 @@ const BOMB_CARD_TYPE = "bomb";
 const SINGLE_BOMB_CARD_COUNT = 1;
 const TON_CARD_TYPE = "ton";
 const SINGLE_TON_CARD_COUNT = 1;
+const PEN_CARD_TYPE = "pen";
+const SINGLE_PEN_CARD_COUNT = 1;
 
 function handleGetUserKey() {
   // ReactNativeWebView가 있는지 먼저 확인
@@ -271,6 +273,11 @@ class LobbyScene extends Phaser.Scene {
     this.load.image(
       "ton",
       `${ASSET_SERVER}/images/cards/special/ongame_ton.png${VERSION}`,
+    );
+
+    this.load.image(
+      "pen",
+      `${ASSET_SERVER}/images/cards/special/ongame_pen.png${VERSION}`,
     );
 
     this.load.image("itembg", `${ASSET_SERVER}/images/itembg.png${VERSION}`);
@@ -7033,7 +7040,8 @@ class GameScene extends Phaser.Scene {
       );
     }
 
-    const totalCardsToFly = targetPlayers.length;
+    const perRecipient = data.penaltyPerRecipient || 1;
+    const totalCardsToFly = targetPlayers.length * perRecipient;
     if (totalCardsToFly === 0) {
       // 바닥 카드 보존을 위해 openStack만 유지하면서 나머지 업데이트
       this.roundData.players.forEach((oldPlayer) => {
@@ -7067,33 +7075,35 @@ class GameScene extends Phaser.Scene {
       const relTargetIdx =
         (realIdx - myIndex + players.length) % players.length;
       const targetPos = pos[relTargetIdx];
+      for (let j = 0; j < perRecipient; j += 1) {
+        const offset = (j - (perRecipient - 1) / 2) * (width * 0.02);
+        const flyCard = this.add
+          .image(startPos.x, startPos.y, "card_back")
+          .setDisplaySize(width * 0.135, width * 0.22)
+          .setDepth(2000);
 
-      const flyCard = this.add
-        .image(startPos.x, startPos.y, "card_back")
-        .setDisplaySize(width * 0.135, width * 0.22)
-        .setDepth(2000);
+        this.tweens.add({
+          targets: flyCard,
+          x: targetPos.x + offset,
+          y: targetPos.y,
+          duration: 250,
+          delay: index * 25 + j * 10,
+          ease: "Cubic.out",
+          onStart: () => {
+            this.sound.play("pop", { volume: 0.1, detune: 500 });
+          },
+          onComplete: () => {
+            flyCard.destroy();
+            finishedCount++;
 
-      this.tweens.add({
-        targets: flyCard,
-        x: targetPos.x,
-        y: targetPos.y,
-        duration: 250,
-        delay: index * 25,
-        ease: "Cubic.out",
-        onStart: () => {
-          this.sound.play("pop", { volume: 0.1, detune: 500 });
-        },
-        onComplete: () => {
-          flyCard.destroy();
-          finishedCount++;
-
-          if (finishedCount === totalCardsToFly) {
-            // 애니메이션이 완전히 끝난 후 테이블 재렌더링
-            // (openStack은 이미 보존된 상태이므로 별도 업데이트 불필요)
-            this.renderTable(this.roundData.players);
-          }
-        },
-      });
+            if (finishedCount === totalCardsToFly) {
+              // 애니메이션이 완전히 끝난 후 테이블 재렌더링
+              // (openStack은 이미 보존된 상태이므로 별도 업데이트 불필요)
+              this.renderTable(this.roundData.players);
+            }
+          },
+        });
+      }
     });
   }
 
@@ -7799,8 +7809,10 @@ class GameScene extends Phaser.Scene {
         (Number(p.cards) || 0) >= 0,
     );
 
-    // 3. 페널티 실행 (받을 사람이 없어도 내 카드는 깎여야 규칙에 맞음)
-    const penaltyAmount = recipients.length; // 생존자 수만큼 차감
+    // 3. 페널티 실행 (받을 사람이 없어도 내 카드는 깎혀야 규칙에 맞음)
+    const hasPen = this.hasPenOnTable();
+    const perRecipient = hasPen ? 2 : 1;
+    const penaltyAmount = recipients.length * perRecipient; // 생존자 수 * 페널티 수
     const myCurrentCards = Number(loser.cards) || 0;
     const loserDeck = this.getSingleDeck(failedPlayerId);
 
@@ -7809,15 +7821,17 @@ class GameScene extends Phaser.Scene {
       if (myCurrentCards >= penaltyAmount) {
         loser.cards = myCurrentCards - penaltyAmount;
         recipients.forEach((p) => {
-          p.cards = (Number(p.cards) || 0) + 1;
+          p.cards = (Number(p.cards) || 0) + perRecipient;
           p.remainingCards = p.cards;
 
           const recipientDeck = this.getSingleDeck(p.id);
-          const movedCard =
-            loserDeck.length > 0
-              ? loserDeck.pop()
-              : this.createRandomFruitCard();
-          recipientDeck.unshift(movedCard);
+          for (let k = 0; k < perRecipient; k += 1) {
+            const movedCard =
+              loserDeck.length > 0
+                ? loserDeck.pop()
+                : this.createRandomFruitCard();
+            recipientDeck.unshift(movedCard);
+          }
         });
       } else {
         // 카드가 부족하면 가진 걸 다 줌 (0장이 됨)
@@ -7828,7 +7842,6 @@ class GameScene extends Phaser.Scene {
           if (recipients[i]) {
             recipients[i].cards += 1;
             recipients[i].remainingCards = recipients[i].cards;
-
             const recipientDeck = this.getSingleDeck(recipients[i].id);
             const movedCard =
               loserDeck.length > 0
@@ -7849,6 +7862,7 @@ class GameScene extends Phaser.Scene {
       players: players,
       penaltyId: failedPlayerId,
       recipients: recipients.map((p) => p.id), // ID 배열만 추출
+      penaltyPerRecipient: perRecipient,
     };
 
     // 💡 애니메이션 실행
@@ -8134,6 +8148,18 @@ class GameScene extends Phaser.Scene {
         return top?.type === BOMB_CARD_TYPE;
       }
       return false;
+    });
+  }
+
+  hasPenOnTable() {
+    if (!this.roundData || !Array.isArray(this.roundData.players)) return false;
+
+    return this.roundData.players.some((player) => {
+      if (Array.isArray(player?.openStack) && player.openStack.length > 0) {
+        const top = player.openStack[player.openStack.length - 1];
+        return top?.type === PEN_CARD_TYPE;
+      }
+      return player?.openCard?.type === PEN_CARD_TYPE;
     });
   }
 

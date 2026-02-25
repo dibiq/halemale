@@ -223,6 +223,8 @@ const BOMB_CARD_TYPE = "bomb";
 const BOMB_CARD_COUNT = 2;
 const TON_CARD_TYPE = "ton";
 const TON_CARD_COUNT = 1;
+const PEN_CARD_TYPE = "pen";
+const PEN_CARD_COUNT = 1;
 const SERVER_BUILD = "2026-02-24-thunder-insert-v1";
 
 function getLevelFromExperience(experience) {
@@ -241,6 +243,10 @@ function isTonCard(card) {
   return Boolean(card) && card.type === TON_CARD_TYPE;
 }
 
+function isPenCard(card) {
+  return Boolean(card) && card.type === PEN_CARD_TYPE;
+}
+
 function hasThunderCardOnTable(players) {
   return players.some((player) => {
     if (
@@ -256,7 +262,6 @@ function hasThunderCardOnTable(players) {
 
 function hasBombCardOnTable(players) {
   return players.some((player) => {
-    if (isBombCard(player.openCard)) return true;
     if (
       Array.isArray(player.openCardStack) &&
       player.openCardStack.length > 0
@@ -264,7 +269,20 @@ function hasBombCardOnTable(players) {
       const top = player.openCardStack[player.openCardStack.length - 1];
       return isBombCard(top);
     }
-    return false;
+    return isBombCard(player.openCard);
+  });
+}
+
+function hasPenCardOnTable(players) {
+  return players.some((player) => {
+    if (
+      Array.isArray(player.openCardStack) &&
+      player.openCardStack.length > 0
+    ) {
+      const top = player.openCardStack[player.openCardStack.length - 1];
+      return isPenCard(top);
+    }
+    return isPenCard(player.openCard);
   });
 }
 
@@ -1906,6 +1924,31 @@ io.on("connection", (socket) => {
       }
     }
     injectTonCardsToPlayers(room.players, TON_CARD_COUNT);
+    // Pen 카드 주입 (테스트용 기본 1장)
+    function injectPenCardsToPlayers(players, penCount) {
+      if (!Array.isArray(players) || players.length === 0) return;
+
+      const drawablePlayers = players.filter(
+        (player) => Array.isArray(player.myDeck) && player.myDeck.length > 0,
+      );
+      if (drawablePlayers.length === 0) return;
+
+      const count = Math.max(0, Number(penCount) || 0);
+      for (let i = 0; i < count; i += 1) {
+        const targetPlayer =
+          drawablePlayers[Math.floor(Math.random() * drawablePlayers.length)];
+        if (!targetPlayer || !Array.isArray(targetPlayer.myDeck)) continue;
+
+        const insertIndex = Math.floor(
+          Math.random() * (targetPlayer.myDeck.length + 1),
+        );
+        targetPlayer.myDeck.splice(insertIndex, 0, { type: PEN_CARD_TYPE });
+        console.log(
+          `🖊️ inject pen -> ${targetPlayer.nickname || targetPlayer.id} (deckIndex=${insertIndex})`,
+        );
+      }
+    }
+    injectPenCardsToPlayers(room.players, PEN_CARD_COUNT);
     room.players.forEach((player) => {
       player.cards = Array.isArray(player.myDeck) ? player.myDeck.length : 0;
     });
@@ -1932,8 +1975,11 @@ io.on("connection", (socket) => {
       const tonIndices = deck
         .map((card, index) => (isTonCard(card) ? index : -1))
         .filter((index) => index >= 0);
+      const penIndices = deck
+        .map((card, index) => (isPenCard(card) ? index : -1))
+        .filter((index) => index >= 0);
       console.log(
-        `⚡ ${player.nickname || player.id} thunderIndices=${JSON.stringify(thunderIndices)} bombIndices=${JSON.stringify(bombIndices)} tonIndices=${JSON.stringify(tonIndices)} deckSize=${deck.length}`,
+        `⚡ ${player.nickname || player.id} thunderIndices=${JSON.stringify(thunderIndices)} bombIndices=${JSON.stringify(bombIndices)} tonIndices=${JSON.stringify(tonIndices)} penIndices=${JSON.stringify(penIndices)} deckSize=${deck.length}`,
       );
       emitServerDebug(room, "thunder.playerDeck", {
         playerId: player.id,
@@ -1952,6 +1998,16 @@ io.on("connection", (socket) => {
       0,
     );
     emitServerDebug(room, "bomb.injected", { bombCount });
+
+    const penCount = room.players.reduce(
+      (sum, player) =>
+        sum +
+        (Array.isArray(player.myDeck)
+          ? player.myDeck.filter((c) => isPenCard(c)).length
+          : 0),
+      0,
+    );
+    emitServerDebug(room, "pen.injected", { penCount });
 
     // 추가 디버그: 각 플레이어 덱의 폭탄 인덱스와 덱 요약을 상세히 로깅/전송
     const deckSummaries = room.players.map((player) => {
@@ -2297,13 +2353,26 @@ io.on("connection", (socket) => {
 
       const recipients = []; // 💡 카드를 실제 받은 사람 ID를 담을 배열
 
+      const hasPen = hasPenCardOnTable(room.players);
+      const penaltyPerRecipient = hasPen ? 2 : 1;
+      if (hasPen) {
+        emitServerDebug(room, "pen.presentOnTable", {
+          ts: Date.now(),
+          roomId: room.roomId,
+        });
+      }
+
       if (others.length > 0) {
         others.forEach((recipient) => {
-          if (p.myDeck.length > 0) {
-            const card = p.myDeck.pop();
-            recipient.myDeck.unshift(card);
-            recipients.push(recipient.id); // 💡 실제로 준 사람만 추가
+          let givenAny = false;
+          for (let k = 0; k < penaltyPerRecipient; k += 1) {
+            if (p.myDeck.length > 0) {
+              const card = p.myDeck.pop();
+              recipient.myDeck.unshift(card);
+              givenAny = true;
+            }
           }
+          if (givenAny) recipients.push(recipient.id);
         });
       }
 
@@ -2324,6 +2393,8 @@ io.on("connection", (socket) => {
           penaltyId: socket.id,
           message: `${p.nickname}님 카드 소진으로 탈락!`,
           players: room.players,
+          recipients,
+          penaltyPerRecipient,
         });
 
         if (checkGameOver(room, io)) return;
@@ -2334,6 +2405,8 @@ io.on("connection", (socket) => {
           penaltyId: socket.id,
           message: `${p.nickname}님 틀렸습니다!`,
           players: room.players,
+          recipients,
+          penaltyPerRecipient,
         });
       }
 
