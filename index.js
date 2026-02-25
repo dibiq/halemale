@@ -13,6 +13,28 @@ const hasPgConfig =
   Boolean(process.env.PGUSER) ||
   Boolean(process.env.PGDATABASE);
 
+// Initialize Postgres pool if configuration is present
+let pool = null;
+if (DATABASE_URL || hasPgConfig) {
+  try {
+    if (DATABASE_URL) {
+      pool = new Pool({
+        connectionString: DATABASE_URL,
+        ssl: { rejectUnauthorized: false },
+      });
+    } else {
+      pool = new Pool();
+    }
+    pool.on("error", (err) => console.error("Postgres pool error:", err));
+    console.log("✅ Postgres pool initialized");
+  } catch (err) {
+    console.error("❌ Postgres pool initialization failed:", err);
+    pool = null;
+  }
+} else {
+  console.log("ℹ️ Postgres not configured; DB features disabled");
+}
+
 // 1. CORS 설정
 function getAllowedOrigins() {
   return [
