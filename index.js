@@ -1942,6 +1942,35 @@ io.on("connection", (socket) => {
     });
     emitServerDebug(room, "bomb.debugDecks", { deckSummaries });
 
+    // 디버그 보정: 만약 폭탄이 전혀 주입되지 않았다면(테스트 환경에서 관찰됨),
+    // 각 플레이어 덱에 1장씩 강제로 넣어 확인할 수 있도록 합니다.
+    if (bombCount === 0) {
+      console.warn(
+        "⚠️ bomb.injected detected 0 bombs — forcing 1 bomb per player for debug",
+      );
+      room.players.forEach((player) => {
+        if (Array.isArray(player.myDeck)) {
+          const insertIndex = Math.floor(
+            Math.random() * (player.myDeck.length + 1),
+          );
+          player.myDeck.splice(insertIndex, 0, { type: BOMB_CARD_TYPE });
+        }
+      });
+
+      const forcedBombCount = room.players.reduce(
+        (sum, player) =>
+          sum +
+          (Array.isArray(player.myDeck)
+            ? player.myDeck.filter((c) => isBombCard(c)).length
+            : 0),
+        0,
+      );
+      console.log(
+        `💣 Forced bomb injection complete: totalBombs=${forcedBombCount}`,
+      );
+      emitServerDebug(room, "bomb.forcedInjected", { forcedBombCount });
+    }
+
     console.log(
       "📊 게임 시작 - room.players 레벨 확인:",
       room.players.map((p) => ({
