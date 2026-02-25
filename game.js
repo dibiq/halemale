@@ -5713,24 +5713,7 @@ class GameScene extends Phaser.Scene {
         ? data.players.findIndex((p) => p.id === data.nextTurnId)
         : -1;
       this.turnIndex = initialTurnIndex >= 0 ? initialTurnIndex : 0;
-      this.canClick = false; // 💡 시작 직후엔 클릭 금지
-
-      // 2. 모든 플레이어에게 공통 연출 실행
-      this.playOpeningAnimation();
-
-      this.time.delayedCall(800, () => {
-        this.showReadyGo();
-
-        // 💡 Ready-Go(약 1.2초)가 완전히 끝난 뒤에 클릭 허용
-        this.time.delayedCall(2000, () => {
-          const myId = this.isSingle ? this.myId : socket.id;
-          const currentTurnId = this.roundData?.players?.[this.turnIndex]?.id;
-          this.canClick = currentTurnId === myId;
-          console.log("🎮 이제 카드를 제출할 수 있습니다.");
-        });
-      });
-
-      // 3. 💡 [핵심 수정] 데이터 갱신 로직 강화
+      // 2. 💡 먼저 서버에서 온 players 데이터를 즉시 반영합니다.
       console.log("📊 게임시작 players 데이터:", data.players); // 디버그용
       this.roundData.players = data.players.map((p) => {
         // 서버에서 p.myDeck이 올 때 그 길이를 cards로 강제 할당
@@ -5748,6 +5731,24 @@ class GameScene extends Phaser.Scene {
       this.roundData.hostId = data.hostId; // 방장 정보 동기화
       this.roundData.isGameStarted = true;
       this.isGameReady = true;
+
+      // 3. 연출 시작: 클릭 금지 후 애니메이션 및 Ready-Go 예약
+      this.canClick = false; // 💡 시작 직후엔 클릭 금지
+      this.playOpeningAnimation();
+
+      this.time.delayedCall(800, () => {
+        this.showReadyGo();
+
+        // 💡 Ready-Go(약 1.2초)가 완전히 끝난 뒤에 클릭 허용
+        this.time.delayedCall(2000, () => {
+          const myId = this.isSingle ? this.myId : socket.id;
+          const currentTurnId = this.roundData?.players?.[this.turnIndex]?.id;
+          this.canClick = currentTurnId === myId;
+          console.log("🎮 이제 카드를 제출할 수 있습니다.");
+        });
+      });
+
+      this.roundData.hostId = data.hostId; // 방장 정보 동기화
 
       // 연출 시작 시점에 맞춰 테이블 갱신
       this.renderTable(this.roundData.players);

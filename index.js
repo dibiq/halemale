@@ -1888,11 +1888,14 @@ io.on("connection", (socket) => {
     }
 
     try {
-      const activeSocketIds = io.sockets.adapter.rooms.get(room.roomId) || new Set();
+      const activeSocketIds =
+        io.sockets.adapter.rooms.get(room.roomId) || new Set();
       const playersSnapshot = (room.players || []).map((p) => ({
         id: p && p.id,
         nickname: p && p.nickname,
-        cards: Array.isArray(p && p.myDeck) ? (p.myDeck || []).length : p && p.cards,
+        cards: Array.isArray(p && p.myDeck)
+          ? (p.myDeck || []).length
+          : p && p.cards,
         isDisconnected: Boolean(p && p.isDisconnected),
       }));
 
@@ -1913,7 +1916,10 @@ io.on("connection", (socket) => {
         }),
       );
     } catch (err) {
-      console.warn("[TURN_DEBUG] flipCard snapshot error", err && err.stack ? err.stack : err);
+      console.warn(
+        "[TURN_DEBUG] flipCard snapshot error",
+        err && err.stack ? err.stack : err,
+      );
     }
 
     if (!room.isGameStarted || room.isFlipping) return;
