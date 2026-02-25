@@ -6111,6 +6111,10 @@ class GameScene extends Phaser.Scene {
       return "ton";
     }
 
+    if (card && card.type === PEN_CARD_TYPE) {
+      return "pen";
+    }
+
     const fruitNames = { 1: "strawberry", 2: "banana", 3: "lime", 4: "plum" };
     const fruitName = fruitNames[card.fruit] || "strawberry";
     return `${fruitName}_${card.count}`;

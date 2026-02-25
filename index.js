@@ -249,40 +249,31 @@ function isPenCard(card) {
 
 function hasThunderCardOnTable(players) {
   return players.some((player) => {
-    if (
-      Array.isArray(player.openCardStack) &&
-      player.openCardStack.length > 0
-    ) {
-      const top = player.openCardStack[player.openCardStack.length - 1];
-      return isThunderCard(top);
-    }
-    return isThunderCard(player.openCard);
+    const top =
+      Array.isArray(player.openCardStack) && player.openCardStack.length > 0
+        ? player.openCardStack[player.openCardStack.length - 1]
+        : player.openCard;
+    return isThunderCard(top);
   });
 }
 
 function hasBombCardOnTable(players) {
   return players.some((player) => {
-    if (
-      Array.isArray(player.openCardStack) &&
-      player.openCardStack.length > 0
-    ) {
-      const top = player.openCardStack[player.openCardStack.length - 1];
-      return isBombCard(top);
-    }
-    return isBombCard(player.openCard);
+    const top =
+      Array.isArray(player.openCardStack) && player.openCardStack.length > 0
+        ? player.openCardStack[player.openCardStack.length - 1]
+        : player.openCard;
+    return isBombCard(top);
   });
 }
 
 function hasPenCardOnTable(players) {
   return players.some((player) => {
-    if (
-      Array.isArray(player.openCardStack) &&
-      player.openCardStack.length > 0
-    ) {
-      const top = player.openCardStack[player.openCardStack.length - 1];
-      return isPenCard(top);
-    }
-    return isPenCard(player.openCard);
+    const top =
+      Array.isArray(player.openCardStack) && player.openCardStack.length > 0
+        ? player.openCardStack[player.openCardStack.length - 1]
+        : player.openCard;
+    return isPenCard(top);
   });
 }
 
@@ -2360,6 +2351,22 @@ io.on("connection", (socket) => {
           ts: Date.now(),
           roomId: room.roomId,
         });
+      }
+
+      // 추가 디버그: 패널티가 2일 때 각 플레이어의 탑 카드 타입을 전송
+      if (penaltyPerRecipient > 1) {
+        const topTypes = room.players.map((pl) => {
+          const top =
+            Array.isArray(pl.openCardStack) && pl.openCardStack.length > 0
+              ? pl.openCardStack[pl.openCardStack.length - 1]
+              : pl.openCard;
+          return {
+            playerId: pl.id,
+            nickname: pl.nickname,
+            topType: top && top.type ? top.type : `${top?.fruit}_${top?.count}`,
+          };
+        });
+        emitServerDebug(room, "pen.debugTopCards", { topTypes });
       }
 
       if (others.length > 0) {
