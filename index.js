@@ -1871,7 +1871,52 @@ io.on("connection", (socket) => {
 
   socket.on("flipCard", () => {
     const room = rooms[socket.roomId];
-    if (!room || !room.isGameStarted || room.isFlipping) return;
+    // 상세 스냅샷 로그 추가: flipCard 호출 시점의 방/플레이어 상태
+    if (!room) {
+      console.log(
+        "[TURN_DEBUG]",
+        JSON.stringify({
+          ts: Date.now(),
+          event: "flipCard.blocked",
+          reason: "NO_ROOM",
+          socketId: socket.id,
+          socketNickname: socket.nickname || null,
+          socketRoomId: socket.roomId,
+        }),
+      );
+      return;
+    }
+
+    try {
+      const activeSocketIds = io.sockets.adapter.rooms.get(room.roomId) || new Set();
+      const playersSnapshot = (room.players || []).map((p) => ({
+        id: p && p.id,
+        nickname: p && p.nickname,
+        cards: Array.isArray(p && p.myDeck) ? (p.myDeck || []).length : p && p.cards,
+        isDisconnected: Boolean(p && p.isDisconnected),
+      }));
+
+      console.log(
+        "[TURN_DEBUG] flipCard.received.snapshot",
+        JSON.stringify({
+          ts: Date.now(),
+          socketId: socket.id,
+          socketNickname: socket.nickname || null,
+          roomId: room.roomId,
+          isGameStarted: !!room.isGameStarted,
+          isFlipping: !!room.isFlipping,
+          bellLocked: !!room.bellLocked,
+          turnIndex: room.turnIndex,
+          activeSocketCount: activeSocketIds.size,
+          activeSocketIds: Array.from(activeSocketIds || []),
+          players: playersSnapshot,
+        }),
+      );
+    } catch (err) {
+      console.warn("[TURN_DEBUG] flipCard snapshot error", err && err.stack ? err.stack : err);
+    }
+
+    if (!room.isGameStarted || room.isFlipping) return;
 
     if (room.bellLocked) {
       room.bellLocked = false;
