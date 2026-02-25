@@ -217,10 +217,10 @@ const RANK_REWARD_COINS = [30, 20, 10];
 const WIN_REWARD_XP = 40;
 const XP_PER_LEVEL = 100;
 const THUNDER_CARD_TYPE = "thunder";
-const THUNDER_CARD_COUNT = 3;
+const THUNDER_CARD_COUNT = 2;
 const BOMB_CARD_TYPE = "bomb";
-// Increase bomb count so bombs appear more often in multiplayer games
-const BOMB_CARD_COUNT = 10;
+// Multiplayer default counts
+const BOMB_CARD_COUNT = 2;
 const SERVER_BUILD = "2026-02-24-thunder-insert-v1";
 
 function getLevelFromExperience(experience) {
