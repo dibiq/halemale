@@ -221,6 +221,8 @@ const THUNDER_CARD_COUNT = 2;
 const BOMB_CARD_TYPE = "bomb";
 // Multiplayer default counts
 const BOMB_CARD_COUNT = 2;
+const TON_CARD_TYPE = "ton";
+const TON_CARD_COUNT = 1;
 const SERVER_BUILD = "2026-02-24-thunder-insert-v1";
 
 function getLevelFromExperience(experience) {
@@ -233,6 +235,10 @@ function isThunderCard(card) {
 
 function isBombCard(card) {
   return Boolean(card) && card.type === BOMB_CARD_TYPE;
+}
+
+function isTonCard(card) {
+  return Boolean(card) && card.type === TON_CARD_TYPE;
 }
 
 function hasThunderCardOnTable(players) {
@@ -634,6 +640,7 @@ function processSkipTurn(room, io) {
   room.turnIndex = getSafeNextIndex(room);
 
   // 단순히 덱이 있는 다음 플레이어를 찾습니다.
+  const dir = typeof room.turnDirection === "number" ? room.turnDirection : 1;
   while (loopCount < room.players.length) {
     let currentPlayer = room.players[room.turnIndex];
     if (
@@ -644,7 +651,8 @@ function processSkipTurn(room, io) {
       break;
     } else {
       // 덱이 없으면 무조건 다음 사람으로 (이미 위에서 탈락 처리가 됨)
-      room.turnIndex = (room.turnIndex + 1) % room.players.length;
+      room.turnIndex =
+        (room.turnIndex + dir + room.players.length) % room.players.length;
       loopCount++;
     }
   }
@@ -1828,6 +1836,8 @@ io.on("connection", (socket) => {
     room.isGameStarted = true;
     const hostIndex = room.players.findIndex((p) => p.id === room.host);
     room.turnIndex = hostIndex >= 0 ? hostIndex : 0;
+    // 1 => forward, -1 => reverse
+    room.turnDirection = 1;
     room.bellLocked = false;
     room.isFlipping = false;
     room.lastFlipTime = null;
@@ -1871,6 +1881,31 @@ io.on("connection", (socket) => {
       }
     }
     injectBombCardsToPlayers(room.players, BOMB_CARD_COUNT);
+    // Ton 카드 (턴 반전) 주입
+    function injectTonCardsToPlayers(players, tonCount) {
+      if (!Array.isArray(players) || players.length === 0) return;
+
+      const drawablePlayers = players.filter(
+        (player) => Array.isArray(player.myDeck) && player.myDeck.length > 0,
+      );
+      if (drawablePlayers.length === 0) return;
+
+      const count = Math.max(0, Number(tonCount) || 0);
+      for (let i = 0; i < count; i += 1) {
+        const targetPlayer =
+          drawablePlayers[Math.floor(Math.random() * drawablePlayers.length)];
+        if (!targetPlayer || !Array.isArray(targetPlayer.myDeck)) continue;
+
+        const insertIndex = Math.floor(
+          Math.random() * (targetPlayer.myDeck.length + 1),
+        );
+        targetPlayer.myDeck.splice(insertIndex, 0, { type: TON_CARD_TYPE });
+        console.log(
+          `🔁 inject ton -> ${targetPlayer.nickname || targetPlayer.id} (deckIndex=${insertIndex})`,
+        );
+      }
+    }
+    injectTonCardsToPlayers(room.players, TON_CARD_COUNT);
     room.players.forEach((player) => {
       player.cards = Array.isArray(player.myDeck) ? player.myDeck.length : 0;
     });
@@ -1894,8 +1929,11 @@ io.on("connection", (socket) => {
       const bombIndices = deck
         .map((card, index) => (isBombCard(card) ? index : -1))
         .filter((index) => index >= 0);
+      const tonIndices = deck
+        .map((card, index) => (isTonCard(card) ? index : -1))
+        .filter((index) => index >= 0);
       console.log(
-        `⚡ ${player.nickname || player.id} thunderIndices=${JSON.stringify(thunderIndices)} bombIndices=${JSON.stringify(bombIndices)} deckSize=${deck.length}`,
+        `⚡ ${player.nickname || player.id} thunderIndices=${JSON.stringify(thunderIndices)} bombIndices=${JSON.stringify(bombIndices)} tonIndices=${JSON.stringify(tonIndices)} deckSize=${deck.length}`,
       );
       emitServerDebug(room, "thunder.playerDeck", {
         playerId: player.id,
@@ -2104,6 +2142,19 @@ io.on("connection", (socket) => {
     p.openCard = card;
     p.openCardStack.push(card);
 
+    // TON 카드: 턴 진행 방향을 반전시킴
+    if (isTonCard(card)) {
+      room.turnDirection = room.turnDirection === -1 ? 1 : -1;
+      console.log(
+        `🔁 TON played by ${p.nickname || p.id} -> turnDirection=${room.turnDirection}`,
+      );
+      emitServerDebug(room, "ton.played", {
+        playerId: p.id,
+        nickname: p.nickname,
+        turnDirection: room.turnDirection,
+      });
+    }
+
     // 💡 5 완성 여부 확인
     const totals = getFruitTotals(room.players);
     const isFive = Object.values(totals).some((t) => t === 5);
@@ -2145,7 +2196,10 @@ io.on("connection", (socket) => {
       }
 
       // 다음 턴으로 넘김 (탈락자는 processSkipTurn에서 자동으로 건너뜀)
-      room.turnIndex = (room.turnIndex + 1) % room.players.length;
+      const dir =
+        typeof room.turnDirection === "number" ? room.turnDirection : 1;
+      room.turnIndex =
+        (room.turnIndex + dir + room.players.length) % room.players.length;
       processSkipTurn(room, io);
       room.isFlipping = false;
     }, 150);

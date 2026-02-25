@@ -8,6 +8,8 @@ const THUNDER_CARD_TYPE = "thunder";
 const SINGLE_THUNDER_CARD_COUNT = 3;
 const BOMB_CARD_TYPE = "bomb";
 const SINGLE_BOMB_CARD_COUNT = 1;
+const TON_CARD_TYPE = "ton";
+const SINGLE_TON_CARD_COUNT = 1;
 
 function handleGetUserKey() {
   // ReactNativeWebView가 있는지 먼저 확인
@@ -265,6 +267,10 @@ class LobbyScene extends Phaser.Scene {
     this.load.image(
       "bomb",
       `${ASSET_SERVER}/images/cards/special/ongame_bomb.png${VERSION}`,
+    );
+    this.load.image(
+      "ton",
+      `${ASSET_SERVER}/images/cards/special/ongame_ton.png${VERSION}`,
     );
 
     this.load.image("itembg", `${ASSET_SERVER}/images/itembg.png${VERSION}`);
@@ -6092,6 +6098,10 @@ class GameScene extends Phaser.Scene {
 
     if (card && card.type === BOMB_CARD_TYPE) {
       return "bomb";
+    }
+
+    if (card && card.type === TON_CARD_TYPE) {
+      return "ton";
     }
 
     const fruitNames = { 1: "strawberry", 2: "banana", 3: "lime", 4: "plum" };
