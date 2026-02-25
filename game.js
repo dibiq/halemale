@@ -8929,7 +8929,12 @@ class GameScene extends Phaser.Scene {
         ? user.avatarKey
         : "player_1";
 
-      const userIcon = this.add.image(userIconX, btnY, baseUserAvatar);
+      let safeUserIconKey =
+        typeof baseUserAvatar === "string" &&
+        this.textures.exists(baseUserAvatar)
+          ? baseUserAvatar
+          : "player_1";
+      const userIcon = this.add.image(userIconX, btnY, safeUserIconKey);
 
       // 유저명 + 레벨 (한 줄)
       const userInfo = this.add
