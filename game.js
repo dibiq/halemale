@@ -470,9 +470,29 @@ class LobbyScene extends Phaser.Scene {
     const { width, height } = this.cameras.main;
     const centerX = width / 2;
 
-    if (!this.sound.get("bgm")) {
-      if (bgmEnabled) {
-        this.sound.play("bgm", { loop: true, volume: 0.05 });
+    // BGM: 브라우저 정책상 유저 제스처 이후에만 재생 가능하므로
+    // 사운드가 준비되었고 BGM 사용 설정이 켜져 있으면
+    // 최초 유저 인터랙션 시점에 한 번 재생을 시도합니다.
+    if (!this.sound.get("bgm") && bgmEnabled) {
+      const tryPlayBgm = () => {
+        try {
+          this.sound.play("bgm", { loop: true, volume: 0.05 });
+        } catch (e) {
+          // 실패 시 무시
+        }
+      };
+
+      const audioCtx = this.sound && this.sound.context;
+      if (audioCtx && audioCtx.state === "suspended") {
+        const resumeAndPlay = () => {
+          if (audioCtx && typeof audioCtx.resume === "function") {
+            audioCtx.resume().catch(() => {});
+          }
+          tryPlayBgm();
+        };
+        this.input.once("pointerdown", resumeAndPlay);
+      } else {
+        tryPlayBgm();
       }
     }
 
@@ -783,9 +803,17 @@ class LobbyScene extends Phaser.Scene {
 
     // 프로필 이미지를 스프라이트로 생성하고 애니메이션 적용
     const currentKey = this.getSelectedAvatarKey();
-    const currentAvatarTexture = this.textures.exists(`${currentKey}_1`)
-      ? `${currentKey}_1`
-      : "player_1_1";
+    // 존재하는 텍스처를 우선 사용, 없으면 안전한 플레이스홀더로 폴백
+    let currentAvatarTexture = null;
+    if (this.textures.exists(`${currentKey}_1`)) {
+      currentAvatarTexture = `${currentKey}_1`;
+    } else if (this.textures.exists(`${currentKey}`)) {
+      currentAvatarTexture = `${currentKey}`;
+    } else if (this.textures.exists("player_1_sprite_a")) {
+      currentAvatarTexture = "player_1_sprite_a";
+    } else {
+      currentAvatarTexture = "chef"; // 안전한 기본 이미지
+    }
     const currentIdx = this.profileAvatarKeys.indexOf(currentKey);
     this.profileAvatarIndex = currentIdx >= 0 ? currentIdx : 0;
     this.profileImage = this.add
@@ -4727,6 +4755,15 @@ class LobbyScene extends Phaser.Scene {
                 "#e74c3c",
               );
             } else {
+              // roomNumber가 없더라도 server-side에서는 socket 연결 기반으로
+              // 방을 판단할 수 있으므로, currentRoomId가 있으면 시작 요청을 허용합니다.
+              if (!this.currentRoomNumber && !this.currentRoomId) {
+                this.showToast(
+                  "방 정보가 없습니다. 다시 입장해주세요",
+                  "#e74c3c",
+                );
+                return;
+              }
               console.log("🚀 startGameRequest emit", {
                 roomId: this.currentRoomNumber,
                 myId: socket.id,
@@ -5515,6 +5552,18 @@ class GameScene extends Phaser.Scene {
       aiDifficulty: data.aiDifficulty || "normal",
     };
 
+    // 서버가 scene.start로 넘긴 경우에도 nextTurnId를 보관
+    this.latestNextTurnId = data.nextTurnId || null;
+    if (this.latestNextTurnId && Array.isArray(this.roundData.players)) {
+      const idx = this.roundData.players.findIndex(
+        (p) => p && p.id === this.latestNextTurnId,
+      );
+      if (idx >= 0) this.turnIndex = idx;
+      else this.turnIndex = 0;
+    } else {
+      this.turnIndex = 0;
+    }
+
     this.isSingle = !!data.isSingle;
     this.isGameReady = false;
     this.resultContainer = null;
@@ -5715,6 +5764,17 @@ class GameScene extends Phaser.Scene {
       this.turnIndex = initialTurnIndex >= 0 ? initialTurnIndex : 0;
       // 2. 💡 먼저 서버에서 온 players 데이터를 즉시 반영합니다.
       console.log("📊 게임시작 players 데이터:", data.players); // 디버그용
+      console.log("📌 gameStart debug:", {
+        nextTurnId: data.nextTurnId,
+        initialTurnIndex,
+        computedTurnIndex: this.turnIndex,
+        mySocketId: socket.id,
+        playersIds: Array.isArray(data.players)
+          ? data.players.map((p) => p.id)
+          : [],
+      });
+      // 서버가 보낸 nextTurnId를 보관(다른 장소에서 참조 가능하도록)
+      this.latestNextTurnId = data.nextTurnId;
       this.roundData.players = data.players.map((p) => {
         // 서버에서 p.myDeck이 올 때 그 길이를 cards로 강제 할당
         const initialCards = p.cards ?? (p.myDeck ? p.myDeck.length : 0);
@@ -5743,8 +5803,16 @@ class GameScene extends Phaser.Scene {
         this.time.delayedCall(2000, () => {
           const myId = this.isSingle ? this.myId : socket.id;
           const currentTurnId = this.roundData?.players?.[this.turnIndex]?.id;
-          this.canClick = currentTurnId === myId;
-          console.log("🎮 이제 카드를 제출할 수 있습니다.");
+          // 우선 서버가 보낸 nextTurnId를 신뢰하도록 폴백을 추가
+          this.canClick = currentTurnId === myId || data.nextTurnId === myId;
+          console.log("🎮 이제 카드를 제출할 수 있습니다.", {
+            myId,
+            currentTurnId,
+            nextTurnIdFromServer: data.nextTurnId,
+            turnIndex: this.turnIndex,
+            players: this.roundData?.players?.map((p) => p.id),
+            canClick: this.canClick,
+          });
         });
       });
 
@@ -7196,7 +7264,12 @@ class GameScene extends Phaser.Scene {
 
     // 💡 1. 게임 시작 연출 중이면 무시
     if (this.canClick === false) {
-      console.log("⏳ 아직 시작 연출 중입니다.");
+      console.log("⏳ 아직 시작 연출 중입니다.", {
+        canClick: this.canClick,
+        turnIndex: this.turnIndex,
+        mySocketId: socket.id,
+        players: this.roundData?.players?.map((p) => p.id),
+      });
       return;
     }
 
@@ -7215,6 +7288,12 @@ class GameScene extends Phaser.Scene {
     const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
 
     if (!currentPlayer || currentPlayer.id !== myId) {
+      console.warn("flipBlock: turn mismatch", {
+        myId,
+        currentPlayerId: currentPlayer && currentPlayer.id,
+        turnIndex: this.turnIndex,
+        players: this.roundData?.players?.map((p) => p.id),
+      });
       this.showToast("당신의 차례가 아닙니다!", "#e74c3c");
       this.canClick = true;
       return;
@@ -8686,6 +8765,28 @@ class GameScene extends Phaser.Scene {
             onComplete: () => {
               readyText.destroy();
               this.isGameReady = true; // 이제부터 조작 가능
+              try {
+                const myId = this.isSingle ? this.myId : socket.id;
+                const currentTurnId =
+                  this.roundData?.players?.[this.turnIndex]?.id;
+                const serverNext = this.latestNextTurnId || null;
+                this.canClick = currentTurnId === myId || serverNext === myId;
+                console.log(
+                  "🎮 (ReadyGo) 카드를 제출할 수 있는지:",
+                  this.canClick,
+                  {
+                    myId,
+                    currentTurnId,
+                    serverNext,
+                    turnIndex: this.turnIndex,
+                  },
+                );
+              } catch (e) {
+                console.warn(
+                  "(ReadyGo) canClick 계산 실패",
+                  e && e.stack ? e.stack : e,
+                );
+              }
             },
           });
         });
