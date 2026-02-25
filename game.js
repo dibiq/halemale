@@ -14,6 +14,8 @@ const PEN_CARD_TYPE = "pen";
 const SINGLE_PEN_CARD_COUNT = 1;
 const PLUS1_CARD_TYPE = "plus1";
 const SINGLE_PLUS1_CARD_COUNT = 1;
+const PLUS2_CARD_TYPE = "plus2";
+const SINGLE_PLUS2_CARD_COUNT = 1;
 
 function handleGetUserKey() {
   // ReactNativeWebView가 있는지 먼저 확인
@@ -285,6 +287,11 @@ class LobbyScene extends Phaser.Scene {
     this.load.image(
       "plus1",
       `${ASSET_SERVER}/images/cards/special/ongame_plus1.png${VERSION}`,
+    );
+
+    this.load.image(
+      "plus2",
+      `${ASSET_SERVER}/images/cards/special/ongame_plus2.png${VERSION}`,
     );
 
     this.load.image("itembg", `${ASSET_SERVER}/images/itembg.png${VERSION}`);
@@ -6124,6 +6131,9 @@ class GameScene extends Phaser.Scene {
     if (card && card.type === PLUS1_CARD_TYPE) {
       return "plus1";
     }
+    if (card && card.type === PLUS2_CARD_TYPE) {
+      return "plus2";
+    }
 
     const fruitNames = { 1: "strawberry", 2: "banana", 3: "lime", 4: "plum" };
     const fruitName = fruitNames[card.fruit] || "strawberry";
@@ -8108,6 +8118,17 @@ class GameScene extends Phaser.Scene {
       if (!Array.isArray(deck)) continue;
       deck[picked.slotIndex] = { type: PLUS1_CARD_TYPE };
     }
+    // Plus2 카드 주입 (싱글)
+    const plus2Count = Math.min(SINGLE_PLUS2_CARD_COUNT, deckSlots.length);
+    for (let index = 0; index < plus2Count; index += 1) {
+      const pickIndex = Math.floor(Math.random() * deckSlots.length);
+      const picked = deckSlots.splice(pickIndex, 1)[0];
+      if (!picked) continue;
+
+      const deck = this.singleDeckByPlayer[picked.playerId];
+      if (!Array.isArray(deck)) continue;
+      deck[picked.slotIndex] = { type: PLUS2_CARD_TYPE };
+    }
   }
 
   updateEliminationStatus() {
@@ -8140,6 +8161,8 @@ class GameScene extends Phaser.Scene {
   calculateTotalFruits() {
     const totals = { 1: 0, 2: 0, 3: 0, 4: 0 };
     const plus1Active = this.hasPlus1OnTable();
+    const plus2Active = this.hasPlus2OnTable ? this.hasPlus2OnTable() : false;
+    const extraPerCard = (plus1Active ? 1 : 0) + (plus2Active ? 2 : 0);
     this.roundData.players.forEach((p) => {
       if (
         p.openCard &&
@@ -8147,7 +8170,7 @@ class GameScene extends Phaser.Scene {
         Number.isFinite(Number(p.openCard.count))
       ) {
         const base = Number(p.openCard.count) || 0;
-        totals[p.openCard.fruit] += base + (plus1Active ? 1 : 0);
+        totals[p.openCard.fruit] += base + extraPerCard;
       }
     });
     return totals;
@@ -8199,6 +8222,18 @@ class GameScene extends Phaser.Scene {
         return top?.type === PLUS1_CARD_TYPE;
       }
       return player?.openCard?.type === PLUS1_CARD_TYPE;
+    });
+  }
+
+  hasPlus2OnTable() {
+    if (!this.roundData || !Array.isArray(this.roundData.players)) return false;
+
+    return this.roundData.players.some((player) => {
+      if (Array.isArray(player?.openStack) && player.openStack.length > 0) {
+        const top = player.openStack[player.openStack.length - 1];
+        return top?.type === PLUS2_CARD_TYPE;
+      }
+      return player?.openCard?.type === PLUS2_CARD_TYPE;
     });
   }
 

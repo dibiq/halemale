@@ -227,6 +227,8 @@ const PEN_CARD_TYPE = "pen";
 const PEN_CARD_COUNT = 1;
 const PLUS1_CARD_TYPE = "plus1";
 const PLUS1_CARD_COUNT = 1;
+const PLUS2_CARD_TYPE = "plus2";
+const PLUS2_CARD_COUNT = 1;
 const SERVER_BUILD = "2026-02-24-thunder-insert-v1";
 
 function getLevelFromExperience(experience) {
@@ -251,6 +253,10 @@ function isPenCard(card) {
 
 function isPlus1Card(card) {
   return Boolean(card) && card.type === PLUS1_CARD_TYPE;
+}
+
+function isPlus2Card(card) {
+  return Boolean(card) && card.type === PLUS2_CARD_TYPE;
 }
 
 function hasThunderCardOnTable(players) {
@@ -290,6 +296,16 @@ function hasPlus1CardOnTable(players) {
         ? player.openCardStack[player.openCardStack.length - 1]
         : player.openCard;
     return isPlus1Card(top);
+  });
+}
+
+function hasPlus2CardOnTable(players) {
+  return players.some((player) => {
+    const top =
+      Array.isArray(player.openCardStack) && player.openCardStack.length > 0
+        ? player.openCardStack[player.openCardStack.length - 1]
+        : player.openCard;
+    return isPlus2Card(top);
   });
 }
 
@@ -496,6 +512,8 @@ function broadcastPublicRooms() {
 function getFruitTotals(players) {
   let totals = { 1: 0, 2: 0, 3: 0, 4: 0 };
   const plus1Active = hasPlus1CardOnTable(players);
+  const plus2Active = hasPlus2CardOnTable(players);
+  const extraPerCard = (plus1Active ? 1 : 0) + (plus2Active ? 2 : 0);
   players.forEach((p) => {
     if (
       p.openCard &&
@@ -503,7 +521,7 @@ function getFruitTotals(players) {
       Number.isFinite(Number(p.openCard.count))
     ) {
       const base = Number(p.openCard.count) || 0;
-      totals[p.openCard.fruit] += base + (plus1Active ? 1 : 0);
+      totals[p.openCard.fruit] += base + extraPerCard;
     }
   });
   return totals;
@@ -2003,6 +2021,35 @@ io.on("connection", (socket) => {
       }
     }
     injectPlus1CardsToPlayers(room.players, PLUS1_CARD_COUNT);
+    // Plus2 카드 주입
+    function injectPlus2CardsToPlayers(players, plus2Count) {
+      if (!Array.isArray(players) || players.length === 0) return;
+
+      const drawablePlayers = players.filter(
+        (player) => Array.isArray(player.myDeck) && player.myDeck.length > 0,
+      );
+      if (drawablePlayers.length === 0) return;
+
+      const count = Math.max(0, Number(plus2Count) || 0);
+      for (let i = 0; i < count; i += 1) {
+        const targetPlayer =
+          drawablePlayers[Math.floor(Math.random() * drawablePlayers.length)];
+        if (!targetPlayer || !Array.isArray(targetPlayer.myDeck)) continue;
+
+        const insertIndex = Math.floor(
+          Math.random() * (targetPlayer.myDeck.length + 1),
+        );
+        if (insertIndex < targetPlayer.myDeck.length) {
+          targetPlayer.myDeck[insertIndex] = { type: PLUS2_CARD_TYPE };
+        } else {
+          targetPlayer.myDeck.push({ type: PLUS2_CARD_TYPE });
+        }
+        console.log(
+          `➕➕ inject plus2 -> ${targetPlayer.nickname || targetPlayer.id} (deckIndex=${insertIndex})`,
+        );
+      }
+    }
+    injectPlus2CardsToPlayers(room.players, PLUS2_CARD_COUNT);
     room.players.forEach((player) => {
       player.cards = Array.isArray(player.myDeck) ? player.myDeck.length : 0;
     });
