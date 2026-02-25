@@ -49,33 +49,6 @@ function isAllowedOrigin(origin) {
   }
 }
 
-// 1. DB 연결 설정
-const isDatabaseEnabled = Boolean(DATABASE_URL) || hasPgConfig;
-
-const pool = isDatabaseEnabled
-  ? new Pool({
-      ...(DATABASE_URL ? { connectionString: DATABASE_URL } : {}),
-      ...(DATABASE_URL
-        ? {
-            ssl: {
-              rejectUnauthorized: false,
-            },
-          }
-        : {}),
-    })
-  : null;
-
-if (!isDatabaseEnabled) {
-  console.warn(
-    "⚠️ DATABASE_URL 미설정: DB 저장/조회 기능을 비활성화하고 서버를 실행합니다.",
-  );
-} else if (!DATABASE_URL && hasPgConfig) {
-  console.log(
-    "ℹ️ DATABASE_URL 없이 PG 환경변수(PGHOST/PGUSER/PGDATABASE)로 DB 연결을 시도합니다.",
-  );
-}
-
-// 2. [저장하기] 플레이어 데이터 저장/업데이트 (UPSERT)
 async function savePlayer(
   id,
   level,
@@ -229,8 +202,8 @@ const PLUS1_CARD_TYPE = "plus1";
 const PLUS1_CARD_COUNT = 1;
 const PLUS2_CARD_TYPE = "plus2";
 const PLUS2_CARD_COUNT = 1;
-const MULT2_CARD_TYPE = "mult2";
-const MULT2_CARD_COUNT = 1;
+const NOT5_CARD_TYPE = "not5";
+const NOT5_CARD_COUNT = 1;
 const SERVER_BUILD = "2026-02-24-thunder-insert-v1";
 
 function getLevelFromExperience(experience) {
@@ -261,8 +234,8 @@ function isPlus2Card(card) {
   return Boolean(card) && card.type === PLUS2_CARD_TYPE;
 }
 
-function isMult2Card(card) {
-  return Boolean(card) && card.type === MULT2_CARD_TYPE;
+function isNot5Card(card) {
+  return Boolean(card) && card.type === NOT5_CARD_TYPE;
 }
 
 function hasThunderCardOnTable(players) {
@@ -326,7 +299,7 @@ function hasPlus2CardOnTable(players) {
   });
 }
 
-function hasMult2CardOnTable(players) {
+function hasNot5CardOnTable(players) {
   return players.some((player) => {
     if (!player) return false;
     const top =
@@ -334,7 +307,7 @@ function hasMult2CardOnTable(players) {
         ? player.openCardStack[player.openCardStack.length - 1]
         : player.openCard;
     if (player.isEliminated && isBombCard(top)) return false;
-    return isMult2Card(top);
+    return isNot5Card(top);
   });
 }
 
@@ -543,8 +516,6 @@ function getFruitTotals(players) {
   const plus1Active = hasPlus1CardOnTable(players);
   const plus2Active = hasPlus2CardOnTable(players);
   const extraPerCard = (plus1Active ? 1 : 0) + (plus2Active ? 2 : 0);
-  const mult2Active = hasMult2CardOnTable(players);
-  const multiplier = mult2Active ? 2 : 1;
   players.forEach((p) => {
     if (!p) return;
     const top =
@@ -559,7 +530,7 @@ function getFruitTotals(players) {
       Number.isFinite(Number(top.count))
     ) {
       const base = Number(top.count) || 0;
-      totals[top.fruit] += (base + extraPerCard) * multiplier;
+      totals[top.fruit] += base + extraPerCard;
     }
   });
   return totals;
@@ -572,7 +543,8 @@ function checkGameOver(room, io) {
   const totals = getFruitTotals(room.players);
   const isFive = Object.values(totals).some((t) => t === 5);
   const hasThunder = hasThunderCardOnTable(room.players);
-  const isBellSuccessWindow = isFive || hasThunder;
+  const hasNot5 = hasNot5CardOnTable(room.players);
+  const isBellSuccessWindow = hasThunder || (hasNot5 ? !isFive : isFive);
 
   room.players.forEach((p) => {
     const hasNoDeck = !p.myDeck || p.myDeck.length === 0;
@@ -2088,8 +2060,8 @@ io.on("connection", (socket) => {
       }
     }
     injectPlus2CardsToPlayers(room.players, PLUS2_CARD_COUNT);
-    // Mult2 카드 주입
-    function injectMult2CardsToPlayers(players, mult2Count) {
+    // Not5 카드 주입
+    function injectNot5CardsToPlayers(players, not5Count) {
       if (!Array.isArray(players) || players.length === 0) return;
 
       const drawablePlayers = players.filter(
@@ -2097,7 +2069,7 @@ io.on("connection", (socket) => {
       );
       if (drawablePlayers.length === 0) return;
 
-      const count = Math.max(0, Number(mult2Count) || 0);
+      const count = Math.max(0, Number(not5Count) || 0);
       for (let i = 0; i < count; i += 1) {
         const targetPlayer =
           drawablePlayers[Math.floor(Math.random() * drawablePlayers.length)];
@@ -2107,16 +2079,17 @@ io.on("connection", (socket) => {
           Math.random() * (targetPlayer.myDeck.length + 1),
         );
         if (insertIndex < targetPlayer.myDeck.length) {
-          targetPlayer.myDeck[insertIndex] = { type: MULT2_CARD_TYPE };
+          targetPlayer.myDeck[insertIndex] = { type: NOT5_CARD_TYPE };
         } else {
-          targetPlayer.myDeck.push({ type: MULT2_CARD_TYPE });
+          targetPlayer.myDeck.push({ type: NOT5_CARD_TYPE });
         }
         console.log(
-          `✖️✖️ inject mult2 -> ${targetPlayer.nickname || targetPlayer.id} (deckIndex=${insertIndex})`,
+          `⭕ inject not5 -> ${targetPlayer.nickname || targetPlayer.id} (deckIndex=${insertIndex})`,
         );
       }
     }
-    injectMult2CardsToPlayers(room.players, MULT2_CARD_COUNT);
+    injectNot5CardsToPlayers(room.players, NOT5_CARD_COUNT);
+
     room.players.forEach((player) => {
       player.cards = Array.isArray(player.myDeck) ? player.myDeck.length : 0;
     });
@@ -2189,6 +2162,15 @@ io.on("connection", (socket) => {
       0,
     );
     emitServerDebug(room, "plus1.injected", { plus1Count });
+    const not5Count = room.players.reduce(
+      (sum, player) =>
+        sum +
+        (Array.isArray(player.myDeck)
+          ? player.myDeck.filter((c) => isNot5Card(c)).length
+          : 0),
+      0,
+    );
+    emitServerDebug(room, "not5.injected", { not5Count });
 
     // 추가 디버그: 각 플레이어 덱의 폭탄 인덱스와 덱 요약을 상세히 로깅/전송
     const deckSummaries = room.players.map((player) => {
@@ -2467,10 +2449,19 @@ io.on("connection", (socket) => {
     const isFive = Object.values(totals).some((t) => t === 5);
     const hasThunder = hasThunderCardOnTable(room.players);
     const hasBomb = hasBombCardOnTable(room.players);
+    const hasNot5 = hasNot5CardOnTable(room.players);
     // bomb가 테이블에 있으면 어떤 경우에도 종은 실패(패널티)
-    const isCorrectBell = !hasBomb && (isFive || hasThunder);
+    // not5가 있으면 정답 조건이 반전: 합이 5가 아닌 경우가 정답
+    const isCorrectBell =
+      !hasBomb && (hasThunder || (hasNot5 ? !isFive : isFive));
     if (hasBomb) {
       emitServerDebug(room, "bomb.presentOnTable", {
+        ts: Date.now(),
+        roomId: room.roomId,
+      });
+    }
+    if (hasNot5) {
+      emitServerDebug(room, "not5.presentOnTable", {
         ts: Date.now(),
         roomId: room.roomId,
       });
@@ -2535,42 +2526,76 @@ io.on("connection", (socket) => {
       const recipients = []; // 💡 카드를 실제 받은 사람 ID를 담을 배열
 
       const hasPen = hasPenCardOnTable(room.players);
-      const penaltyPerRecipient = hasPen ? 2 : 1;
-      if (hasPen) {
-        emitServerDebug(room, "pen.presentOnTable", {
+      const hasNot5 = hasNot5CardOnTable(room.players);
+      let penaltyPerRecipient = null; // for response payload - if not5 active, will be set to given count
+
+      // not5가 활성화된 경우: 패널티는 틀린 사람의 덱 절반이 꼴찌(가장 적은 카드 보유자)에게 이동
+      if (hasNot5) {
+        emitServerDebug(room, "not5.penaltyApplied", {
           ts: Date.now(),
           roomId: room.roomId,
         });
-      }
 
-      // 추가 디버그: 패널티가 2일 때 각 플레이어의 탑 카드 타입을 전송
-      if (penaltyPerRecipient > 1) {
-        const topTypes = room.players.map((pl) => {
-          const top =
-            Array.isArray(pl.openCardStack) && pl.openCardStack.length > 0
-              ? pl.openCardStack[pl.openCardStack.length - 1]
-              : pl.openCard;
-          return {
-            playerId: pl.id,
-            nickname: pl.nickname,
-            topType: top && top.type ? top.type : `${top?.fruit}_${top?.count}`,
-          };
-        });
-        emitServerDebug(room, "pen.debugTopCards", { topTypes });
-      }
-
-      if (others.length > 0) {
-        others.forEach((recipient) => {
+        const candidates = room.players.filter(
+          (pl) => pl.id !== p.id && !pl.isEliminated,
+        );
+        if (candidates.length > 0) {
+          // 꼴찌(덱 수 최소) 선택
+          candidates.sort(
+            (a, b) => (a.myDeck?.length || 0) - (b.myDeck?.length || 0),
+          );
+          const loser = candidates[0];
           let givenAny = false;
-          for (let k = 0; k < penaltyPerRecipient; k += 1) {
+          const giveCount = Math.floor((p.myDeck.length || 0) / 2);
+          for (let k = 0; k < giveCount; k += 1) {
             if (p.myDeck.length > 0) {
               const card = p.myDeck.pop();
-              recipient.myDeck.unshift(card);
+              loser.myDeck.unshift(card);
               givenAny = true;
             }
           }
-          if (givenAny) recipients.push(recipient.id);
-        });
+          penaltyPerRecipient = giveCount;
+          if (givenAny) recipients.push(loser.id);
+        }
+      } else {
+        penaltyPerRecipient = hasPen ? 2 : 1;
+        if (hasPen) {
+          emitServerDebug(room, "pen.presentOnTable", {
+            ts: Date.now(),
+            roomId: room.roomId,
+          });
+        }
+
+        // 추가 디버그: 패널티가 2일 때 각 플레이어의 탑 카드 타입을 전송
+        if (penaltyPerRecipient > 1) {
+          const topTypes = room.players.map((pl) => {
+            const top =
+              Array.isArray(pl.openCardStack) && pl.openCardStack.length > 0
+                ? pl.openCardStack[pl.openCardStack.length - 1]
+                : pl.openCard;
+            return {
+              playerId: pl.id,
+              nickname: pl.nickname,
+              topType:
+                top && top.type ? top.type : `${top?.fruit}_${top?.count}`,
+            };
+          });
+          emitServerDebug(room, "pen.debugTopCards", { topTypes });
+        }
+
+        if (others.length > 0) {
+          others.forEach((recipient) => {
+            let givenAny = false;
+            for (let k = 0; k < penaltyPerRecipient; k += 1) {
+              if (p.myDeck.length > 0) {
+                const card = p.myDeck.pop();
+                recipient.myDeck.unshift(card);
+                givenAny = true;
+              }
+            }
+            if (givenAny) recipients.push(recipient.id);
+          });
+        }
       }
 
       // 💡 [중요 추가] 모든 플레이어의 cards 속성을 현재 덱 길이에 맞춰 갱신

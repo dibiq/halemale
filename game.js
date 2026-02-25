@@ -16,8 +16,8 @@ const PLUS1_CARD_TYPE = "plus1";
 const SINGLE_PLUS1_CARD_COUNT = 1;
 const PLUS2_CARD_TYPE = "plus2";
 const SINGLE_PLUS2_CARD_COUNT = 1;
-const MULT2_CARD_TYPE = "mult2";
-const SINGLE_MULT2_CARD_COUNT = 1;
+const NOT5_CARD_TYPE = "not5";
+const SINGLE_NOT5_CARD_COUNT = 1;
 
 function handleGetUserKey() {
   // ReactNativeWebView가 있는지 먼저 확인
@@ -297,8 +297,8 @@ class LobbyScene extends Phaser.Scene {
     );
 
     this.load.image(
-      "mult2",
-      `${ASSET_SERVER}/images/cards/special/ongame_mult2.png${VERSION}`,
+      "not5",
+      `${ASSET_SERVER}/images/cards/special/ongame_not5.png${VERSION}`,
     );
 
     this.load.image("itembg", `${ASSET_SERVER}/images/itembg.png${VERSION}`);
@@ -6141,8 +6141,8 @@ class GameScene extends Phaser.Scene {
     if (card && card.type === PLUS2_CARD_TYPE) {
       return "plus2";
     }
-    if (card && card.type === MULT2_CARD_TYPE) {
-      return "mult2";
+    if (card && card.type === NOT5_CARD_TYPE) {
+      return "not5";
     }
 
     const fruitNames = { 1: "strawberry", 2: "banana", 3: "lime", 4: "plum" };
@@ -8139,16 +8139,16 @@ class GameScene extends Phaser.Scene {
       if (!Array.isArray(deck)) continue;
       deck[picked.slotIndex] = { type: PLUS2_CARD_TYPE };
     }
-    // Mult2 카드 주입 (싱글)
-    const mult2Count = Math.min(SINGLE_MULT2_CARD_COUNT, deckSlots.length);
-    for (let index = 0; index < mult2Count; index += 1) {
+    // Not5 카드 주입 (싱글)
+    const not5Count = Math.min(SINGLE_NOT5_CARD_COUNT, deckSlots.length);
+    for (let index = 0; index < not5Count; index += 1) {
       const pickIndex = Math.floor(Math.random() * deckSlots.length);
       const picked = deckSlots.splice(pickIndex, 1)[0];
       if (!picked) continue;
 
       const deck = this.singleDeckByPlayer[picked.playerId];
       if (!Array.isArray(deck)) continue;
-      deck[picked.slotIndex] = { type: MULT2_CARD_TYPE };
+      deck[picked.slotIndex] = { type: NOT5_CARD_TYPE };
     }
   }
 
@@ -8158,7 +8158,9 @@ class GameScene extends Phaser.Scene {
     const totals = this.calculateTotalFruits();
     const isFiveExists = Object.values(totals).some((count) => count === 5);
     const hasThunder = this.hasThunderOnTable();
-    const hasBellSuccessWindow = isFiveExists || hasThunder;
+    const hasNot5 = this.hasNot5OnTable ? this.hasNot5OnTable() : false;
+    const hasBellSuccessWindow =
+      hasThunder || (hasNot5 ? !isFiveExists : isFiveExists);
 
     this.roundData.players.forEach((p) => {
       // 이미 탈락한 사람은 상태를 유지 (한번 죽으면 끝)
@@ -8184,8 +8186,7 @@ class GameScene extends Phaser.Scene {
     const plus1Active = this.hasPlus1OnTable();
     const plus2Active = this.hasPlus2OnTable ? this.hasPlus2OnTable() : false;
     const extraPerCard = (plus1Active ? 1 : 0) + (plus2Active ? 2 : 0);
-    const mult2Active = this.hasMult2OnTable ? this.hasMult2OnTable() : false;
-    const multiplier = mult2Active ? 2 : 1;
+
     this.roundData.players.forEach((p) => {
       if (!p) return;
       const top =
@@ -8200,7 +8201,7 @@ class GameScene extends Phaser.Scene {
         Number.isFinite(Number(top.count))
       ) {
         const base = Number(top.count) || 0;
-        totals[top.fruit] += (base + extraPerCard) * multiplier;
+        totals[top.fruit] += base + extraPerCard;
       }
     });
     return totals;
@@ -8248,6 +8249,20 @@ class GameScene extends Phaser.Scene {
     });
   }
 
+  hasNot5OnTable() {
+    if (!this.roundData || !Array.isArray(this.roundData.players)) return false;
+
+    return this.roundData.players.some((player) => {
+      if (!player) return false;
+      const top =
+        Array.isArray(player?.openStack) && player.openStack.length > 0
+          ? player.openStack[player.openStack.length - 1]
+          : player?.openCard;
+      if (player.isEliminated && top?.type === BOMB_CARD_TYPE) return false;
+      return top?.type === NOT5_CARD_TYPE;
+    });
+  }
+
   hasPlus1OnTable() {
     if (!this.roundData || !Array.isArray(this.roundData.players)) return false;
 
@@ -8271,20 +8286,6 @@ class GameScene extends Phaser.Scene {
         return top?.type === PLUS2_CARD_TYPE;
       }
       return player?.openCard?.type === PLUS2_CARD_TYPE;
-    });
-  }
-
-  hasMult2OnTable() {
-    if (!this.roundData || !Array.isArray(this.roundData.players)) return false;
-
-    return this.roundData.players.some((player) => {
-      if (!player) return false;
-      const top =
-        Array.isArray(player?.openStack) && player.openStack.length > 0
-          ? player.openStack[player.openStack.length - 1]
-          : player?.openCard;
-      if (player.isEliminated && top?.type === BOMB_CARD_TYPE) return false;
-      return top?.type === MULT2_CARD_TYPE;
     });
   }
 
