@@ -219,7 +219,8 @@ const XP_PER_LEVEL = 100;
 const THUNDER_CARD_TYPE = "thunder";
 const THUNDER_CARD_COUNT = 3;
 const BOMB_CARD_TYPE = "bomb";
-const BOMB_CARD_COUNT = 1;
+// Increase bomb count so bombs appear more often in multiplayer games
+const BOMB_CARD_COUNT = 10;
 const SERVER_BUILD = "2026-02-24-thunder-insert-v1";
 
 function getLevelFromExperience(experience) {
@@ -237,10 +238,14 @@ function isBombCard(card) {
 function hasThunderCardOnTable(players) {
   return players.some((player) => {
     if (isThunderCard(player.openCard)) return true;
-    return (
+    if (
       Array.isArray(player.openCardStack) &&
-      player.openCardStack.some((card) => isThunderCard(card))
-    );
+      player.openCardStack.length > 0
+    ) {
+      const top = player.openCardStack[player.openCardStack.length - 1];
+      return isThunderCard(top);
+    }
+    return false;
   });
 }
 

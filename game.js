@@ -8107,10 +8107,11 @@ class GameScene extends Phaser.Scene {
 
     return this.roundData.players.some((player) => {
       if (player?.openCard?.type === THUNDER_CARD_TYPE) return true;
-      return (
-        Array.isArray(player?.openStack) &&
-        player.openStack.some((card) => card?.type === THUNDER_CARD_TYPE)
-      );
+      if (Array.isArray(player?.openStack) && player.openStack.length > 0) {
+        const top = player.openStack[player.openStack.length - 1];
+        return top?.type === THUNDER_CARD_TYPE;
+      }
+      return false;
     });
   }
 
