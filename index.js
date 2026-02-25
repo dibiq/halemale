@@ -1833,7 +1833,8 @@ io.on("connection", (socket) => {
     room.lastFlipTime = null;
     const total = room.players.length;
     // 테스트를 위해 덱 크기 조절 가능 (실제 운영 시 deck 사용)
-    const gameDeck = deck.slice(0, total * 30);
+    // 단위 테스트를 빠르게 하기 위해 각 플레이어당 10장으로 줄입니다.
+    const gameDeck = deck.slice(0, total * 10);
 
     room.players.forEach((p, idx) => {
       p.myDeck = gameDeck.filter((_, i) => i % total === idx);
@@ -2121,10 +2122,16 @@ io.on("connection", (socket) => {
     }, 150);
   });
 
-  socket.on("ringBell", () => {
-    const room = rooms[socket.roomId];
+  function handleRingForSocket(sock) {
+    const room = rooms[sock.roomId];
     if (!room || !room.isGameStarted) return;
     if (room.bellLocked) return;
+
+    // If a flip is currently being processed, wait briefly and re-evaluate
+    if (room.isFlipping) {
+      setTimeout(() => handleRingForSocket(sock), 50);
+      return;
+    }
 
     const hasOpenCards = room.players.some((player) => {
       const hasOpenStack =
@@ -2249,7 +2256,9 @@ io.on("connection", (socket) => {
 
       processSkipTurn(room, io);
     }
-  });
+  }
+
+  socket.on("ringBell", () => handleRingForSocket(socket));
 
   socket.on("disconnect", () => {
     const room = rooms[socket.roomId];
