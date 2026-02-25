@@ -6090,6 +6090,10 @@ class GameScene extends Phaser.Scene {
       return "thun";
     }
 
+    if (card && card.type === BOMB_CARD_TYPE) {
+      return "bomb";
+    }
+
     const fruitNames = { 1: "strawberry", 2: "banana", 3: "lime", 4: "plum" };
     const fruitName = fruitNames[card.fruit] || "strawberry";
     return `${fruitName}_${card.count}`;
@@ -8115,10 +8119,11 @@ class GameScene extends Phaser.Scene {
 
     return this.roundData.players.some((player) => {
       if (player?.openCard?.type === BOMB_CARD_TYPE) return true;
-      return (
-        Array.isArray(player?.openStack) &&
-        player.openStack.some((card) => card?.type === BOMB_CARD_TYPE)
-      );
+      if (Array.isArray(player?.openStack) && player.openStack.length > 0) {
+        const top = player.openStack[player.openStack.length - 1];
+        return top?.type === BOMB_CARD_TYPE;
+      }
+      return false;
     });
   }
 

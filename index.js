@@ -247,10 +247,14 @@ function hasThunderCardOnTable(players) {
 function hasBombCardOnTable(players) {
   return players.some((player) => {
     if (isBombCard(player.openCard)) return true;
-    return (
+    if (
       Array.isArray(player.openCardStack) &&
-      player.openCardStack.some((card) => isBombCard(card))
-    );
+      player.openCardStack.length > 0
+    ) {
+      const top = player.openCardStack[player.openCardStack.length - 1];
+      return isBombCard(top);
+    }
+    return false;
   });
 }
 
