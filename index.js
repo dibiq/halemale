@@ -229,6 +229,8 @@ const PLUS1_CARD_TYPE = "plus1";
 const PLUS1_CARD_COUNT = 1;
 const PLUS2_CARD_TYPE = "plus2";
 const PLUS2_CARD_COUNT = 1;
+const MULT2_CARD_TYPE = "mult2";
+const MULT2_CARD_COUNT = 1;
 const SERVER_BUILD = "2026-02-24-thunder-insert-v1";
 
 function getLevelFromExperience(experience) {
@@ -257,6 +259,10 @@ function isPlus1Card(card) {
 
 function isPlus2Card(card) {
   return Boolean(card) && card.type === PLUS2_CARD_TYPE;
+}
+
+function isMult2Card(card) {
+  return Boolean(card) && card.type === MULT2_CARD_TYPE;
 }
 
 function hasThunderCardOnTable(players) {
@@ -317,6 +323,18 @@ function hasPlus2CardOnTable(players) {
         : player.openCard;
     if (player.isEliminated && isBombCard(top)) return false;
     return isPlus2Card(top);
+  });
+}
+
+function hasMult2CardOnTable(players) {
+  return players.some((player) => {
+    if (!player) return false;
+    const top =
+      Array.isArray(player.openCardStack) && player.openCardStack.length > 0
+        ? player.openCardStack[player.openCardStack.length - 1]
+        : player.openCard;
+    if (player.isEliminated && isBombCard(top)) return false;
+    return isMult2Card(top);
   });
 }
 
@@ -525,6 +543,8 @@ function getFruitTotals(players) {
   const plus1Active = hasPlus1CardOnTable(players);
   const plus2Active = hasPlus2CardOnTable(players);
   const extraPerCard = (plus1Active ? 1 : 0) + (plus2Active ? 2 : 0);
+  const mult2Active = hasMult2CardOnTable(players);
+  const multiplier = mult2Active ? 2 : 1;
   players.forEach((p) => {
     if (!p) return;
     const top =
@@ -539,7 +559,7 @@ function getFruitTotals(players) {
       Number.isFinite(Number(top.count))
     ) {
       const base = Number(top.count) || 0;
-      totals[top.fruit] += base + extraPerCard;
+      totals[top.fruit] += (base + extraPerCard) * multiplier;
     }
   });
   return totals;
@@ -2068,6 +2088,35 @@ io.on("connection", (socket) => {
       }
     }
     injectPlus2CardsToPlayers(room.players, PLUS2_CARD_COUNT);
+    // Mult2 카드 주입
+    function injectMult2CardsToPlayers(players, mult2Count) {
+      if (!Array.isArray(players) || players.length === 0) return;
+
+      const drawablePlayers = players.filter(
+        (player) => Array.isArray(player.myDeck) && player.myDeck.length > 0,
+      );
+      if (drawablePlayers.length === 0) return;
+
+      const count = Math.max(0, Number(mult2Count) || 0);
+      for (let i = 0; i < count; i += 1) {
+        const targetPlayer =
+          drawablePlayers[Math.floor(Math.random() * drawablePlayers.length)];
+        if (!targetPlayer || !Array.isArray(targetPlayer.myDeck)) continue;
+
+        const insertIndex = Math.floor(
+          Math.random() * (targetPlayer.myDeck.length + 1),
+        );
+        if (insertIndex < targetPlayer.myDeck.length) {
+          targetPlayer.myDeck[insertIndex] = { type: MULT2_CARD_TYPE };
+        } else {
+          targetPlayer.myDeck.push({ type: MULT2_CARD_TYPE });
+        }
+        console.log(
+          `✖️✖️ inject mult2 -> ${targetPlayer.nickname || targetPlayer.id} (deckIndex=${insertIndex})`,
+        );
+      }
+    }
+    injectMult2CardsToPlayers(room.players, MULT2_CARD_COUNT);
     room.players.forEach((player) => {
       player.cards = Array.isArray(player.myDeck) ? player.myDeck.length : 0;
     });
