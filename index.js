@@ -261,6 +261,7 @@ function isPlus2Card(card) {
 
 function hasThunderCardOnTable(players) {
   return players.some((player) => {
+    if (player && player.isEliminated) return false;
     const top =
       Array.isArray(player.openCardStack) && player.openCardStack.length > 0
         ? player.openCardStack[player.openCardStack.length - 1]
@@ -271,6 +272,7 @@ function hasThunderCardOnTable(players) {
 
 function hasBombCardOnTable(players) {
   return players.some((player) => {
+    if (player && player.isEliminated) return false;
     const top =
       Array.isArray(player.openCardStack) && player.openCardStack.length > 0
         ? player.openCardStack[player.openCardStack.length - 1]
@@ -281,6 +283,7 @@ function hasBombCardOnTable(players) {
 
 function hasPenCardOnTable(players) {
   return players.some((player) => {
+    if (player && player.isEliminated) return false;
     const top =
       Array.isArray(player.openCardStack) && player.openCardStack.length > 0
         ? player.openCardStack[player.openCardStack.length - 1]
@@ -291,6 +294,7 @@ function hasPenCardOnTable(players) {
 
 function hasPlus1CardOnTable(players) {
   return players.some((player) => {
+    if (player && player.isEliminated) return false;
     const top =
       Array.isArray(player.openCardStack) && player.openCardStack.length > 0
         ? player.openCardStack[player.openCardStack.length - 1]
@@ -301,6 +305,7 @@ function hasPlus1CardOnTable(players) {
 
 function hasPlus2CardOnTable(players) {
   return players.some((player) => {
+    if (player && player.isEliminated) return false;
     const top =
       Array.isArray(player.openCardStack) && player.openCardStack.length > 0
         ? player.openCardStack[player.openCardStack.length - 1]
@@ -515,6 +520,7 @@ function getFruitTotals(players) {
   const plus2Active = hasPlus2CardOnTable(players);
   const extraPerCard = (plus1Active ? 1 : 0) + (plus2Active ? 2 : 0);
   players.forEach((p) => {
+    if (p && p.isEliminated) return; // 탈락한 플레이어의 오픈카드는 계산에서 제외
     if (
       p.openCard &&
       Number.isFinite(Number(p.openCard.fruit)) &&

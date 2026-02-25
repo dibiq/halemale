@@ -8164,6 +8164,7 @@ class GameScene extends Phaser.Scene {
     const plus2Active = this.hasPlus2OnTable ? this.hasPlus2OnTable() : false;
     const extraPerCard = (plus1Active ? 1 : 0) + (plus2Active ? 2 : 0);
     this.roundData.players.forEach((p) => {
+      if (p && p.isEliminated) return; // 탈락한 플레이어의 오픈카드는 합산에서 제외
       if (
         p.openCard &&
         Number.isFinite(Number(p.openCard.fruit)) &&
@@ -8180,6 +8181,7 @@ class GameScene extends Phaser.Scene {
     if (!this.roundData || !Array.isArray(this.roundData.players)) return false;
 
     return this.roundData.players.some((player) => {
+      if (player && player.isEliminated) return false;
       if (Array.isArray(player?.openStack) && player.openStack.length > 0) {
         const top = player.openStack[player.openStack.length - 1];
         return top?.type === THUNDER_CARD_TYPE;
@@ -8192,6 +8194,7 @@ class GameScene extends Phaser.Scene {
     if (!this.roundData || !Array.isArray(this.roundData.players)) return false;
 
     return this.roundData.players.some((player) => {
+      if (player && player.isEliminated) return false;
       if (player?.openCard?.type === BOMB_CARD_TYPE) return true;
       if (Array.isArray(player?.openStack) && player.openStack.length > 0) {
         const top = player.openStack[player.openStack.length - 1];
@@ -8205,6 +8208,7 @@ class GameScene extends Phaser.Scene {
     if (!this.roundData || !Array.isArray(this.roundData.players)) return false;
 
     return this.roundData.players.some((player) => {
+      if (player && player.isEliminated) return false;
       if (Array.isArray(player?.openStack) && player.openStack.length > 0) {
         const top = player.openStack[player.openStack.length - 1];
         return top?.type === PEN_CARD_TYPE;
@@ -8217,11 +8221,25 @@ class GameScene extends Phaser.Scene {
     if (!this.roundData || !Array.isArray(this.roundData.players)) return false;
 
     return this.roundData.players.some((player) => {
+      if (player && player.isEliminated) return false;
       if (Array.isArray(player?.openStack) && player.openStack.length > 0) {
         const top = player.openStack[player.openStack.length - 1];
         return top?.type === PLUS1_CARD_TYPE;
       }
       return player?.openCard?.type === PLUS1_CARD_TYPE;
+    });
+  }
+
+  hasPlus2OnTable() {
+    if (!this.roundData || !Array.isArray(this.roundData.players)) return false;
+
+    return this.roundData.players.some((player) => {
+      if (player && player.isEliminated) return false;
+      if (Array.isArray(player?.openStack) && player.openStack.length > 0) {
+        const top = player.openStack[player.openStack.length - 1];
+        return top?.type === PLUS2_CARD_TYPE;
+      }
+      return player?.openCard?.type === PLUS2_CARD_TYPE;
     });
   }
 
