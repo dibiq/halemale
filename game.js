@@ -138,8 +138,6 @@ class LobbyScene extends Phaser.Scene {
 
     // 1. 기존 loadingText 삭제 후 이 코드를 넣으세요
     const loadingContainer = this.add.container(width / 2, height / 2);
-
-    // 회전하는 스피너 (이미지 없이 코드로만 그림)
     const spinner = this.add.graphics();
     spinner.lineStyle(4, 0xffffff, 0.3);
     spinner.strokeCircle(0, 0, 40);
@@ -299,6 +297,31 @@ class LobbyScene extends Phaser.Scene {
     this.load.image(
       "not5",
       `${ASSET_SERVER}/images/cards/special/ongame_not5.png${VERSION}`,
+    );
+
+    this.load.image(
+      "lock",
+      `${ASSET_SERVER}/images/cards/special/lock.png${VERSION}`,
+    );
+
+    this.load.image(
+      "shield",
+      `${ASSET_SERVER}/images/cards/special/shield.png${VERSION}`,
+    );
+
+    this.load.image(
+      "block",
+      `${ASSET_SERVER}/images/cards/special/block.png${VERSION}`,
+    );
+
+    this.load.image(
+      "thief",
+      `${ASSET_SERVER}/images/cards/special/thief.png${VERSION}`,
+    );
+
+    this.load.image(
+      "king",
+      `${ASSET_SERVER}/images/cards/special/king.png${VERSION}`,
     );
 
     this.load.image("itembg", `${ASSET_SERVER}/images/itembg.png${VERSION}`);
@@ -571,7 +594,7 @@ class LobbyScene extends Phaser.Scene {
         if (rawId === null || rawId === undefined) return null;
 
         const numericId = Number(rawId);
-        if (Number.isFinite(numericId) && numericId >= 1 && numericId <= 3) {
+        if (Number.isFinite(numericId) && numericId >= 1 && numericId <= 8) {
           return numericId;
         }
 
@@ -580,9 +603,19 @@ class LobbyScene extends Phaser.Scene {
           magnet: 1,
           bomb: 2,
           star: 3,
+          lock: 4,
+          shield: 5,
+          block: 6,
+          thief: 7,
+          king: 8,
           자석: 1,
           폭탄: 2,
           별: 3,
+          자물쇠: 4,
+          방패: 5,
+          먹물: 6,
+          도둑: 7,
+          왕: 8,
         };
         return idMap[idText] || null;
       };
@@ -2457,22 +2490,44 @@ class LobbyScene extends Phaser.Scene {
 
     const specialCards = [
       {
-        id: 1,
-        name: "🧲 자석",
-        description: "모든 과일을 끌어당깁니다",
-        price: 100,
+        id: 4,
+        key: "lock",
+        icon: "lock",
+        name: "🔒 자물쇠",
+        description: "카드를 잠궈 방어합니다",
+        price: 180,
       },
       {
-        id: 2,
-        name: "💣 폭탄",
-        description: "상대방 카드를 날립니다",
-        price: 150,
+        id: 5,
+        key: "shield",
+        icon: "shield",
+        name: "🛡️ 방패",
+        description: "한 번의 패널티를 막습니다",
+        price: 170,
       },
       {
-        id: 3,
-        name: "⭐ 별",
-        description: "2배 점수 획득",
-        price: 200,
+        id: 6,
+        key: "ink",
+        icon: "block",
+        name: "🖋️ 먹물",
+        description: "상대의 카드를 혼란시킵니다",
+        price: 160,
+      },
+      {
+        id: 7,
+        key: "thief",
+        icon: "thief",
+        name: "🦹 도둑",
+        description: "상대의 카드를 훔칩니다",
+        price: 220,
+      },
+      {
+        id: 8,
+        key: "king",
+        icon: "king",
+        name: "👑 왕",
+        description: "특수한 보너스 효과를 부여합니다",
+        price: 300,
       },
     ];
 
@@ -2784,6 +2839,20 @@ class LobbyScene extends Phaser.Scene {
           JSON.parse(localStorage.getItem("specialCards")) || {};
         const ownedCount = specialCardsOwned[card.id] || 0;
 
+        // 아이콘
+        let iconImg = null;
+        try {
+          const iconKey = card.icon || card.key || "itembg";
+          if (this.textures.exists(iconKey)) {
+            iconImg = this.add
+              .image(0, -150, iconKey)
+              .setDisplaySize(width * 0.12, width * 0.12)
+              .setOrigin(0.5);
+          }
+        } catch (e) {
+          iconImg = null;
+        }
+
         const nameText = this.add
           .text(0, -80, card.name, {
             fontFamily: GAME_FONTS.main,
@@ -2829,7 +2898,9 @@ class LobbyScene extends Phaser.Scene {
           })
           .setOrigin(0.5);
 
-        cardDisplayContainer.add([nameText, descText, priceText, ownedText]);
+        const toAdd = [nameText, descText, priceText, ownedText];
+        if (iconImg) toAdd.unshift(iconImg);
+        cardDisplayContainer.add(toAdd);
 
         buyBtnText.setText("구매하기");
       }
