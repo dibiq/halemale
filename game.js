@@ -6415,6 +6415,48 @@ class GameScene extends Phaser.Scene {
           return;
         }
 
+        // 왕 카드 사용 연출: 서버가 보낸 대상(target) 또는 recipients[0]를 사용
+        if (Number(data.cardId) === 8 && data.by) {
+          const targetId =
+            data.target ||
+            (Array.isArray(data.recipients) && data.recipients.length > 0
+              ? data.recipients[0]
+              : null);
+          if (targetId) {
+            const prevPlayers = this.roundData.players.map((p) => ({
+              ...p,
+              openStack: p.openStack ? [...p.openStack] : [],
+            }));
+
+            this.playKingSwapAnimation({
+              byId: data.by,
+              targetId,
+              players: prevPlayers,
+              onComplete: () => {
+                try {
+                  if (Array.isArray(data.players) && data.players.length > 0) {
+                    this.roundData.players.forEach((oldPlayer) => {
+                      const newPlayer = data.players.find(
+                        (p) => p.id === oldPlayer.id,
+                      );
+                      if (newPlayer) {
+                        const preservedOpenStack = oldPlayer.openStack;
+                        Object.assign(oldPlayer, newPlayer);
+                        oldPlayer.openStack = preservedOpenStack;
+                      }
+                    });
+                    this.renderTable(this.roundData.players);
+                  }
+                  if (data.message) this.showToast(data.message, "#2ecc71");
+                } catch (e) {
+                  console.warn("specialUsed merge error", e);
+                }
+              },
+            });
+            return;
+          }
+        }
+
         // 기본 처리: 즉시 병합
         if (Array.isArray(data.players) && data.players.length > 0) {
           this.roundData.players.forEach((oldPlayer) => {
@@ -8073,6 +8115,111 @@ class GameScene extends Phaser.Scene {
     });
   }
 
+  playKingSwapAnimation({
+    byId,
+    targetId,
+    players = this.roundData.players,
+    onComplete,
+  } = {}) {
+    if (!Array.isArray(players) || players.length === 0) {
+      if (typeof onComplete === "function") onComplete();
+      return;
+    }
+
+    const { width, height } = this.cameras.main;
+    const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
+    const myIndex = players.findIndex((p) => p.id === myId);
+    const byIdx = players.findIndex((p) => p.id === byId);
+    const targetIdx = players.findIndex((p) => p.id === targetId);
+    if (byIdx === -1 || targetIdx === -1) {
+      if (typeof onComplete === "function") onComplete();
+      return;
+    }
+
+    const playerCount = players.length;
+    const pos =
+      playerCount === 2
+        ? [
+            { x: width * 0.5, y: height * 0.75 },
+            { x: width * 0.5, y: height * 0.18 },
+          ]
+        : playerCount === 3
+          ? [
+              { x: width * 0.5, y: height * 0.75 },
+              { x: width * 0.11, y: height * 0.45 },
+              { x: width * 0.89, y: height * 0.45 },
+            ]
+          : [
+              { x: width * 0.5, y: height * 0.75 },
+              { x: width * 0.11, y: height * 0.45 },
+              { x: width * 0.5, y: height * 0.18 },
+              { x: width * 0.89, y: height * 0.45 },
+            ];
+
+    const relBy = (byIdx - myIndex + players.length) % players.length;
+    const relTarget = (targetIdx - myIndex + players.length) % players.length;
+    const fromPos = pos[relBy];
+    const toPos = pos[relTarget];
+
+    // 두 장의 카드가 서로 교차 이동
+    const cardA = this.add
+      .image(fromPos.x + (Math.random() - 0.5) * 12, fromPos.y, "card_back")
+      .setDisplaySize(width * 0.14, width * 0.2)
+      .setDepth(3000);
+    const cardB = this.add
+      .image(toPos.x + (Math.random() - 0.5) * 12, toPos.y, "card_back")
+      .setDisplaySize(width * 0.14, width * 0.2)
+      .setDepth(3001);
+
+    this.tweens.add({
+      targets: cardA,
+      x: toPos.x + (Math.random() - 0.5) * 20,
+      y: toPos.y + (Math.random() - 0.5) * 10,
+      angle: 360,
+      scale: 0.95,
+      duration: 420,
+      ease: "Cubic.out",
+    });
+
+    this.tweens.add({
+      targets: cardB,
+      x: fromPos.x + (Math.random() - 0.5) * 20,
+      y: fromPos.y + (Math.random() - 0.5) * 10,
+      angle: -360,
+      scale: 0.95,
+      duration: 420,
+      ease: "Cubic.out",
+      onComplete: () => {
+        cardA.destroy();
+        cardB.destroy();
+        // 파티클 효과
+        const px = this.add
+          .circle(
+            (fromPos.x + toPos.x) / 2,
+            (fromPos.y + toPos.y) / 2,
+            width * 0.015,
+            0xfff1c2,
+            1,
+          )
+          .setDepth(4000);
+        this.tweens.add({
+          targets: px,
+          alpha: 0,
+          scale: 0,
+          duration: 320,
+          ease: "Power2.easeOut",
+          onComplete: () => px.destroy(),
+        });
+
+        if (this.cache && this.cache.audio && this.cache.audio.exists("pop")) {
+          this.sound.play("pop", { volume: 0.28 });
+        }
+
+        if (typeof onComplete === "function") onComplete();
+      },
+    });
+  }
+
   checkFruitCountForAI() {
     if (!this.isSingle) return;
 
@@ -9240,7 +9387,7 @@ class GameScene extends Phaser.Scene {
           return;
         }
 
-        // 싱글플레이: 로컬에서 즉시 덱 교환 적용
+        // 싱글플레이: 애니메이션으로 교환 연출 후 실제 덱 교환 적용
         try {
           const myId = this.myId || "PLAYER_ME";
           const players = this.roundData.players;
@@ -9258,42 +9405,64 @@ class GameScene extends Phaser.Scene {
               target = c;
           });
 
-          // 실제 덱 교환
-          const myDeck = this.getSingleDeck(myId);
-          const targetDeck = this.getSingleDeck(target.id);
-          // swap arrays in-place
-          const tmp = myDeck.splice(0, myDeck.length, ...targetDeck.slice());
-          targetDeck.splice(0, targetDeck.length, ...tmp);
+          // 애니메이션을 위한 상태 스냅샷
+          const prevPlayers = players.map((p) => ({
+            ...p,
+            openStack: p.openStack ? [...p.openStack] : [],
+          }));
 
-          // 라운드 데이터 카드 수 갱신
-          const me = players.find((p) => p.id === myId);
-          const tp = players.find((p) => p.id === target.id);
-          if (me) {
-            me.cards = myDeck.length;
-            me.remainingCards = me.cards;
-          }
-          if (tp) {
-            tp.cards = targetDeck.length;
-            tp.remainingCards = tp.cards;
-          }
+          this.playKingSwapAnimation({
+            byId: myId,
+            targetId: target.id,
+            players: prevPlayers,
+            onComplete: () => {
+              try {
+                // 실제 덱 교환
+                const myDeck = this.getSingleDeck(myId);
+                const targetDeck = this.getSingleDeck(target.id);
+                const tmp = myDeck.splice(
+                  0,
+                  myDeck.length,
+                  ...targetDeck.slice(),
+                );
+                targetDeck.splice(0, targetDeck.length, ...tmp);
 
-          // 로컬 인벤토리 차감 및 동기화 트리거
-          const specialCardsOwned =
-            JSON.parse(localStorage.getItem("specialCards")) || {};
-          specialCardsOwned[cardId] = (specialCardsOwned[cardId] || 0) - 1;
-          if (specialCardsOwned[cardId] <= 0) delete specialCardsOwned[cardId];
-          localStorage.setItem(
-            "specialCards",
-            JSON.stringify(specialCardsOwned),
-          );
-          try {
-            this.specialUsedThisTurn = this.specialUsedThisTurn || {};
-            this.specialUsedThisTurn[myId] = true;
-          } catch (e) {}
-          this.updateEliminationStatus();
-          this.renderTable(this.roundData.players);
-          this.safeSyncInventory("useKing", { usedCardId: 8 });
-          this.showToast("왕 카드 사용: 덱을 교환했습니다!", "#2ecc71");
+                // 라운드 데이터 카드 수 갱신
+                const me = players.find((p) => p.id === myId);
+                const tp = players.find((p) => p.id === target.id);
+                if (me) {
+                  me.cards = myDeck.length;
+                  me.remainingCards = me.cards;
+                }
+                if (tp) {
+                  tp.cards = targetDeck.length;
+                  tp.remainingCards = tp.cards;
+                }
+
+                // 로컬 인벤토리 차감 및 동기화 트리거
+                const specialCardsOwned =
+                  JSON.parse(localStorage.getItem("specialCards")) || {};
+                specialCardsOwned[cardId] =
+                  (specialCardsOwned[cardId] || 0) - 1;
+                if (specialCardsOwned[cardId] <= 0)
+                  delete specialCardsOwned[cardId];
+                localStorage.setItem(
+                  "specialCards",
+                  JSON.stringify(specialCardsOwned),
+                );
+                try {
+                  this.specialUsedThisTurn = this.specialUsedThisTurn || {};
+                  this.specialUsedThisTurn[myId] = true;
+                } catch (e) {}
+                this.updateEliminationStatus();
+                this.renderTable(this.roundData.players);
+                this.safeSyncInventory("useKing", { usedCardId: 8 });
+                this.showToast("왕 카드 사용: 덱을 교환했습니다!", "#2ecc71");
+              } catch (e) {
+                console.warn("useSpecialCard king single error", e);
+              }
+            },
+          });
         } catch (e) {
           console.warn("useSpecialCard king single error", e);
         }
@@ -9512,7 +9681,7 @@ class GameScene extends Phaser.Scene {
         return;
       }
 
-      // 싱글플레이: 로컬에서 즉시 덱 교환 적용
+      // 싱글플레이: 애니메이션으로 교환 연출 후 실제 덱 교환 적용
       try {
         const myId = this.myId || "PLAYER_ME";
         const players = this.roundData.players;
@@ -9529,39 +9698,63 @@ class GameScene extends Phaser.Scene {
           if ((Number(c.cards) || 0) > (Number(target.cards) || 0)) target = c;
         });
 
-        // 실제 덱 교환
-        const myDeck = this.getSingleDeck(myId);
-        const targetDeck = this.getSingleDeck(target.id);
-        // swap arrays in-place
-        const tmp = myDeck.splice(0, myDeck.length, ...targetDeck.slice());
-        targetDeck.splice(0, targetDeck.length, ...tmp);
+        // 애니메이션을 위한 상태 스냅샷
+        const prevPlayers = players.map((p) => ({
+          ...p,
+          openStack: p.openStack ? [...p.openStack] : [],
+        }));
 
-        // 라운드 데이터 카드 수 갱신
-        const me = players.find((p) => p.id === myId);
-        const tp = players.find((p) => p.id === target.id);
-        if (me) {
-          me.cards = myDeck.length;
-          me.remainingCards = me.cards;
-        }
-        if (tp) {
-          tp.cards = targetDeck.length;
-          tp.remainingCards = tp.cards;
-        }
+        this.playKingSwapAnimation({
+          byId: myId,
+          targetId: target.id,
+          players: prevPlayers,
+          onComplete: () => {
+            try {
+              // 실제 덱 교환
+              const myDeck = this.getSingleDeck(myId);
+              const targetDeck = this.getSingleDeck(target.id);
+              const tmp = myDeck.splice(
+                0,
+                myDeck.length,
+                ...targetDeck.slice(),
+              );
+              targetDeck.splice(0, targetDeck.length, ...tmp);
 
-        // 로컬 인벤토리 차감 및 동기화 트리거
-        const specialCardsOwned =
-          JSON.parse(localStorage.getItem("specialCards")) || {};
-        specialCardsOwned[cardId] = (specialCardsOwned[cardId] || 0) - 1;
-        if (specialCardsOwned[cardId] <= 0) delete specialCardsOwned[cardId];
-        localStorage.setItem("specialCards", JSON.stringify(specialCardsOwned));
-        try {
-          this.specialUsedThisTurn = this.specialUsedThisTurn || {};
-          this.specialUsedThisTurn[myId] = true;
-        } catch (e) {}
-        this.updateEliminationStatus();
-        this.renderTable(this.roundData.players);
-        this.safeSyncInventory("useKing", { usedCardId: 8 });
-        this.showToast("왕 카드 사용: 덱을 교환했습니다!", "#2ecc71");
+              // 라운드 데이터 카드 수 갱신
+              const me = players.find((p) => p.id === myId);
+              const tp = players.find((p) => p.id === target.id);
+              if (me) {
+                me.cards = myDeck.length;
+                me.remainingCards = me.cards;
+              }
+              if (tp) {
+                tp.cards = targetDeck.length;
+                tp.remainingCards = tp.cards;
+              }
+
+              // 로컬 인벤토리 차감 및 동기화 트리거
+              const specialCardsOwned =
+                JSON.parse(localStorage.getItem("specialCards")) || {};
+              specialCardsOwned[cardId] = (specialCardsOwned[cardId] || 0) - 1;
+              if (specialCardsOwned[cardId] <= 0)
+                delete specialCardsOwned[cardId];
+              localStorage.setItem(
+                "specialCards",
+                JSON.stringify(specialCardsOwned),
+              );
+              try {
+                this.specialUsedThisTurn = this.specialUsedThisTurn || {};
+                this.specialUsedThisTurn[myId] = true;
+              } catch (e) {}
+              this.updateEliminationStatus();
+              this.renderTable(this.roundData.players);
+              this.safeSyncInventory("useKing", { usedCardId: 8 });
+              this.showToast("왕 카드 사용: 덱을 교환했습니다!", "#2ecc71");
+            } catch (e) {
+              console.warn("useSpecialCard king single error", e);
+            }
+          },
+        });
       } catch (e) {
         console.warn("useSpecialCard king single error", e);
       }
