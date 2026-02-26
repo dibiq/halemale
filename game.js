@@ -6665,57 +6665,29 @@ class GameScene extends Phaser.Scene {
     // 나만 특수카드를 표시함
     if (!isMe) return;
 
-    // 특수카드 데이터 정의 (총 5개) - 쿨타임 추가
+    // 새 특수카드 목록 (shop에 등록된 5종)
     const allSpecialCards = [
-      {
-        id: 1,
-        name: "🧲",
-        description: "자석",
-        emoji: "🧲",
-        cooldown: 10000, // 10초
-      },
-      {
-        id: 2,
-        name: "💣",
-        description: "폭탄",
-        emoji: "💣",
-        cooldown: 15000, // 15초
-      },
-      {
-        id: 3,
-        name: "⭐",
-        description: "별",
-        emoji: "⭐",
-        cooldown: 20000, // 20초
-      },
-      {
-        id: 4,
-        name: "🔥",
-        description: "불",
-        emoji: "🔥",
-        cooldown: 12000, // 12초
-      },
-      {
-        id: 5,
-        name: "❄️",
-        description: "얼음",
-        emoji: "❄️",
-        cooldown: 18000, // 18초
-      },
+      { id: 4, key: "lock", name: "자물쇠", cooldown: 12000 },
+      { id: 5, key: "shield", name: "방패", cooldown: 12000 },
+      { id: 6, key: "ink", name: "먹물", cooldown: 12000 },
+      { id: 7, key: "thief", name: "도둑", cooldown: 12000 },
+      { id: 8, key: "king", name: "왕", cooldown: 12000 },
     ];
 
     // localStorage에서 보유한 특수카드 로드
-    const specialCardsOwned =
-      JSON.parse(localStorage.getItem("specialCards")) || {};
+    const specialCardsOwned = JSON.parse(
+      localStorage.getItem("specialCards") || "{}",
+    );
 
-    // 카드 배치 (내 아이디 아래에 가로 5개)
-    const cardSize = width * 0.12; // 특수카드 크기 (1.5배 증가)
-    const startX = layout.x - (cardSize * 2.3 + width * 0.02 * 2); // 중앙 정렬
-    const cardY = layout.y + width * 0.28; // 닉네임 아래에 배치
-    const cardGap = cardSize + width * 0.04; // 카드 간격
+    // 하단 중앙에 고정 배치
+    const cardSize = Math.min(width * 0.12, 100);
+    const gap = cardSize + Math.round(width * 0.03);
+    const centerX = width / 2;
+    const cardY = height - Math.round(height * 0.08);
+    const startX = centerX - ((allSpecialCards.length - 1) / 2) * gap;
 
     allSpecialCards.forEach((card, index) => {
-      const cardX = startX + index * cardGap;
+      const cardX = startX + index * gap;
       const count = specialCardsOwned[card.id] || 0;
 
       // 쿨타임 체크
@@ -6727,94 +6699,103 @@ class GameScene extends Phaser.Scene {
         : 0;
 
       if (count > 0) {
-        // 보유한 카드: 버튼으로 표시
-        // 쿨타임 중이면 회색/어두운 배경, 아니면 초록색 배경
-        const bgColor = isOnCooldown ? 0x555555 : 0x2ecc71;
-        const bgAlpha = isOnCooldown ? 0.5 : 0.7;
-        const borderColor = isOnCooldown ? 0xff4444 : 0xffd700;
-
+        // 보유한 카드: 이미지 또는 대체 텍스트로 표시
         const cardBg = this.add
-          .rectangle(cardX, cardY, cardSize, cardSize, bgColor, bgAlpha)
-          .setStrokeStyle(3, borderColor, 1)
+          .rectangle(
+            cardX,
+            cardY,
+            cardSize,
+            cardSize,
+            isOnCooldown ? 0x555555 : 0x1f2937,
+            isOnCooldown ? 0.6 : 0.85,
+          )
+          .setStrokeStyle(2, isOnCooldown ? 0xff4444 : 0xffff00, 1)
           .setInteractive({ useHandCursor: !isOnCooldown });
 
-        const cardEmoji = this.add
-          .text(cardX, cardY - cardSize * 0.15, card.emoji, {
-            fontFamily: "Arial",
-            fontSize: `${cardSize * 0.6}px`,
-          })
-          .setOrigin(0.5)
-          .setAlpha(isOnCooldown ? 0.3 : 1);
-
-        const cardCount = this.add
-          .text(cardX, cardY + cardSize * 0.25, `x${count}`, {
-            fontFamily: GAME_FONTS.main,
-            fontSize: `${cardSize * 0.3}px`,
-            color: "#ffffff",
-            fontWeight: "bold",
-          })
-          .setOrigin(0.5)
-          .setAlpha(isOnCooldown ? 0.3 : 1);
-
-        // 쿨타임 오버레이 및 시각적 효과
-        if (isOnCooldown) {
-          // 남은 시간 텍스트 (크게 표시)
-          const cooldownText = this.add
-            .text(cardX, cardY, `${remainingTime}`, {
+        let cardImg = null;
+        if (this.textures.exists(card.key)) {
+          cardImg = this.add
+            .image(cardX, cardY - Math.round(cardSize * 0.08), card.key)
+            .setDisplaySize(cardSize * 0.8, cardSize * 0.8)
+            .setOrigin(0.5)
+            .setAlpha(isOnCooldown ? 0.4 : 1);
+        } else {
+          cardImg = this.add
+            .text(cardX, cardY - Math.round(cardSize * 0.08), card.name, {
               fontFamily: GAME_FONTS.main,
-              fontSize: `${cardSize * 0.7}px`,
+              fontSize: `${cardSize * 0.35}px`,
+              color: "#ffffff",
+            })
+            .setOrigin(0.5)
+            .setAlpha(isOnCooldown ? 0.4 : 1);
+        }
+
+        const countTxt = this.add
+          .text(
+            cardX + Math.round(cardSize * 0.32),
+            cardY + Math.round(cardSize * 0.32),
+            `x${count}`,
+            {
+              fontFamily: GAME_FONTS.main,
+              fontSize: `${cardSize * 0.28}px`,
               color: "#ffffff",
               fontWeight: "bold",
-              stroke: "#ff0000",
-              strokeThickness: 6,
+            },
+          )
+          .setOrigin(0.5)
+          .setAlpha(isOnCooldown ? 0.4 : 1);
+
+        if (isOnCooldown) {
+          const cooldownTxt = this.add
+            .text(cardX, cardY, `${remainingTime}`, {
+              fontFamily: GAME_FONTS.main,
+              fontSize: `${cardSize * 0.45}px`,
+              color: "#ffffff",
+              fontWeight: "bold",
             })
             .setOrigin(0.5);
 
-          // 원형 쿨타임 진행 표시 (더 두껍고 밝게)
-          const progress = 1 - (cooldownEnd - now) / card.cooldown;
           const cooldownCircle = this.add.graphics();
           cooldownCircle.lineStyle(6, 0xff3333, 1);
-          const startAngle = -90; // 위쪽부터 시작
-          const endAngle = startAngle + 360 * progress;
+          const progress = 1 - (cooldownEnd - now) / (card.cooldown || 12000);
+          const startAngle = -90;
+          const endAngle =
+            startAngle + 360 * Math.max(0, Math.min(1, progress));
           cooldownCircle.beginPath();
           cooldownCircle.arc(
             cardX,
             cardY,
-            cardSize * 0.48,
+            cardSize * 0.45,
             Phaser.Math.DegToRad(startAngle),
             Phaser.Math.DegToRad(endAngle),
             false,
           );
           cooldownCircle.strokePath();
 
-          this.playerTableGroup.add([cooldownText, cooldownCircle]);
-
-          // 버튼 비활성화
           cardBg.disableInteractive();
+          this.playerTableGroup.add([cooldownTxt, cooldownCircle]);
         } else {
-          // 클릭 이벤트 추가 (쿨타임이 아닐 때만)
           cardBg.on("pointerdown", () => {
             this.sound.play("pop", { volume: 0.1 });
             this.tweens.add({
-              targets: [cardBg, cardEmoji, cardCount],
+              targets: [cardBg, cardImg, countTxt],
               scale: "*=0.95",
               duration: 100,
               yoyo: true,
               ease: "Quad.easeInOut",
               onComplete: () => {
-                this.useSpecialCard(card.id, card.name, card.cooldown);
+                this.useSpecialCard(card.id, card.name, card.cooldown || 12000);
               },
             });
           });
         }
 
-        this.playerTableGroup.add([cardBg, cardEmoji, cardCount]);
+        this.playerTableGroup.add([cardBg, cardImg, countTxt]);
       } else {
-        // 미보유 카드: 흰색 빈 칸
+        // 미보유 카드: 빈 슬롯으로 표시
         const emptyBg = this.add
-          .rectangle(cardX, cardY, cardSize, cardSize, 0x444444, 0.4)
+          .rectangle(cardX, cardY, cardSize, cardSize, 0x444444, 0.25)
           .setStrokeStyle(1, 0x999999, 0.5);
-
         this.playerTableGroup.add(emptyBg);
       }
     });
