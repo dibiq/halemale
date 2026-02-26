@@ -5592,6 +5592,13 @@ class GameScene extends Phaser.Scene {
       aiDifficulty: data.aiDifficulty || "normal",
     };
 
+    // 콤보 상태: 같은 플레이어가 연속 정답을 맞출 때 카운트
+    this.comboState = {
+      lastWinnerId: null,
+      count: 0,
+      lastTime: 0,
+    };
+
     // 서버가 scene.start로 넘긴 경우에도 nextTurnId를 보관
     this.latestNextTurnId = data.nextTurnId || null;
     if (this.latestNextTurnId && Array.isArray(this.roundData.players)) {
@@ -5952,6 +5959,27 @@ class GameScene extends Phaser.Scene {
       });
 
       if (data.success) {
+        // 콤보 갱신: 같은 플레이어가 연속으로 승리했는지 확인
+        try {
+          if (
+            this.comboState &&
+            this.comboState.lastWinnerId === data.winnerId
+          ) {
+            this.comboState.count = (this.comboState.count || 0) + 1;
+          } else if (this.comboState) {
+            this.comboState.count = 1;
+            this.comboState.lastWinnerId = data.winnerId;
+          }
+          if (this.comboState) this.comboState.lastTime = Date.now();
+        } catch (e) {
+          // 방어적 처리
+          this.comboState = {
+            lastWinnerId: data.winnerId,
+            count: 1,
+            lastTime: Date.now(),
+          };
+        }
+
         const message = `${data.winnerNickname} ${data.collectedCount}장 획득(${data.reactionTime}초)`;
         this.addGameLog(`${message}`, "#f1c40f");
 
@@ -5971,6 +5999,11 @@ class GameScene extends Phaser.Scene {
           this.renderTable(this.roundData.players);
         });*/
       } else {
+        // 실패 시 콤보 초기화
+        if (this.comboState) {
+          this.comboState.count = 0;
+          this.comboState.lastWinnerId = null;
+        }
         // 2. 💡 패널티 애니메이션 호출 시 '이미 업데이트된' 데이터를 직접 넘김
         this.playPenaltyAnimation({
           penaltyId: data.penaltyId,
@@ -6842,6 +6875,93 @@ class GameScene extends Phaser.Scene {
     const relWinIdx = (winIdx - myIndex + players.length) % players.length;
     const targetPos = pos[relWinIdx];
 
+    // 콤보 표시: 같은 플레이어가 연속으로 맞췄을 때
+    try {
+      const combo =
+        this.comboState && this.comboState.count ? this.comboState.count : 0;
+      if (combo > 1 && this.comboState.lastWinnerId === winnerId) {
+        const comboText = this.add
+          .text(targetPos.x, targetPos.y - height * 0.12, `${combo}콤보!`, {
+            fontFamily: GAME_FONTS.main,
+            fontSize: `${Math.round(width * 0.06)}px`,
+            color: "#FFD66B",
+            stroke: "#4b2e83",
+            strokeThickness: 8,
+            fontWeight: "700",
+          })
+          .setOrigin(0.5)
+          .setDepth(10010)
+          .setScale(0)
+          .setAlpha(0);
+
+        this.tweens.add({
+          targets: comboText,
+          scale: 1.15,
+          alpha: 1,
+          duration: 220,
+          ease: "Back.easeOut",
+          onComplete: () => {
+            this.tweens.add({
+              targets: comboText,
+              scale: 1.6,
+              alpha: 0,
+              y: comboText.y - 50,
+              duration: 600,
+              delay: 300,
+              ease: "Power2.easeIn",
+              onComplete: () => comboText.destroy(),
+            });
+          },
+        });
+
+        // 간단한 파티클 버스트
+        const burstCount = 12;
+        for (let i = 0; i < burstCount; i++) {
+          const angle =
+            (Math.PI * 2 * i) / burstCount + (Math.random() - 0.5) * 0.6;
+          const speed = 120 + Math.random() * 160;
+          const px = this.add
+            .circle(
+              targetPos.x,
+              targetPos.y - height * 0.08,
+              width * 0.01,
+              0xffd700,
+              1,
+            )
+            .setDepth(10011);
+          const vx = Math.cos(angle) * speed;
+          const vy = Math.sin(angle) * speed - 30;
+          this.tweens.add({
+            targets: px,
+            x: targetPos.x + vx,
+            y: targetPos.y - height * 0.08 + vy,
+            alpha: 0,
+            scale: 0,
+            duration: 700 + Math.random() * 300,
+            ease: "Power2.easeOut",
+            onComplete: () => px.destroy(),
+          });
+        }
+
+        // 콤보 사운드가 있으면 재생, 없으면 보조 사운드
+        if (
+          this.cache &&
+          this.cache.audio &&
+          this.cache.audio.exists("combo")
+        ) {
+          this.sound.play("combo", { volume: 0.35 });
+        } else if (
+          this.cache &&
+          this.cache.audio &&
+          this.cache.audio.exists("irassai")
+        ) {
+          this.sound.play("irassai", { volume: 0.25 });
+        }
+      }
+    } catch (e) {
+      // 안전하게 무시
+    }
+
     let totalCardsToFly = 0;
     let finishedFlys = 0;
 
@@ -7031,6 +7151,17 @@ class GameScene extends Phaser.Scene {
 
     // 💥 멀티플레이 패널티 시 강력한 실패 효과
     this.playFailureEffect();
+
+    // 패널티가 발생하면 현재 콤보를 끊음
+    try {
+      if (this.comboState) {
+        this.comboState.count = 0;
+        this.comboState.lastWinnerId = null;
+        this.comboState.lastTime = Date.now();
+      }
+    } catch (e) {
+      this.comboState = { lastWinnerId: null, count: 0, lastTime: Date.now() };
+    }
 
     const players = data.players;
 
@@ -8022,6 +8153,21 @@ class GameScene extends Phaser.Scene {
     winner.remainingCards = winner.cards;
     const winnerDeck = this.getSingleDeck(winner.id);
     winnerDeck.unshift(...collectedCards);
+
+    // 콤보 갱신: 같은 플레이어가 연속으로 획득했는지 확인
+    if (this.comboState && this.comboState.lastWinnerId === winner.id) {
+      this.comboState.count = (this.comboState.count || 0) + 1;
+    } else if (this.comboState) {
+      this.comboState.count = 1;
+      this.comboState.lastWinnerId = winner.id;
+    } else {
+      this.comboState = {
+        lastWinnerId: winner.id,
+        count: 1,
+        lastTime: Date.now(),
+      };
+    }
+    if (this.comboState) this.comboState.lastTime = Date.now();
 
     // 3. 턴 인덱스를 승자로 고정
     this.turnIndex = winnerIdx;
