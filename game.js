@@ -7420,6 +7420,7 @@ class GameScene extends Phaser.Scene {
       const isFive = Object.values(totals).some((count) => count === 5);
       const hasThunder = this.hasThunderOnTable();
       const hasBomb = this.hasBombOnTable();
+      const hasNot5 = this.hasNot5OnTable ? this.hasNot5OnTable() : false;
 
       // bomb이 테이블에 있으면 어떤 경우에도 종은 실패
       if (hasBomb) {
@@ -7428,7 +7429,9 @@ class GameScene extends Phaser.Scene {
         return;
       }
 
-      if (isFive || hasThunder) {
+      const successWindow = hasThunder || (hasNot5 ? !isFive : isFive);
+
+      if (successWindow) {
         // 💥 성공 시 스펙타클한 이펙트 추가
         this.playSuccessEffect();
         // 성공 사운드
@@ -7458,14 +7461,17 @@ class GameScene extends Phaser.Scene {
     const isFive = Object.values(totals).some((count) => count === 5);
     const hasThunder = this.hasThunderOnTable();
     const hasBomb = this.hasBombOnTable();
+    const hasNot5 = this.hasNot5OnTable ? this.hasNot5OnTable() : false;
 
     if (hasBomb) return; // bomb이 있으면 AI는 절대 종을 치지 않음
 
-    if (isFive || hasThunder) {
+    const successWindow = hasThunder || (hasNot5 ? !isFive : isFive);
+
+    if (successWindow) {
       this.aiSettings.forEach((ai) => {
         const aiData = this.roundData.players.find((p) => p.id === ai.id);
-        // 카드가 있는 AI만 종을 침
-        if (aiData && aiData.cards >= 0) {
+        // 카드가 있는(>0) AI이면서 탈락 상태가 아닌 경우에만 종을 침
+        if (aiData && Number(aiData.cards) > 0 && !aiData.isEliminated) {
           // 기존 예약된 타이머가 있다면 취소하거나 겹치지 않게 관리
           const delay = ai.reactionTime + Math.random() * 1000;
           this.time.delayedCall(delay, () => {
@@ -7542,11 +7548,18 @@ class GameScene extends Phaser.Scene {
   handleAiRingBell(aiId) {
     if (!this.isSingle || !this.isGameStarted) return;
 
+    // 방어: 호출 시점에 이미 탈락했거나 카드가 0장인 AI는 처리하지 않음
+    const aiPlayer = this.roundData.players.find((p) => p.id === aiId);
+    if (!aiPlayer || Number(aiPlayer.cards) <= 0 || aiPlayer.isEliminated)
+      return;
+
     // 1. 과일이 여전히 5개인지 다시 확인 (이미 플레이어가 쳤을 수 있음)
     const totals = this.calculateTotalFruits();
     const isFive = Object.values(totals).some((count) => count === 5);
     const hasThunder = this.hasThunderOnTable();
-    if (!isFive && !hasThunder) return;
+    const hasNot5 = this.hasNot5OnTable ? this.hasNot5OnTable() : false;
+    const successWindow = hasThunder || (hasNot5 ? !isFive : isFive);
+    if (!successWindow) return;
 
     // 💥 AI도 정답 시 스펙타클한 이펙트
     this.playSuccessEffect();
