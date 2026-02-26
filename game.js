@@ -8334,6 +8334,7 @@ class GameScene extends Phaser.Scene {
     const isFiveExists = Object.values(totals).some((count) => count === 5);
     const hasThunder = this.hasThunderOnTable();
     const hasNot5 = this.hasNot5OnTable ? this.hasNot5OnTable() : false;
+    const hasBomb = this.hasBombOnTable();
     const hasBellSuccessWindow =
       hasThunder || (hasNot5 ? !isFiveExists : isFiveExists);
 
@@ -8344,7 +8345,8 @@ class GameScene extends Phaser.Scene {
       const hasDeck = (Number(p.cards) || 0) > 0;
 
       // 1. 낼 카드가 없고 바닥에 5도 없으면 -> 즉시 탈락
-      if (!hasDeck && !hasBellSuccessWindow) {
+      //    단, 바닥에 bomb 카드가 있다면 5가 있더라도 즉시 탈락 처리
+      if (!hasDeck && (!hasBellSuccessWindow || hasBomb)) {
         p.isEliminated = true;
       }
       // 2. 낼 카드가 생기면 (종을 쳐서 먹었을 때) -> 생존 유지
