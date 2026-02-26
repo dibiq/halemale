@@ -5544,7 +5544,18 @@ class LobbyScene extends Phaser.Scene {
       destroyPopup();
     });
 
+    // 중복 클릭 방지 플래그
+    let acceptClicked = false;
     acceptBtn.on("pointerdown", () => {
+      if (acceptClicked) return;
+      acceptClicked = true;
+
+      // 즉시 비활성화하여 추가 클릭을 막음
+      try {
+        acceptBtn.disableInteractive();
+        acceptBtn.setTint(0x999999);
+      } catch (e) {}
+
       this.sound.play("pop", { volume: 0.1 });
       this.tweens.add({
         targets: [acceptBtn, acceptBtnText],
