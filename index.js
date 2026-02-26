@@ -1108,6 +1108,124 @@ io.on("connection", (socket) => {
   socket.on("purchaseCharacter", handleBuyCharacter);
   socket.on("characterPurchased", handleBuyCharacter);
 
+  // 특수카드 사용 요청 (예: thief 등)
+  socket.on("requestUseSpecial", async (data, cb) => {
+    try {
+      const payload = data && typeof data === "object" ? data : {};
+      const cardId = Number(payload.cardId || 0);
+
+      // 현재는 thief (id=7)만 서버에서 처리
+      if (cardId !== 7) {
+        if (typeof cb === "function")
+          cb({ success: false, message: "unsupported_card" });
+        return;
+      }
+
+      const room = rooms[socket.roomId];
+      if (!room || !room.isGameStarted) {
+        if (typeof cb === "function")
+          cb({ success: false, message: "invalid_room" });
+        return;
+      }
+
+      // 사용자는 자신의 턴에만 사용할 수 있음
+      const currentTurnPlayer = room.players[room.turnIndex];
+      if (!currentTurnPlayer || currentTurnPlayer.id !== socket.id) {
+        if (typeof cb === "function")
+          cb({ success: false, message: "not_your_turn" });
+        return;
+      }
+
+      // 보유 여부 확인
+      if (!socket.specialCards || Number(socket.specialCards[7] || 0) <= 0) {
+        if (typeof cb === "function")
+          cb({ success: false, message: "no_card" });
+        return;
+      }
+
+      // 차감
+      socket.specialCards[7] = Number(socket.specialCards[7] || 0) - 1;
+      if (socket.specialCards[7] <= 0) delete socket.specialCards[7];
+
+      // thief 효과: 생존 플레이어들(자기 제외, 탈락자 제외)로부터 카드 1장씩 가져옴
+      const recipients = [];
+      const givers = room.players.filter(
+        (p) =>
+          p.id !== socket.id && !p.isEliminated && (p.myDeck?.length || 0) > 0,
+      );
+
+      if (!Array.isArray(socket.myDeck))
+        socket.myDeck = Array.isArray(socket.myDeck) ? socket.myDeck : [];
+
+      givers.forEach((giver) => {
+        if (giver.myDeck && giver.myDeck.length > 0) {
+          const card = giver.myDeck.pop();
+          socket.myDeck.unshift(card);
+          recipients.push(giver.id);
+        }
+      });
+
+      // 모든 플레이어의 cards 속성 갱신
+      room.players.forEach((player) => {
+        player.cards = player.myDeck ? player.myDeck.length : 0;
+        if (player.cards === 0) player.isEliminated = true;
+      });
+
+      // DB 동기화: 사용자의 specialCards 변경사항 저장
+      const mergedItems = {
+        items: Array.isArray(socket.items) ? socket.items : [],
+        specialCards: socket.specialCards || {},
+      };
+      savePlayer(
+        socket.nickname,
+        socket.level || 1,
+        socket.coins || 0,
+        mergedItems,
+        socket.experience || 0,
+        socket.ownedCharacters || ["player_1"],
+        socket.currentCharacter || socket.avatarKey || "player_1",
+      ).catch((e) => console.warn("savePlayer error on useSpecial", e));
+
+      // 사용자에게 프로필 업데이트 전송
+      try {
+        socket.emit("myProfile", {
+          nickname: socket.nickname,
+          level: Number(socket.level) || 1,
+          coins: Number(socket.coins) || 0,
+          items: Array.isArray(socket.items) ? socket.items : [],
+          experience: Number(socket.experience) || 0,
+          avatarKey: socket.currentCharacter || socket.avatarKey || "player_1",
+          specialCards: socket.specialCards || {},
+          owned_characters: socket.ownedCharacters || ["player_1"],
+          current_character: socket.currentCharacter || "player_1",
+        });
+      } catch (e) {
+        console.warn("emit myProfile error on useSpecial", e);
+      }
+
+      // 룸에 효과 브로드캐스트
+      io.to(room.roomId).emit("specialUsed", {
+        cardId: 7,
+        by: socket.id,
+        players: room.players,
+        recipients,
+        message: `${socket.nickname}님이 도둑 카드를 사용했습니다!`,
+      });
+
+      // 콜백 응답
+      if (typeof cb === "function")
+        cb({
+          success: true,
+          players: room.players,
+          updatedSpecialCards: socket.specialCards,
+        });
+    } catch (err) {
+      console.error("requestUseSpecial error", err);
+      if (typeof cb === "function")
+        cb({ success: false, message: "server_error" });
+    }
+  });
+
   socket.on("setCurrentCharacter", async (data) => {
     const payload = data && typeof data === "object" ? data : {};
     const characterKey =
