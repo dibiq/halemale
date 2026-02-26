@@ -2540,10 +2540,83 @@ io.on("connection", (socket) => {
 
       processSkipTurn(room, io);
     } else {
-      const p = room.players.find((pl) => pl.id === socket.id);
+      const p = room.players.find((pl) => pl.id === sock.id);
       const others = room.players.filter(
-        (pl) => pl.id !== socket.id && !pl.isEliminated,
+        (pl) => pl.id !== sock.id && !pl.isEliminated,
       );
+
+      // 자동 자물쇠 처리: 패널티 적용 전에 해당 플레이어 소켓에 lock(id=4)이 있으면 소모하고 패널티를 건너뜁니다.
+      try {
+        const penalizedSocket = io.sockets.sockets.get(sock.id) || sock;
+        if (
+          penalizedSocket &&
+          penalizedSocket.specialCards &&
+          Number(penalizedSocket.specialCards[4] || 0) > 0
+        ) {
+          // 차감
+          penalizedSocket.specialCards[4] =
+            Number(penalizedSocket.specialCards[4] || 0) - 1;
+          if (penalizedSocket.specialCards[4] <= 0)
+            delete penalizedSocket.specialCards[4];
+
+          // DB 동기화 (비동기)
+          const mergedItems = {
+            items: Array.isArray(penalizedSocket.items)
+              ? penalizedSocket.items
+              : [],
+            specialCards: penalizedSocket.specialCards || {},
+          };
+          savePlayer(
+            penalizedSocket.nickname,
+            penalizedSocket.level || 1,
+            penalizedSocket.coins || 0,
+            mergedItems,
+            penalizedSocket.experience || 0,
+            penalizedSocket.ownedCharacters || ["player_1"],
+            penalizedSocket.currentCharacter ||
+              penalizedSocket.avatarKey ||
+              "player_1",
+          ).catch((e) => console.warn("savePlayer error on auto-lock", e));
+
+          // 해당 플레이어에게 프로필 업데이트 전송
+          try {
+            penalizedSocket.emit("myProfile", {
+              nickname: penalizedSocket.nickname,
+              level: Number(penalizedSocket.level) || 1,
+              coins: Number(penalizedSocket.coins) || 0,
+              items: Array.isArray(penalizedSocket.items)
+                ? penalizedSocket.items
+                : [],
+              experience: Number(penalizedSocket.experience) || 0,
+              avatarKey:
+                penalizedSocket.currentCharacter ||
+                penalizedSocket.avatarKey ||
+                "player_1",
+              specialCards: penalizedSocket.specialCards || {},
+              owned_characters: penalizedSocket.ownedCharacters || ["player_1"],
+              current_character: penalizedSocket.currentCharacter || "player_1",
+            });
+          } catch (e) {
+            console.warn("emit myProfile error on auto-lock", e);
+          }
+
+          // 룸에 패널티 면제 알림 전송 (recipients 빈 배열로 전달)
+          io.to(room.roomId).emit("bellResult", {
+            success: false,
+            penaltyId: null,
+            message: `${penalizedSocket.nickname}님이 자물쇠로 패널티를 면제했습니다.`,
+            players: room.players,
+            recipients: [],
+            penaltyPerRecipient: 0,
+            autoLockUsedBy: penalizedSocket.id,
+          });
+
+          processSkipTurn(room, io);
+          return;
+        }
+      } catch (e) {
+        console.warn("auto-lock check error", e);
+      }
 
       const recipients = []; // 💡 카드를 실제 받은 사람 ID를 담을 배열
 

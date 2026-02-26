@@ -5862,6 +5862,24 @@ class GameScene extends Phaser.Scene {
       if (newLevel > prevLevel) {
         this.showToast(`레벨 업! Lv.${prevLevel} → Lv.${newLevel}`, "#2ecc71");
       }
+      // 서버가 보낸 특수카드 정보가 있으면 로컬에 반영하고 UI 갱신
+      try {
+        if (
+          profile &&
+          profile.specialCards &&
+          typeof profile.specialCards === "object"
+        ) {
+          localStorage.setItem(
+            "specialCards",
+            JSON.stringify(profile.specialCards),
+          );
+          if (this.roundData && Array.isArray(this.roundData.players)) {
+            this.renderTable(this.roundData.players);
+          }
+        }
+      } catch (e) {
+        console.warn("failed to apply specialCards from myProfile", e);
+      }
     });
 
     socket.on("startBlocked", (msg) => {
@@ -6091,6 +6109,136 @@ class GameScene extends Phaser.Scene {
           this.comboState.count = 0;
           this.comboState.lastWinnerId = null;
         }
+
+        // 서버가 자물쇠 자동 사용으로 패널티를 면제했을 때 처리
+        if (data.autoLockUsedBy) {
+          try {
+            const nick = this.getNicknameById(data.autoLockUsedBy);
+            this.showToast(
+              `${nick}님이 자물쇠로 패널티를 면제했습니다!`,
+              "#2ecc71",
+            );
+            // 서버가 보낸 플레이어 목록으로 갱신
+            if (Array.isArray(data.players) && data.players.length > 0) {
+              this.roundData.players = updatedPlayers;
+              this.renderTable(this.roundData.players);
+            }
+          } catch (e) {
+            console.warn("autoLock handling error", e);
+          }
+          return;
+        }
+
+        // 자동 사용: 패널티 대상이 로컬 플레이어이고 자물쇠(lock, id=4)를 보유한 경우
+        const myIdCheck = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
+        if (data.penaltyId === myIdCheck) {
+          try {
+            const owned =
+              JSON.parse(localStorage.getItem("specialCards")) || {};
+            const lockCount = Number(owned[4] || 0);
+            if (lockCount > 0) {
+              // 멀티플레이: 서버에 사용 요청을 보낸 뒤 응답(또는 타임아웃)을 기다림
+              if (!this.isSingle && socket && socket.connected) {
+                let handled = false;
+                const timeout = this.time.delayedCall(1200, () => {
+                  if (handled) return;
+                  handled = true;
+                  // 타임아웃 시 패널티 처리 계속
+                  this.playPenaltyAnimation({
+                    penaltyId: data.penaltyId,
+                    recipients: data.recipients,
+                    players: updatedPlayers,
+                  });
+                });
+
+                // 요청 송신 (서버는 콜백으로 수락/거부 응답해야 함)
+                socket.emit(
+                  "requestUseSpecial",
+                  {
+                    cardId: 4,
+                    reason: "auto_lock_penalty",
+                    penaltyId: data.penaltyId,
+                  },
+                  (res) => {
+                    if (handled) return;
+                    handled = true;
+                    timeout.remove(false);
+
+                    // 서버가 사용을 허용한 경우
+                    if (res && res.success) {
+                      // 서버가 갱신한 보유 아이템 정보이 있으면 적용
+                      if (res.updatedSpecialCards) {
+                        localStorage.setItem(
+                          "specialCards",
+                          JSON.stringify(res.updatedSpecialCards),
+                        );
+                      } else {
+                        // 로컬에서도 차감
+                        owned[4] = lockCount - 1;
+                        if (owned[4] <= 0) delete owned[4];
+                        localStorage.setItem(
+                          "specialCards",
+                          JSON.stringify(owned),
+                        );
+                      }
+
+                      // 서버가 플레이어 상태를 함께 보냈으면 적용
+                      if (res.players && Array.isArray(res.players)) {
+                        // 보존해야 할 openStack 유지
+                        this.roundData.players.forEach((oldPlayer) => {
+                          const newPlayer = res.players.find(
+                            (p) => p.id === oldPlayer.id,
+                          );
+                          if (newPlayer) {
+                            const preservedOpenStack = oldPlayer.openStack;
+                            Object.assign(oldPlayer, newPlayer);
+                            oldPlayer.openStack = preservedOpenStack;
+                          }
+                        });
+                        this.renderTable(this.roundData.players);
+                      } else {
+                        // 단순히 UI 갱신
+                        this.renderTable(this.roundData.players);
+                      }
+
+                      // 인벤토리 동기화 트리거
+                      syncInventoryToServer("autoUseLock", { usedCardId: 4 });
+                      this.showToast(
+                        "자물쇠 사용: 패널티 면제되었습니다!",
+                        "#2ecc71",
+                      );
+                      return;
+                    }
+
+                    // 서버가 거부한 경우 패널티 적용
+                    this.playPenaltyAnimation({
+                      penaltyId: data.penaltyId,
+                      recipients: data.recipients,
+                      players: updatedPlayers,
+                    });
+                  },
+                );
+                return;
+              }
+
+              // 오프라인 또는 소켓 미연결일 경우 기존 동작: 로컬 소모하고 패널티 면제
+              owned[4] = lockCount - 1;
+              if (owned[4] <= 0) delete owned[4];
+              localStorage.setItem("specialCards", JSON.stringify(owned));
+              syncInventoryToServer("autoUseLock", { usedCardId: 4 });
+              this.showToast(
+                "자물쇠 사용: 패널티 면제되었습니다! (오프라인 처리)",
+                "#2ecc71",
+              );
+              if (this.roundData && this.roundData.players)
+                this.renderTable(this.roundData.players);
+              return;
+            }
+          } catch (e) {
+            console.warn("auto-lock parse error", e);
+          }
+        }
+
         // 2. 💡 패널티 애니메이션 호출 시 '이미 업데이트된' 데이터를 직접 넘김
         this.playPenaltyAnimation({
           penaltyId: data.penaltyId,
@@ -8040,6 +8188,37 @@ class GameScene extends Phaser.Scene {
     const players = this.roundData.players;
     const loser = players.find((p) => p.id === failedPlayerId);
     if (!loser || (Number(loser.cards) || 0) <= 0) return;
+
+    // 자동 자물쇠 처리: 패널티 대상이 로컬 플레이어이고 자물쇠(lock, id=4)를 보유한 경우
+    try {
+      const myIdCheck = this.myId || "PLAYER_ME";
+      if (failedPlayerId === myIdCheck) {
+        const owned = JSON.parse(localStorage.getItem("specialCards")) || {};
+        const lockCount = Number(owned[4] || 0);
+        if (lockCount > 0) {
+          // 로컬 차감
+          owned[4] = lockCount - 1;
+          if (owned[4] <= 0) delete owned[4];
+          localStorage.setItem("specialCards", JSON.stringify(owned));
+          // 인벤토리 동기화 시도
+          try {
+            syncInventoryToServer("autoUseLock", { usedCardId: 4 });
+          } catch (e) {
+            /* ignore */
+          }
+          this.showToast(
+            "자물쇠 사용: 패널티 면제되었습니다! (싱글)",
+            "#2ecc71",
+          );
+          // UI 갱신
+          if (this.roundData && this.roundData.players)
+            this.renderTable(this.roundData.players);
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn("processPenaltySingle auto-lock error", e);
+    }
 
     // 💥 패널티 발생 시 강력한 실패 효과
     this.playFailureEffect();
