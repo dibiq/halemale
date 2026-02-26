@@ -9140,6 +9140,167 @@ class GameScene extends Phaser.Scene {
         return;
       }
 
+      // king 카드 (id=8) 동작: 내 덱과 보유 카드가 가장 많은 플레이어의 덱을 교환
+      if (Number(cardId) === 8) {
+        // 멀티플레이: 서버에 요청
+        if (!this.isSingle && socket && socket.connected) {
+          this.showToast(`${cardName} 카드를 사용 요청합니다...`, "#f39c12");
+          let handled = false;
+          const timeout = this.time.delayedCall(2500, () => {
+            if (handled) return;
+            handled = true;
+            this.showToast(
+              "서버 응답이 없어 사용이 취소되었습니다.",
+              "#e74c3c",
+            );
+          });
+
+          const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
+
+          // 즉시 UI와 로컬 인벤토리를 낙관적으로 갱신하여 중복 클릭을 방지
+          try {
+            this.specialUsedThisTurn = this.specialUsedThisTurn || {};
+            this.specialUsedThisTurn[myId] = true;
+            // 로컬 소모
+            const specialCardsOwned =
+              JSON.parse(localStorage.getItem("specialCards")) || {};
+            specialCardsOwned[cardId] = (specialCardsOwned[cardId] || 0) - 1;
+            if (specialCardsOwned[cardId] <= 0)
+              delete specialCardsOwned[cardId];
+            localStorage.setItem(
+              "specialCards",
+              JSON.stringify(specialCardsOwned),
+            );
+            this.renderTable(this.roundData.players);
+          } catch (e) {
+            console.warn("optimistic update failed", e);
+          }
+
+          socket.emit("requestUseSpecial", { cardId: 8 }, (res) => {
+            if (handled) return;
+            handled = true;
+            timeout.remove(false);
+            if (res && res.success) {
+              if (res.updatedSpecialCards) {
+                localStorage.setItem(
+                  "specialCards",
+                  JSON.stringify(res.updatedSpecialCards),
+                );
+              }
+              try {
+                if (Array.isArray(res.players) && res.players.length > 0) {
+                  this.roundData.players.forEach((oldPlayer) => {
+                    const newPlayer = res.players.find(
+                      (p) => p.id === oldPlayer.id,
+                    );
+                    if (newPlayer) {
+                      const preservedOpenStack = oldPlayer.openStack;
+                      Object.assign(oldPlayer, newPlayer);
+                      oldPlayer.openStack = preservedOpenStack;
+                    }
+                  });
+                  this.renderTable(this.roundData.players);
+                }
+              } catch (e) {
+                console.warn("merge res.players failed", e);
+              }
+
+              this.safeSyncInventory("useKing", { usedCardId: 8 });
+              this.showToast("왕 카드 사용 요청을 보냈습니다.", "#f39c12");
+            } else {
+              // 실패 시 롤백
+              try {
+                const serverCards = (res && res.updatedSpecialCards) || null;
+                if (serverCards) {
+                  localStorage.setItem(
+                    "specialCards",
+                    JSON.stringify(serverCards),
+                  );
+                } else {
+                  const prev =
+                    JSON.parse(localStorage.getItem("specialCards") || "{}") ||
+                    {};
+                  prev[cardId] = (prev[cardId] || 0) + 1;
+                  localStorage.setItem("specialCards", JSON.stringify(prev));
+                }
+              } catch (e) {
+                console.warn("rollback failed", e);
+              }
+              try {
+                this.specialUsedThisTurn = this.specialUsedThisTurn || {};
+                this.specialUsedThisTurn[myId] = false;
+              } catch (e) {}
+              this.renderTable(this.roundData.players);
+              this.showToast(
+                res && res.message ? res.message : "사용 실패",
+                "#e74c3c",
+              );
+            }
+          });
+          return;
+        }
+
+        // 싱글플레이: 로컬에서 즉시 덱 교환 적용
+        try {
+          const myId = this.myId || "PLAYER_ME";
+          const players = this.roundData.players;
+          // 가장 많은 카드를 가진 플레이어(자기 제외, 탈락자 제외)
+          const candidates = players.filter(
+            (p) => p.id !== myId && !p.isEliminated,
+          );
+          if (candidates.length === 0) {
+            this.showToast("교환 대상 플레이어가 없습니다.", "#e74c3c");
+            return;
+          }
+          let target = candidates[0];
+          candidates.forEach((c) => {
+            if ((Number(c.cards) || 0) > (Number(target.cards) || 0))
+              target = c;
+          });
+
+          // 실제 덱 교환
+          const myDeck = this.getSingleDeck(myId);
+          const targetDeck = this.getSingleDeck(target.id);
+          // swap arrays in-place
+          const tmp = myDeck.splice(0, myDeck.length, ...targetDeck.slice());
+          targetDeck.splice(0, targetDeck.length, ...tmp);
+
+          // 라운드 데이터 카드 수 갱신
+          const me = players.find((p) => p.id === myId);
+          const tp = players.find((p) => p.id === target.id);
+          if (me) {
+            me.cards = myDeck.length;
+            me.remainingCards = me.cards;
+          }
+          if (tp) {
+            tp.cards = targetDeck.length;
+            tp.remainingCards = tp.cards;
+          }
+
+          // 로컬 인벤토리 차감 및 동기화 트리거
+          const specialCardsOwned =
+            JSON.parse(localStorage.getItem("specialCards")) || {};
+          specialCardsOwned[cardId] = (specialCardsOwned[cardId] || 0) - 1;
+          if (specialCardsOwned[cardId] <= 0) delete specialCardsOwned[cardId];
+          localStorage.setItem(
+            "specialCards",
+            JSON.stringify(specialCardsOwned),
+          );
+          try {
+            this.specialUsedThisTurn = this.specialUsedThisTurn || {};
+            this.specialUsedThisTurn[myId] = true;
+          } catch (e) {}
+          this.updateEliminationStatus();
+          this.renderTable(this.roundData.players);
+          this.safeSyncInventory("useKing", { usedCardId: 8 });
+          this.showToast("왕 카드 사용: 덱을 교환했습니다!", "#2ecc71");
+        } catch (e) {
+          console.warn("useSpecialCard king single error", e);
+        }
+
+        return;
+      }
+
       // 싱글플레이: 로컬에서 즉시 적용
       try {
         const myId = this.myId || "PLAYER_ME";

@@ -1114,8 +1114,8 @@ io.on("connection", (socket) => {
       const payload = data && typeof data === "object" ? data : {};
       const cardId = Number(payload.cardId || 0);
 
-      // 현재는 thief (id=7)만 서버에서 처리
-      if (cardId !== 7) {
+      // 현재는 thief (id=7)와 king (id=8)를 서버에서 처리
+      if (![7, 8].includes(cardId)) {
         if (typeof cb === "function")
           cb({ success: false, message: "unsupported_card" });
         return;
@@ -1137,50 +1137,95 @@ io.on("connection", (socket) => {
       }
 
       // 보유 여부 확인
-      if (!socket.specialCards || Number(socket.specialCards[7] || 0) <= 0) {
+      if (
+        !socket.specialCards ||
+        Number(socket.specialCards[cardId] || 0) <= 0
+      ) {
         if (typeof cb === "function")
           cb({ success: false, message: "no_card" });
         return;
       }
 
-      // 차감
-      socket.specialCards[7] = Number(socket.specialCards[7] || 0) - 1;
-      if (socket.specialCards[7] <= 0) delete socket.specialCards[7];
-
-      // thief 효과: 생존 플레이어들(자기 제외, 탈락자 제외)로부터 카드 1장씩 가져옴
+      // recipients (effect 대상 id들)
       const recipients = [];
-      const givers = room.players.filter(
-        (p) =>
-          p.id !== socket.id && !p.isEliminated && (p.myDeck?.length || 0) > 0,
-      );
 
-      // Ensure we operate on the room player's myDeck so room.players stays authoritative
-      const recipientPlayer = room.players.find((p) => p.id === socket.id);
-      if (recipientPlayer) {
-        if (!Array.isArray(recipientPlayer.myDeck)) recipientPlayer.myDeck = [];
-        // Keep socket.myDeck in sync with the authoritative room.players entry
-        socket.myDeck = recipientPlayer.myDeck;
+      if (cardId === 7) {
+        // 차감
+        socket.specialCards[7] = Number(socket.specialCards[7] || 0) - 1;
+        if (socket.specialCards[7] <= 0) delete socket.specialCards[7];
 
-        givers.forEach((giver) => {
-          if (giver.myDeck && giver.myDeck.length > 0) {
-            const card = giver.myDeck.pop();
-            recipientPlayer.myDeck.unshift(card);
-            recipients.push(giver.id);
+        // thief 효과: 생존 플레이어들(자기 제외, 탈락자 제외)로부터 카드 1장씩 가져옴
+        const givers = room.players.filter(
+          (p) =>
+            p.id !== socket.id &&
+            !p.isEliminated &&
+            (p.myDeck?.length || 0) > 0,
+        );
+
+        // Ensure we operate on the room player's myDeck so room.players stays authoritative
+        const recipientPlayer = room.players.find((p) => p.id === socket.id);
+        if (recipientPlayer) {
+          if (!Array.isArray(recipientPlayer.myDeck))
+            recipientPlayer.myDeck = [];
+          // Keep socket.myDeck in sync with the authoritative room.players entry
+          socket.myDeck = recipientPlayer.myDeck;
+
+          givers.forEach((giver) => {
+            if (giver.myDeck && giver.myDeck.length > 0) {
+              const card = giver.myDeck.pop();
+              recipientPlayer.myDeck.unshift(card);
+              recipients.push(giver.id);
+            }
+          });
+        } else {
+          // Fallback: operate on socket.myDeck if no matching room player found
+          if (!Array.isArray(socket.myDeck))
+            socket.myDeck = Array.isArray(socket.myDeck) ? socket.myDeck : [];
+
+          givers.forEach((giver) => {
+            if (giver.myDeck && giver.myDeck.length > 0) {
+              const card = giver.myDeck.pop();
+              socket.myDeck.unshift(card);
+              recipients.push(giver.id);
+            }
+          });
+        }
+      } else if (cardId === 8) {
+        // 왕 카드: 내 덱과 보유 카드가 가장 많은 플레이어의 덱을 교환
+        socket.specialCards[8] = Number(socket.specialCards[8] || 0) - 1;
+        if (socket.specialCards[8] <= 0) delete socket.specialCards[8];
+
+        const candidates = room.players.filter(
+          (p) => p.id !== socket.id && !p.isEliminated,
+        );
+        if (candidates.length > 0) {
+          let target = candidates[0];
+          candidates.forEach((c) => {
+            if ((c.myDeck?.length || 0) > (target.myDeck?.length || 0))
+              target = c;
+          });
+
+          const mePlayer = room.players.find((p) => p.id === socket.id);
+          const targetPlayer = target;
+          if (mePlayer && targetPlayer) {
+            if (!Array.isArray(mePlayer.myDeck)) mePlayer.myDeck = [];
+            if (!Array.isArray(targetPlayer.myDeck)) targetPlayer.myDeck = [];
+            // swap arrays (preserve references on room.players)
+            const tmp = mePlayer.myDeck.slice();
+            mePlayer.myDeck.length = 0;
+            Array.prototype.push.apply(mePlayer.myDeck, targetPlayer.myDeck);
+            targetPlayer.myDeck.length = 0;
+            Array.prototype.push.apply(targetPlayer.myDeck, tmp);
+
+            // Keep socket.myDeck in sync with authoritative entry
+            socket.myDeck = mePlayer.myDeck;
+            recipients.push(targetPlayer.id);
           }
-        });
-      } else {
-        // Fallback: operate on socket.myDeck if no matching room player found
-        if (!Array.isArray(socket.myDeck))
-          socket.myDeck = Array.isArray(socket.myDeck) ? socket.myDeck : [];
-
-        givers.forEach((giver) => {
-          if (giver.myDeck && giver.myDeck.length > 0) {
-            const card = giver.myDeck.pop();
-            socket.myDeck.unshift(card);
-            recipients.push(giver.id);
-          }
-        });
+        }
       }
+
+      // 왕 카드 (id=8) 처리는 별도 분기: 내 덱과 가장 많은 플레이어의 덱을 교환
+      // (참고: 현재 요청은 thief였으므로 다음 블록은 유지됩니다.)
 
       // 모든 플레이어의 cards 속성 갱신
       room.players.forEach((player) => {
@@ -1221,12 +1266,16 @@ io.on("connection", (socket) => {
       }
 
       // 룸에 효과 브로드캐스트
+      const broadcastMessage =
+        cardId === 8
+          ? `${socket.nickname}님이 왕 카드를 사용했습니다!`
+          : `${socket.nickname}님이 도둑 카드를 사용했습니다!`;
       io.to(room.roomId).emit("specialUsed", {
-        cardId: 7,
+        cardId: cardId,
         by: socket.id,
         players: room.players,
         recipients,
-        message: `${socket.nickname}님이 도둑 카드를 사용했습니다!`,
+        message: broadcastMessage,
       });
 
       // 콜백 응답
