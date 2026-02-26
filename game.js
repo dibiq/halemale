@@ -4713,6 +4713,11 @@ class LobbyScene extends Phaser.Scene {
       .setDepth(20);
     this.lobbyUIContainer.add([sendBtnImg, sendBtnText]);
 
+    // 만약 초대(또는 기타 팝업)이 열려있다면 새로 생성된 입력창은 숨김 처리
+    if (this.isJoinPopupOpen) {
+      this.setLobbyChatInputHidden(true);
+    }
+
     const sendLobbyChat = () => {
       const rawMessage = chatInputEl.value || "";
       const message = rawMessage.trim().slice(0, 20);
