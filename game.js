@@ -23,13 +23,14 @@ function handleGetUserKey() {
   // ReactNativeWebView가 있는지 먼저 확인
   if (typeof ReactNativeWebView !== "undefined") {
     ReactNativeWebView.postMessage(JSON.stringify({ type: "GET_USER_KEY" }));
-  } else {
-    // 브라우저 환경일 경우 임시 키 발급 또는 에러 방지 처리
-    console.warn(
-      "ReactNativeWebView를 찾을 수 없습니다. 브라우저 모드로 동작합니다.",
-    );
-    return "GUEST_USER";
+    return;
   }
+
+  // 브라우저 환경일 경우 임시 키 발급 또는 에러 방지 처리
+  console.warn(
+    "ReactNativeWebView를 찾을 수 없습니다. 브라우저 모드로 동작합니다.",
+  );
+  return "GUEST_USER";
 }
 
 const PRODUCTION_HOSTS = new Set([
@@ -474,9 +475,8 @@ class LobbyScene extends Phaser.Scene {
     this.lobbyChatInputElement = null;
     this.lobbyChatLastSent = null;
 
-    // 특수카드 쿨타임 추적 객체 초기화
-    this.specialCardCooldowns = {}; // { cardId: endTime }
-    this.specialCardCooldownTimers = {}; // { cardId: timerId }
+    // 특수카드 사용(턴당 1회) 추적 초기화
+    this.specialUsedThisTurn = {}; // { playerId: true }
 
     this.currentJoinPopupCloseHandler = null;
     this.currentShopPopupCloseHandler = null;
@@ -2603,7 +2603,7 @@ class LobbyScene extends Phaser.Scene {
       return match ? Number(match[1]) : null;
     };
 
-    const syncInventoryToServer = (reason, extra = {}) => {
+    this.syncInventoryToServer = (reason, extra = {}) => {
       if (this.isSingle || !socket.connected) return;
 
       const resolvedPlayerId =
@@ -3097,9 +3097,27 @@ class LobbyScene extends Phaser.Scene {
             });
           }
 
-          syncInventoryToServer("buySpecialCard", {
-            boughtItemId: card.id,
-          });
+          try {
+            const sceneInstance =
+              typeof game !== "undefined" &&
+              game.scene &&
+              game.scene.keys &&
+              game.scene.keys.GameScene;
+            if (
+              sceneInstance &&
+              typeof sceneInstance.safeSyncInventory === "function"
+            ) {
+              sceneInstance.safeSyncInventory("buySpecialCard", {
+                boughtItemId: card.id,
+              });
+            } else {
+              console.warn(
+                "safeSyncInventory not available for buySpecialCard",
+              );
+            }
+          } catch (e) {
+            console.warn("buySpecialCard sync failed", e);
+          }
 
           this.showToast(`${card.name} 구매 완료!`, "#2ecc71");
           renderShopContent();
@@ -3168,10 +3186,26 @@ class LobbyScene extends Phaser.Scene {
           socket.emit("characterPurchased", characterPayload);
         }
 
-        syncInventoryToServer("buyCharacter", {
-          boughtCharacter: character.key,
-          bought_character: character.key,
-        });
+        try {
+          const sceneInstance =
+            typeof game !== "undefined" &&
+            game.scene &&
+            game.scene.keys &&
+            game.scene.keys.GameScene;
+          if (
+            sceneInstance &&
+            typeof sceneInstance.safeSyncInventory === "function"
+          ) {
+            sceneInstance.safeSyncInventory("buyCharacter", {
+              boughtCharacter: character.key,
+              bought_character: character.key,
+            });
+          } else {
+            console.warn("safeSyncInventory not available for buyCharacter");
+          }
+        } catch (e) {
+          console.warn("buyCharacter sync failed", e);
+        }
         this.showToast(`${character.name} 구매 완료!`, "#2ecc71");
         renderShopContent();
         return;
@@ -3181,9 +3215,25 @@ class LobbyScene extends Phaser.Scene {
         const product = coinProducts[tabIndexes.coin];
         this.buyCoin(product.amount);
         this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
-        syncInventoryToServer("buyCoin", {
-          boughtCoinAmount: product.amount,
-        });
+        try {
+          const sceneInstance =
+            typeof game !== "undefined" &&
+            game.scene &&
+            game.scene.keys &&
+            game.scene.keys.GameScene;
+          if (
+            sceneInstance &&
+            typeof sceneInstance.safeSyncInventory === "function"
+          ) {
+            sceneInstance.safeSyncInventory("buyCoin", {
+              boughtCoinAmount: product.amount,
+            });
+          } else {
+            console.warn("safeSyncInventory not available for buyCoin");
+          }
+        } catch (e) {
+          console.warn("buyCoin sync failed", e);
+        }
         renderShopContent();
       }
     });
@@ -5667,6 +5717,36 @@ class GameScene extends Phaser.Scene {
   constructor() {
     super("GameScene");
   }
+  safeSyncInventory(reason, extra = {}) {
+    try {
+      if (typeof this.syncInventoryToServer === "function") {
+        this.syncInventoryToServer(reason, extra);
+        return;
+      }
+      if (typeof syncInventoryToServer === "function") {
+        try {
+          syncInventoryToServer(reason, extra);
+          return;
+        } catch (e) {}
+      }
+      if (
+        typeof window !== "undefined" &&
+        typeof window.syncInventoryToServer === "function"
+      ) {
+        try {
+          window.syncInventoryToServer(reason, extra);
+          return;
+        } catch (e) {}
+      }
+      console.warn(
+        "safeSyncInventory: no syncInventoryToServer available",
+        reason,
+        extra,
+      );
+    } catch (e) {
+      console.warn("safeSyncInventory error", e);
+    }
+  }
   init(data) {
     this.roundData = {
       players: data.players || [],
@@ -5716,9 +5796,8 @@ class GameScene extends Phaser.Scene {
       this.resultContainer = null;
     }
 
-    // 특수카드 쿨타임 추적 객체 초기화
-    this.specialCardCooldowns = {}; // { cardId: endTime }
-    this.specialCardCooldownTimers = {}; // { cardId: timerId }
+    // 특수카드 사용(턴당 1회) 추적 초기화
+    this.specialUsedThisTurn = {}; // { playerId: true }
 
     const difficultyMultipliers = {
       easy: 1.4,
@@ -5944,6 +6023,9 @@ class GameScene extends Phaser.Scene {
       this.roundData.isGameStarted = true;
       this.isGameReady = true;
 
+      // 게임 시작 시 모든 플레이어의 특수 사용 플래그 초기화
+      this.specialUsedThisTurn = {};
+
       // 3. 연출 시작: 클릭 금지 후 애니메이션 및 Ready-Go 예약
       this.canClick = false; // 💡 시작 직후엔 클릭 금지
       this.playOpeningAnimation();
@@ -5997,6 +6079,14 @@ class GameScene extends Phaser.Scene {
         } else {
           this.canClick = false;
           this.clearMyTurnTimer();
+        }
+
+        // 해당 턴이 시작될 때 그 플레이어의 특수카드 사용 플래그 리셋
+        try {
+          this.specialUsedThisTurn = this.specialUsedThisTurn || {};
+          this.specialUsedThisTurn[data.nextTurnId] = false;
+        } catch (e) {
+          this.specialUsedThisTurn = {};
         }
 
         this.renderTable(this.roundData.players);
@@ -6202,7 +6292,9 @@ class GameScene extends Phaser.Scene {
                       }
 
                       // 인벤토리 동기화 트리거
-                      syncInventoryToServer("autoUseLock", { usedCardId: 4 });
+                      this.safeSyncInventory("autoUseLock", {
+                        usedCardId: 4,
+                      });
                       this.showToast(
                         "자물쇠 사용: 패널티 면제되었습니다!",
                         "#2ecc71",
@@ -6225,7 +6317,7 @@ class GameScene extends Phaser.Scene {
               owned[4] = lockCount - 1;
               if (owned[4] <= 0) delete owned[4];
               localStorage.setItem("specialCards", JSON.stringify(owned));
-              syncInventoryToServer("autoUseLock", { usedCardId: 4 });
+              this.safeSyncInventory("autoUseLock", { usedCardId: 4 });
               this.showToast(
                 "자물쇠 사용: 패널티 면제되었습니다! (오프라인 처리)",
                 "#2ecc71",
@@ -6254,6 +6346,10 @@ class GameScene extends Phaser.Scene {
     socket.off("specialUsed").on("specialUsed", (data) => {
       try {
         if (!data) return;
+        try {
+          this.specialUsedThisTurn = this.specialUsedThisTurn || {};
+          if (data.by) this.specialUsedThisTurn[data.by] = true;
+        } catch (e) {}
 
         // 도둑 카드 사용 연출: 서버가 보낸 recipients(fromIds)와 by(id)를 사용해 애니메이션 재생
         if (
@@ -6266,6 +6362,11 @@ class GameScene extends Phaser.Scene {
             ...p,
             openStack: p.openStack ? [...p.openStack] : [],
           }));
+          console.log("[specialUsed event] data:", data);
+          console.log(
+            "[specialUsed event] prevPlayers snapshot:",
+            prevPlayers.map((p) => ({ id: p.id, cards: p.cards })),
+          );
 
           this.playThiefAnimation({
             byId: data.by,
@@ -6274,16 +6375,35 @@ class GameScene extends Phaser.Scene {
             onComplete: () => {
               try {
                 if (Array.isArray(data.players) && data.players.length > 0) {
+                  console.log(
+                    "[specialUsed merge] incoming players:",
+                    data.players.map((p) => ({ id: p.id, cards: p.cards })),
+                  );
                   this.roundData.players.forEach((oldPlayer) => {
                     const newPlayer = data.players.find(
                       (p) => p.id === oldPlayer.id,
                     );
                     if (newPlayer) {
+                      console.log(
+                        "[specialUsed merge] merging player",
+                        oldPlayer.id,
+                        "oldCards=",
+                        oldPlayer.cards,
+                        "newCards=",
+                        newPlayer.cards,
+                      );
                       const preservedOpenStack = oldPlayer.openStack;
                       Object.assign(oldPlayer, newPlayer);
                       oldPlayer.openStack = preservedOpenStack;
                     }
                   });
+                  console.log(
+                    "[specialUsed merge] after merge roundData players:",
+                    this.roundData.players.map((p) => ({
+                      id: p.id,
+                      cards: p.cards,
+                    })),
+                  );
                   this.renderTable(this.roundData.players);
                 }
                 if (data.message) this.showToast(data.message, "#2ecc71");
@@ -6900,13 +7020,9 @@ class GameScene extends Phaser.Scene {
       const cardX = startX + index * gap;
       const count = specialCardsOwned[card.id] || 0;
 
-      // 쿨타임 체크
-      const now = Date.now();
-      const cooldownEnd = this.specialCardCooldowns[card.id] || 0;
-      const isOnCooldown = now < cooldownEnd;
-      const remainingTime = isOnCooldown
-        ? Math.ceil((cooldownEnd - now) / 1000)
-        : 0;
+      // 해당 턴에 이미 특수카드를 사용했는지 확인 (턴당 1회 규칙)
+      const myIdForFlag = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
+      const usedFlag = (this.specialUsedThisTurn || {})[myIdForFlag] === true;
 
       if (count > 0) {
         // 보유한 카드: 이미지 또는 대체 텍스트로 표시
@@ -6916,11 +7032,11 @@ class GameScene extends Phaser.Scene {
             cardY,
             cardSize,
             cardSize,
-            isOnCooldown ? 0x555555 : 0x1f2937,
-            isOnCooldown ? 0.6 : 0.85,
+            usedFlag ? 0x555555 : 0x1f2937,
+            usedFlag ? 0.5 : 0.85,
           )
-          .setStrokeStyle(2, isOnCooldown ? 0xff4444 : 0xffff00, 1)
-          .setInteractive({ useHandCursor: !isOnCooldown });
+          .setStrokeStyle(2, usedFlag ? 0xff4444 : 0xffff00, 1)
+          .setInteractive({ useHandCursor: !usedFlag });
 
         let cardImg = null;
         if (this.textures.exists(card.key)) {
@@ -6928,7 +7044,7 @@ class GameScene extends Phaser.Scene {
             .image(cardX, cardY - Math.round(cardSize * 0.08), card.key)
             .setDisplaySize(cardSize * 0.8, cardSize * 0.8)
             .setOrigin(0.5)
-            .setAlpha(isOnCooldown ? 0.4 : 1);
+            .setAlpha(usedFlag ? 0.4 : 1);
         } else {
           cardImg = this.add
             .text(cardX, cardY - Math.round(cardSize * 0.08), card.name, {
@@ -6937,7 +7053,7 @@ class GameScene extends Phaser.Scene {
               color: "#ffffff",
             })
             .setOrigin(0.5)
-            .setAlpha(isOnCooldown ? 0.4 : 1);
+            .setAlpha(usedFlag ? 0.4 : 1);
         }
 
         const countTxt = this.add
@@ -6953,39 +7069,19 @@ class GameScene extends Phaser.Scene {
             },
           )
           .setOrigin(0.5)
-          .setAlpha(isOnCooldown ? 0.4 : 1);
+          .setAlpha(usedFlag ? 0.4 : 1);
 
-        if (isOnCooldown) {
-          const cooldownTxt = this.add
-            .text(cardX, cardY, `${remainingTime}`, {
-              fontFamily: GAME_FONTS.main,
-              fontSize: `${cardSize * 0.45}px`,
-              color: "#ffffff",
-              fontWeight: "bold",
-            })
-            .setOrigin(0.5);
-
-          const cooldownCircle = this.add.graphics();
-          cooldownCircle.lineStyle(6, 0xff3333, 1);
-          const progress = 1 - (cooldownEnd - now) / (card.cooldown || 12000);
-          const startAngle = -90;
-          const endAngle =
-            startAngle + 360 * Math.max(0, Math.min(1, progress));
-          cooldownCircle.beginPath();
-          cooldownCircle.arc(
-            cardX,
-            cardY,
-            cardSize * 0.45,
-            Phaser.Math.DegToRad(startAngle),
-            Phaser.Math.DegToRad(endAngle),
-            false,
-          );
-          cooldownCircle.strokePath();
-
+        if (usedFlag) {
           cardBg.disableInteractive();
-          this.playerTableGroup.add([cooldownTxt, cooldownCircle]);
         } else {
           cardBg.on("pointerdown", () => {
+            if ((this.specialUsedThisTurn || {})[myIdForFlag]) {
+              this.showToast(
+                "이미 이 턴에 특수카드를 사용했습니다!",
+                "#e74c3c",
+              );
+              return;
+            }
             this.sound.play("pop", { volume: 0.1 });
             this.tweens.add({
               targets: [cardBg, cardImg, countTxt],
@@ -8378,7 +8474,7 @@ class GameScene extends Phaser.Scene {
           localStorage.setItem("specialCards", JSON.stringify(owned));
           // 인벤토리 동기화 시도
           try {
-            syncInventoryToServer("autoUseLock", { usedCardId: 4 });
+            this.safeSyncInventory("autoUseLock", { usedCardId: 4 });
           } catch (e) {
             /* ignore */
           }
@@ -8510,6 +8606,15 @@ class GameScene extends Phaser.Scene {
     this.turnIndex = (this.turnIndex + 1) % this.roundData.players.length;
     let nextPlayer = this.roundData.players[this.turnIndex];
 
+    // 싱글플레이: 다음 플레이어의 특수 사용 플래그 초기화 (턴당 1회 규칙)
+    try {
+      this.specialUsedThisTurn = this.specialUsedThisTurn || {};
+      if (nextPlayer && nextPlayer.id)
+        this.specialUsedThisTurn[nextPlayer.id] = false;
+    } catch (e) {
+      this.specialUsedThisTurn = {};
+    }
+
     // 4. 💀 [패배 조건] 다음 차례가 나인데, 내 카드가 0장이라면 (기사회생 실패)
     if (nextPlayer.id === myId && (Number(nextPlayer.cards) || 0) <= 0) {
       this.endSingleGame("LOSE");
@@ -8594,6 +8699,13 @@ class GameScene extends Phaser.Scene {
 
     // 3. 턴 인덱스를 승자로 고정
     this.turnIndex = winnerIdx;
+    // 승리로 인해 턴이 바뀐 경우 해당 플레이어의 특수카드 사용 플래그를 초기화
+    try {
+      this.specialUsedThisTurn = this.specialUsedThisTurn || {};
+      if (winner && winner.id) this.specialUsedThisTurn[winner.id] = false;
+    } catch (e) {
+      this.specialUsedThisTurn = {};
+    }
     this.addGameLog(
       `${winner.nickname}님이 카드 ${totalCollected}장을 획득!`,
       "#f1c40f",
@@ -8896,17 +9008,8 @@ class GameScene extends Phaser.Scene {
       // 방어적 처리
     }
 
-    // 쿨타임 확인
-    const now = Date.now();
-    const cooldownEnd = this.specialCardCooldowns[cardId] || 0;
-    if (now < cooldownEnd) {
-      const remainingSeconds = Math.ceil((cooldownEnd - now) / 1000);
-      this.showToast(
-        `${cardName} 카드는 ${remainingSeconds}초 후에 사용할 수 있습니다!`,
-        "#e74c3c",
-      );
-      return;
-    }
+    // (쿨타임 시스템 제거) 대신 '턴당 1회 사용' 여부는 drawSpecialCards에서 검사하고,
+    // 사용 성공 시 this.specialUsedThisTurn[myId]를 true로 설정합니다.
 
     // localStorage 보유 확인
     const specialCardsOwned =
@@ -8929,6 +9032,24 @@ class GameScene extends Phaser.Scene {
           this.showToast("서버 응답이 없어 사용이 취소되었습니다.", "#e74c3c");
         });
 
+        const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
+
+        // 즉시 UI와 로컬 인벤토리를 낙관적으로 갱신하여 중복 클릭을 방지
+        try {
+          this.specialUsedThisTurn = this.specialUsedThisTurn || {};
+          this.specialUsedThisTurn[myId] = true;
+          // 로컬 소모
+          specialCardsOwned[cardId] = count - 1;
+          if (specialCardsOwned[cardId] <= 0) delete specialCardsOwned[cardId];
+          localStorage.setItem(
+            "specialCards",
+            JSON.stringify(specialCardsOwned),
+          );
+          this.renderTable(this.roundData.players);
+        } catch (e) {
+          console.warn("optimistic update failed", e);
+        }
+
         socket.emit("requestUseSpecial", { cardId: 7 }, (res) => {
           if (handled) return;
           handled = true;
@@ -8941,23 +9062,75 @@ class GameScene extends Phaser.Scene {
                 JSON.stringify(res.updatedSpecialCards),
               );
             } else {
-              // 로컬 차감
-              specialCardsOwned[cardId] = count - 1;
-              if (specialCardsOwned[cardId] <= 0)
-                delete specialCardsOwned[cardId];
-              localStorage.setItem(
-                "specialCards",
-                JSON.stringify(specialCardsOwned),
-              );
+              // 서버가 보낸 updatedSpecialCards가 없을 때는 이미 낙관 업데이트를 했으므로 특별한 처리는 필요 없음
             }
 
-            // 플레이어 상태 병합은 서버의 'specialUsed' 이벤트에서 처리되어 애니메이션이 가능하도록 한다.
-            syncInventoryToServer("useThief", { usedCardId: 7 });
+            // 서버가 응답으로 보낸 players 정보가 있다면 즉시 병합하여 카드 수를 반영
+            try {
+              if (Array.isArray(res.players) && res.players.length > 0) {
+                console.log("[requestUseSpecial] server players:", res.players);
+                const mySocketId = socket.id;
+                const myFromServer = res.players.find(
+                  (p) => p.id === mySocketId,
+                );
+                console.log("[requestUseSpecial] myFromServer:", myFromServer);
+                this.roundData.players.forEach((oldPlayer) => {
+                  const newPlayer = res.players.find(
+                    (p) => p.id === oldPlayer.id,
+                  );
+                  if (newPlayer && oldPlayer.id === mySocketId) {
+                    console.log(
+                      "[requestUseSpecial] merging my player, old->new:",
+                      {
+                        old: { id: oldPlayer.id, cards: oldPlayer.cards },
+                        new: { id: newPlayer.id, cards: newPlayer.cards },
+                      },
+                    );
+                  }
+                  if (newPlayer) {
+                    const preservedOpenStack = oldPlayer.openStack;
+                    Object.assign(oldPlayer, newPlayer);
+                    oldPlayer.openStack = preservedOpenStack;
+                  }
+                });
+                this.renderTable(this.roundData.players);
+              }
+            } catch (e) {
+              console.warn("merge res.players failed", e);
+            }
+
+            // 플레이어 상태 병합은 서버의 'specialUsed' 이벤트에서도 처리되므로
+            // 애니메이션은 그 이벤트에서 재생됩니다. 인벤토리 동기화 트리거
+            this.safeSyncInventory("useThief", { usedCardId: 7 });
             this.showToast(
               "도둑 카드 사용 요청을 보냈습니다. 처리 중...",
               "#f39c12",
             );
           } else {
+            // 실패 시 낙관 업데이트 롤백
+            try {
+              const serverCards = (res && res.updatedSpecialCards) || null;
+              if (serverCards) {
+                localStorage.setItem(
+                  "specialCards",
+                  JSON.stringify(serverCards),
+                );
+              } else {
+                // 복원: 서버가 사용을 거부했으므로 로컬 카운트를 원래대로 복원
+                const prev =
+                  JSON.parse(localStorage.getItem("specialCards") || "{}") ||
+                  {};
+                prev[cardId] = (prev[cardId] || 0) + 1;
+                localStorage.setItem("specialCards", JSON.stringify(prev));
+              }
+            } catch (e) {
+              console.warn("rollback failed", e);
+            }
+            try {
+              this.specialUsedThisTurn = this.specialUsedThisTurn || {};
+              this.specialUsedThisTurn[myId] = false;
+            } catch (e) {}
+            this.renderTable(this.roundData.players);
             this.showToast(
               res && res.message ? res.message : "사용 실패",
               "#e74c3c",
@@ -8989,53 +9162,82 @@ class GameScene extends Phaser.Scene {
             "specialCards",
             JSON.stringify(specialCardsOwned),
           );
-          syncInventoryToServer("useThief", { usedCardId: 7 });
+          this.safeSyncInventory("useThief", { usedCardId: 7 });
+          // 사용 성공으로 마크 (턴당 1회 규칙)
+          try {
+            const myId = this.myId || "PLAYER_ME";
+            this.specialUsedThisTurn = this.specialUsedThisTurn || {};
+            this.specialUsedThisTurn[myId] = true;
+          } catch (e) {}
+          this.renderTable(this.roundData.players);
           this.showToast("도둑 카드 사용: 획득할 카드가 없습니다.", "#f39c12");
         } else {
-          // 애니메이션 재생, 완료 시 실제 전달 적용
+          // 즉시 카드 이동 및 UI 반영 (낙관적 적용)
+          try {
+            const myDeck = this.getSingleDeck(myId);
+            givers.forEach((giver) => {
+              const giverDeck = this.getSingleDeck(giver.id);
+              const moved =
+                giverDeck.length > 0
+                  ? giverDeck.pop()
+                  : this.createRandomFruitCard();
+              myDeck.unshift(moved);
+              // 라운드 데이터에도 즉시 반영
+              const gp = players.find((p) => p.id === giver.id);
+              if (gp) {
+                gp.cards = Math.max(0, Number(gp.cards) - 1);
+                gp.remainingCards = gp.cards;
+              }
+            });
+
+            const me = players.find((p) => p.id === myId);
+            if (me) {
+              me.cards = (me.cards || 0) + givers.length;
+              me.remainingCards = me.cards;
+            }
+
+            // 로컬 카드 소모 및 서버 동기화 트리거
+            specialCardsOwned[cardId] = count - 1;
+            if (specialCardsOwned[cardId] <= 0)
+              delete specialCardsOwned[cardId];
+            localStorage.setItem(
+              "specialCards",
+              JSON.stringify(specialCardsOwned),
+            );
+            this.safeSyncInventory("useThief", { usedCardId: 7 });
+
+            // 사용 성공으로 마크 (턴당 1회 규칙)
+            try {
+              this.specialUsedThisTurn = this.specialUsedThisTurn || {};
+              this.specialUsedThisTurn[myId] = true;
+            } catch (e) {}
+
+            this.updateEliminationStatus();
+            this.renderTable(this.roundData.players);
+            console.log("[thief-single] after apply", {
+              myId,
+              specialCardsOwned,
+              players: players.map((p) => ({ id: p.id, cards: p.cards })),
+            });
+          } catch (e) {
+            console.warn("thief optimistic apply error", e);
+          }
+
+          // 애니메이션은 이전 상태(prevPlayers)를 기준으로 재생
           this.playThiefAnimation({
             byId: myId,
             fromIds: givers.map((g) => g.id),
             players: prevPlayers,
             onComplete: () => {
-              try {
-                const myDeck = this.getSingleDeck(myId);
-                givers.forEach((giver) => {
-                  const giverDeck = this.getSingleDeck(giver.id);
-                  const moved =
-                    giverDeck.length > 0
-                      ? giverDeck.pop()
-                      : this.createRandomFruitCard();
-                  myDeck.unshift(moved);
-                  giver.cards = Math.max(0, Number(giver.cards) - 1);
-                  giver.remainingCards = giver.cards;
-                });
-
-                const me = players.find((p) => p.id === myId);
-                if (me) {
-                  me.cards = (me.cards || 0) + givers.length;
-                  me.remainingCards = me.cards;
-                }
-
-                // 로컬 카드 소모
-                specialCardsOwned[cardId] = count - 1;
-                if (specialCardsOwned[cardId] <= 0)
-                  delete specialCardsOwned[cardId];
-                localStorage.setItem(
-                  "specialCards",
-                  JSON.stringify(specialCardsOwned),
-                );
-                syncInventoryToServer("useThief", { usedCardId: 7 });
-
-                this.updateEliminationStatus();
-                this.renderTable(this.roundData.players);
-                this.showToast(
-                  "도둑 카드 사용: 생존 플레이어들로부터 1장씩 획득했습니다!",
-                  "#2ecc71",
-                );
-              } catch (e) {
-                console.warn("thief apply after animation error", e);
-              }
+              console.log("[thief-single] animation complete", {
+                myId,
+                specialCardsOwned,
+                players: players.map((p) => ({ id: p.id, cards: p.cards })),
+              });
+              this.showToast(
+                "도둑 카드 사용: 생존 플레이어들로부터 1장씩 획득했습니다!",
+                "#2ecc71",
+              );
             },
           });
         }
@@ -9043,49 +9245,18 @@ class GameScene extends Phaser.Scene {
         console.warn("useSpecialCard thief single error", e);
       }
 
-      // 쿨타임 설정 (공통)
-      this.specialCardCooldowns[cardId] = now + cooldown;
-      if (this.specialCardCooldownTimers[cardId])
-        this.specialCardCooldownTimers[cardId].remove();
-      this.specialCardCooldownTimers[cardId] = this.time.addEvent({
-        delay: 100,
-        callback: () => {
-          const timeLeft = this.specialCardCooldowns[cardId] - Date.now();
-          if (timeLeft <= 0) {
-            this.specialCardCooldownTimers[cardId].remove();
-            delete this.specialCardCooldownTimers[cardId];
-            delete this.specialCardCooldowns[cardId];
-          }
-          if (this.roundData && this.roundData.players)
-            this.renderTable(this.roundData.players);
-        },
-        loop: true,
-      });
-
       return;
     }
 
-    // 기본(기타) 카드 사용: 기존 동작(로컬 차감 + 쿨타임)
+    // 기본(기타) 카드 사용: 로컬 차감 + 턴당 1회 플래그 설정
     this.showToast(`${cardName} 카드를 사용했습니다!`, "#2ecc71");
     specialCardsOwned[cardId] = count - 1;
     localStorage.setItem("specialCards", JSON.stringify(specialCardsOwned));
-    this.specialCardCooldowns[cardId] = now + cooldown;
-    if (this.specialCardCooldownTimers[cardId])
-      this.specialCardCooldownTimers[cardId].remove();
-    this.specialCardCooldownTimers[cardId] = this.time.addEvent({
-      delay: 100,
-      callback: () => {
-        const timeLeft = this.specialCardCooldowns[cardId] - Date.now();
-        if (timeLeft <= 0) {
-          this.specialCardCooldownTimers[cardId].remove();
-          delete this.specialCardCooldownTimers[cardId];
-          delete this.specialCardCooldowns[cardId];
-        }
-        if (this.roundData && this.roundData.players)
-          this.renderTable(this.roundData.players);
-      },
-      loop: true,
-    });
+    try {
+      const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
+      this.specialUsedThisTurn = this.specialUsedThisTurn || {};
+      this.specialUsedThisTurn[myId] = true;
+    } catch (e) {}
     if (this.roundData && this.roundData.players)
       this.renderTable(this.roundData.players);
   }

@@ -1154,16 +1154,33 @@ io.on("connection", (socket) => {
           p.id !== socket.id && !p.isEliminated && (p.myDeck?.length || 0) > 0,
       );
 
-      if (!Array.isArray(socket.myDeck))
-        socket.myDeck = Array.isArray(socket.myDeck) ? socket.myDeck : [];
+      // Ensure we operate on the room player's myDeck so room.players stays authoritative
+      const recipientPlayer = room.players.find((p) => p.id === socket.id);
+      if (recipientPlayer) {
+        if (!Array.isArray(recipientPlayer.myDeck)) recipientPlayer.myDeck = [];
+        // Keep socket.myDeck in sync with the authoritative room.players entry
+        socket.myDeck = recipientPlayer.myDeck;
 
-      givers.forEach((giver) => {
-        if (giver.myDeck && giver.myDeck.length > 0) {
-          const card = giver.myDeck.pop();
-          socket.myDeck.unshift(card);
-          recipients.push(giver.id);
-        }
-      });
+        givers.forEach((giver) => {
+          if (giver.myDeck && giver.myDeck.length > 0) {
+            const card = giver.myDeck.pop();
+            recipientPlayer.myDeck.unshift(card);
+            recipients.push(giver.id);
+          }
+        });
+      } else {
+        // Fallback: operate on socket.myDeck if no matching room player found
+        if (!Array.isArray(socket.myDeck))
+          socket.myDeck = Array.isArray(socket.myDeck) ? socket.myDeck : [];
+
+        givers.forEach((giver) => {
+          if (giver.myDeck && giver.myDeck.length > 0) {
+            const card = giver.myDeck.pop();
+            socket.myDeck.unshift(card);
+            recipients.push(giver.id);
+          }
+        });
+      }
 
       // 모든 플레이어의 cards 속성 갱신
       room.players.forEach((player) => {
