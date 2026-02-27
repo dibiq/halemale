@@ -2341,7 +2341,7 @@ io.on("connection", (socket) => {
     });
   });
 
-  socket.on("startGameRequest", (ack) => {
+  socket.on("startGameRequest", async (ack) => {
     const respond =
       typeof ack === "function"
         ? (payload) => {
@@ -2388,18 +2388,65 @@ io.on("connection", (socket) => {
     // 시작 직전에 room.players의 specialCards를 실시간 소켓과 동기화합니다.
     // (게임 시작 직후 공격이 들어오는 경우에 대비한 안전장치)
     try {
-      room.players.forEach((p) => {
+      for (const p of room.players) {
         try {
           const s = p && p.id ? io.sockets.sockets.get(p.id) : null;
+          // 우선: 라이브 소켓에 특수카드가 있으면 우선 사용
           if (s && s.specialCards && Object.keys(s.specialCards).length > 0) {
             p.specialCards = s.specialCards;
+            continue;
+          }
+
+          // 방 스냅샷에 있으면 그대로 사용
+          if (p && p.specialCards && Object.keys(p.specialCards).length > 0) {
+            // keep existing snapshot
+            if (s) s.specialCards = p.specialCards;
+            continue;
+          }
+
+          // 둘 다 비어있다면 DB에서 복원 시도
+          if (s && s.nickname) {
+            try {
+              const saved = await getPlayer(s.nickname);
+              let parsedSpecial = {};
+              if (saved) {
+                if (
+                  typeof saved.items === "object" &&
+                  !Array.isArray(saved.items)
+                ) {
+                  parsedSpecial = saved.items.specialCards || {};
+                } else if (typeof saved.items === "string") {
+                  try {
+                    const parsed = JSON.parse(saved.items);
+                    if (
+                      parsed &&
+                      typeof parsed === "object" &&
+                      !Array.isArray(parsed)
+                    ) {
+                      parsedSpecial = parsed.specialCards || {};
+                    }
+                  } catch (e) {}
+                }
+              }
+              if (parsedSpecial && Object.keys(parsedSpecial).length > 0) {
+                p.specialCards = parsedSpecial;
+                s.specialCards = parsedSpecial;
+              } else {
+                p.specialCards = p.specialCards || {};
+                s.specialCards = s.specialCards || {};
+              }
+            } catch (e) {
+              p.specialCards = p.specialCards || {};
+              if (s) s.specialCards = s.specialCards || {};
+            }
           } else {
             p.specialCards = p.specialCards || {};
+            if (s) s.specialCards = s.specialCards || {};
           }
         } catch (e) {
           // ignore per-player sync error
         }
-      });
+      }
     } catch (e) {
       console.warn("startGame: failed to sync specialCards", e);
     }
