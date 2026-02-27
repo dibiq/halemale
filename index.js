@@ -1148,7 +1148,7 @@ io.on("connection", (socket) => {
 
       // recipients (effect 대상 id들)
       const recipients = [];
-      const SHIELD_CARD_ID = 9; // 자동 발동되는 방어 아이템
+      const SHIELD_CARD_ID = 5; // 자동 발동되는 방어 아이템 (client mapping: shield -> 5)
       let shieldedGlobal = [];
       let emittedEffectId = null;
 
