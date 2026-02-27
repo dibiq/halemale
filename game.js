@@ -6464,34 +6464,12 @@ class GameScene extends Phaser.Scene {
           if (data.by) this.specialUsedThisTurn[data.by] = true;
         } catch (e) {}
 
-        // 중앙 방패 발동 애니메이션 재생 (서버가 shielded를 보고한 경우)
-        try {
-          if (Array.isArray(data.shielded) && data.shielded.length > 0) {
-            const names = (
-              Array.isArray(data.players)
-                ? data.players
-                : this.roundData.players || []
-            )
-              .map((p) => ({ id: p.id, nickname: p.nickname }))
-              .filter((p) => data.shielded.includes(p.id))
-              .map((p) => p.nickname || p.id);
-            const subtitle =
-              names.length > 0
-                ? `${names.join(", ")}님이 방패로 막았습니다.`
-                : "공격이 방패로 막혔습니다.";
-            try {
-              this.playSpecialAnimation({
-                imageKey: "shield",
-                title: "방패 발동",
-                subtitle,
-              });
-            } catch (e) {
-              console.warn("playSpecialAnimation (shield) error", e);
-            }
-          }
-        } catch (e) {
-          console.warn("specialUsed shielded handling error", e);
+        // 중앙 방패 애니메이션 제거; 대신 각 플레이어 위치에서 개별 효과를 표시함
+        // 먼저 즉시 실행해서 위치가 고정된 시점에 애니메이션이 뜨도록 함
+        if (Array.isArray(data.shielded) && data.shielded.length > 0) {
+          data.shielded.forEach((id) => this.showShieldEffect(id));
         }
+        // (추가적으로 각 카드 특정 애니메이션 끝난 뒤에도 showShieldEffect를 호출함)
 
         // 도둑 카드 사용 연출: 서버가 보낸 recipients(fromIds)와 by(id)를 사용해 애니메이션 재생
         if (
@@ -6952,9 +6930,12 @@ class GameScene extends Phaser.Scene {
               { x: width * 0.89, y: height * 0.45, rotation: -90 },
             ];
 
+    // initialize mapping of id -> layout for use by shield effect
+    this.playerLayouts = {};
     sortedPlayers.forEach((p, i) => {
       if (!p || !pos[i]) return;
       const layout = pos[i];
+      this.playerLayouts[p.id] = { x: layout.x, y: layout.y, rotation: layout.rotation };
 
       this.drawPlayerInfo(p, layout);
       this.drawPlayerDeck(p, layout); // 💡 여기서 숫자가 그려짐
@@ -7982,13 +7963,25 @@ class GameScene extends Phaser.Scene {
       const layout = pos[relIdx];
       if (!layout) return;
 
-      // position shield above the open card area (reuse drawOpenCard placement math)
-      const dist = width * 0.25;
-      const rad = Phaser.Math.DegToRad(layout.rotation - 90);
-      const baseX = layout.x + Math.cos(rad) * dist * 0.7;
-      const baseY = layout.y + Math.sin(rad) * dist;
+      let baseX, baseY;
       const cardHeight = width * 0.25;
-      const shieldY = baseY - cardHeight * 0.5 - 8;
+      // if we have a stored deck layout, use that (hand card position)
+      if (
+        this.playerLayouts &&
+        this.playerLayouts[playerId] &&
+        typeof this.playerLayouts[playerId].x === "number"
+      ) {
+        baseX = this.playerLayouts[playerId].x;
+        baseY = this.playerLayouts[playerId].y - cardHeight * 0.5 - 8;
+      } else {
+        // fallback: position shield above the open card area (reuse drawOpenCard math)
+        const dist = width * 0.25;
+        const rad = Phaser.Math.DegToRad(layout.rotation - 90);
+        baseX = layout.x + Math.cos(rad) * dist * 0.7;
+        baseY = layout.y + Math.sin(rad) * dist;
+        baseY = baseY - cardHeight * 0.5 - 8;
+      }
+      const shieldY = baseY;
 
       console.log(
         "[debug] showShieldEffect called for",
@@ -8006,25 +7999,21 @@ class GameScene extends Phaser.Scene {
       const shieldSprite = this.add
         .image(baseX, shieldY, "shield")
         .setDisplaySize(48, 48)
-        // ensure above blockcards drawn at very high depths
         .setDepth(600000)
-        .setAlpha(0.95);
+        .setAlpha(0)
+        .setScale(0);
 
-      console.log("[debug] shield sprite created", {
-        x: baseX,
-        y: shieldY,
-        depth: shieldSprite.depth,
-      });
-
+      // pop-in + fade-out effect (longer so user can see)
       this.tweens.add({
         targets: shieldSprite,
-        y: shieldSprite.y - 8,
-        alpha: 0,
-        duration: 900,
-        ease: "Cubic.out",
+        alpha: 1,
+        scale: 1,
+        duration: 300,
+        ease: "Back.out",
+        yoyo: true,
+        hold: 600,
         onComplete: () => {
           try {
-            console.log("[debug] destroying shield sprite for", playerId);
             shieldSprite.destroy();
           } catch (e) {
             console.warn("[debug] error destroying shield sprite", e);
