@@ -1169,6 +1169,87 @@ io.on("connection", (socket) => {
           // Returns the socket id if a shield was consumed, otherwise returns false.
           const tryConsumeShield = (playerRef) => {
             try {
+              // First, if the room/player snapshot contains specialCards, prefer that
+              try {
+                if (
+                  playerRef &&
+                  playerRef.specialCards &&
+                  Number(playerRef.specialCards[SHIELD_CARD_ID] || 0) > 0
+                ) {
+                  playerRef.specialCards[SHIELD_CARD_ID] =
+                    Number(playerRef.specialCards[SHIELD_CARD_ID] || 0) - 1;
+                  if (playerRef.specialCards[SHIELD_CARD_ID] <= 0)
+                    delete playerRef.specialCards[SHIELD_CARD_ID];
+
+                  // Try to find live socket and sync if present
+                  let resolvedSock = null;
+                  const lookupId = playerRef && playerRef.id;
+                  if (lookupId) resolvedSock = io.sockets.sockets.get(lookupId);
+                  if (!resolvedSock && playerRef && playerRef.nickname) {
+                    for (const [sid, sock] of io.sockets.sockets) {
+                      if (sock && sock.nickname === playerRef.nickname) {
+                        resolvedSock = sock;
+                        break;
+                      }
+                    }
+                  }
+                  if (resolvedSock) {
+                    resolvedSock.specialCards = resolvedSock.specialCards || {};
+                    resolvedSock.specialCards[SHIELD_CARD_ID] =
+                      Number(resolvedSock.specialCards[SHIELD_CARD_ID] || 0) -
+                      1;
+                    if (resolvedSock.specialCards[SHIELD_CARD_ID] <= 0)
+                      delete resolvedSock.specialCards[SHIELD_CARD_ID];
+
+                    // persist change and emit updated profile
+                    savePlayer(
+                      resolvedSock.nickname,
+                      resolvedSock.level || 1,
+                      resolvedSock.coins || 0,
+                      {
+                        items: Array.isArray(resolvedSock.items)
+                          ? resolvedSock.items
+                          : [],
+                        specialCards: resolvedSock.specialCards || {},
+                      },
+                      resolvedSock.experience || 0,
+                      resolvedSock.ownedCharacters || ["player_1"],
+                      resolvedSock.currentCharacter ||
+                        resolvedSock.avatarKey ||
+                        "player_1",
+                    ).catch((e) =>
+                      console.warn("savePlayer error on shield consume", e),
+                    );
+                    try {
+                      resolvedSock.emit("myProfile", {
+                        nickname: resolvedSock.nickname,
+                        level: Number(resolvedSock.level) || 1,
+                        coins: Number(resolvedSock.coins) || 0,
+                        items: Array.isArray(resolvedSock.items)
+                          ? resolvedSock.items
+                          : [],
+                        experience: Number(resolvedSock.experience) || 0,
+                        avatarKey:
+                          resolvedSock.currentCharacter ||
+                          resolvedSock.avatarKey ||
+                          "player_1",
+                        specialCards: resolvedSock.specialCards || {},
+                        owned_characters: resolvedSock.owned_characters || [
+                          "player_1",
+                        ],
+                        current_character:
+                          resolvedSock.currentCharacter || "player_1",
+                      });
+                    } catch (e) {}
+                  }
+
+                  return playerRef && playerRef.id ? playerRef.id : true;
+                }
+              } catch (e) {
+                console.warn("tryConsumeShield(room-snapshot) error", e);
+              }
+
+              // Fallback: resolve live socket and check its specialCards
               let resolvedSock = null;
               let lookupId =
                 typeof playerRef === "string"
