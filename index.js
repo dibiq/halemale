@@ -1175,6 +1175,16 @@ io.on("connection", (socket) => {
           // also update room snapshot for clients that look at players
           refreshRoomSpecialCards(room);
 
+          // broadcast lock usage so other clients show animation
+          io.to(room.roomId).emit("specialUsed", {
+            cardId: 4,
+            by: socket.id,
+            players: room.players,
+            recipients: [],
+            shielded: [],
+            message: `${socket.nickname}님이 자물쇠를 사용했습니다!`,
+          });
+
           if (typeof cb === "function")
             cb({
               success: true,
@@ -3470,6 +3480,16 @@ io.on("connection", (socket) => {
             recipients: [],
             penaltyPerRecipient: 0,
             autoLockUsedBy: penalizedSocket.id,
+          });
+
+          // also broadcast a specialUsed event so clients can show lock effect
+          io.to(room.roomId).emit("specialUsed", {
+            cardId: 4,
+            by: penalizedSocket.id,
+            players: room.players,
+            recipients: [],
+            shielded: [],
+            message: `${penalizedSocket.nickname}님이 자물쇠를 사용했습니다!`,
           });
 
           processSkipTurn(room, io);

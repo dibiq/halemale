@@ -6321,6 +6321,8 @@ class GameScene extends Phaser.Scene {
               `${nick}님이 자물쇠로 패널티를 면제했습니다!`,
               "#2ecc71",
             );
+            // animation will arrive via specialUsed event shortly
+
             // 서버가 보낸 플레이어 목록으로 갱신
             if (Array.isArray(data.players) && data.players.length > 0) {
               // 💡 Preserve any open stacks the client already had, since server
@@ -6485,6 +6487,10 @@ class GameScene extends Phaser.Scene {
         // 먼저 즉시 실행해서 위치가 고정된 시점에 애니메이션이 뜨도록 함
         if (Array.isArray(data.shielded) && data.shielded.length > 0) {
           data.shielded.forEach((id) => this.showShieldEffect(id));
+        }
+        // lock 카드(페널티 면제)도 바로 애니메이션
+        if (Number(data.cardId) === 4 && data.by) {
+          this.showLockEffect(data.by);
         }
         // (추가적으로 각 카드 특정 애니메이션 끝난 뒤에도 showShieldEffect를 호출함)
 
@@ -7998,7 +8004,7 @@ class GameScene extends Phaser.Scene {
         baseY = layout.y + Math.sin(rad) * dist;
         baseY = baseY - cardHeight * 0.5 - 8;
       }
-      const shieldY = baseY;
+      const specialY = baseY;
 
       console.log(
         "[debug] showShieldEffect called for",
@@ -8006,7 +8012,7 @@ class GameScene extends Phaser.Scene {
         "layout=",
         layout,
         "coords=",
-        { baseX, baseY, shieldY },
+        { baseX, baseY, specialY },
       );
 
       const hasTexture =
@@ -8014,7 +8020,7 @@ class GameScene extends Phaser.Scene {
       if (!hasTexture) console.warn("[debug] shield texture not available");
 
       const shieldSprite = this.add
-        .image(baseX, shieldY, "shield")
+        .image(baseX, specialY, "shield")
         .setDisplaySize(48, 48)
         .setDepth(600000)
         .setAlpha(0)
@@ -8031,7 +8037,7 @@ class GameScene extends Phaser.Scene {
         hold: 600,
         onComplete: () => {
           try {
-            shieldSprite.destroy();
+                shieldSprite.destroy();
           } catch (e) {
             console.warn("[debug] error destroying shield sprite", e);
           }
@@ -8042,7 +8048,104 @@ class GameScene extends Phaser.Scene {
     }
   }
 
-  // 중앙 특수아이템 애니메이션 재생 (이미지, 제목, 설명) 후 onComplete 호출
+  showLockEffect(playerId) {
+    try {
+      // duplicate logic from showShieldEffect but use 'lock' texture
+      if (!this.roundData || !Array.isArray(this.roundData.players)) return;
+      const players = this.roundData.players;
+      const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
+      let myIndex = players.findIndex((p) => p.id === myId);
+      if (myIndex === -1) myIndex = 0;
+      const sortedPlayers = [
+        ...players.slice(myIndex),
+        ...players.slice(0, myIndex),
+      ];
+      const playerCount = sortedPlayers.length;
+      const { width, height } = this.cameras.main;
+      const pos =
+        playerCount === 2
+          ? [
+              { x: width * 0.5, y: height * 0.75, rotation: 0 },
+              { x: width * 0.5, y: height * 0.18, rotation: 180 },
+            ]
+          : playerCount === 3
+            ? [
+                { x: width * 0.5, y: height * 0.75, rotation: 0 },
+                { x: width * 0.11, y: height * 0.45, rotation: 90 },
+                { x: width * 0.89, y: height * 0.45, rotation: -90 },
+              ]
+            : [
+                { x: width * 0.5, y: height * 0.75, rotation: 0 },
+                { x: width * 0.11, y: height * 0.45, rotation: 90 },
+                { x: width * 0.5, y: height * 0.18, rotation: 180 },
+                { x: width * 0.89, y: height * 0.45, rotation: -90 },
+              ];
+
+      const targetIdx = players.findIndex((p) => p.id === playerId);
+      if (targetIdx === -1) return;
+      const relIdx = (targetIdx - myIndex + players.length) % players.length;
+      const layout = pos[relIdx];
+      if (!layout) return;
+
+      let baseX, baseY;
+      const cardHeight = width * 0.25;
+      if (
+        this.playerLayouts &&
+        this.playerLayouts[playerId] &&
+        typeof this.playerLayouts[playerId].x === "number"
+      ) {
+        baseX = this.playerLayouts[playerId].x;
+        baseY = this.playerLayouts[playerId].y - cardHeight * 0.5 - 8;
+      } else {
+        const dist = width * 0.25;
+        const rad = Phaser.Math.DegToRad(layout.rotation - 90);
+        baseX = layout.x + Math.cos(rad) * dist * 0.7;
+        baseY = layout.y + Math.sin(rad) * dist;
+        baseY = baseY - cardHeight * 0.5 - 8;
+      }
+      const lockY = baseY;
+
+      console.log(
+        "[debug] showLockEffect called for",
+        playerId,
+        "layout=",
+        layout,
+        "coords=",
+        { baseX, baseY, lockY },
+      );
+
+      const hasTextureLock =
+        this.textures && this.textures.exists && this.textures.exists("lock");
+      if (!hasTextureLock) console.warn("[debug] lock texture not available");
+
+      const lockSprite = this.add
+        .image(baseX, lockY, "lock")
+        .setDisplaySize(48, 48)
+        .setDepth(600000)
+        .setAlpha(0)
+        .setScale(0);
+
+      this.tweens.add({
+        targets: lockSprite,
+        alpha: 1,
+        scale: 1,
+        duration: 300,
+        ease: "Back.out",
+        yoyo: true,
+        hold: 600,
+        onComplete: () => {
+          try {
+            lockSprite.destroy();
+          } catch (e) {
+            console.warn("[debug] error destroying lock sprite", e);
+          }
+        },
+      });
+    } catch (e) {
+      console.warn("showLockEffect error", e);
+    }
+  }
+
   playSpecialAnimation({ imageKey, title, subtitle, onComplete }) {
     try {
       const { width, height } = this.cameras.main;
