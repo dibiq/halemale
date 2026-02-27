@@ -786,6 +786,22 @@ class LobbyScene extends Phaser.Scene {
           );
         } else {
           localStorage.setItem("specialCards", JSON.stringify(parsed));
+
+          // DEBUG: ensure developer start inventory for certain special cards
+          try {
+            const specialOwned =
+              JSON.parse(localStorage.getItem("specialCards")) || {};
+            // ids: 4=lock,5=shield,6=block(먹물),7=thief,8=king
+            [4, 5, 6, 7, 8].forEach((id) => {
+              if (!Number.isFinite(Number(specialOwned[id]))) {
+                specialOwned[id] = 10;
+              }
+            });
+            localStorage.setItem("specialCards", JSON.stringify(specialOwned));
+            console.log("[debug] ensured starting specialCards:", specialOwned);
+          } catch (e) {
+            console.warn("[debug] failed to set debug specialCards", e);
+          }
         }
       }
 
@@ -2092,21 +2108,13 @@ class LobbyScene extends Phaser.Scene {
 
     const { width, height } = this.cameras.main;
 
-    if (this.activeToast) this.activeToast.destroy();
+    // 토스트 컨테이너 생성
+    const toast = this.add.container(width / 2, -100).setDepth(2000);
 
-    // 1. 컨테이너 생성 및 절대 좌표 고정
-    const toast = this.add.container(width / 2, -100);
+    const bg = this.add
+      .rectangle(0, 0, Math.floor(width * 0.6), 64, 0x000000, 0.75)
+      .setOrigin(0.5);
 
-    // Phaser 3에서 안전하게 사용 가능한 최상위 뎁스
-    toast.setDepth(999999);
-    toast.setScrollFactor(0); // 카메라 이동 무시
-    this.activeToast = toast;
-
-    // 2. 배경 (약간 더 두껍고 눈에 띄게)
-    const bg = this.add.rectangle(0, 0, width * 0.85, 70, 0x111111, 0.95);
-    bg.setStrokeStyle(3, 0xffffff, 1);
-
-    // 3. 텍스트 (글자 크기를 조금 더 키움)
     const txt = this.add
       .text(0, 0, message, {
         fontFamily: GAME_FONTS.main,
@@ -2120,10 +2128,12 @@ class LobbyScene extends Phaser.Scene {
 
     toast.add([bg, txt]);
 
-    // 4. 효과음 재생 (재생되는지 다시 확인)
-    this.sound.play("pop", { volume: 0.5 });
+    // 효과음
+    try {
+      this.sound.play("pop", { volume: 0.5 });
+    } catch (e) {}
 
-    // 5. 애니메이션 (y좌표를 150이 아닌 화면 전체 높이의 15% 지점으로)
+    // 보여주기 애니메이션
     this.tweens.add({
       targets: toast,
       y: height * 0.15,
@@ -6442,6 +6452,10 @@ class GameScene extends Phaser.Scene {
                     Array.isArray(data.shielded) &&
                     data.shielded.length > 0
                   ) {
+                    console.log(
+                      "[debug] specialUsed shielded ids:",
+                      data.shielded,
+                    );
                     data.shielded.forEach((id) => this.showShieldEffect(id));
                   }
                 }
@@ -6490,6 +6504,10 @@ class GameScene extends Phaser.Scene {
                       Array.isArray(data.shielded) &&
                       data.shielded.length > 0
                     ) {
+                      console.log(
+                        "[debug] specialUsed (king) shielded ids:",
+                        data.shielded,
+                      );
                       data.shielded.forEach((id) => this.showShieldEffect(id));
                     }
                   }
@@ -6547,6 +6565,10 @@ class GameScene extends Phaser.Scene {
 
             this.renderTable(this.roundData.players);
             if (Array.isArray(data.shielded) && data.shielded.length > 0) {
+              console.log(
+                "[debug] specialUsed (block) shielded ids:",
+                data.shielded,
+              );
               data.shielded.forEach((id) => this.showShieldEffect(id));
             }
             if (data.message) this.showToast(data.message, "#f39c12");
@@ -6577,14 +6599,6 @@ class GameScene extends Phaser.Scene {
     socket.off("specialPlay").on("specialPlay", (data) => {
       try {
         if (!data) return;
-        // If this client already initiated the same special this turn and played local animation,
-        // avoid double-playing the same animation for the issuer.
-        if (data.by && data.by === socket.id) {
-          try {
-            if (this.specialUsedThisTurn && this.specialUsedThisTurn[socket.id])
-              return;
-          } catch (e) {}
-        }
         const imageKey =
           data.imageKey ||
           (data.cardId
@@ -7851,21 +7865,53 @@ class GameScene extends Phaser.Scene {
       const layout = pos[relIdx];
       if (!layout) return;
 
+      // position shield above the open card area (reuse drawOpenCard placement math)
+      const dist = width * 0.25;
+      const rad = Phaser.Math.DegToRad(layout.rotation - 90);
+      const baseX = layout.x + Math.cos(rad) * dist * 0.7;
+      const baseY = layout.y + Math.sin(rad) * dist;
+      const cardHeight = width * 0.25;
+      const shieldY = baseY - cardHeight * 0.5 - 8;
+
+      console.log(
+        "[debug] showShieldEffect called for",
+        playerId,
+        "layout=",
+        layout,
+        "coords=",
+        { baseX, baseY, shieldY },
+      );
+
+      const hasTexture =
+        this.textures && this.textures.exists && this.textures.exists("shield");
+      if (!hasTexture) console.warn("[debug] shield texture not available");
+
       const shieldSprite = this.add
-        .image(layout.x, layout.y - 20, "shield")
+        .image(baseX, shieldY, "shield")
         .setDisplaySize(48, 48)
-        .setDepth(6000)
+        // ensure above blockcards drawn at very high depths
+        .setDepth(600000)
         .setAlpha(0.95);
+
+      console.log("[debug] shield sprite created", {
+        x: baseX,
+        y: shieldY,
+        depth: shieldSprite.depth,
+      });
+
       this.tweens.add({
         targets: shieldSprite,
-        y: shieldSprite.y - 10,
+        y: shieldSprite.y - 8,
         alpha: 0,
         duration: 900,
         ease: "Cubic.out",
         onComplete: () => {
           try {
+            console.log("[debug] destroying shield sprite for", playerId);
             shieldSprite.destroy();
-          } catch (e) {}
+          } catch (e) {
+            console.warn("[debug] error destroying shield sprite", e);
+          }
         },
       });
     } catch (e) {
@@ -7945,10 +7991,15 @@ class GameScene extends Phaser.Scene {
 
       const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
 
-      // 낙관적 업데이트: UI와 로컬 인벤토리 차감
+      // 낙관적 업데이트: UI와 로컬 인벤토리 차감 (하지만 사용 플래그는 서버 응답 시에 설정)
       try {
-        this.specialUsedThisTurn = this.specialUsedThisTurn || {};
-        this.specialUsedThisTurn[myId] = true;
+        this.pendingSpecialUse = this.pendingSpecialUse || {};
+        if (this.pendingSpecialUse[myId]) {
+          // 이미 요청 대기 중이면 중복 방지
+          timeout.remove(false);
+          return;
+        }
+        this.pendingSpecialUse[myId] = true;
         const specialCardsOwned =
           JSON.parse(localStorage.getItem("specialCards")) || {};
         specialCardsOwned[cardId] = (specialCardsOwned[cardId] || 0) - 1;
@@ -7997,6 +8048,13 @@ class GameScene extends Phaser.Scene {
                   ? "useKing"
                   : "useSpecial";
           this.safeSyncInventory(syncKey, { usedCardId: cardId });
+          try {
+            this.specialUsedThisTurn = this.specialUsedThisTurn || {};
+            this.specialUsedThisTurn[myId] = true; // 서버 성공 시 사용 플래그 설정
+          } catch (e) {}
+          try {
+            if (this.pendingSpecialUse) delete this.pendingSpecialUse[myId];
+          } catch (e) {}
           this.showToast(`${cardName} 사용 요청을 보냈습니다.`, "#f39c12");
         } else {
           try {
@@ -8013,8 +8071,7 @@ class GameScene extends Phaser.Scene {
             console.warn("rollback failed", e);
           }
           try {
-            this.specialUsedThisTurn = this.specialUsedThisTurn || {};
-            this.specialUsedThisTurn[myId] = false;
+            if (this.pendingSpecialUse) delete this.pendingSpecialUse[myId];
           } catch (e) {}
           this.renderTable(this.roundData.players);
           this.showToast(
@@ -9665,12 +9722,7 @@ class GameScene extends Phaser.Scene {
     if (Number(cardId) === 7) {
       // 멀티플레이: 중앙 애니메이션 재생 후 서버 요청/낙관 업데이트 수행
       if (!this.isSingle && socket && socket.connected) {
-        this.playSpecialAnimation({
-          imageKey: "thief",
-          title: "도둑 카드 사용",
-          subtitle: "생존 플레이어들로부터 1장씩 획득합니다.",
-          onComplete: () => this.requestUseSpecialWithOptimistic(7, cardName),
-        });
+        this.requestUseSpecialWithOptimistic(7, cardName);
         return;
       }
 
@@ -9678,12 +9730,7 @@ class GameScene extends Phaser.Scene {
       if (Number(cardId) === 8) {
         // 멀티플레이: 서버에 요청
         if (!this.isSingle && socket && socket.connected) {
-          this.playSpecialAnimation({
-            imageKey: "king",
-            title: "왕 카드 사용",
-            subtitle: "카드 보유 수가 가장 많은 플레이어와 덱을 교환합니다.",
-            onComplete: () => this.requestUseSpecialWithOptimistic(8, cardName),
-          });
+          this.requestUseSpecialWithOptimistic(8, cardName);
           return;
         }
 
@@ -9882,12 +9929,7 @@ class GameScene extends Phaser.Scene {
     if (Number(cardId) === 8) {
       // 멀티플레이: 애니메이션 재생 후 서버 요청
       if (!this.isSingle && socket && socket.connected) {
-        this.playSpecialAnimation({
-          imageKey: "king",
-          title: "왕 카드 사용",
-          subtitle: "카드 보유 수가 가장 많은 플레이어와 덱을 교환합니다.",
-          onComplete: () => this.requestUseSpecialWithOptimistic(8, cardName),
-        });
+        this.requestUseSpecialWithOptimistic(8, cardName);
         return;
       }
 
@@ -9976,12 +10018,7 @@ class GameScene extends Phaser.Scene {
     if (Number(cardId) === 6) {
       // 멀티플레이: 중앙 애니메이션 재생 후 서버 요청/낙관 업데이트 수행
       if (!this.isSingle && socket && socket.connected) {
-        this.playSpecialAnimation({
-          imageKey: "block",
-          title: "먹물 카드 사용",
-          subtitle: "모든 플레이어의 오픈 더미를 가립니다.",
-          onComplete: () => this.requestUseSpecialWithOptimistic(6, cardName),
-        });
+        this.requestUseSpecialWithOptimistic(6, cardName);
         return;
       }
 

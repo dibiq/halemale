@@ -845,6 +845,20 @@ io.on("connection", (socket) => {
         Math.max((Number(savedData.level) || 1) - 1, 0) * XP_PER_LEVEL;
       socket.items = parsedItems;
       socket.specialCards = parsedSpecialCards; // 특수카드 할당
+      // DEBUG: 보유 특수카드가 비어있으면 테스트용으로 일부 아이템을 채워둠 (4=lock,5=shield,6=block,7=thief,8=king)
+      try {
+        [4, 5, 6, 7, 8].forEach((id) => {
+          if (!Number.isFinite(Number(socket.specialCards[id]))) {
+            socket.specialCards[id] = 10;
+          }
+        });
+        console.log(
+          `[debug] ${socket.nickname} starting specialCards:`,
+          socket.specialCards,
+        );
+      } catch (e) {
+        console.warn("[debug] failed to ensure starting specialCards", e);
+      }
       socket.ownedCharacters = normalizeOwnedCharacters(
         savedData.owned_characters,
       );
@@ -1136,11 +1150,18 @@ io.on("connection", (socket) => {
         return;
       }
 
-      // 보유 여부 확인
+      // 보유 여부 확인 (로그 추가)
+      console.log(
+        `[debug] requestUseSpecial from ${socket.nickname} (${socket.id}) cardId=${cardId} specialCards=`,
+        socket.specialCards,
+      );
       if (
         !socket.specialCards ||
         Number(socket.specialCards[cardId] || 0) <= 0
       ) {
+        console.log(
+          `[debug] requestUseSpecial denied no_card for ${socket.nickname} cardId=${cardId}`,
+        );
         if (typeof cb === "function")
           cb({ success: false, message: "no_card" });
         return;
