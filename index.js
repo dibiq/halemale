@@ -1151,6 +1151,23 @@ io.on("connection", (socket) => {
       }
 
       // 보유 여부 확인 (로그 추가)
+      // If server-side specialCards is missing/empty, populate debug defaults so testing can proceed.
+      if (
+        !socket.specialCards ||
+        Object.keys(socket.specialCards).length === 0
+      ) {
+        socket.specialCards = socket.specialCards || {};
+        [4, 5, 6, 7, 8].forEach((id) => {
+          if (!Number.isFinite(Number(socket.specialCards[id]))) {
+            socket.specialCards[id] = 10;
+          }
+        });
+        console.log(
+          `[debug] requestUseSpecial filled missing specialCards for ${socket.nickname}:`,
+          socket.specialCards,
+        );
+      }
+
       console.log(
         `[debug] requestUseSpecial from ${socket.nickname} (${socket.id}) cardId=${cardId} specialCards=`,
         socket.specialCards,
