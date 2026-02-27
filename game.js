@@ -4,6 +4,24 @@ import { title } from "process";
 import { App } from "@capacitor/app";
 import { Network } from "@capacitor/network";
 
+// ===== debug inventory initialization =====
+(function initDebugInventory() {
+  try {
+    const specialOwned =
+      JSON.parse(localStorage.getItem("specialCards") || "{}") || {};
+    // if no cards stored, grant five of each shop item
+    if (Object.keys(specialOwned).length === 0) {
+      [4, 5, 6, 7, 8].forEach((id) => {
+        specialOwned[id] = 5;
+      });
+      localStorage.setItem("specialCards", JSON.stringify(specialOwned));
+      console.log("[debug] initial shop items added:", specialOwned);
+    }
+  } catch (e) {
+    console.warn("[debug] initDebugInventory failed", e);
+  }
+})();
+
 const THUNDER_CARD_TYPE = "thunder";
 const SINGLE_THUNDER_CARD_COUNT = 3;
 const BOMB_CARD_TYPE = "bomb";
@@ -488,6 +506,45 @@ class LobbyScene extends Phaser.Scene {
 
     const savedNickname = localStorage.getItem("nickname");
 
+    // helper that gathers and emits the inventory payload directly
+    const emitInventory = (reason = "initial") => {
+      try {
+        const storedNick = localStorage.getItem("nickname") || "요리사";
+        const resolvedPlayerId =
+          (this.myProfile && this.myProfile.nickname) ||
+          this.myNickname ||
+          storedNick;
+        const specialCardsOwned = JSON.parse(
+          localStorage.getItem("specialCards") || "{}",
+        );
+        const items = Object.entries(specialCardsOwned)
+          .map(([id, count]) => ({ id: Number(id), count: Number(count) || 0 }))
+          .filter((item) => Number.isFinite(item.id) && item.count > 0);
+        const payload = {
+          reason,
+          id: resolvedPlayerId,
+          userId: resolvedPlayerId,
+          player_id: resolvedPlayerId,
+          nickname:
+            (this.myProfile && this.myProfile.nickname) || storedNick,
+          playerId: socket.id,
+          coins: Number((this.myProfile && this.myProfile.coins) || 0) || 0,
+          items,
+          specialCards: specialCardsOwned,
+          ownedCharacters: [],
+          currentCharacter: this.getSelectedAvatarKey(),
+        };
+        socket.emit("syncPlayerInventory", payload);
+        socket.emit("syncInventory", payload);
+        socket.emit("updatePlayerInventory", payload);
+        socket.emit("updateProfile", payload);
+        socket.emit("savePlayerProfile", payload);
+        console.log(`🛰️ inventory synced (${reason})`, payload.specialCards);
+      } catch (e) {
+        console.warn("inventory emit failed", e);
+      }
+    };
+
     if (!savedNickname) {
       // 2. 저장된 닉네임이 없으면 팝업 표시
       this.showNicknamePopup((nickname) => {
@@ -500,6 +557,8 @@ class LobbyScene extends Phaser.Scene {
         });
         this.myNickname = nickname; // 현재 씬 변수에 저장
         this.updateMyProfileUI({ nickname: this.myNickname });
+        // inventory sync
+        emitInventory();
       });
     } else {
       // 3. 이미 닉네임이 있다면 팝업 없이 바로 서버로 전송
@@ -508,7 +567,7 @@ class LobbyScene extends Phaser.Scene {
         nickname: savedNickname,
         avatarKey: this.getSelectedAvatarKey(),
       });
-
+      emitInventory();
       // (선택 사항) 로딩 중이라면 바로 메인 화면으로 진입하는 로직 실행
       console.log(`반가워요, ${savedNickname} 요리사님!`);
     }
@@ -787,15 +846,29 @@ class LobbyScene extends Phaser.Scene {
         } else {
           localStorage.setItem("specialCards", JSON.stringify(parsed));
 
-          // DEBUG: for testing only, give a shield if none present
+          // DEBUG: for testing only, give 5 of each shop item on first connection
           try {
-            const specialOwned =
+            let specialOwned =
               JSON.parse(localStorage.getItem("specialCards")) || {};
-            if (!Number.isFinite(Number(specialOwned[5] || 0))) {
-              specialOwned[5] = 10; // shield id
+            // ids: 4=lock,5=shield,6=block,7=thief,8=king
+            if (Object.keys(specialOwned).length === 0) {
+              // nothing stored, give all five
+              [4, 5, 6, 7, 8].forEach((id) => {
+                specialOwned[id] = 5;
+              });
+            } else {
+              [4, 5, 6, 7, 8].forEach((id) => {
+                const current = Number(specialOwned[id]);
+                if (!Number.isFinite(current) || current <= 0) {
+                  specialOwned[id] = 5;
+                }
+              });
             }
             localStorage.setItem("specialCards", JSON.stringify(specialOwned));
-            console.log("[debug] ensured starting shield only:", specialOwned);
+            console.log(
+              "[debug] ensured starting shop items:",
+              JSON.stringify(specialOwned),
+            );
           } catch (e) {
             console.warn("[debug] failed to set debug specialCards", e);
           }
