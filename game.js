@@ -7284,8 +7284,11 @@ class GameScene extends Phaser.Scene {
       (p) => p.openStack === openStack,
     );
 
+    // 애니메이션 중에는 최상단(현재 제출 중인) 일반 카드는 표시하지 않되,
+    // 항상 blockcard는 표시하도록 처리합니다.
+    const fullStack = openStack;
     const cardsToDraw =
-      player && player.isFlipping ? openStack.slice(0, -1) : openStack;
+      player && player.isFlipping ? fullStack.slice(0, -1) : fullStack;
 
     const dist = width * 0.25;
     const rad = Phaser.Math.DegToRad(layout.rotation - 90);
@@ -7294,7 +7297,17 @@ class GameScene extends Phaser.Scene {
     const baseX = layout.x + Math.cos(rad) * dist * 0.7;
     const baseY = layout.y + Math.sin(rad) * dist;
 
-    cardsToDraw.forEach((card, index) => {
+    // blockcard가 항상 최상단에 보이도록, 일반 카드와 blockcard를 분리하여 그립니다.
+    // 주의: 애니메이션 중일 때는 cardsToDraw에서 최상단 일반 카드를 제외하지만
+    // blockcard는 fullStack에서 항상 가져와 그려야 하므로 분리하여 처리합니다.
+    const normalCards = (
+      player && player.isFlipping ? fullStack.slice(0, -1) : fullStack
+    ).filter((c) => !(c && c.type === "blockcard"));
+    const blockCards = fullStack.filter((c) => c && c.type === "blockcard");
+
+    // 일반 카드 먼저 그리기
+    normalCards.forEach((card, idx) => {
+      const index = idx; // 위치 계산용
       const cardKey = this.getCardKey(card);
 
       let offsetX = 0;
@@ -7311,20 +7324,7 @@ class GameScene extends Phaser.Scene {
         const openCardImg = this.add
           .image(baseX + offsetX, baseY + offsetY, cardKey)
           .setDisplaySize(width * 0.18, width * 0.25)
-          .setDepth(150 + index); // 나중 카드가 위로 오게
-
-        // blockcard인 경우: 먹물을 사용한 플레이어(issuer)만 모든 blockcard를 희미하게 보여야 함
-        if (card && card.type === "blockcard") {
-          try {
-            const viewerId = this.isSingle
-              ? this.myId || "PLAYER_ME"
-              : socket.id;
-            const issuerId = card.issuer || null;
-            if (issuerId && viewerId && issuerId === viewerId) {
-              openCardImg.setAlpha(0.35);
-            }
-          } catch (e) {}
-        }
+          .setDepth(150 + index);
 
         this.playerTableGroup.add(openCardImg);
       } else if (card && card.type === THUNDER_CARD_TYPE) {
@@ -7355,7 +7355,30 @@ class GameScene extends Phaser.Scene {
       }
     });
 
-    // blockcards are actual entries in openStack now; drawing is handled above
+    // 그 다음 blockcard들을 그립니다. 항상 최상단이 되도록 높은 depth를 설정.
+    const BLOCKCARD_BASE_DEPTH = 500000;
+    blockCards.forEach((card, index) => {
+      const cardKey = this.getCardKey(card);
+      const offsetX = 0;
+      const offsetY = 0;
+
+      if (this.textures.exists(cardKey)) {
+        const openCardImg = this.add
+          .image(baseX + offsetX, baseY + offsetY, cardKey)
+          .setDisplaySize(width * 0.18, width * 0.25)
+          .setDepth(BLOCKCARD_BASE_DEPTH + index);
+
+        try {
+          const viewerId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
+          const viewerIsIssuer =
+            Array.isArray(this.blockEffects) &&
+            this.blockEffects.some((e) => e.issuer === viewerId);
+          if (viewerIsIssuer) openCardImg.setAlpha(0.35);
+        } catch (e) {}
+
+        this.playerTableGroup.add(openCardImg);
+      }
+    });
   }
 
   playWinAnimation(data) {
@@ -7626,13 +7649,19 @@ class GameScene extends Phaser.Scene {
       targetOffsetX = -currentStackCount * step; // 오른쪽: 왼쪽으로 쌓임
     }
 
+    // 제출 중인 카드는 블록카드보다 아래에 보이도록 낮은 depth로 설정
     const tempCard = this.add
       .image(startPos.x, startPos.y, "card_back")
       .setDisplaySize(width * 0.15, width * 0.22)
-      .setDepth(2000);
+      .setDepth(100);
 
     const dist = width * 0.25;
     const rad = Phaser.Math.DegToRad(startPos.rotation - 90);
+
+    const viewerId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
+    const viewerIsIssuer =
+      Array.isArray(this.blockEffects) &&
+      this.blockEffects.some((e) => e.issuer === viewerId);
 
     this.tweens.add({
       targets: tempCard,
@@ -7641,8 +7670,17 @@ class GameScene extends Phaser.Scene {
       duration: 300,
       ease: "Cubic.out",
       onUpdate: (tween) => {
+        // 블록 효과가 활성화된 경우, 발행자(issuer)만 카드 면을 볼 수 있도록 함
         if (tween.progress > 0.5 && tempCard.texture.key === "card_back") {
-          if (this.textures.exists(cardKey)) tempCard.setTexture(cardKey);
+          if (
+            Array.isArray(this.blockEffects) &&
+            this.blockEffects.length > 0 &&
+            !viewerIsIssuer
+          ) {
+            // block active and viewer is NOT issuer -> keep back texture (do not reveal)
+          } else {
+            if (this.textures.exists(cardKey)) tempCard.setTexture(cardKey);
+          }
         }
       },
       onComplete: () => {
