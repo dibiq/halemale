@@ -115,49 +115,65 @@ socket.off("serverHello").on("serverHello", (payload) => {
 // utility for cutting player_2_sprite into 10 frames (columns)
 // called early in both LobbyScene and GameScene so UI can display when owned.
 function ensurePlayer2Frames(scene) {
-  if (!scene || !scene.textures) return;
-  // must have the base sprite loaded first
-  if (!scene.textures.exists("player_2_sprite")) return;
-  const tex = scene.textures.get("player_2_sprite");
-  const img = tex.getSourceImage();
-  if (!img || !img.width || !img.height) return;
-
-  const cols = 10; // sprite is known to be a 10×10 grid
-  const w = img.width;
-  const h = img.height;
-  const frameW = Math.floor(w / cols) || w;
-  const rows = 10; // fixed
-  const frameH = Math.floor(h / rows) || h;
-
-  let idx = 1;
-  for (let r = 0; r < rows; r += 1) {
-    for (let c = 0; c < cols; c += 1) {
-      // extract into temporary canvas to examine pixels
-      const temp = document.createElement("canvas");
-      temp.width = frameW;
-      temp.height = frameH;
-      const tctx = temp.getContext("2d");
-      tctx.drawImage(img, -c * frameW, -r * frameH);
-      const data = tctx.getImageData(0, 0, frameW, frameH).data;
-      let nonEmpty = false;
-      for (let i = 3; i < data.length; i += 4) {
-        if (data[i] !== 0) {
-          nonEmpty = true;
-          break;
-        }
-      }
-      if (!nonEmpty) {
-        // skip blank cell
-        continue;
-      }
-      const key = `player_2_${idx}`;
-      idx += 1;
-      if (scene.textures.exists(key)) continue;
-      const canvas = scene.textures.createCanvas(key, frameW, frameH);
-      const ctx = canvas.getContext();
-      ctx.drawImage(img, -c * frameW, -r * frameH);
-      canvas.refresh();
+  try {
+    if (!scene || !scene.textures) {
+      console.log("[ensurePlayer2Frames] no scene/textures");
+      return;
     }
+    // must have the base sprite loaded first
+    if (!scene.textures.exists("player_2_sprite")) {
+      console.log("[ensurePlayer2Frames] base sprite not yet available");
+      return;
+    }
+    const tex = scene.textures.get("player_2_sprite");
+    const img = tex.getSourceImage();
+    if (!img || !img.width || !img.height) {
+      console.log("[ensurePlayer2Frames] invalid image");
+      return;
+    }
+
+    const cols = 10; // sprite is known to be a 10×10 grid
+    const w = img.width;
+    const h = img.height;
+    const frameW = Math.floor(w / cols) || w;
+    const rows = 10; // fixed
+    const frameH = Math.floor(h / rows) || h;
+
+    let idx = 1;
+    let created = 0;
+    for (let r = 0; r < rows; r += 1) {
+      for (let c = 0; c < cols; c += 1) {
+        // extract into temporary canvas to examine pixels
+        const temp = document.createElement("canvas");
+        temp.width = frameW;
+        temp.height = frameH;
+        const tctx = temp.getContext("2d");
+        tctx.drawImage(img, -c * frameW, -r * frameH);
+        const data = tctx.getImageData(0, 0, frameW, frameH).data;
+        let nonEmpty = false;
+        for (let i = 3; i < data.length; i += 4) {
+          if (data[i] !== 0) {
+            nonEmpty = true;
+            break;
+          }
+        }
+        if (!nonEmpty) {
+          // skip blank cell
+          continue;
+        }
+        const key = `player_2_${idx}`;
+        idx += 1;
+        if (scene.textures.exists(key)) continue;
+        const canvas = scene.textures.createCanvas(key, frameW, frameH);
+        const ctx = canvas.getContext();
+        ctx.drawImage(img, -c * frameW, -r * frameH);
+        canvas.refresh();
+        created++;
+      }
+    }
+    console.log("[ensurePlayer2Frames] created", created, "frames");
+  } catch (e) {
+    console.error("[ensurePlayer2Frames] error", e);
   }
 }
 
@@ -1869,209 +1885,6 @@ class LobbyScene extends Phaser.Scene {
     });
   }
 
-  ensureAvatarAnimation(baseKey) {
-    const animKey = this.getAvatarAnimKey(baseKey);
-    if (this.anims.exists(animKey)) {
-      return animKey;
-    }
-
-    if (baseKey === "player_1" && this.canUsePlayer1SpriteSheets()) {
-      const sheetMetas = this.getPlayer1SpriteSheets()
-        .map(({ key: textureKey, frameCount }) => {
-          const texture = this.textures.get(textureKey);
-          const availableFrames = Math.max(0, (texture.frameTotal || 1) - 1);
-          const totalFrames = Math.min(
-            Math.max(0, frameCount),
-            availableFrames,
-          );
-          return { textureKey, totalFrames };
-        })
-        .filter((item) => item.totalFrames > 0);
-
-      const sheetMap = new Map(
-        sheetMetas.map((item) => [item.textureKey, item.totalFrames]),
-      );
-      const frames = [];
-      for (let row = 0; row < 10; row += 1) {
-        for (let col = 0; col < 10; col += 1) {
-          const localRow = row < 5 ? row : row - 5;
-          const localCol = col < 5 ? col : col - 5;
-          const textureKey =
-            row < 5
-              ? col < 5
-                ? "player_1_sprite_a"
-                : "player_1_sprite_b"
-              : col < 5
-                ? "player_1_sprite_c"
-                : "player_1_sprite_d";
-          const frameIndex = localRow * 5 + localCol;
-          const totalFrames = sheetMap.get(textureKey) || 0;
-          if (frameIndex >= totalFrames) {
-            continue;
-          }
-          frames.push({ key: textureKey, frame: frameIndex });
-        }
-      }
-
-      if (frames.length === 0) {
-        return null;
-      }
-
-      this.anims.create({
-        key: animKey,
-        frames,
-        frameRate: this.getAvatarAnimFrameRate(baseKey),
-        repeat: -1,
-      });
-
-      return animKey;
-    }
-
-    // dynamic handling for player_2 (grid split above)
-    if (baseKey === "player_2") {
-      const frames = [];
-      let idx = 1;
-      while (true) {
-        const textureKey = `player_2_${idx}`;
-        if (this.textures.exists(textureKey)) {
-          frames.push({ key: textureKey });
-          idx += 1;
-          continue;
-        }
-        break;
-      }
-      if (frames.length === 0) return null;
-      this.anims.create({
-        key: animKey,
-        frames,
-        frameRate: this.getAvatarAnimFrameRate(baseKey),
-        repeat: -1,
-      });
-      return animKey;
-    }
-
-    const maxFrame = this.getAvatarAnimMaxFrame(baseKey);
-    const frames = [];
-    for (let frame = 1; frame <= maxFrame; frame += 1) {
-      const textureKey = `${baseKey}_${frame}`;
-      if (this.textures.exists(textureKey)) {
-        frames.push({ key: textureKey });
-      }
-    }
-
-    if (frames.length === 0) {
-      return null;
-    }
-
-    this.anims.create({
-      key: animKey,
-      frames,
-      frameRate: this.getAvatarAnimFrameRate(baseKey),
-      repeat: -1,
-    });
-
-    return animKey;
-  }
-
-  applyAvatarAnimation(target, baseKey) {
-    if (!target || !target.active) {
-      return;
-    }
-
-    if (typeof target.getData === "function") {
-      if (target.getData("avatarDisplayWidth") === undefined) {
-        target.setData("avatarDisplayWidth", target.displayWidth);
-      }
-      if (target.getData("avatarDisplayHeight") === undefined) {
-        target.setData("avatarDisplayHeight", target.displayHeight);
-      }
-    }
-
-    const avatarDisplayWidth =
-      typeof target.getData === "function"
-        ? target.getData("avatarDisplayWidth")
-        : target.displayWidth;
-    const avatarDisplayHeight =
-      typeof target.getData === "function"
-        ? target.getData("avatarDisplayHeight")
-        : target.displayHeight;
-
-    if (
-      typeof target.getData === "function" &&
-      target.getData("avatarBaseY") === undefined
-    ) {
-      target.setData("avatarBaseY", target.y);
-    }
-
-    const avatarBaseY =
-      typeof target.getData === "function"
-        ? target.getData("avatarBaseY")
-        : target.y;
-
-    const animKey = this.ensureAvatarAnimation(baseKey);
-
-    // treat player1 and player2 similarly: anchor bottom so varying frame heights
-    if (
-      (baseKey === "player_1" && this.canUsePlayer1SpriteSheets()) ||
-      baseKey === "player_2"
-    ) {
-      target.setOrigin(0.5, 1);
-      if (avatarDisplayWidth > 0 && avatarDisplayHeight > 0) {
-        target.setDisplaySize(avatarDisplayWidth, avatarDisplayHeight);
-      }
-      target.y = avatarBaseY + target.displayHeight * 0.5;
-      // set initial texture for player1 or player2
-      if (baseKey === "player_1") {
-        target.setTexture(this.getPlayer1SpriteSheets()[0].key, 0);
-      } else {
-        const firstFrameKey = `${baseKey}_1`;
-        if (this.textures.exists(firstFrameKey)) {
-          target.setTexture(firstFrameKey);
-        }
-      }
-      if (avatarDisplayWidth > 0 && avatarDisplayHeight > 0) {
-        target.setDisplaySize(avatarDisplayWidth, avatarDisplayHeight);
-      }
-      if (animKey) {
-        target.play(animKey, true);
-        // compute fixed bottom Y once (use intended displayHeight)
-        const fixedBottomY = avatarBaseY + avatarDisplayHeight * 0.5;
-        // ensure each frame retains the intended display size and bottom y
-        target.on("animationupdate", () => {
-          if (avatarDisplayWidth > 0 && avatarDisplayHeight > 0) {
-            target.setDisplaySize(avatarDisplayWidth, avatarDisplayHeight);
-          }
-          target.y = fixedBottomY;
-        });
-        // also apply immediately
-        if (avatarDisplayWidth > 0 && avatarDisplayHeight > 0) {
-          target.setDisplaySize(avatarDisplayWidth, avatarDisplayHeight);
-        }
-        target.y = fixedBottomY;
-      }
-      return;
-    }
-
-    // all other baseKeys (player3/4 etc) fall back to centered origin
-    target.setOrigin(0.5, 0.5);
-    target.y = avatarBaseY;
-
-    const firstFrameKey = `${baseKey}_1`;
-
-    if (this.textures.exists(firstFrameKey)) {
-      target.setTexture(firstFrameKey);
-      if (avatarDisplayWidth > 0 && avatarDisplayHeight > 0) {
-        target.setDisplaySize(avatarDisplayWidth, avatarDisplayHeight);
-      }
-    }
-
-    if (animKey) {
-      target.play(animKey, true);
-      if (avatarDisplayWidth > 0 && avatarDisplayHeight > 0) {
-        target.setDisplaySize(avatarDisplayWidth, avatarDisplayHeight);
-      }
-    }
-  }
 
   updateProfileAvatarUI() {
     if (!this.profileImage || !this.profileAvatarKeys) {
@@ -5929,6 +5742,8 @@ class LobbyScene extends Phaser.Scene {
 class GameScene extends Phaser.Scene {
   constructor() {
     super("GameScene");
+    // disable win-avatar animation by default to avoid X boxes
+    this.skipWinAvatarAnim = true;
   }
   safeSyncInventory(reason, extra = {}) {
     try {
@@ -5958,6 +5773,219 @@ class GameScene extends Phaser.Scene {
       );
     } catch (e) {
       console.warn("safeSyncInventory error", e);
+    }
+  }
+
+  // avatar animation helpers copied from LobbyScene
+  ensureAvatarAnimation(baseKey) {
+    const animKey = this.getAvatarAnimKey(baseKey);
+    console.log("[ensureAvatarAnimation] request", baseKey, animKey);
+    if (this.anims.exists(animKey)) {
+      console.log("[ensureAvatarAnimation] already exists");
+      return animKey;
+    }
+
+    try {
+      if (baseKey === "player_1" && this.canUsePlayer1SpriteSheets()) {
+        console.log("[ensureAvatarAnimation] using player1 sprite sheets");
+        const sheetMetas = this.getPlayer1SpriteSheets()
+          .map(({ key: textureKey, frameCount }) => {
+            const texture = this.textures.get(textureKey);
+            const availableFrames = Math.max(0, (texture.frameTotal || 1) - 1);
+            const totalFrames = Math.min(
+              Math.max(0, frameCount),
+              availableFrames,
+            );
+            return { textureKey, totalFrames };
+          })
+          .filter((item) => item.totalFrames > 0);
+
+        const sheetMap = new Map(
+          sheetMetas.map((item) => [item.textureKey, item.totalFrames]),
+        );
+        const frames = [];
+        for (let row = 0; row < 10; row += 1) {
+          for (let col = 0; col < 10; col += 1) {
+            const localRow = row < 5 ? row : row - 5;
+            const localCol = col < 5 ? col : col - 5;
+            const textureKey =
+              row < 5
+                ? col < 5
+                  ? "player_1_sprite_a"
+                  : "player_1_sprite_b"
+                : col < 5
+                  ? "player_1_sprite_c"
+                  : "player_1_sprite_d";
+            const frameIndex = localRow * 5 + localCol;
+            const totalFrames = sheetMap.get(textureKey) || 0;
+            if (frameIndex >= totalFrames) {
+              continue;
+            }
+            frames.push({ key: textureKey, frame: frameIndex });
+          }
+        }
+
+        if (frames.length === 0) {
+          return null;
+        }
+
+        this.anims.create({
+          key: animKey,
+          frames,
+          frameRate: this.getAvatarAnimFrameRate(baseKey),
+          repeat: -1,
+        });
+
+        return animKey;
+      }
+
+      // dynamic handling for player_2 (grid split above)
+      if (baseKey === "player_2") {
+        console.log("[ensureAvatarAnimation] building player2 frames");
+        const frames = [];
+        let idx = 1;
+        while (true) {
+          const textureKey = `player_2_${idx}`;
+          if (this.textures.exists(textureKey)) {
+            frames.push({ key: textureKey });
+            idx += 1;
+            continue;
+          }
+          break;
+        }
+        console.log("[ensureAvatarAnimation] player2 frames count", frames.length);
+        this.anims.create({
+          key: animKey,
+          frames,
+          frameRate: this.getAvatarAnimFrameRate(baseKey),
+          repeat: -1,
+        });
+        return animKey;
+      }
+
+      const maxFrame = this.getAvatarAnimMaxFrame(baseKey);
+      const frames = [];
+      for (let frame = 1; frame <= maxFrame; frame += 1) {
+        const textureKey = `${baseKey}_${frame}`;
+        if (this.textures.exists(textureKey)) {
+          frames.push({ key: textureKey });
+        }
+      }
+
+      if (frames.length === 0) {
+        return null;
+      }
+
+      this.anims.create({
+        key: animKey,
+        frames,
+        frameRate: this.getAvatarAnimFrameRate(baseKey),
+        repeat: -1,
+      });
+
+      return animKey;
+    } catch (err) {
+      console.error("[ensureAvatarAnimation] error", err);
+      return null;
+    }
+  }
+
+  applyAvatarAnimation(target, baseKey) {
+    console.log('[applyAvatarAnimation] baseKey=', baseKey, 'target=', target);
+    if (!target || !target.active) {
+      console.log('[applyAvatarAnimation] target inactive, abort');
+      return;
+    }
+
+    if (typeof target.getData === "function") {
+      if (target.getData("avatarDisplayWidth") === undefined) {
+        target.setData("avatarDisplayWidth", target.displayWidth);
+      }
+      if (target.getData("avatarDisplayHeight") === undefined) {
+        target.setData("avatarDisplayHeight", target.displayHeight);
+      }
+    }
+
+    const avatarDisplayWidth =
+      typeof target.getData === "function"
+        ? target.getData("avatarDisplayWidth")
+        : target.displayWidth;
+    const avatarDisplayHeight =
+      typeof target.getData === "function"
+        ? target.getData("avatarDisplayHeight")
+        : target.displayHeight;
+
+    if (
+      typeof target.getData === "function" &&
+      target.getData("avatarBaseY") === undefined
+    ) {
+      target.setData("avatarBaseY", target.y);
+    }
+
+    const avatarBaseY =
+      typeof target.getData === "function"
+        ? target.getData("avatarBaseY")
+        : target.y;
+
+    const animKey = this.ensureAvatarAnimation(baseKey);
+
+    // treat player1 and player2 similarly: anchor bottom so varying frame heights
+    if (
+      (baseKey === "player_1" && this.canUsePlayer1SpriteSheets()) ||
+      baseKey === "player_2"
+    ) {
+      target.setOrigin(0.5, 1);
+      if (avatarDisplayWidth > 0 && avatarDisplayHeight > 0) {
+        target.setDisplaySize(avatarDisplayWidth, avatarDisplayHeight);
+      }
+      target.y = avatarBaseY + target.displayHeight * 0.5;
+      // set initial texture for player1 or player2
+      if (baseKey === "player_1") {
+        target.setTexture(this.getPlayer1SpriteSheets()[0].key, 0);
+      } else {
+        const firstFrameKey = `${baseKey}_1`;
+        if (this.textures.exists(firstFrameKey)) {
+          target.setTexture(firstFrameKey);
+        }
+      }
+      if (avatarDisplayWidth > 0 && avatarDisplayHeight > 0) {
+        target.setDisplaySize(avatarDisplayWidth, avatarDisplayHeight);
+      }
+      if (animKey) {
+        target.play(animKey, true);
+        const fixedBottomY = avatarBaseY + avatarDisplayHeight * 0.5;
+        target.on("animationupdate", () => {
+          if (avatarDisplayWidth > 0 && avatarDisplayHeight > 0) {
+            target.setDisplaySize(avatarDisplayWidth, avatarDisplayHeight);
+          }
+          target.y = fixedBottomY;
+        });
+        if (avatarDisplayWidth > 0 && avatarDisplayHeight > 0) {
+          target.setDisplaySize(avatarDisplayWidth, avatarDisplayHeight);
+        }
+        target.y = fixedBottomY;
+      }
+      return;
+    }
+
+    // all other baseKeys (player3/4 etc) fall back to centered origin
+    target.setOrigin(0.5, 0.5);
+    target.y = avatarBaseY;
+
+    const firstFrameKey = `${baseKey}_1`;
+
+    if (this.textures.exists(firstFrameKey)) {
+      target.setTexture(firstFrameKey);
+      if (avatarDisplayWidth > 0 && avatarDisplayHeight > 0) {
+        target.setDisplaySize(avatarDisplayWidth, avatarDisplayHeight);
+      }
+    }
+
+    if (animKey) {
+      target.play(animKey, true);
+      if (avatarDisplayWidth > 0 && avatarDisplayHeight > 0) {
+        target.setDisplaySize(avatarDisplayWidth, avatarDisplayHeight);
+      }
     }
   }
   init(data) {
@@ -7767,11 +7795,66 @@ class GameScene extends Phaser.Scene {
     const relWinIdx = (winIdx - myIndex + players.length) % players.length;
     const targetPos = pos[relWinIdx];
 
-    // 콤보 표시: 같은 플레이어가 연속으로 맞췄을 때
-    try {
-      const combo =
+    // show single avatar animation at center once (for winner)
+    let combo = 0;
+    // avatar animation disabled permanently during debugging –
+    // keeps the X box from appearing even if textures are missing
+    if (false && !this.skipWinAvatarAnim) {
+      try {
+        const centerX = width * 0.5;
+        const centerY = height * 0.5;
+        const avatarKey = players[winIdx]?.avatarKey || players[winIdx]?.current_character || "player_1";
+        console.log("[playWinAnimation] avatarKey=", avatarKey);
+        if (avatarKey) {
+          // make sure frames exist (player2 splitting may create textures)
+          ensurePlayer2Frames(this);
+          console.log("[playWinAnimation] preparing sprite for", avatarKey);
+
+          // determine a texture that definitely exists; fall back to defaults
+          let baseTexture = null;
+          if (this.textures.exists(`${avatarKey}_1`)) {
+            baseTexture = `${avatarKey}_1`;
+          } else if (this.textures.exists(avatarKey)) {
+            baseTexture = avatarKey;
+          } else {
+            console.warn(
+              "[playWinAnimation] missing avatar texture for",
+              avatarKey,
+              "using fallback player_1"
+            );
+            baseTexture = this.textures.exists("player_1_1")
+              ? "player_1_1"
+              : "player_1";
+          }
+
+          const tempSprite = this.add
+            .sprite(centerX, centerY, baseTexture)
+            .setDisplaySize(width * 0.3, width * 0.3)
+            .setDepth(10050);
+          this.applyAvatarAnimation(tempSprite, avatarKey);
+          // ensure the generated animation (if any) runs only once
+          const anim = tempSprite.anims.currentAnim;
+          if (anim) {
+            anim.repeat = 0;
+          }
+          tempSprite.on("animationcomplete", () => {
+            try {
+              tempSprite.destroy();
+            } catch (e) {}
+          });
+        }
+
+        combo =
+          this.comboState && this.comboState.count ? this.comboState.count : 0;
+      } catch (e) {
+        console.error("[playWinAnimation] avatar animation error", e);
+      }
+    } else {
+      console.log("[playWinAnimation] avatar animation disabled (static guard)");
+      combo =
         this.comboState && this.comboState.count ? this.comboState.count : 0;
-      if (combo > 1 && this.comboState.lastWinnerId === winnerId) {
+    }
+    if (combo > 1 && this.comboState.lastWinnerId === winnerId) {
         const comboText = this.add
           .text(targetPos.x, targetPos.y - height * 0.12, `${combo}콤보!`, {
             fontFamily: GAME_FONTS.main,
@@ -7850,9 +7933,7 @@ class GameScene extends Phaser.Scene {
           this.sound.play("irassai", { volume: 0.25 });
         }
       }
-    } catch (e) {
-      // 안전하게 무시
-    }
+    
 
     let totalCardsToFly = 0;
     let finishedFlys = 0;
@@ -11611,6 +11692,12 @@ class GameScene extends Phaser.Scene {
       });
     });
   }
+}
+
+// share animation helpers with LobbyScene as well
+if (typeof LobbyScene !== 'undefined' && typeof GameScene !== 'undefined') {
+  LobbyScene.prototype.ensureAvatarAnimation = GameScene.prototype.ensureAvatarAnimation;
+  LobbyScene.prototype.applyAvatarAnimation = GameScene.prototype.applyAvatarAnimation;
 }
 
 const config = {
