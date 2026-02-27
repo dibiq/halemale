@@ -198,6 +198,8 @@ const PLUS2_CARD_TYPE = "plus2";
 const PLUS2_CARD_COUNT = 1;
 const NOT5_CARD_TYPE = "not5";
 const NOT5_CARD_COUNT = 1;
+// 아이템 ID constants (client와 매칭)
+const SHIELD_CARD_ID = 5;
 const SERVER_BUILD = "2026-02-24-thunder-insert-v1";
 
 function getLevelFromExperience(experience) {
