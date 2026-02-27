@@ -6353,11 +6353,13 @@ class GameScene extends Phaser.Scene {
             const owned =
               JSON.parse(localStorage.getItem("specialCards")) || {};
             const lockCount = Number(owned[4] || 0);
+            console.log("[autoLockPenalty] local lock count", lockCount, owned);
             if (lockCount > 0) {
               // 멀티플레이: 서버에 사용 요청을 보낸 뒤 응답(또는 타임아웃)을 기다림
               if (!this.isSingle && socket && socket.connected) {
                 let handled = false;
                 const timeout = this.time.delayedCall(1200, () => {
+                console.log("[autoLockPenalty] timeout reached, applying penalty");
                   if (handled) return;
                   handled = true;
                   // 타임아웃 시 패널티 처리 계속
@@ -6384,6 +6386,8 @@ class GameScene extends Phaser.Scene {
                     // response received from lock request
                     console.log("[autoLockPenalty] server response", res);
 
+                    // 서버 response
+                    console.log("[autoLockPenalty] server response", res);
                     // 서버가 사용을 허용한 경우
                     if (res && res.success) {
                       // 서버가 갱신한 보유 아이템 정보이 있으면 적용

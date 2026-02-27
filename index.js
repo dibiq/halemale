@@ -3418,7 +3418,29 @@ io.on("connection", (socket) => {
 
       // 자동 자물쇠 처리: 패널티 적용 전에 해당 플레이어 소켓에 lock(id=4)이 있으면 소모하고 패널티를 건너뜁니다.
       try {
+        // ensure our room snapshot has up-to-date specialCards values by
+        // refreshing from live sockets (same helper used elsewhere)
+        const refreshRoomSpecialCards = (room) => {
+          if (!room || !Array.isArray(room.players)) return;
+          room.players.forEach((p) => {
+            if (!p || !p.id) return;
+            const s = io.sockets.sockets.get(p.id);
+            const sockCards = s && s.specialCards ? s.specialCards : {};
+            // console.log(`[debug] refreshRoomSpecialCards player=${p.nickname} id=${p.id} socketCards=${JSON.stringify(sockCards)}`);
+            if (s && s.specialCards) {
+              p.specialCards = { ...s.specialCards };
+            }
+          });
+        };
+        refreshRoomSpecialCards(room);
+
         const penalizedSocket = io.sockets.sockets.get(sock.id) || sock;
+        console.log(
+          "[auto-lock check] socketId=",
+          sock.id,
+          "specialCards=",
+          penalizedSocket.specialCards,
+        );
         if (
           penalizedSocket &&
           penalizedSocket.specialCards &&
