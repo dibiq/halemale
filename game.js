@@ -6574,6 +6574,41 @@ class GameScene extends Phaser.Scene {
       }
     });
 
+    socket.off("specialPlay").on("specialPlay", (data) => {
+      try {
+        if (!data) return;
+        // If this client already initiated the same special this turn and played local animation,
+        // avoid double-playing the same animation for the issuer.
+        if (data.by && data.by === socket.id) {
+          try {
+            if (this.specialUsedThisTurn && this.specialUsedThisTurn[socket.id])
+              return;
+          } catch (e) {}
+        }
+        const imageKey =
+          data.imageKey ||
+          (data.cardId
+            ? data.cardId === 6
+              ? "block"
+              : data.cardId === 7
+                ? "thief"
+                : data.cardId === 8
+                  ? "king"
+                  : "block"
+            : "block");
+        const title = data.title || "특수카드 사용";
+        const subtitle = data.subtitle || "특수 효과가 실행됩니다.";
+        this.playSpecialAnimation({
+          imageKey,
+          title,
+          subtitle,
+          onComplete: () => {},
+        });
+      } catch (e) {
+        console.warn("specialPlay handler error", e);
+      }
+    });
+
     socket.off("gameEnded").on("gameEnded", (data) => {
       // 💡 즉시 띄우지 않고 1~1.5초 정도 여유를 줌
       this.time.delayedCall(1000, () => {
@@ -7835,6 +7870,161 @@ class GameScene extends Phaser.Scene {
       });
     } catch (e) {
       console.warn("showShieldEffect error", e);
+    }
+  }
+
+  // 중앙 특수아이템 애니메이션 재생 (이미지, 제목, 설명) 후 onComplete 호출
+  playSpecialAnimation({ imageKey, title, subtitle, onComplete }) {
+    try {
+      const { width, height } = this.cameras.main;
+      const container = this.add.container(width * 0.5, height * 0.45);
+      container.setDepth(9000);
+
+      const bg = this.add.rectangle(0, 0, 420, 180, 0x000000, 0.6);
+      bg.setStrokeStyle(2, 0xffffff, 0.06);
+      const img = this.add.image(-140, 0, imageKey).setDisplaySize(120, 120);
+      const titleText = this.add
+        .text(-50, -28, title, { font: "24px Arial", color: "#ffffff" })
+        .setOrigin(0, 0.5);
+      const subText = this.add
+        .text(-50, 18, subtitle, {
+          font: "14px Arial",
+          color: "#dddddd",
+          wordWrap: { width: 300 },
+        })
+        .setOrigin(0, 0.5);
+
+      container.add([bg, img, titleText, subText]);
+      container.setAlpha(0);
+      container.setScale(0.8);
+
+      this.tweens.add({
+        targets: container,
+        alpha: 1,
+        scale: 1,
+        duration: 360,
+        ease: "Back.out",
+        onComplete: () => {
+          // 잠깐 유지 후 사라짐
+          this.time.delayedCall(900, () => {
+            this.tweens.add({
+              targets: container,
+              alpha: 0,
+              scale: 0.9,
+              duration: 300,
+              onComplete: () => {
+                try {
+                  container.destroy();
+                } catch (e) {}
+                try {
+                  if (onComplete) onComplete();
+                } catch (e) {
+                  console.warn("playSpecialAnimation onComplete error", e);
+                }
+              },
+            });
+          });
+        },
+      });
+    } catch (e) {
+      console.warn("playSpecialAnimation error", e);
+      if (onComplete) onComplete();
+    }
+  }
+
+  // 서버에 특수카드 사용 요청(낙관적 UI 업데이트 포함)
+  requestUseSpecialWithOptimistic(cardId, cardName) {
+    try {
+      this.showToast(`${cardName} 카드를 사용 요청합니다...`, "#f39c12");
+      let handled = false;
+      const timeout = this.time.delayedCall(2500, () => {
+        if (handled) return;
+        handled = true;
+        this.showToast("서버 응답이 없어 사용이 취소되었습니다.", "#e74c3c");
+      });
+
+      const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
+
+      // 낙관적 업데이트: UI와 로컬 인벤토리 차감
+      try {
+        this.specialUsedThisTurn = this.specialUsedThisTurn || {};
+        this.specialUsedThisTurn[myId] = true;
+        const specialCardsOwned =
+          JSON.parse(localStorage.getItem("specialCards")) || {};
+        specialCardsOwned[cardId] = (specialCardsOwned[cardId] || 0) - 1;
+        if (specialCardsOwned[cardId] <= 0) delete specialCardsOwned[cardId];
+        localStorage.setItem("specialCards", JSON.stringify(specialCardsOwned));
+        this.renderTable(this.roundData.players);
+      } catch (e) {
+        console.warn("optimistic update failed", e);
+      }
+
+      socket.emit("requestUseSpecial", { cardId }, (res) => {
+        if (handled) return;
+        handled = true;
+        timeout.remove(false);
+        if (res && res.success) {
+          if (res.updatedSpecialCards) {
+            localStorage.setItem(
+              "specialCards",
+              JSON.stringify(res.updatedSpecialCards),
+            );
+          }
+          try {
+            if (Array.isArray(res.players) && res.players.length > 0) {
+              this.roundData.players.forEach((oldPlayer) => {
+                const newPlayer = res.players.find(
+                  (p) => p.id === oldPlayer.id,
+                );
+                if (newPlayer) {
+                  const preservedOpenStack = oldPlayer.openStack;
+                  Object.assign(oldPlayer, newPlayer);
+                  oldPlayer.openStack = preservedOpenStack;
+                }
+              });
+              this.renderTable(this.roundData.players);
+            }
+          } catch (e) {
+            console.warn("merge res.players failed", e);
+          }
+
+          const syncKey =
+            cardId === 6
+              ? "useBlock"
+              : cardId === 7
+                ? "useThief"
+                : cardId === 8
+                  ? "useKing"
+                  : "useSpecial";
+          this.safeSyncInventory(syncKey, { usedCardId: cardId });
+          this.showToast(`${cardName} 사용 요청을 보냈습니다.`, "#f39c12");
+        } else {
+          try {
+            const serverCards = (res && res.updatedSpecialCards) || null;
+            if (serverCards) {
+              localStorage.setItem("specialCards", JSON.stringify(serverCards));
+            } else {
+              const prev =
+                JSON.parse(localStorage.getItem("specialCards") || "{}") || {};
+              prev[cardId] = (prev[cardId] || 0) + 1;
+              localStorage.setItem("specialCards", JSON.stringify(prev));
+            }
+          } catch (e) {
+            console.warn("rollback failed", e);
+          }
+          try {
+            this.specialUsedThisTurn = this.specialUsedThisTurn || {};
+            this.specialUsedThisTurn[myId] = false;
+          } catch (e) {}
+          this.renderTable(this.roundData.players);
+          this.showToast(
+            res && res.message ? res.message : "사용 실패",
+            "#e74c3c",
+          );
+        }
+      });
+    } catch (e) {
+      console.warn("requestUseSpecialWithOptimistic failed", e);
     }
   }
 
@@ -9473,120 +9663,13 @@ class GameScene extends Phaser.Scene {
 
     // thief 카드 (id=7) 동작
     if (Number(cardId) === 7) {
-      // 멀티플레이
+      // 멀티플레이: 중앙 애니메이션 재생 후 서버 요청/낙관 업데이트 수행
       if (!this.isSingle && socket && socket.connected) {
-        this.showToast(`${cardName} 카드를 사용 요청합니다...`, "#f39c12");
-        let handled = false;
-        const timeout = this.time.delayedCall(2500, () => {
-          if (handled) return;
-          handled = true;
-          this.showToast("서버 응답이 없어 사용이 취소되었습니다.", "#e74c3c");
-        });
-
-        const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
-
-        // 즉시 UI와 로컬 인벤토리를 낙관적으로 갱신하여 중복 클릭을 방지
-        try {
-          this.specialUsedThisTurn = this.specialUsedThisTurn || {};
-          this.specialUsedThisTurn[myId] = true;
-          // 로컬 소모
-          specialCardsOwned[cardId] = count - 1;
-          if (specialCardsOwned[cardId] <= 0) delete specialCardsOwned[cardId];
-          localStorage.setItem(
-            "specialCards",
-            JSON.stringify(specialCardsOwned),
-          );
-          this.renderTable(this.roundData.players);
-        } catch (e) {
-          console.warn("optimistic update failed", e);
-        }
-
-        socket.emit("requestUseSpecial", { cardId: 7 }, (res) => {
-          if (handled) return;
-          handled = true;
-          timeout.remove(false);
-          if (res && res.success) {
-            // 서버가 응답으로 보낸 inventory가 있으면 적용
-            if (res.updatedSpecialCards) {
-              localStorage.setItem(
-                "specialCards",
-                JSON.stringify(res.updatedSpecialCards),
-              );
-            } else {
-              // 서버가 보낸 updatedSpecialCards가 없을 때는 이미 낙관 업데이트를 했으므로 특별한 처리는 필요 없음
-            }
-
-            // 서버가 응답으로 보낸 players 정보가 있다면 즉시 병합하여 카드 수를 반영
-            try {
-              if (Array.isArray(res.players) && res.players.length > 0) {
-                console.log("[requestUseSpecial] server players:", res.players);
-                const mySocketId = socket.id;
-                const myFromServer = res.players.find(
-                  (p) => p.id === mySocketId,
-                );
-                console.log("[requestUseSpecial] myFromServer:", myFromServer);
-                this.roundData.players.forEach((oldPlayer) => {
-                  const newPlayer = res.players.find(
-                    (p) => p.id === oldPlayer.id,
-                  );
-                  if (newPlayer && oldPlayer.id === mySocketId) {
-                    console.log(
-                      "[requestUseSpecial] merging my player, old->new:",
-                      {
-                        old: { id: oldPlayer.id, cards: oldPlayer.cards },
-                        new: { id: newPlayer.id, cards: newPlayer.cards },
-                      },
-                    );
-                  }
-                  if (newPlayer) {
-                    const preservedOpenStack = oldPlayer.openStack;
-                    Object.assign(oldPlayer, newPlayer);
-                    oldPlayer.openStack = preservedOpenStack;
-                  }
-                });
-                this.renderTable(this.roundData.players);
-              }
-            } catch (e) {
-              console.warn("merge res.players failed", e);
-            }
-
-            // 플레이어 상태 병합은 서버의 'specialUsed' 이벤트에서도 처리되므로
-            // 애니메이션은 그 이벤트에서 재생됩니다. 인벤토리 동기화 트리거
-            this.safeSyncInventory("useThief", { usedCardId: 7 });
-            this.showToast(
-              "도둑 카드 사용 요청을 보냈습니다. 처리 중...",
-              "#f39c12",
-            );
-          } else {
-            // 실패 시 낙관 업데이트 롤백
-            try {
-              const serverCards = (res && res.updatedSpecialCards) || null;
-              if (serverCards) {
-                localStorage.setItem(
-                  "specialCards",
-                  JSON.stringify(serverCards),
-                );
-              } else {
-                // 복원: 서버가 사용을 거부했으므로 로컬 카운트를 원래대로 복원
-                const prev =
-                  JSON.parse(localStorage.getItem("specialCards") || "{}") ||
-                  {};
-                prev[cardId] = (prev[cardId] || 0) + 1;
-                localStorage.setItem("specialCards", JSON.stringify(prev));
-              }
-            } catch (e) {
-              console.warn("rollback failed", e);
-            }
-            try {
-              this.specialUsedThisTurn = this.specialUsedThisTurn || {};
-              this.specialUsedThisTurn[myId] = false;
-            } catch (e) {}
-            this.renderTable(this.roundData.players);
-            this.showToast(
-              res && res.message ? res.message : "사용 실패",
-              "#e74c3c",
-            );
-          }
+        this.playSpecialAnimation({
+          imageKey: "thief",
+          title: "도둑 카드 사용",
+          subtitle: "생존 플레이어들로부터 1장씩 획득합니다.",
+          onComplete: () => this.requestUseSpecialWithOptimistic(7, cardName),
         });
         return;
       }
@@ -9595,98 +9678,11 @@ class GameScene extends Phaser.Scene {
       if (Number(cardId) === 8) {
         // 멀티플레이: 서버에 요청
         if (!this.isSingle && socket && socket.connected) {
-          this.showToast(`${cardName} 카드를 사용 요청합니다...`, "#f39c12");
-          let handled = false;
-          const timeout = this.time.delayedCall(2500, () => {
-            if (handled) return;
-            handled = true;
-            this.showToast(
-              "서버 응답이 없어 사용이 취소되었습니다.",
-              "#e74c3c",
-            );
-          });
-
-          const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
-
-          // 즉시 UI와 로컬 인벤토리를 낙관적으로 갱신하여 중복 클릭을 방지
-          try {
-            this.specialUsedThisTurn = this.specialUsedThisTurn || {};
-            this.specialUsedThisTurn[myId] = true;
-            // 로컬 소모
-            const specialCardsOwned =
-              JSON.parse(localStorage.getItem("specialCards")) || {};
-            specialCardsOwned[cardId] = (specialCardsOwned[cardId] || 0) - 1;
-            if (specialCardsOwned[cardId] <= 0)
-              delete specialCardsOwned[cardId];
-            localStorage.setItem(
-              "specialCards",
-              JSON.stringify(specialCardsOwned),
-            );
-            this.renderTable(this.roundData.players);
-          } catch (e) {
-            console.warn("optimistic update failed", e);
-          }
-
-          socket.emit("requestUseSpecial", { cardId: 8 }, (res) => {
-            if (handled) return;
-            handled = true;
-            timeout.remove(false);
-            if (res && res.success) {
-              if (res.updatedSpecialCards) {
-                localStorage.setItem(
-                  "specialCards",
-                  JSON.stringify(res.updatedSpecialCards),
-                );
-              }
-              try {
-                if (Array.isArray(res.players) && res.players.length > 0) {
-                  this.roundData.players.forEach((oldPlayer) => {
-                    const newPlayer = res.players.find(
-                      (p) => p.id === oldPlayer.id,
-                    );
-                    if (newPlayer) {
-                      const preservedOpenStack = oldPlayer.openStack;
-                      Object.assign(oldPlayer, newPlayer);
-                      oldPlayer.openStack = preservedOpenStack;
-                    }
-                  });
-                  this.renderTable(this.roundData.players);
-                }
-              } catch (e) {
-                console.warn("merge res.players failed", e);
-              }
-
-              this.safeSyncInventory("useKing", { usedCardId: 8 });
-              this.showToast("왕 카드 사용 요청을 보냈습니다.", "#f39c12");
-            } else {
-              // 실패 시 롤백
-              try {
-                const serverCards = (res && res.updatedSpecialCards) || null;
-                if (serverCards) {
-                  localStorage.setItem(
-                    "specialCards",
-                    JSON.stringify(serverCards),
-                  );
-                } else {
-                  const prev =
-                    JSON.parse(localStorage.getItem("specialCards") || "{}") ||
-                    {};
-                  prev[cardId] = (prev[cardId] || 0) + 1;
-                  localStorage.setItem("specialCards", JSON.stringify(prev));
-                }
-              } catch (e) {
-                console.warn("rollback failed", e);
-              }
-              try {
-                this.specialUsedThisTurn = this.specialUsedThisTurn || {};
-                this.specialUsedThisTurn[myId] = false;
-              } catch (e) {}
-              this.renderTable(this.roundData.players);
-              this.showToast(
-                res && res.message ? res.message : "사용 실패",
-                "#e74c3c",
-              );
-            }
+          this.playSpecialAnimation({
+            imageKey: "king",
+            title: "왕 카드 사용",
+            subtitle: "카드 보유 수가 가장 많은 플레이어와 덱을 교환합니다.",
+            onComplete: () => this.requestUseSpecialWithOptimistic(8, cardName),
           });
           return;
         }
@@ -9884,104 +9880,14 @@ class GameScene extends Phaser.Scene {
 
     // king 카드 (id=8) 처리 (독립 블록 - 싱글플레이에서 동작하도록)
     if (Number(cardId) === 8) {
-      // 멀티플레이: 서버에 요청
+      // 멀티플레이: 애니메이션 재생 후 서버 요청
       if (!this.isSingle && socket && socket.connected) {
-        try {
-          this.showToast(`${cardName} 카드를 사용 요청합니다...`, "#f39c12");
-          let handled = false;
-          const timeout = this.time.delayedCall(2500, () => {
-            if (handled) return;
-            handled = true;
-            this.showToast(
-              "서버 응답이 없어 사용이 취소되었습니다.",
-              "#e74c3c",
-            );
-          });
-
-          const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
-
-          // 즉시 UI와 로컬 인벤토리를 낙관적으로 갱신하여 중복 클릭을 방지
-          try {
-            this.specialUsedThisTurn = this.specialUsedThisTurn || {};
-            this.specialUsedThisTurn[myId] = true;
-            const specialCardsOwned =
-              JSON.parse(localStorage.getItem("specialCards")) || {};
-            specialCardsOwned[cardId] = (specialCardsOwned[cardId] || 0) - 1;
-            if (specialCardsOwned[cardId] <= 0)
-              delete specialCardsOwned[cardId];
-            localStorage.setItem(
-              "specialCards",
-              JSON.stringify(specialCardsOwned),
-            );
-            this.renderTable(this.roundData.players);
-          } catch (e) {
-            console.warn("optimistic update failed", e);
-          }
-
-          socket.emit("requestUseSpecial", { cardId: 8 }, (res) => {
-            if (handled) return;
-            handled = true;
-            timeout.remove(false);
-            if (res && res.success) {
-              if (res.updatedSpecialCards) {
-                localStorage.setItem(
-                  "specialCards",
-                  JSON.stringify(res.updatedSpecialCards),
-                );
-              }
-              try {
-                if (Array.isArray(res.players) && res.players.length > 0) {
-                  this.roundData.players.forEach((oldPlayer) => {
-                    const newPlayer = res.players.find(
-                      (p) => p.id === oldPlayer.id,
-                    );
-                    if (newPlayer) {
-                      const preservedOpenStack = oldPlayer.openStack;
-                      Object.assign(oldPlayer, newPlayer);
-                      oldPlayer.openStack = preservedOpenStack;
-                    }
-                  });
-                  this.renderTable(this.roundData.players);
-                }
-              } catch (e) {
-                console.warn("merge res.players failed", e);
-              }
-
-              this.safeSyncInventory("useKing", { usedCardId: 8 });
-              this.showToast("왕 카드 사용 요청을 보냈습니다.", "#f39c12");
-            } else {
-              // 실패 시 롤백
-              try {
-                const serverCards = (res && res.updatedSpecialCards) || null;
-                if (serverCards) {
-                  localStorage.setItem(
-                    "specialCards",
-                    JSON.stringify(serverCards),
-                  );
-                } else {
-                  const prev =
-                    JSON.parse(localStorage.getItem("specialCards") || "{}") ||
-                    {};
-                  prev[cardId] = (prev[cardId] || 0) + 1;
-                  localStorage.setItem("specialCards", JSON.stringify(prev));
-                }
-              } catch (e) {
-                console.warn("rollback failed", e);
-              }
-              try {
-                this.specialUsedThisTurn = this.specialUsedThisTurn || {};
-                this.specialUsedThisTurn[myId] = false;
-              } catch (e) {}
-              this.renderTable(this.roundData.players);
-              this.showToast(
-                res && res.message ? res.message : "사용 실패",
-                "#e74c3c",
-              );
-            }
-          });
-        } catch (e) {
-          console.warn("king multiplayer request failed", e);
-        }
+        this.playSpecialAnimation({
+          imageKey: "king",
+          title: "왕 카드 사용",
+          subtitle: "카드 보유 수가 가장 많은 플레이어와 덱을 교환합니다.",
+          onComplete: () => this.requestUseSpecialWithOptimistic(8, cardName),
+        });
         return;
       }
 
@@ -10068,95 +9974,13 @@ class GameScene extends Phaser.Scene {
 
     // 블록(먹물) 카드 (id=6) 처리
     if (Number(cardId) === 6) {
-      // 멀티플레이: 서버에 요청
+      // 멀티플레이: 중앙 애니메이션 재생 후 서버 요청/낙관 업데이트 수행
       if (!this.isSingle && socket && socket.connected) {
-        this.showToast(`${cardName} 카드를 사용 요청합니다...`, "#f39c12");
-        let handled = false;
-        const timeout = this.time.delayedCall(2500, () => {
-          if (handled) return;
-          handled = true;
-          this.showToast("서버 응답이 없어 사용이 취소되었습니다.", "#e74c3c");
-        });
-
-        const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
-
-        // 낙관적 업데이트: UI와 로컬 인벤토리 차감
-        try {
-          this.specialUsedThisTurn = this.specialUsedThisTurn || {};
-          this.specialUsedThisTurn[myId] = true;
-          const specialCardsOwned =
-            JSON.parse(localStorage.getItem("specialCards")) || {};
-          specialCardsOwned[cardId] = (specialCardsOwned[cardId] || 0) - 1;
-          if (specialCardsOwned[cardId] <= 0) delete specialCardsOwned[cardId];
-          localStorage.setItem(
-            "specialCards",
-            JSON.stringify(specialCardsOwned),
-          );
-          this.renderTable(this.roundData.players);
-        } catch (e) {
-          console.warn("optimistic update failed", e);
-        }
-
-        socket.emit("requestUseSpecial", { cardId: 6 }, (res) => {
-          if (handled) return;
-          handled = true;
-          timeout.remove(false);
-          if (res && res.success) {
-            if (res.updatedSpecialCards) {
-              localStorage.setItem(
-                "specialCards",
-                JSON.stringify(res.updatedSpecialCards),
-              );
-            }
-            try {
-              if (Array.isArray(res.players) && res.players.length > 0) {
-                this.roundData.players.forEach((oldPlayer) => {
-                  const newPlayer = res.players.find(
-                    (p) => p.id === oldPlayer.id,
-                  );
-                  if (newPlayer) {
-                    const preservedOpenStack = oldPlayer.openStack;
-                    Object.assign(oldPlayer, newPlayer);
-                    oldPlayer.openStack = preservedOpenStack;
-                  }
-                });
-                this.renderTable(this.roundData.players);
-              }
-            } catch (e) {
-              console.warn("merge res.players failed", e);
-            }
-
-            this.safeSyncInventory("useBlock", { usedCardId: 6 });
-            this.showToast(`${cardName} 사용 요청을 보냈습니다.`, "#f39c12");
-          } else {
-            // 실패 시 롤백
-            try {
-              const serverCards = (res && res.updatedSpecialCards) || null;
-              if (serverCards) {
-                localStorage.setItem(
-                  "specialCards",
-                  JSON.stringify(serverCards),
-                );
-              } else {
-                const prev =
-                  JSON.parse(localStorage.getItem("specialCards") || "{}") ||
-                  {};
-                prev[cardId] = (prev[cardId] || 0) + 1;
-                localStorage.setItem("specialCards", JSON.stringify(prev));
-              }
-            } catch (e) {
-              console.warn("rollback failed", e);
-            }
-            try {
-              this.specialUsedThisTurn = this.specialUsedThisTurn || {};
-              this.specialUsedThisTurn[myId] = false;
-            } catch (e) {}
-            this.renderTable(this.roundData.players);
-            this.showToast(
-              res && res.message ? res.message : "사용 실패",
-              "#e74c3c",
-            );
-          }
+        this.playSpecialAnimation({
+          imageKey: "block",
+          title: "먹물 카드 사용",
+          subtitle: "모든 플레이어의 오픈 더미를 가립니다.",
+          onComplete: () => this.requestUseSpecialWithOptimistic(6, cardName),
         });
         return;
       }

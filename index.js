@@ -1152,355 +1152,393 @@ io.on("connection", (socket) => {
       let shieldedGlobal = [];
       let emittedEffectId = null;
 
-      if (cardId === 7) {
-        // 차감
-        socket.specialCards[7] = Number(socket.specialCards[7] || 0) - 1;
-        if (socket.specialCards[7] <= 0) delete socket.specialCards[7];
-
-        // thief 효과: 생존 플레이어들(자기 제외, 탈락자 제외)로부터 카드 1장씩 가져옴
-        const givers = room.players.filter(
-          (p) =>
-            p.id !== socket.id &&
-            !p.isEliminated &&
-            (p.myDeck?.length || 0) > 0,
-        );
-
-        const shielded = [];
-        const stolenFrom = [];
-
-        const tryConsumeShield = (playerId) => {
-          console.log(
-            `[shield] tryConsumeShield -> checking player ${playerId}`,
-          );
-          try {
-            const s = io.sockets.sockets.get(playerId);
-            if (
-              s &&
-              s.specialCards &&
-              Number(s.specialCards[SHIELD_CARD_ID] || 0) > 0
-            ) {
-              console.log(
-                `[shield] consuming 1 shield from ${playerId} (before=${s.specialCards[SHIELD_CARD_ID]})`,
-              );
-              s.specialCards[SHIELD_CARD_ID] =
-                Number(s.specialCards[SHIELD_CARD_ID] || 0) - 1;
-              if (s.specialCards[SHIELD_CARD_ID] <= 0)
-                delete s.specialCards[SHIELD_CARD_ID];
-              console.log(
-                `[shield] consumed. remaining for ${playerId} = ${s.specialCards ? s.specialCards[SHIELD_CARD_ID] || 0 : 0}`,
-              );
-              // persist change and emit updated profile
-              savePlayer(
-                s.nickname,
-                s.level || 1,
-                s.coins || 0,
-                {
-                  items: Array.isArray(s.items) ? s.items : [],
-                  specialCards: s.specialCards || {},
-                },
-                s.experience || 0,
-                s.ownedCharacters || ["player_1"],
-                s.currentCharacter || s.avatarKey || "player_1",
-              ).catch((e) =>
-                console.warn("savePlayer error on shield consume", e),
-              );
-              try {
-                s.emit("myProfile", {
-                  nickname: s.nickname,
-                  level: Number(s.level) || 1,
-                  coins: Number(s.coins) || 0,
-                  items: Array.isArray(s.items) ? s.items : [],
-                  experience: Number(s.experience) || 0,
-                  avatarKey: s.currentCharacter || s.avatarKey || "player_1",
-                  specialCards: s.specialCards || {},
-                  owned_characters: s.ownedCharacters || ["player_1"],
-                  current_character: s.currentCharacter || "player_1",
-                });
-              } catch (e) {}
-              console.log(
-                `[shield] emitted myProfile for ${playerId} after consumption`,
-              );
-              return true;
-            }
-          } catch (e) {}
-          return false;
-        };
-
-        // Ensure we operate on the room player's myDeck so room.players stays authoritative
-        const recipientPlayer = room.players.find((p) => p.id === socket.id);
-        if (recipientPlayer) {
-          if (!Array.isArray(recipientPlayer.myDeck))
-            recipientPlayer.myDeck = [];
-          socket.myDeck = recipientPlayer.myDeck;
-
-          givers.forEach((giver) => {
-            if (giver.myDeck && giver.myDeck.length > 0) {
-              if (tryConsumeShield(giver.id)) {
-                shieldedGlobal.push(giver.id);
-              } else {
-                const card = giver.myDeck.pop();
-                recipientPlayer.myDeck.unshift(card);
-                stolenFrom.push(giver.id);
-              }
-            }
-          });
-        } else {
-          if (!Array.isArray(socket.myDeck))
-            socket.myDeck = Array.isArray(socket.myDeck) ? socket.myDeck : [];
-
-          givers.forEach((giver) => {
-            if (giver.myDeck && giver.myDeck.length > 0) {
-              if (tryConsumeShield(giver.id)) {
-                shieldedGlobal.push(giver.id);
-              } else {
-                const card = giver.myDeck.pop();
-                socket.myDeck.unshift(card);
-                stolenFrom.push(giver.id);
-              }
-            }
-          });
-        }
-
-        // 실제 카드 이동이 발생한 플레이어들만 recipients에 포함
-        recipients.push(...stolenFrom);
-      } else if (cardId === 8) {
-        // 왕 카드: 내 덱과 보유 카드가 가장 많은 플레이어의 덱을 교환
-        socket.specialCards[8] = Number(socket.specialCards[8] || 0) - 1;
-        if (socket.specialCards[8] <= 0) delete socket.specialCards[8];
-
-        const candidates = room.players.filter(
-          (p) => p.id !== socket.id && !p.isEliminated,
-        );
-        if (candidates.length > 0) {
-          let target = candidates[0];
-          candidates.forEach((c) => {
-            if ((c.myDeck?.length || 0) > (target.myDeck?.length || 0))
-              target = c;
-          });
-
-          const mePlayer = room.players.find((p) => p.id === socket.id);
-          const targetPlayer = target;
-          if (mePlayer && targetPlayer) {
-            // If target has shield, consume and prevent swap for that target
-            let targetShielded = false;
-            try {
-              console.log(
-                `[king] checking target ${targetPlayer.id} for shield before swap`,
-              );
-              const tSock = io.sockets.sockets.get(targetPlayer.id);
-              if (
-                tSock &&
-                tSock.specialCards &&
-                Number(tSock.specialCards[SHIELD_CARD_ID] || 0) > 0
-              ) {
-                console.log(
-                  `[king] target ${targetPlayer.id} has shield, consuming`,
-                );
-                tSock.specialCards[SHIELD_CARD_ID] =
-                  Number(tSock.specialCards[SHIELD_CARD_ID] || 0) - 1;
-                if (tSock.specialCards[SHIELD_CARD_ID] <= 0)
-                  delete tSock.specialCards[SHIELD_CARD_ID];
-                // persist and emit profile update
-                savePlayer(
-                  tSock.nickname,
-                  tSock.level || 1,
-                  tSock.coins || 0,
-                  {
-                    items: Array.isArray(tSock.items) ? tSock.items : [],
-                    specialCards: tSock.specialCards || {},
-                  },
-                  tSock.experience || 0,
-                  tSock.ownedCharacters || ["player_1"],
-                  tSock.currentCharacter || tSock.avatarKey || "player_1",
-                ).catch((e) =>
-                  console.warn("savePlayer error on shield consume", e),
-                );
-                try {
-                  tSock.emit("myProfile", {
-                    nickname: tSock.nickname,
-                    level: Number(tSock.level) || 1,
-                    coins: Number(tSock.coins) || 0,
-                    items: Array.isArray(tSock.items) ? tSock.items : [],
-                    experience: Number(tSock.experience) || 0,
-                    avatarKey:
-                      tSock.currentCharacter || tSock.avatarKey || "player_1",
-                    specialCards: tSock.specialCards || {},
-                    owned_characters: tSock.ownedCharacters || ["player_1"],
-                    current_character: tSock.currentCharacter || "player_1",
-                  });
-                } catch (e) {}
-                targetShielded = true;
-                shieldedGlobal.push(targetPlayer.id);
-                console.log(
-                  `[king] shield consumed for target ${targetPlayer.id}, swap prevented`,
-                );
-              }
-            } catch (e) {}
-
-            if (!targetShielded) {
-              if (!Array.isArray(mePlayer.myDeck)) mePlayer.myDeck = [];
-              if (!Array.isArray(targetPlayer.myDeck)) targetPlayer.myDeck = [];
-              // swap arrays (preserve references on room.players)
-              const tmp = mePlayer.myDeck.slice();
-              mePlayer.myDeck.length = 0;
-              Array.prototype.push.apply(mePlayer.myDeck, targetPlayer.myDeck);
-              targetPlayer.myDeck.length = 0;
-              Array.prototype.push.apply(targetPlayer.myDeck, tmp);
-
-              // Keep socket.myDeck in sync with authoritative entry
-              socket.myDeck = mePlayer.myDeck;
-              recipients.push(targetPlayer.id);
-            }
-          }
-        }
-      } else if (cardId === 6) {
-        // 블록(먹물) 카드: 모든 생존 플레이어의 오픈스택 최상단에 blockcard를 추가하고
-        // 룸 레벨에서 이펙트를 등록하여 만료를 관리합니다.
-        socket.specialCards[6] = Number(socket.specialCards[6] || 0) - 1;
-        if (socket.specialCards[6] <= 0) delete socket.specialCards[6];
-
-        const effectId = `block_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
-        emittedEffectId = effectId;
-        room.blockEffects = room.blockEffects || [];
-        room.blockEffects.push({
-          id: effectId,
-          issuer: socket.id,
-          remainingTurns: 2,
-        });
-        // 각 생존 플레이어의 openCardStack 최상단에 blockcard 추가 (중복 방지)
-        const shieldedBlock = [];
-        room.players.forEach((pl) => {
-          if (!pl || pl.isEliminated) return;
-          if (!Array.isArray(pl.openCardStack)) pl.openCardStack = [];
-          const top = pl.openCardStack[pl.openCardStack.length - 1];
-          // 대상 플레이어가 shield를 보유하면 shield를 소비하고 block 효과를 적용하지 않음
-          try {
-            const pSock = io.sockets.sockets.get(pl.id);
-            if (
-              pSock &&
-              pSock.specialCards &&
-              Number(pSock.specialCards[SHIELD_CARD_ID] || 0) > 0
-            ) {
-              // Consume shield but still add a blockcard visually.
-              pSock.specialCards[SHIELD_CARD_ID] =
-                Number(pSock.specialCards[SHIELD_CARD_ID] || 0) - 1;
-              if (pSock.specialCards[SHIELD_CARD_ID] <= 0)
-                delete pSock.specialCards[SHIELD_CARD_ID];
-              shieldedGlobal.push(pl.id);
-              // persist and notify
-              savePlayer(
-                pSock.nickname,
-                pSock.level || 1,
-                pSock.coins || 0,
-                {
-                  items: Array.isArray(pSock.items) ? pSock.items : [],
-                  specialCards: pSock.specialCards || {},
-                },
-                pSock.experience || 0,
-                pSock.ownedCharacters || ["player_1"],
-                pSock.currentCharacter || pSock.avatarKey || "player_1",
-              ).catch((e) =>
-                console.warn("savePlayer error on shield consume", e),
-              );
-              try {
-                pSock.emit("myProfile", {
-                  nickname: pSock.nickname,
-                  level: Number(pSock.level) || 1,
-                  coins: Number(pSock.coins) || 0,
-                  items: Array.isArray(pSock.items) ? pSock.items : [],
-                  experience: Number(pSock.experience) || 0,
-                  avatarKey:
-                    pSock.currentCharacter || pSock.avatarKey || "player_1",
-                  specialCards: pSock.specialCards || {},
-                  owned_characters: pSock.ownedCharacters || ["player_1"],
-                  current_character: pSock.currentCharacter || "player_1",
-                });
-              } catch (e) {}
-              // DO NOT return here; still add a visual blockcard below so UI parity is maintained.
-            }
-          } catch (e) {}
-
-          if (!top || top.type !== "blockcard") {
-            const wasShielded = shieldedGlobal.includes(pl.id);
-            pl.openCardStack.push({
-              type: "blockcard",
-              issuer: socket.id,
-              effectId,
-              shielded: wasShielded || false,
-            });
-          }
-        });
-      }
-
-      // 왕 카드 (id=8) 처리는 별도 분기: 내 덱과 가장 많은 플레이어의 덱을 교환
-      // (참고: 현재 요청은 thief였으므로 다음 블록은 유지됩니다.)
-
-      // 모든 플레이어의 cards 속성 갱신
-      room.players.forEach((pl) => {
-        pl.cards = pl.myDeck ? pl.myDeck.length : 0;
-        if (pl.cards === 0) pl.isEliminated = true;
-      });
-
-      // DB 동기화: 사용자의 specialCards 변경사항 저장
-      const mergedItems = {
-        items: Array.isArray(socket.items) ? socket.items : [],
-        specialCards: socket.specialCards || {},
+      // 애니메이션을 먼저 모든 플레이어에게 브로드캐스트하고, 일정 시간 후 실제 효과를 적용합니다.
+      const ANIM_MS = 1400;
+      const animMap = {
+        6: {
+          imageKey: "block",
+          title: "먹물 카드 사용",
+          subtitle: "모든 플레이어의 오픈 더미를 가립니다.",
+        },
+        7: {
+          imageKey: "thief",
+          title: "도둑 카드 사용",
+          subtitle: "생존 플레이어들로부터 1장씩 획득합니다.",
+        },
+        8: {
+          imageKey: "king",
+          title: "왕 카드 사용",
+          subtitle: "카드 보유 수가 가장 많은 플레이어와 덱을 교환합니다.",
+        },
+        5: {
+          imageKey: "shield",
+          title: "방패 사용",
+          subtitle: "방어 효과를 활성화합니다.",
+        },
+        4: {
+          imageKey: "lock",
+          title: "자물쇠 사용",
+          subtitle: "공격을 막습니다.",
+        },
       };
 
-      savePlayer(
-        socket.nickname,
-        socket.level || 1,
-        socket.coins || 0,
-        mergedItems,
-        socket.experience || 0,
-        socket.ownedCharacters || ["player_1"],
-        socket.currentCharacter || socket.avatarKey || "player_1",
-      ).catch((e) => console.warn("savePlayer error on useSpecial", e));
-
-      // 사용자에게 프로필 업데이트 전송
-      try {
-        socket.emit("myProfile", {
-          nickname: socket.nickname,
-          level: Number(socket.level) || 1,
-          coins: Number(socket.coins) || 0,
-          items: Array.isArray(socket.items) ? socket.items : [],
-          experience: Number(socket.experience) || 0,
-          avatarKey: socket.currentCharacter || socket.avatarKey || "player_1",
-          specialCards: socket.specialCards || {},
-          owned_characters: socket.ownedCharacters || ["player_1"],
-          current_character: socket.currentCharacter || "player_1",
-        });
-      } catch (e) {
-        console.warn("emit myProfile error on useSpecial", e);
-      }
-
-      // 룸에 효과 브로드캐스트
-      let broadcastMessage = `${socket.nickname}님이 도둑 카드를 사용했습니다!`;
-      if (cardId === 8)
-        broadcastMessage = `${socket.nickname}님이 왕 카드를 사용했습니다!`;
-      if (cardId === 6)
-        broadcastMessage = `${socket.nickname}님이 먹물(블록) 카드를 사용했습니다!`;
-      console.log(
-        `[specialUsed] cardId=${cardId} by=${socket.id} recipients=${JSON.stringify(recipients)} shielded=${JSON.stringify(shieldedGlobal)} effectId=${emittedEffectId}`,
-      );
-      io.to(room.roomId).emit("specialUsed", {
-        cardId: cardId,
+      const animInfo = animMap[cardId] || {
+        imageKey: "block",
+        title: "특수카드 사용",
+        subtitle: "특수카드를 사용했습니다.",
+      };
+      // notify all players to play animation
+      io.to(room.roomId).emit("specialPlay", {
+        cardId,
         by: socket.id,
-        players: room.players,
-        recipients,
-        effectId: emittedEffectId,
-        shielded:
-          shieldedGlobal && shieldedGlobal.length > 0 ? shieldedGlobal : [],
-        message: broadcastMessage,
+        imageKey: animInfo.imageKey,
+        title: animInfo.title,
+        subtitle: animInfo.subtitle,
+        duration: ANIM_MS,
       });
 
-      // 콜백 응답
-      if (typeof cb === "function")
-        cb({
-          success: true,
-          players: room.players,
-          updatedSpecialCards: socket.specialCards,
-        });
+      // 실제 효과는 애니메이션이 끝난 뒤 적용
+      setTimeout(async () => {
+        try {
+          // 기존 로직: 카드별 효과 적용
+          if (cardId === 7) {
+            // 차감
+            socket.specialCards[7] = Number(socket.specialCards[7] || 0) - 1;
+            if (socket.specialCards[7] <= 0) delete socket.specialCards[7];
+
+            // thief 효과: 생존 플레이어들(자기 제외, 탈락자 제외)로부터 카드 1장씩 가져옴
+            const givers = room.players.filter(
+              (p) =>
+                p.id !== socket.id &&
+                !p.isEliminated &&
+                (p.myDeck?.length || 0) > 0,
+            );
+
+            const stolenFrom = [];
+
+            const tryConsumeShield = (playerId) => {
+              try {
+                const s = io.sockets.sockets.get(playerId);
+                if (
+                  s &&
+                  s.specialCards &&
+                  Number(s.specialCards[SHIELD_CARD_ID] || 0) > 0
+                ) {
+                  s.specialCards[SHIELD_CARD_ID] =
+                    Number(s.specialCards[SHIELD_CARD_ID] || 0) - 1;
+                  if (s.specialCards[SHIELD_CARD_ID] <= 0)
+                    delete s.specialCards[SHIELD_CARD_ID];
+                  // persist change and emit updated profile
+                  savePlayer(
+                    s.nickname,
+                    s.level || 1,
+                    s.coins || 0,
+                    {
+                      items: Array.isArray(s.items) ? s.items : [],
+                      specialCards: s.specialCards || {},
+                    },
+                    s.experience || 0,
+                    s.ownedCharacters || ["player_1"],
+                    s.currentCharacter || s.avatarKey || "player_1",
+                  ).catch((e) =>
+                    console.warn("savePlayer error on shield consume", e),
+                  );
+                  try {
+                    s.emit("myProfile", {
+                      nickname: s.nickname,
+                      level: Number(s.level) || 1,
+                      coins: Number(s.coins) || 0,
+                      items: Array.isArray(s.items) ? s.items : [],
+                      experience: Number(s.experience) || 0,
+                      avatarKey:
+                        s.currentCharacter || s.avatarKey || "player_1",
+                      specialCards: s.specialCards || {},
+                      owned_characters: s.ownedCharacters || ["player_1"],
+                      current_character: s.currentCharacter || "player_1",
+                    });
+                  } catch (e) {}
+                  return true;
+                }
+              } catch (e) {}
+              return false;
+            };
+
+            const recipientPlayer = room.players.find(
+              (p) => p.id === socket.id,
+            );
+            if (recipientPlayer) {
+              if (!Array.isArray(recipientPlayer.myDeck))
+                recipientPlayer.myDeck = [];
+              socket.myDeck = recipientPlayer.myDeck;
+
+              givers.forEach((giver) => {
+                if (giver.myDeck && giver.myDeck.length > 0) {
+                  if (tryConsumeShield(giver.id)) {
+                    shieldedGlobal.push(giver.id);
+                  } else {
+                    const card = giver.myDeck.pop();
+                    recipientPlayer.myDeck.unshift(card);
+                    stolenFrom.push(giver.id);
+                  }
+                }
+              });
+            } else {
+              if (!Array.isArray(socket.myDeck))
+                socket.myDeck = Array.isArray(socket.myDeck)
+                  ? socket.myDeck
+                  : [];
+
+              givers.forEach((giver) => {
+                if (giver.myDeck && giver.myDeck.length > 0) {
+                  if (tryConsumeShield(giver.id)) {
+                    shieldedGlobal.push(giver.id);
+                  } else {
+                    const card = giver.myDeck.pop();
+                    socket.myDeck.unshift(card);
+                    stolenFrom.push(giver.id);
+                  }
+                }
+              });
+            }
+
+            recipients.push(...stolenFrom);
+          } else if (cardId === 8) {
+            socket.specialCards[8] = Number(socket.specialCards[8] || 0) - 1;
+            if (socket.specialCards[8] <= 0) delete socket.specialCards[8];
+
+            const candidates = room.players.filter(
+              (p) => p.id !== socket.id && !p.isEliminated,
+            );
+            if (candidates.length > 0) {
+              let target = candidates[0];
+              candidates.forEach((c) => {
+                if ((c.myDeck?.length || 0) > (target.myDeck?.length || 0))
+                  target = c;
+              });
+
+              const mePlayer = room.players.find((p) => p.id === socket.id);
+              const targetPlayer = target;
+              if (mePlayer && targetPlayer) {
+                let targetShielded = false;
+                try {
+                  const tSock = io.sockets.sockets.get(targetPlayer.id);
+                  if (
+                    tSock &&
+                    tSock.specialCards &&
+                    Number(tSock.specialCards[SHIELD_CARD_ID] || 0) > 0
+                  ) {
+                    tSock.specialCards[SHIELD_CARD_ID] =
+                      Number(tSock.specialCards[SHIELD_CARD_ID] || 0) - 1;
+                    if (tSock.specialCards[SHIELD_CARD_ID] <= 0)
+                      delete tSock.specialCards[SHIELD_CARD_ID];
+                    savePlayer(
+                      tSock.nickname,
+                      tSock.level || 1,
+                      tSock.coins || 0,
+                      {
+                        items: Array.isArray(tSock.items) ? tSock.items : [],
+                        specialCards: tSock.specialCards || {},
+                      },
+                      tSock.experience || 0,
+                      tSock.ownedCharacters || ["player_1"],
+                      tSock.currentCharacter || tSock.avatarKey || "player_1",
+                    ).catch((e) =>
+                      console.warn("savePlayer error on shield consume", e),
+                    );
+                    try {
+                      tSock.emit("myProfile", {
+                        nickname: tSock.nickname,
+                        level: Number(tSock.level) || 1,
+                        coins: Number(tSock.coins) || 0,
+                        items: Array.isArray(tSock.items) ? tSock.items : [],
+                        experience: Number(tSock.experience) || 0,
+                        avatarKey:
+                          tSock.currentCharacter ||
+                          tSock.avatarKey ||
+                          "player_1",
+                        specialCards: tSock.specialCards || {},
+                        owned_characters: tSock.ownedCharacters || ["player_1"],
+                        current_character: tSock.currentCharacter || "player_1",
+                      });
+                    } catch (e) {}
+                    targetShielded = true;
+                    shieldedGlobal.push(targetPlayer.id);
+                  }
+                } catch (e) {}
+
+                if (!targetShielded) {
+                  if (!Array.isArray(mePlayer.myDeck)) mePlayer.myDeck = [];
+                  if (!Array.isArray(targetPlayer.myDeck))
+                    targetPlayer.myDeck = [];
+                  const tmp = mePlayer.myDeck.slice();
+                  mePlayer.myDeck.length = 0;
+                  Array.prototype.push.apply(
+                    mePlayer.myDeck,
+                    targetPlayer.myDeck,
+                  );
+                  targetPlayer.myDeck.length = 0;
+                  Array.prototype.push.apply(targetPlayer.myDeck, tmp);
+                  socket.myDeck = mePlayer.myDeck;
+                  recipients.push(targetPlayer.id);
+                }
+              }
+            }
+          } else if (cardId === 6) {
+            socket.specialCards[6] = Number(socket.specialCards[6] || 0) - 1;
+            if (socket.specialCards[6] <= 0) delete socket.specialCards[6];
+
+            const effectId = `block_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+            emittedEffectId = effectId;
+            room.blockEffects = room.blockEffects || [];
+            room.blockEffects.push({
+              id: effectId,
+              issuer: socket.id,
+              remainingTurns: 2,
+            });
+
+            room.players.forEach((pl) => {
+              if (!pl || pl.isEliminated) return;
+              if (!Array.isArray(pl.openCardStack)) pl.openCardStack = [];
+              const top = pl.openCardStack[pl.openCardStack.length - 1];
+              try {
+                const pSock = io.sockets.sockets.get(pl.id);
+                if (
+                  pSock &&
+                  pSock.specialCards &&
+                  Number(pSock.specialCards[SHIELD_CARD_ID] || 0) > 0
+                ) {
+                  pSock.specialCards[SHIELD_CARD_ID] =
+                    Number(pSock.specialCards[SHIELD_CARD_ID] || 0) - 1;
+                  if (pSock.specialCards[SHIELD_CARD_ID] <= 0)
+                    delete pSock.specialCards[SHIELD_CARD_ID];
+                  shieldedGlobal.push(pl.id);
+                  savePlayer(
+                    pSock.nickname,
+                    pSock.level || 1,
+                    pSock.coins || 0,
+                    {
+                      items: Array.isArray(pSock.items) ? pSock.items : [],
+                      specialCards: pSock.specialCards || {},
+                    },
+                    pSock.experience || 0,
+                    pSock.ownedCharacters || ["player_1"],
+                    pSock.currentCharacter || pSock.avatarKey || "player_1",
+                  ).catch((e) =>
+                    console.warn("savePlayer error on shield consume", e),
+                  );
+                  try {
+                    pSock.emit("myProfile", {
+                      nickname: pSock.nickname,
+                      level: Number(pSock.level) || 1,
+                      coins: Number(pSock.coins) || 0,
+                      items: Array.isArray(pSock.items) ? pSock.items : [],
+                      experience: Number(pSock.experience) || 0,
+                      avatarKey:
+                        pSock.currentCharacter || pSock.avatarKey || "player_1",
+                      specialCards: pSock.specialCards || {},
+                      owned_characters: pSock.ownedCharacters || ["player_1"],
+                      current_character: pSock.currentCharacter || "player_1",
+                    });
+                  } catch (e) {}
+                }
+              } catch (e) {}
+
+              if (!top || top.type !== "blockcard") {
+                const wasShielded = shieldedGlobal.includes(pl.id);
+                pl.openCardStack.push({
+                  type: "blockcard",
+                  issuer: socket.id,
+                  effectId,
+                  shielded: wasShielded || false,
+                });
+              }
+            });
+          } else if (cardId === 5 || cardId === 4) {
+            // 방어 아이템(낙관적 소모 및 프로필 업데이트)
+            socket.specialCards[cardId] =
+              Number(socket.specialCards[cardId] || 0) - 1;
+            if (socket.specialCards[cardId] <= 0)
+              delete socket.specialCards[cardId];
+          }
+
+          // 모든 플레이어의 cards 속성 갱신
+          room.players.forEach((pl) => {
+            pl.cards = pl.myDeck ? pl.myDeck.length : 0;
+            if (pl.cards === 0) pl.isEliminated = true;
+          });
+
+          // DB 동기화: 사용자의 specialCards 변경사항 저장
+          const mergedItems = {
+            items: Array.isArray(socket.items) ? socket.items : [],
+            specialCards: socket.specialCards || {},
+          };
+
+          await savePlayer(
+            socket.nickname,
+            socket.level || 1,
+            socket.coins || 0,
+            mergedItems,
+            socket.experience || 0,
+            socket.ownedCharacters || ["player_1"],
+            socket.currentCharacter || socket.avatarKey || "player_1",
+          ).catch((e) => console.warn("savePlayer error on useSpecial", e));
+
+          // 사용자에게 프로필 업데이트 전송
+          try {
+            socket.emit("myProfile", {
+              nickname: socket.nickname,
+              level: Number(socket.level) || 1,
+              coins: Number(socket.coins) || 0,
+              items: Array.isArray(socket.items) ? socket.items : [],
+              experience: Number(socket.experience) || 0,
+              avatarKey:
+                socket.currentCharacter || socket.avatarKey || "player_1",
+              specialCards: socket.specialCards || {},
+              owned_characters: socket.ownedCharacters || ["player_1"],
+              current_character: socket.currentCharacter || "player_1",
+            });
+          } catch (e) {
+            console.warn("emit myProfile error on useSpecial", e);
+          }
+
+          // 룸에 효과 브로드캐스트
+          let broadcastMessage = `${socket.nickname}님이 도둑 카드를 사용했습니다!`;
+          if (cardId === 8)
+            broadcastMessage = `${socket.nickname}님이 왕 카드를 사용했습니다!`;
+          if (cardId === 6)
+            broadcastMessage = `${socket.nickname}님이 먹물(블록) 카드를 사용했습니다!`;
+          if (cardId === 5)
+            broadcastMessage = `${socket.nickname}님이 방패를 사용했습니다!`;
+          if (cardId === 4)
+            broadcastMessage = `${socket.nickname}님이 자물쇠를 사용했습니다!`;
+
+          console.log(
+            `[specialUsed] cardId=${cardId} by=${socket.id} recipients=${JSON.stringify(recipients)} shielded=${JSON.stringify(shieldedGlobal)} effectId=${emittedEffectId}`,
+          );
+          io.to(room.roomId).emit("specialUsed", {
+            cardId: cardId,
+            by: socket.id,
+            players: room.players,
+            recipients,
+            effectId: emittedEffectId,
+            shielded:
+              shieldedGlobal && shieldedGlobal.length > 0 ? shieldedGlobal : [],
+            message: broadcastMessage,
+          });
+
+          // 콜백 응답
+          if (typeof cb === "function")
+            cb({
+              success: true,
+              players: room.players,
+              updatedSpecialCards: socket.specialCards,
+            });
+        } catch (err) {
+          console.error("deferred requestUseSpecial error", err);
+          if (typeof cb === "function")
+            cb({ success: false, message: "server_error" });
+        }
+      }, ANIM_MS);
     } catch (err) {
       console.error("requestUseSpecial error", err);
       if (typeof cb === "function")
