@@ -2403,6 +2403,25 @@ io.on("connection", (socket) => {
     } catch (e) {
       console.warn("startGame: failed to sync specialCards", e);
     }
+    // 디버그: 게임 시작 시 모든 플레이어의 특수카드 보유 상태를 로그로 남깁니다.
+    try {
+      const snapshot = room.players.map((p) => {
+        const liveSock = p && p.id ? io.sockets.sockets.get(p.id) : null;
+        return {
+          id: p.id,
+          nickname: p.nickname,
+          roomSnapshot: p.specialCards || {},
+          liveSocket: liveSock ? liveSock.specialCards || {} : null,
+        };
+      });
+      console.log(
+        "[startGame] players specialCards snapshot:",
+        JSON.stringify(snapshot),
+      );
+      emitServerDebug(room, "startGame.specialCardsSnapshot", { snapshot });
+    } catch (e) {
+      console.warn("startGame: failed to log specialCards snapshot", e);
+    }
 
     // 1. 방장 권한 체크
     if (room.host !== socket.id) {
