@@ -8,30 +8,39 @@ const { Pool } = require("pg");
 const app = express();
 const server = http.createServer(app);
 const DATABASE_URL = process.env.DATABASE_URL;
-              try {
-                const consumedId = tryConsumeShield(pl);
-                if (consumedId) {
-                  shieldedGlobal.push(consumedId);
-                }
-                if (!top || top.type !== "blockcard") {
-                  const wasShielded = Boolean(consumedId);
-                  pl.openCardStack.push({
-                    type: "blockcard",
-                    issuer: socket.id,
-                    effectId,
-                    shielded: wasShielded || false,
-                  });
-                }
-              } catch (e) {}
+const pool = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL }) : null;
+
+function getAllowedOrigins() {
+  return [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://0.0.0.0:3000",
+  ];
+}
+
+function isAllowedOrigin(origin) {
+  if (!origin) return true;
   const allowedOrigins = getAllowedOrigins();
   if (allowedOrigins.includes(origin)) return true;
-
   try {
     const parsed = new URL(origin);
     return ["localhost", "127.0.0.1", "0.0.0.0"].includes(parsed.hostname);
   } catch (error) {
     return false;
   }
+}
+
+function syncRoomPlayersWithActiveSockets(room, io) {
+  if (!room || !Array.isArray(room.players)) return;
+  const uniquePlayers = [];
+  const seenIds = new Set();
+  room.players.forEach((player) => {
+    if (!player || !player.id) return;
+    if (seenIds.has(player.id)) return;
+    seenIds.add(player.id);
+    uniquePlayers.push(player);
+  });
+  room.players = uniquePlayers;
 }
 
 async function savePlayer(
@@ -305,28 +314,20 @@ function injectThunderCardsToPlayers(players, thunderCount) {
   if (drawablePlayers.length === 0) return;
 
   const count = Math.max(0, Number(thunderCount) || 0);
-
-  for (let index = 0; index < count; index += 1) {
+  for (let i = 0; i < count; i += 1) {
     const targetPlayer =
-                const consumedId = tryConsumeShield(targetPlayer);
-                let targetShielded = false;
-                if (consumedId) {
-                  targetShielded = true;
-                  shieldedGlobal.push(consumedId);
-                }
+      drawablePlayers[Math.floor(Math.random() * drawablePlayers.length)];
+    if (!targetPlayer || !Array.isArray(targetPlayer.myDeck)) continue;
 
-                if (!targetShielded) {
+    const insertIndex = Math.floor(
+      Math.random() * (targetPlayer.myDeck.length + 1),
+    );
+    if (insertIndex < targetPlayer.myDeck.length) {
+      targetPlayer.myDeck[insertIndex] = { type: THUNDER_CARD_TYPE };
+    } else {
+      targetPlayer.myDeck.push({ type: THUNDER_CARD_TYPE });
     }
-  });
-
-  const uniquePlayers = [];
-  const seenIds = new Set();
-  room.players.forEach((player) => {
-    if (seenIds.has(player.id)) return;
-    seenIds.add(player.id);
-    uniquePlayers.push(player);
-  });
-  room.players = uniquePlayers;
+  }
 }
 
 function normalizeCharacterKey(value) {
@@ -1169,7 +1170,10 @@ io.on("connection", (socket) => {
           const tryConsumeShield = (playerRef) => {
             try {
               let resolvedSock = null;
-              let lookupId = typeof playerRef === "string" ? playerRef : playerRef && playerRef.id;
+              let lookupId =
+                typeof playerRef === "string"
+                  ? playerRef
+                  : playerRef && playerRef.id;
               if (lookupId) resolvedSock = io.sockets.sockets.get(lookupId);
               // fallback: match by nickname if socket not found
               if (!resolvedSock && playerRef && playerRef.nickname) {
@@ -1180,13 +1184,20 @@ io.on("connection", (socket) => {
                   }
                 }
               }
-              if (resolvedSock) resolvedSock.specialCards = resolvedSock.specialCards || {};
+              if (resolvedSock)
+                resolvedSock.specialCards = resolvedSock.specialCards || {};
               console.log(
                 `[debug] tryConsumeShield resolved for ref=${JSON.stringify(
-                  playerRef && { id: playerRef.id, nickname: playerRef.nickname },
+                  playerRef && {
+                    id: playerRef.id,
+                    nickname: playerRef.nickname,
+                  },
                 )} -> socketExists=${!!resolvedSock}`,
               );
-              if (resolvedSock && Number(resolvedSock.specialCards[SHIELD_CARD_ID] || 0) > 0) {
+              if (
+                resolvedSock &&
+                Number(resolvedSock.specialCards[SHIELD_CARD_ID] || 0) > 0
+              ) {
                 resolvedSock.specialCards[SHIELD_CARD_ID] =
                   Number(resolvedSock.specialCards[SHIELD_CARD_ID] || 0) - 1;
                 if (resolvedSock.specialCards[SHIELD_CARD_ID] <= 0)
@@ -1197,24 +1208,38 @@ io.on("connection", (socket) => {
                   resolvedSock.level || 1,
                   resolvedSock.coins || 0,
                   {
-                    items: Array.isArray(resolvedSock.items) ? resolvedSock.items : [],
+                    items: Array.isArray(resolvedSock.items)
+                      ? resolvedSock.items
+                      : [],
                     specialCards: resolvedSock.specialCards || {},
                   },
                   resolvedSock.experience || 0,
                   resolvedSock.ownedCharacters || ["player_1"],
-                  resolvedSock.currentCharacter || resolvedSock.avatarKey || "player_1",
-                ).catch((e) => console.warn("savePlayer error on shield consume", e));
+                  resolvedSock.currentCharacter ||
+                    resolvedSock.avatarKey ||
+                    "player_1",
+                ).catch((e) =>
+                  console.warn("savePlayer error on shield consume", e),
+                );
                 try {
                   resolvedSock.emit("myProfile", {
                     nickname: resolvedSock.nickname,
                     level: Number(resolvedSock.level) || 1,
                     coins: Number(resolvedSock.coins) || 0,
-                    items: Array.isArray(resolvedSock.items) ? resolvedSock.items : [],
+                    items: Array.isArray(resolvedSock.items)
+                      ? resolvedSock.items
+                      : [],
                     experience: Number(resolvedSock.experience) || 0,
-                    avatarKey: resolvedSock.currentCharacter || resolvedSock.avatarKey || "player_1",
+                    avatarKey:
+                      resolvedSock.currentCharacter ||
+                      resolvedSock.avatarKey ||
+                      "player_1",
                     specialCards: resolvedSock.specialCards || {},
-                    owned_characters: resolvedSock.owned_characters || ["player_1"],
-                    current_character: resolvedSock.currentCharacter || "player_1",
+                    owned_characters: resolvedSock.owned_characters || [
+                      "player_1",
+                    ],
+                    current_character:
+                      resolvedSock.currentCharacter || "player_1",
                   });
                 } catch (e) {}
                 return resolvedSock.id;
@@ -1241,7 +1266,6 @@ io.on("connection", (socket) => {
 
             const stolenFrom = [];
 
-            
             const recipientPlayer = room.players.find(
               (p) => p.id === socket.id,
             );
