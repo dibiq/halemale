@@ -2552,10 +2552,22 @@ io.on("connection", (socket) => {
             }
           }
 
+          // debug: inspect before cleaning
+          console.log(
+            `[debug] startGame sync pre-clean player=${p.nickname} id=${p.id} p.specialCards=${JSON.stringify(
+              p.specialCards,
+            )} s.specialCards=${JSON.stringify(s && s.specialCards)}`,
+          );
           // ensure objects exist
           p.specialCards = p.specialCards || {};
           if (s) s.specialCards = s.specialCards || {};
 
+          // debug: after ensuring objects
+          console.log(
+            `[debug] startGame sync after-clean player=${p.nickname} p.specialCards=${JSON.stringify(
+              p.specialCards,
+            )}`,
+          );
           // 테스트용 기본값: 방패 10개 채워줌
           if (
             !Number.isFinite(Number(p.specialCards[SHIELD_CARD_ID] || 0)) ||
