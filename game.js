@@ -316,6 +316,11 @@ class LobbyScene extends Phaser.Scene {
     );
 
     this.load.image(
+      "blockcard",
+      `${ASSET_SERVER}/images/cards/special/blockcard.png${VERSION}`,
+    );
+
+    this.load.image(
       "thief",
       `${ASSET_SERVER}/images/cards/special/thief.png${VERSION}`,
     );
@@ -5787,6 +5792,10 @@ class GameScene extends Phaser.Scene {
     // 할리갈리 전용 데이터
     this.myCards = []; // 내 덱
     this.openCards = {}; // 각 플레이어별 바닥에 오픈된 카드 { playerId: card }
+    // 블록(가림) 상태: 여러 먹물 사용이 중첩될 수 있으므로 개별 효과 목록으로 관리
+    this.blockActive = false;
+    this.blockBy = null; // 마지막으로 사용한 플레이어(선택사항)
+    this.blockEffects = []; // [{ id, issuer, remainingTurns }]
   }
 
   async create() {
@@ -6096,6 +6105,8 @@ class GameScene extends Phaser.Scene {
     socket.off("cardFlipped").on("cardFlipped", (data) => {
       if (this.isSingle) return;
 
+      // (block removal happens after we update openStack below)
+
       if (data?.card?.type === THUNDER_CARD_TYPE) {
         console.log("⚡ [client] THUNDER cardFlipped:", {
           playerId: data.playerId,
@@ -6120,6 +6131,48 @@ class GameScene extends Phaser.Scene {
           player.isEliminated = data.isEliminated;
         }
       }
+
+      // 카드 제출이 발생하면, 제출한 플레이어가 어떤 block 효과를 발동시킨 issuer인지 확인하고
+      // 해당 issuer에 대한 block effect의 남은 턴을 감소시킵니다. (먹물 사용자는 2턴 유지)
+      try {
+        if (Array.isArray(this.blockEffects) && this.blockEffects.length > 0) {
+          const submitterId = data.playerId;
+
+          // 해당 제출 플레이어가 발동자(issuer)인 effect들의 remainingTurns를 감소
+          this.blockEffects.forEach((eff) => {
+            if (eff.issuer === submitterId) {
+              eff.remainingTurns = (eff.remainingTurns || 0) - 1;
+            }
+          });
+
+          // 만료된 effect들을 찾고, 해당 effectId를 가진 blockcard들을 모두 제거
+          const expired = this.blockEffects.filter(
+            (e) => e.remainingTurns <= 0,
+          );
+          if (expired.length > 0) {
+            const expiredIds = new Set(expired.map((e) => e.id));
+            this.roundData.players.forEach((p) => {
+              if (!p || !Array.isArray(p.openStack)) return;
+              p.openStack = p.openStack.filter(
+                (c) =>
+                  !(c && c.type === "blockcard" && expiredIds.has(c.effectId)),
+              );
+            });
+
+            // 제거된 effect들을 blockEffects에서 삭제
+            this.blockEffects = this.blockEffects.filter(
+              (e) => e.remainingTurns > 0,
+            );
+          }
+
+          // 블록 효과 존재 여부 업데이트
+          this.blockActive = this.blockEffects.length > 0;
+          this.blockBy =
+            this.blockEffects.length > 0
+              ? this.blockEffects[this.blockEffects.length - 1].issuer
+              : null;
+        }
+      } catch (e) {}
 
       // 3. 애니메이션 및 테이블 갱신
       this.playCardFlipAnimation(data);
@@ -6154,27 +6207,6 @@ class GameScene extends Phaser.Scene {
       });
 
       if (data.success) {
-        // 콤보 갱신: 같은 플레이어가 연속으로 승리했는지 확인
-        try {
-          if (
-            this.comboState &&
-            this.comboState.lastWinnerId === data.winnerId
-          ) {
-            this.comboState.count = (this.comboState.count || 0) + 1;
-          } else if (this.comboState) {
-            this.comboState.count = 1;
-            this.comboState.lastWinnerId = data.winnerId;
-          }
-          if (this.comboState) this.comboState.lastTime = Date.now();
-        } catch (e) {
-          // 방어적 처리
-          this.comboState = {
-            lastWinnerId: data.winnerId,
-            count: 1,
-            lastTime: Date.now(),
-          };
-        }
-
         const message = `${data.winnerNickname} ${data.collectedCount}장 획득(${data.reactionTime}초)`;
         this.addGameLog(`${message}`, "#f1c40f");
 
@@ -6457,6 +6489,57 @@ class GameScene extends Phaser.Scene {
           }
         }
 
+        // 6번 카드: 블록(가림) 카드 처리
+        if (Number(data.cardId) === 6 && data.by) {
+          try {
+            // 서버가 보낸 플레이어 상태가 있으면 병합 (openStack 보존)
+            if (Array.isArray(data.players) && data.players.length > 0) {
+              this.roundData.players.forEach((oldPlayer) => {
+                const newPlayer = data.players.find(
+                  (p) => p.id === oldPlayer.id,
+                );
+                if (newPlayer) {
+                  const preservedOpenStack = oldPlayer.openStack;
+                  Object.assign(oldPlayer, newPlayer);
+                  oldPlayer.openStack = preservedOpenStack;
+                }
+              });
+            }
+
+            // 생성한 block effect 등록 (각 사용은 개별 effect로 관리)
+            const effectId = `block_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+            this.blockEffects = this.blockEffects || [];
+            this.blockEffects.push({
+              id: effectId,
+              issuer: data.by,
+              remainingTurns: 2,
+            });
+
+            // 각 생존 플레이어의 openStack 위에 한 장의 blockcard를 추가 (중복 방지)
+            this.roundData.players.forEach((p) => {
+              if (!p || p.isEliminated) return;
+              if (!p.openStack) p.openStack = [];
+              const top = p.openStack[p.openStack.length - 1];
+              if (!top || top.type !== "blockcard") {
+                p.openStack.push({
+                  type: "blockcard",
+                  issuer: data.by,
+                  effectId,
+                });
+              }
+            });
+
+            this.blockActive = true;
+            this.blockBy = data.by;
+
+            this.renderTable(this.roundData.players);
+            if (data.message) this.showToast(data.message, "#f39c12");
+          } catch (e) {
+            console.warn("specialUsed block merge error", e);
+          }
+          return;
+        }
+
         // 기본 처리: 즉시 병합
         if (Array.isArray(data.players) && data.players.length > 0) {
           this.roundData.players.forEach((oldPlayer) => {
@@ -6635,6 +6718,10 @@ class GameScene extends Phaser.Scene {
     }
     if (card && card.type === NOT5_CARD_TYPE) {
       return "not5";
+    }
+
+    if (card && (card.type === "blockcard" || card.type === "block")) {
+      return "blockcard";
     }
 
     const fruitNames = { 1: "strawberry", 2: "banana", 3: "lime", 4: "plum" };
@@ -7196,6 +7283,7 @@ class GameScene extends Phaser.Scene {
     const player = this.roundData.players.find(
       (p) => p.openStack === openStack,
     );
+
     const cardsToDraw =
       player && player.isFlipping ? openStack.slice(0, -1) : openStack;
 
@@ -7225,6 +7313,19 @@ class GameScene extends Phaser.Scene {
           .setDisplaySize(width * 0.18, width * 0.25)
           .setDepth(150 + index); // 나중 카드가 위로 오게
 
+        // blockcard인 경우: 먹물을 사용한 플레이어(issuer)만 모든 blockcard를 희미하게 보여야 함
+        if (card && card.type === "blockcard") {
+          try {
+            const viewerId = this.isSingle
+              ? this.myId || "PLAYER_ME"
+              : socket.id;
+            const issuerId = card.issuer || null;
+            if (issuerId && viewerId && issuerId === viewerId) {
+              openCardImg.setAlpha(0.35);
+            }
+          } catch (e) {}
+        }
+
         this.playerTableGroup.add(openCardImg);
       } else if (card && card.type === THUNDER_CARD_TYPE) {
         const thunderCardBg = this.add
@@ -7253,6 +7354,8 @@ class GameScene extends Phaser.Scene {
         this.playerTableGroup.add([thunderCardBg, thunderIcon]);
       }
     });
+
+    // blockcards are actual entries in openStack now; drawing is handled above
   }
 
   playWinAnimation(data) {
@@ -9785,6 +9888,149 @@ class GameScene extends Phaser.Scene {
         });
       } catch (e) {
         console.warn("useSpecialCard king single error", e);
+      }
+
+      return;
+    }
+
+    // 블록(먹물) 카드 (id=6) 처리
+    if (Number(cardId) === 6) {
+      // 멀티플레이: 서버에 요청
+      if (!this.isSingle && socket && socket.connected) {
+        this.showToast(`${cardName} 카드를 사용 요청합니다...`, "#f39c12");
+        let handled = false;
+        const timeout = this.time.delayedCall(2500, () => {
+          if (handled) return;
+          handled = true;
+          this.showToast("서버 응답이 없어 사용이 취소되었습니다.", "#e74c3c");
+        });
+
+        const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
+
+        // 낙관적 업데이트: UI와 로컬 인벤토리 차감
+        try {
+          this.specialUsedThisTurn = this.specialUsedThisTurn || {};
+          this.specialUsedThisTurn[myId] = true;
+          const specialCardsOwned =
+            JSON.parse(localStorage.getItem("specialCards")) || {};
+          specialCardsOwned[cardId] = (specialCardsOwned[cardId] || 0) - 1;
+          if (specialCardsOwned[cardId] <= 0) delete specialCardsOwned[cardId];
+          localStorage.setItem(
+            "specialCards",
+            JSON.stringify(specialCardsOwned),
+          );
+          this.renderTable(this.roundData.players);
+        } catch (e) {
+          console.warn("optimistic update failed", e);
+        }
+
+        socket.emit("requestUseSpecial", { cardId: 6 }, (res) => {
+          if (handled) return;
+          handled = true;
+          timeout.remove(false);
+          if (res && res.success) {
+            if (res.updatedSpecialCards) {
+              localStorage.setItem(
+                "specialCards",
+                JSON.stringify(res.updatedSpecialCards),
+              );
+            }
+            try {
+              if (Array.isArray(res.players) && res.players.length > 0) {
+                this.roundData.players.forEach((oldPlayer) => {
+                  const newPlayer = res.players.find(
+                    (p) => p.id === oldPlayer.id,
+                  );
+                  if (newPlayer) {
+                    const preservedOpenStack = oldPlayer.openStack;
+                    Object.assign(oldPlayer, newPlayer);
+                    oldPlayer.openStack = preservedOpenStack;
+                  }
+                });
+                this.renderTable(this.roundData.players);
+              }
+            } catch (e) {
+              console.warn("merge res.players failed", e);
+            }
+
+            this.safeSyncInventory("useBlock", { usedCardId: 6 });
+            this.showToast(`${cardName} 사용 요청을 보냈습니다.`, "#f39c12");
+          } else {
+            // 실패 시 롤백
+            try {
+              const serverCards = (res && res.updatedSpecialCards) || null;
+              if (serverCards) {
+                localStorage.setItem(
+                  "specialCards",
+                  JSON.stringify(serverCards),
+                );
+              } else {
+                const prev =
+                  JSON.parse(localStorage.getItem("specialCards") || "{}") ||
+                  {};
+                prev[cardId] = (prev[cardId] || 0) + 1;
+                localStorage.setItem("specialCards", JSON.stringify(prev));
+              }
+            } catch (e) {
+              console.warn("rollback failed", e);
+            }
+            try {
+              this.specialUsedThisTurn = this.specialUsedThisTurn || {};
+              this.specialUsedThisTurn[myId] = false;
+            } catch (e) {}
+            this.renderTable(this.roundData.players);
+            this.showToast(
+              res && res.message ? res.message : "사용 실패",
+              "#e74c3c",
+            );
+          }
+        });
+        return;
+      }
+
+      // 싱글플레이: 로컬에서 즉시 블록카드를 각 플레이어 오픈스택에 추가
+      try {
+        const myId = this.myId || "PLAYER_ME";
+        const specialCardsOwned =
+          JSON.parse(localStorage.getItem("specialCards")) || {};
+        specialCardsOwned[cardId] = (specialCardsOwned[cardId] || 0) - 1;
+        if (specialCardsOwned[cardId] <= 0) delete specialCardsOwned[cardId];
+        localStorage.setItem("specialCards", JSON.stringify(specialCardsOwned));
+        this.specialUsedThisTurn = this.specialUsedThisTurn || {};
+        this.specialUsedThisTurn[myId] = true;
+
+        // create effect and add blockcards with effectId
+        try {
+          const effectId = `block_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+          this.blockEffects = this.blockEffects || [];
+          this.blockEffects.push({
+            id: effectId,
+            issuer: myId,
+            remainingTurns: 2,
+          });
+
+          this.roundData.players.forEach((p) => {
+            if (!p || p.isEliminated) return;
+            if (!p.openStack) p.openStack = [];
+            const top = p.openStack[p.openStack.length - 1];
+            if (!top || top.type !== "blockcard") {
+              p.openStack.push({ type: "blockcard", issuer: myId, effectId });
+            }
+          });
+
+          this.blockActive = true;
+          this.blockBy = myId;
+          this.renderTable(this.roundData.players);
+          this.safeSyncInventory("useBlock", { usedCardId: 6 });
+          this.showToast(
+            "가림 카드 사용: 바닥 위에 blockcard가 추가되었습니다!",
+            "#f39c12",
+          );
+        } catch (e) {
+          console.warn("useSpecialCard block single error", e);
+        }
+      } catch (e) {
+        console.warn("useSpecialCard block single error", e);
       }
 
       return;

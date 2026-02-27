@@ -1114,8 +1114,8 @@ io.on("connection", (socket) => {
       const payload = data && typeof data === "object" ? data : {};
       const cardId = Number(payload.cardId || 0);
 
-      // 현재는 thief (id=7)와 king (id=8)를 서버에서 처리
-      if (![7, 8].includes(cardId)) {
+      // 현재는 block(6), thief (7)와 king (8)를 서버에서 처리
+      if (![6, 7, 8].includes(cardId)) {
         if (typeof cb === "function")
           cb({ success: false, message: "unsupported_card" });
         return;
@@ -1222,6 +1222,33 @@ io.on("connection", (socket) => {
             recipients.push(targetPlayer.id);
           }
         }
+      } else if (cardId === 6) {
+        // 블록(먹물) 카드: 모든 생존 플레이어의 오픈스택 최상단에 blockcard를 추가하고
+        // 룸 레벨에서 이펙트를 등록하여 만료를 관리합니다.
+        socket.specialCards[6] = Number(socket.specialCards[6] || 0) - 1;
+        if (socket.specialCards[6] <= 0) delete socket.specialCards[6];
+
+        const effectId = `block_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+        room.blockEffects = room.blockEffects || [];
+        room.blockEffects.push({
+          id: effectId,
+          issuer: socket.id,
+          remainingTurns: 2,
+        });
+
+        // 각 생존 플레이어의 openCardStack 최상단에 blockcard 추가 (중복 방지)
+        room.players.forEach((pl) => {
+          if (!pl || pl.isEliminated) return;
+          if (!Array.isArray(pl.openCardStack)) pl.openCardStack = [];
+          const top = pl.openCardStack[pl.openCardStack.length - 1];
+          if (!top || top.type !== "blockcard") {
+            pl.openCardStack.push({
+              type: "blockcard",
+              issuer: socket.id,
+              effectId,
+            });
+          }
+        });
       }
 
       // 왕 카드 (id=8) 처리는 별도 분기: 내 덱과 가장 많은 플레이어의 덱을 교환
@@ -1266,10 +1293,11 @@ io.on("connection", (socket) => {
       }
 
       // 룸에 효과 브로드캐스트
-      const broadcastMessage =
-        cardId === 8
-          ? `${socket.nickname}님이 왕 카드를 사용했습니다!`
-          : `${socket.nickname}님이 도둑 카드를 사용했습니다!`;
+      let broadcastMessage = `${socket.nickname}님이 도둑 카드를 사용했습니다!`;
+      if (cardId === 8)
+        broadcastMessage = `${socket.nickname}님이 왕 카드를 사용했습니다!`;
+      if (cardId === 6)
+        broadcastMessage = `${socket.nickname}님이 먹물(블록) 카드를 사용했습니다!`;
       io.to(room.roomId).emit("specialUsed", {
         cardId: cardId,
         by: socket.id,
@@ -1478,6 +1506,7 @@ io.on("connection", (socket) => {
       isPublic: isPublic,
       roomName: roomName,
       password: password, // 💡 비밀번호 저장 (비공개 방만)
+      blockEffects: [], // 현재 방에 적용된 블록(먹물) 이펙트 목록
     };
     const playerData = {
       id: socket.id,
@@ -2566,6 +2595,36 @@ io.on("connection", (socket) => {
     }
     p.openCard = card;
     p.openCardStack.push(card);
+
+    // 블록(먹물) 이펙트가 있는 경우: 제출한 플레이어가 이펙트의 발행자라면 remainingTurns 감소
+    try {
+      if (Array.isArray(room.blockEffects) && room.blockEffects.length > 0) {
+        room.blockEffects.forEach((eff) => {
+          if (eff.issuer === p.id) {
+            eff.remainingTurns = (eff.remainingTurns || 0) - 1;
+          }
+        });
+
+        const expired = room.blockEffects.filter((e) => e.remainingTurns <= 0);
+        if (expired.length > 0) {
+          const expiredIds = new Set(expired.map((e) => e.id));
+          room.players.forEach((pl) => {
+            if (!pl || !Array.isArray(pl.openCardStack)) return;
+            pl.openCardStack = pl.openCardStack.filter(
+              (c) =>
+                !(c && c.type === "blockcard" && expiredIds.has(c.effectId)),
+            );
+          });
+
+          // 만료된 이펙트 제거
+          room.blockEffects = room.blockEffects.filter(
+            (e) => e.remainingTurns > 0,
+          );
+        }
+      }
+    } catch (e) {
+      console.warn("blockEffects processing error", e);
+    }
 
     // TON 카드: 턴 진행 방향을 반전시킴
     if (isTonCard(card)) {
