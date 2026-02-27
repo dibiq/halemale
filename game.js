@@ -7398,10 +7398,18 @@ class GameScene extends Phaser.Scene {
 
         try {
           const viewerId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
-          const viewerIsIssuer =
-            Array.isArray(this.blockEffects) &&
-            this.blockEffects.some((e) => e.issuer === viewerId);
-          if (viewerIsIssuer) openCardImg.setAlpha(0.35);
+          // find the effect for this blockcard
+          const effect =
+            Array.isArray(this.blockEffects) && card && card.effectId
+              ? this.blockEffects.find((e) => e.id === card.effectId)
+              : null;
+          const viewerIsIssuerForThis = effect && effect.issuer === viewerId;
+          const viewerIsShieldedForThis =
+            effect &&
+            Array.isArray(effect.shielded) &&
+            effect.shielded.includes(viewerId);
+          if (viewerIsIssuerForThis || viewerIsShieldedForThis)
+            openCardImg.setAlpha(0.35);
         } catch (e) {}
 
         this.playerTableGroup.add(openCardImg);
