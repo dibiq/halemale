@@ -525,8 +525,7 @@ class LobbyScene extends Phaser.Scene {
           id: resolvedPlayerId,
           userId: resolvedPlayerId,
           player_id: resolvedPlayerId,
-          nickname:
-            (this.myProfile && this.myProfile.nickname) || storedNick,
+          nickname: (this.myProfile && this.myProfile.nickname) || storedNick,
           playerId: socket.id,
           coins: Number((this.myProfile && this.myProfile.coins) || 0) || 0,
           items,
@@ -6359,7 +6358,9 @@ class GameScene extends Phaser.Scene {
               if (!this.isSingle && socket && socket.connected) {
                 let handled = false;
                 const timeout = this.time.delayedCall(1200, () => {
-                console.log("[autoLockPenalty] timeout reached, applying penalty");
+                  console.log(
+                    "[autoLockPenalty] timeout reached, applying penalty",
+                  );
                   if (handled) return;
                   handled = true;
                   // 타임아웃 시 패널티 처리 계속
@@ -6437,7 +6438,10 @@ class GameScene extends Phaser.Scene {
                     }
 
                     // 서버가 거부한 경우 패널티 적용
-                    console.log("[autoLockPenalty] server denied or failed", res);
+                    console.log(
+                      "[autoLockPenalty] server denied or failed",
+                      res,
+                    );
                     this.playPenaltyAnimation({
                       penaltyId: data.penaltyId,
                       recipients: data.recipients,
@@ -6962,7 +6966,11 @@ class GameScene extends Phaser.Scene {
     sortedPlayers.forEach((p, i) => {
       if (!p || !pos[i]) return;
       const layout = pos[i];
-      this.playerLayouts[p.id] = { x: layout.x, y: layout.y, rotation: layout.rotation };
+      this.playerLayouts[p.id] = {
+        x: layout.x,
+        y: layout.y,
+        rotation: layout.rotation,
+      };
 
       this.drawPlayerInfo(p, layout);
       this.drawPlayerDeck(p, layout); // 💡 여기서 숫자가 그려짐
@@ -7170,7 +7178,7 @@ class GameScene extends Phaser.Scene {
     });
 
     // 4. 실제 자동 실행 예약: 1초 대기 + 5초 타이머 = 총 6초
-    this.myTurnTimer = this.time.delayedCall(60000, () => {
+    this.myTurnTimer = this.time.delayedCall(6000, () => {
       console.log("⏰ 1초 대기 + 5초 경과! 자동 뒤집기 실행");
       this.handleFlipCard();
     });
@@ -8041,7 +8049,7 @@ class GameScene extends Phaser.Scene {
         hold: 600,
         onComplete: () => {
           try {
-                shieldSprite.destroy();
+            shieldSprite.destroy();
           } catch (e) {
             console.warn("[debug] error destroying shield sprite", e);
           }
