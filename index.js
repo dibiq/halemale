@@ -1169,6 +1169,9 @@ io.on("connection", (socket) => {
         const stolenFrom = [];
 
         const tryConsumeShield = (playerId) => {
+          console.log(
+            `[shield] tryConsumeShield -> checking player ${playerId}`,
+          );
           try {
             const s = io.sockets.sockets.get(playerId);
             if (
@@ -1176,10 +1179,16 @@ io.on("connection", (socket) => {
               s.specialCards &&
               Number(s.specialCards[SHIELD_CARD_ID] || 0) > 0
             ) {
+              console.log(
+                `[shield] consuming 1 shield from ${playerId} (before=${s.specialCards[SHIELD_CARD_ID]})`,
+              );
               s.specialCards[SHIELD_CARD_ID] =
                 Number(s.specialCards[SHIELD_CARD_ID] || 0) - 1;
               if (s.specialCards[SHIELD_CARD_ID] <= 0)
                 delete s.specialCards[SHIELD_CARD_ID];
+              console.log(
+                `[shield] consumed. remaining for ${playerId} = ${s.specialCards ? s.specialCards[SHIELD_CARD_ID] || 0 : 0}`,
+              );
               // persist change and emit updated profile
               savePlayer(
                 s.nickname,
@@ -1208,6 +1217,9 @@ io.on("connection", (socket) => {
                   current_character: s.currentCharacter || "player_1",
                 });
               } catch (e) {}
+              console.log(
+                `[shield] emitted myProfile for ${playerId} after consumption`,
+              );
               return true;
             }
           } catch (e) {}
@@ -1272,12 +1284,18 @@ io.on("connection", (socket) => {
             // If target has shield, consume and prevent swap for that target
             let targetShielded = false;
             try {
+              console.log(
+                `[king] checking target ${targetPlayer.id} for shield before swap`,
+              );
               const tSock = io.sockets.sockets.get(targetPlayer.id);
               if (
                 tSock &&
                 tSock.specialCards &&
                 Number(tSock.specialCards[SHIELD_CARD_ID] || 0) > 0
               ) {
+                console.log(
+                  `[king] target ${targetPlayer.id} has shield, consuming`,
+                );
                 tSock.specialCards[SHIELD_CARD_ID] =
                   Number(tSock.specialCards[SHIELD_CARD_ID] || 0) - 1;
                 if (tSock.specialCards[SHIELD_CARD_ID] <= 0)
@@ -1313,6 +1331,9 @@ io.on("connection", (socket) => {
                 } catch (e) {}
                 targetShielded = true;
                 shieldedGlobal.push(targetPlayer.id);
+                console.log(
+                  `[king] shield consumed for target ${targetPlayer.id}, swap prevented`,
+                );
               }
             } catch (e) {}
 
@@ -1412,9 +1433,9 @@ io.on("connection", (socket) => {
       // (참고: 현재 요청은 thief였으므로 다음 블록은 유지됩니다.)
 
       // 모든 플레이어의 cards 속성 갱신
-      room.players.forEach((player) => {
-        player.cards = player.myDeck ? player.myDeck.length : 0;
-        if (player.cards === 0) player.isEliminated = true;
+      room.players.forEach((pl) => {
+        pl.cards = pl.myDeck ? pl.myDeck.length : 0;
+        if (pl.cards === 0) pl.isEliminated = true;
       });
 
       // DB 동기화: 사용자의 specialCards 변경사항 저장
@@ -1422,6 +1443,7 @@ io.on("connection", (socket) => {
         items: Array.isArray(socket.items) ? socket.items : [],
         specialCards: socket.specialCards || {},
       };
+
       savePlayer(
         socket.nickname,
         socket.level || 1,
@@ -1455,6 +1477,9 @@ io.on("connection", (socket) => {
         broadcastMessage = `${socket.nickname}님이 왕 카드를 사용했습니다!`;
       if (cardId === 6)
         broadcastMessage = `${socket.nickname}님이 먹물(블록) 카드를 사용했습니다!`;
+      console.log(
+        `[specialUsed] cardId=${cardId} by=${socket.id} recipients=${JSON.stringify(recipients)} shielded=${JSON.stringify(shieldedGlobal)} effectId=${emittedEffectId}`,
+      );
       io.to(room.roomId).emit("specialUsed", {
         cardId: cardId,
         by: socket.id,
@@ -2586,10 +2611,10 @@ io.on("connection", (socket) => {
       return {
         playerId: player.id,
         nickname: player.nickname,
-        deckSize: deck.length,
         bombIndices,
         thunderIndices,
         sample,
+        deckSize: deck.length,
       };
     });
     emitServerDebug(room, "bomb.debugDecks", { deckSummaries });

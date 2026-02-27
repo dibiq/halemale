@@ -6376,6 +6376,7 @@ class GameScene extends Phaser.Scene {
     });
 
     socket.off("specialUsed").on("specialUsed", (data) => {
+      console.log("[client specialUsed] received:", data);
       try {
         if (!data) return;
         try {
@@ -6449,6 +6450,7 @@ class GameScene extends Phaser.Scene {
 
         // 왕 카드 사용 연출: 서버가 보낸 대상(target) 또는 recipients[0]를 사용
         if (Number(data.cardId) === 8 && data.by) {
+          console.log("[client specialUsed] king branch, data:", data);
           const targetId =
             data.target ||
             (Array.isArray(data.recipients) && data.recipients.length > 0
@@ -6491,6 +6493,7 @@ class GameScene extends Phaser.Scene {
 
         // 6번 카드: 블록(가림) 카드 처리
         if (Number(data.cardId) === 6 && data.by) {
+          console.log("[client specialUsed] block branch, data:", data);
           try {
             // 서버가 보낸 플레이어 상태가 있으면 병합 (openStack 보존)
             if (Array.isArray(data.players) && data.players.length > 0) {
@@ -6522,6 +6525,10 @@ class GameScene extends Phaser.Scene {
 
             // 서버가 전달한 effectId가 있으면 등록(클라이언트가 중복으로 openStack을 변경하지 않도록 함)
             if (data.effectId) {
+              console.log(
+                "[client specialUsed] registering effectId:",
+                data.effectId,
+              );
               this.blockEffects = this.blockEffects || [];
               this.blockEffects.push({
                 id: data.effectId,
@@ -7664,6 +7671,16 @@ class GameScene extends Phaser.Scene {
       Array.isArray(this.blockEffects) &&
       this.blockEffects.some((e) => e.issuer === viewerId);
 
+    console.log(
+      "[flip] viewerId=",
+      viewerId,
+      "viewerIsIssuer=",
+      viewerIsIssuer,
+      "blockEffects=",
+      this.blockEffects,
+    );
+    let revealLogged = false;
+
     this.tweens.add({
       targets: tempCard,
       x: startPos.x + Math.cos(rad) * dist * 0.7 + targetOffsetX,
@@ -7679,8 +7696,28 @@ class GameScene extends Phaser.Scene {
             !viewerIsIssuer
           ) {
             // block active and viewer is NOT issuer -> keep back texture (do not reveal)
+            if (!revealLogged) {
+              console.log(
+                "[flip] reveal suppressed for viewer=",
+                viewerId,
+                "cardKey=",
+                cardKey,
+              );
+              revealLogged = true;
+            }
           } else {
-            if (this.textures.exists(cardKey)) tempCard.setTexture(cardKey);
+            if (this.textures.exists(cardKey)) {
+              if (!revealLogged) {
+                console.log(
+                  "[flip] revealing face for viewer=",
+                  viewerId,
+                  "cardKey=",
+                  cardKey,
+                );
+                revealLogged = true;
+              }
+              tempCard.setTexture(cardKey);
+            }
           }
         }
       },
