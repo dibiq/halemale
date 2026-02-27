@@ -836,6 +836,9 @@ io.on("connection", (socket) => {
         player.avatarKey = socket.avatarKey || "player_1";
 
         // 💡 [추가] DB에서 가져온 데이터를 player 객체에 할당
+        // Sync specialCards from socket into room snapshot to avoid timing issues
+        player.specialCards = socket.specialCards || {};
+
         player.level = socket.level || 1;
         player.coins = socket.coins || 0;
         player.experience = socket.experience || 0;
