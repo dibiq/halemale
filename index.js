@@ -1077,8 +1077,12 @@ io.on("connection", (socket) => {
         });
       };
 
-      // 현재는 block(6), thief (7)와 king (8)를 서버에서 처리
-      if (![6, 7, 8].includes(cardId)) {
+      // cardId 4 (lock) may be requested during penalty handling, not only on
+      // your own turn. other special cards (6,7,8) still require turn.
+      const isAutoLockPenalty =
+        cardId === 4 && payload.reason === "auto_lock_penalty";
+
+      if (!isAutoLockPenalty && ![6, 7, 8].includes(cardId)) {
         if (typeof cb === "function")
           cb({ success: false, message: "unsupported_card" });
         return;
@@ -1094,12 +1098,14 @@ io.on("connection", (socket) => {
       // 최신 specialCards를 소켓에서 다시 가져와서 방 스냅샷을 갱신합니다.
       refreshRoomSpecialCards(room);
 
-      // 사용자는 자신의 턴에만 사용할 수 있음
-      const currentTurnPlayer = room.players[room.turnIndex];
-      if (!currentTurnPlayer || currentTurnPlayer.id !== socket.id) {
-        if (typeof cb === "function")
-          cb({ success: false, message: "not_your_turn" });
-        return;
+      // auto-lock requests are allowed anytime; other cards require your turn
+      if (!isAutoLockPenalty) {
+        const currentTurnPlayer = room.players[room.turnIndex];
+        if (!currentTurnPlayer || currentTurnPlayer.id !== socket.id) {
+          if (typeof cb === "function")
+            cb({ success: false, message: "not_your_turn" });
+          return;
+        }
       }
 
       // 보유 여부 확인 (로그 추가)
@@ -1133,6 +1139,53 @@ io.on("connection", (socket) => {
         );
         if (typeof cb === "function")
           cb({ success: false, message: "no_card" });
+        return;
+      }
+
+      // --------------------------------------------------------------
+      // Special-case: auto-lock penalty handling. No animation is needed,
+      // we just consume the lock and tell the client so it can avoid the
+      // penalty. This path is invoked from the client when the server did
+      // not auto-use the lock on its own (e.g. stale state).
+      if (isAutoLockPenalty) {
+        try {
+          // consume once more just in case refreshRoomSpecialCards updated it
+          socket.specialCards[4] = Number(socket.specialCards[4] || 0) - 1;
+          if (socket.specialCards[4] <= 0) delete socket.specialCards[4];
+
+          // persist change asynchronously
+          savePlayer(
+            socket.nickname,
+            socket.level || 1,
+            socket.coins || 0,
+            {
+              items: Array.isArray(socket.items) ? socket.items : [],
+              specialCards: socket.specialCards || {},
+            },
+            socket.experience || 0,
+            socket.ownedCharacters || ["player_1"],
+            socket.currentCharacter || socket.avatarKey || "player_1",
+          ).catch((e) =>
+            console.warn(
+              "savePlayer error on auto-lock (requestUseSpecial)",
+              e,
+            ),
+          );
+
+          // also update room snapshot for clients that look at players
+          refreshRoomSpecialCards(room);
+
+          if (typeof cb === "function")
+            cb({
+              success: true,
+              updatedSpecialCards: socket.specialCards,
+              players: room.players,
+            });
+        } catch (e) {
+          console.warn("auto-lock requestUseSpecial error", e);
+          if (typeof cb === "function")
+            cb({ success: false, message: "error" });
+        }
         return;
       }
 

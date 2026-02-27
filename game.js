@@ -6301,6 +6301,7 @@ class GameScene extends Phaser.Scene {
           `${data.winnerNickname}님 획득! (${data.reactionTime}초)`,
           "#f1c40f",
         );
+        // winner case - just update players immediately
         this.roundData.players = updatedPlayers;
         /*this.time.delayedCall(500, () => {
           this.renderTable(this.roundData.players);
@@ -6322,7 +6323,19 @@ class GameScene extends Phaser.Scene {
             );
             // 서버가 보낸 플레이어 목록으로 갱신
             if (Array.isArray(data.players) && data.players.length > 0) {
-              this.roundData.players = updatedPlayers;
+              // 💡 Preserve any open stacks the client already had, since server
+              // may send players with emptied stacks. Similar to later lock
+              // handling logic.
+              this.roundData.players.forEach((oldPlayer) => {
+                const newPlayer = updatedPlayers.find(
+                  (p) => p.id === oldPlayer.id,
+                );
+                if (newPlayer) {
+                  const preservedOpenStack = oldPlayer.openStack;
+                  Object.assign(oldPlayer, newPlayer);
+                  oldPlayer.openStack = preservedOpenStack;
+                }
+              });
               this.renderTable(this.roundData.players);
             }
           } catch (e) {
@@ -6365,6 +6378,9 @@ class GameScene extends Phaser.Scene {
                     if (handled) return;
                     handled = true;
                     timeout.remove(false);
+
+                    // response received from lock request
+                    console.log("[autoLockPenalty] server response", res);
 
                     // 서버가 사용을 허용한 경우
                     if (res && res.success) {
@@ -6415,6 +6431,7 @@ class GameScene extends Phaser.Scene {
                     }
 
                     // 서버가 거부한 경우 패널티 적용
+                    console.log("[autoLockPenalty] server denied or failed", res);
                     this.playPenaltyAnimation({
                       penaltyId: data.penaltyId,
                       recipients: data.recipients,
