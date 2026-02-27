@@ -769,6 +769,9 @@ io.on("connection", (socket) => {
     socketId: socket.id,
   });
 
+  // Ensure specialCards object exists immediately to avoid early-turn race conditions
+  socket.specialCards = socket.specialCards || {};
+
   socket.on("setNickname", async (nickname) => {
     const nicknamePayload =
       typeof nickname === "object" && nickname !== null ? nickname : {};
@@ -1257,6 +1260,7 @@ io.on("connection", (socket) => {
             const tryConsumeShield = (playerId) => {
               try {
                 const s = io.sockets.sockets.get(playerId);
+                if (s) s.specialCards = s.specialCards || {};
                 console.log(
                   `[debug] tryConsumeShield check for ${playerId}: socketExists=${!!s}`,
                 );
@@ -1387,9 +1391,9 @@ io.on("connection", (socket) => {
                 let targetShielded = false;
                 try {
                   const tSock = io.sockets.sockets.get(targetPlayer.id);
+                  if (tSock) tSock.specialCards = tSock.specialCards || {};
                   if (
                     tSock &&
-                    tSock.specialCards &&
                     Number(tSock.specialCards[SHIELD_CARD_ID] || 0) > 0
                   ) {
                     tSock.specialCards[SHIELD_CARD_ID] =
@@ -1467,9 +1471,9 @@ io.on("connection", (socket) => {
               const top = pl.openCardStack[pl.openCardStack.length - 1];
               try {
                 const pSock = io.sockets.sockets.get(pl.id);
+                if (pSock) pSock.specialCards = pSock.specialCards || {};
                 if (
                   pSock &&
-                  pSock.specialCards &&
                   Number(pSock.specialCards[SHIELD_CARD_ID] || 0) > 0
                 ) {
                   pSock.specialCards[SHIELD_CARD_ID] =
@@ -1806,6 +1810,7 @@ io.on("connection", (socket) => {
       level: socket.level || 1, // 💡 방장 데이터도 포함
       coins: socket.coins || 0,
       experience: socket.experience || 0,
+      specialCards: socket.specialCards || {},
       items: socket.items || [],
       myDeck: [],
       openCard: null,
@@ -1924,6 +1929,7 @@ io.on("connection", (socket) => {
         level: socket.level || 1, // 💡 socket에 저장된 값을 가져옴
         coins: socket.coins || 0, // 💡 socket에 저장된 값을 가져옴
         experience: socket.experience || 0,
+        specialCards: socket.specialCards || {},
         items: socket.items || [],
         myDeck: [],
         openCard: null,
