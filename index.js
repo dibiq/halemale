@@ -1174,13 +1174,20 @@ io.on("connection", (socket) => {
             try {
               // First, if the room/player snapshot contains specialCards, prefer that
               try {
-                if (
-                  playerRef &&
-                  playerRef.specialCards &&
-                  Number(playerRef.specialCards[SHIELD_CARD_ID] || 0) > 0
-                ) {
-                  playerRef.specialCards[SHIELD_CARD_ID] =
-                    Number(playerRef.specialCards[SHIELD_CARD_ID] || 0) - 1;
+                const snapshotCount =
+                  playerRef && playerRef.specialCards
+                    ? Number(playerRef.specialCards[SHIELD_CARD_ID] || 0)
+                    : 0;
+                console.log(
+                  `[debug] tryConsumeShield snapshotCount=${snapshotCount} for ref=${JSON.stringify(
+                    {
+                      id: playerRef && playerRef.id,
+                      nickname: playerRef && playerRef.nickname,
+                    },
+                  )}`,
+                );
+                if (playerRef && playerRef.specialCards && snapshotCount > 0) {
+                  playerRef.specialCards[SHIELD_CARD_ID] = snapshotCount - 1;
                   if (playerRef.specialCards[SHIELD_CARD_ID] <= 0)
                     delete playerRef.specialCards[SHIELD_CARD_ID];
 
@@ -1198,9 +1205,13 @@ io.on("connection", (socket) => {
                   }
                   if (resolvedSock) {
                     resolvedSock.specialCards = resolvedSock.specialCards || {};
-                    resolvedSock.specialCards[SHIELD_CARD_ID] =
-                      Number(resolvedSock.specialCards[SHIELD_CARD_ID] || 0) -
-                      1;
+                    const sockCount = Number(
+                      resolvedSock.specialCards[SHIELD_CARD_ID] || 0,
+                    );
+                    console.log(
+                      `[debug] tryConsumeShield socket had count=${sockCount} for ${resolvedSock.nickname}`,
+                    );
+                    resolvedSock.specialCards[SHIELD_CARD_ID] = sockCount - 1;
                     if (resolvedSock.specialCards[SHIELD_CARD_ID] <= 0)
                       delete resolvedSock.specialCards[SHIELD_CARD_ID];
 
@@ -1353,9 +1364,14 @@ io.on("connection", (socket) => {
                       } catch (e) {}
                     }
                   }
-                  if (Number(parsedSpecial[SHIELD_CARD_ID] || 0) > 0) {
-                    parsedSpecial[SHIELD_CARD_ID] =
-                      Number(parsedSpecial[SHIELD_CARD_ID] || 0) - 1;
+                  const dbCount = Number(parsedSpecial[SHIELD_CARD_ID] || 0);
+                  console.log(
+                    `[debug] tryConsumeShield dbFallback count=${dbCount} for ${
+                      resolvedSock.nickname
+                    }`,
+                  );
+                  if (dbCount > 0) {
+                    parsedSpecial[SHIELD_CARD_ID] = dbCount - 1;
                     if (parsedSpecial[SHIELD_CARD_ID] <= 0)
                       delete parsedSpecial[SHIELD_CARD_ID];
                     // apply to socket and room snapshot
@@ -2474,21 +2490,17 @@ io.on("connection", (socket) => {
       for (const p of room.players) {
         try {
           const s = p && p.id ? io.sockets.sockets.get(p.id) : null;
-          // 우선: 라이브 소켓에 특수카드가 있으면 우선 사용
+          // copy from socket if available
           if (s && s.specialCards && Object.keys(s.specialCards).length > 0) {
             p.specialCards = s.specialCards;
-            continue;
           }
 
-          // 방 스냅샷에 있으면 그대로 사용
-          if (p && p.specialCards && Object.keys(p.specialCards).length > 0) {
-            // keep existing snapshot
-            if (s) s.specialCards = p.specialCards;
-            continue;
-          }
-
-          // 둘 다 비어있다면 DB에서 복원 시도
-          if (s && s.nickname) {
+          // restore from DB if neither snapshot nor socket had cards
+          if (
+            (!p.specialCards || Object.keys(p.specialCards).length === 0) &&
+            s &&
+            s.nickname
+          ) {
             try {
               const saved = await getPlayer(s.nickname);
               let parsedSpecial = {};
@@ -2513,18 +2525,43 @@ io.on("connection", (socket) => {
               }
               if (parsedSpecial && Object.keys(parsedSpecial).length > 0) {
                 p.specialCards = parsedSpecial;
-                s.specialCards = parsedSpecial;
-              } else {
-                p.specialCards = p.specialCards || {};
-                s.specialCards = s.specialCards || {};
+                if (s) s.specialCards = parsedSpecial;
               }
             } catch (e) {
-              p.specialCards = p.specialCards || {};
-              if (s) s.specialCards = s.specialCards || {};
+              // ignore restore errors
             }
-          } else {
-            p.specialCards = p.specialCards || {};
-            if (s) s.specialCards = s.specialCards || {};
+          }
+
+          // ensure objects exist
+          p.specialCards = p.specialCards || {};
+          if (s) s.specialCards = s.specialCards || {};
+
+          // 테스트용 기본값: 방패 10개 채워줌
+          if (
+            !Number.isFinite(Number(p.specialCards[SHIELD_CARD_ID] || 0)) ||
+            Number(p.specialCards[SHIELD_CARD_ID] || 0) <= 0
+          ) {
+            p.specialCards[SHIELD_CARD_ID] = 10;
+            console.log(
+              `[debug] startGame default shield assigned to player ${p.nickname} (${p.id})`,
+            );
+            if (s) {
+              s.specialCards[SHIELD_CARD_ID] = 10;
+              savePlayer(
+                s.nickname,
+                s.level || 1,
+                s.coins || 0,
+                {
+                  items: Array.isArray(s.items) ? s.items : [],
+                  specialCards: s.specialCards || {},
+                },
+                s.experience || 0,
+                s.ownedCharacters || ["player_1"],
+                s.currentCharacter || s.avatarKey || "player_1",
+              ).catch((e) =>
+                console.warn("savePlayer error on default shield", e),
+              );
+            }
           }
         } catch (e) {
           // ignore per-player sync error
