@@ -8,58 +8,21 @@ const { Pool } = require("pg");
 const app = express();
 const server = http.createServer(app);
 const DATABASE_URL = process.env.DATABASE_URL;
-const hasPgConfig =
-  Boolean(process.env.PGHOST) ||
-  Boolean(process.env.PGUSER) ||
-  Boolean(process.env.PGDATABASE);
-
-// Initialize Postgres pool if configuration is present
-let pool = null;
-if (DATABASE_URL || hasPgConfig) {
-  try {
-    if (DATABASE_URL) {
-      pool = new Pool({
-        connectionString: DATABASE_URL,
-        ssl: { rejectUnauthorized: false },
-      });
-    } else {
-      pool = new Pool();
-    }
-    pool.on("error", (err) => console.error("Postgres pool error:", err));
-    console.log("✅ Postgres pool initialized");
-  } catch (err) {
-    console.error("❌ Postgres pool initialization failed:", err);
-    pool = null;
-  }
-} else {
-  console.log("ℹ️ Postgres not configured; DB features disabled");
-}
-
-// 1. CORS 설정
-function getAllowedOrigins() {
-  return [
-    "https://halemale.onrender.com",
-    "https://halemale-client.onrender.com",
-    "https://skewer-master.apps.tossmini.com",
-    "https://skewer-master.private-apps.tossmini.com",
-    "https://halemale.apps.tossmini.com",
-    "https://halemale.private-apps.tossmini.com",
-    "http://localhost",
-    "https://localhost",
-    "capacitor://localhost",
-    "http://10.68.14.196:5173",
-    "http://localhost:5173",
-    "http://0.0.0.0:5173",
-    "http://0.0.0.0:3000",
-    "http://192.168.10.113:3000",
-    "http://192.168.10.113:5173",
-    "http://localhost:3000",
-  ];
-}
-
-function isAllowedOrigin(origin) {
-  if (!origin) return true;
-
+              try {
+                const consumedId = tryConsumeShield(pl);
+                if (consumedId) {
+                  shieldedGlobal.push(consumedId);
+                }
+                if (!top || top.type !== "blockcard") {
+                  const wasShielded = Boolean(consumedId);
+                  pl.openCardStack.push({
+                    type: "blockcard",
+                    issuer: socket.id,
+                    effectId,
+                    shielded: wasShielded || false,
+                  });
+                }
+              } catch (e) {}
   const allowedOrigins = getAllowedOrigins();
   if (allowedOrigins.includes(origin)) return true;
 
@@ -345,54 +308,14 @@ function injectThunderCardsToPlayers(players, thunderCount) {
 
   for (let index = 0; index < count; index += 1) {
     const targetPlayer =
-      drawablePlayers[Math.floor(Math.random() * drawablePlayers.length)];
-    if (!targetPlayer || !Array.isArray(targetPlayer.myDeck)) continue;
+                const consumedId = tryConsumeShield(targetPlayer);
+                let targetShielded = false;
+                if (consumedId) {
+                  targetShielded = true;
+                  shieldedGlobal.push(consumedId);
+                }
 
-    const insertIndex = Math.floor(
-      Math.random() * (targetPlayer.myDeck.length + 1),
-    );
-    // Preserve deck size by replacing if index within range, otherwise push
-    if (insertIndex < targetPlayer.myDeck.length) {
-      targetPlayer.myDeck[insertIndex] = { type: THUNDER_CARD_TYPE };
-    } else {
-      targetPlayer.myDeck.push({ type: THUNDER_CARD_TYPE });
-    }
-
-    console.log(
-      `⚡ inject thunder -> ${targetPlayer.nickname || targetPlayer.id} (deckIndex=${insertIndex})`,
-    );
-  }
-}
-
-function syncRoomPlayersWithActiveSockets(room, io) {
-  if (!room || !Array.isArray(room.players)) return;
-
-  const activeSocketIds = io.sockets.adapter.rooms.get(room.roomId);
-  if (!activeSocketIds || activeSocketIds.size === 0) return;
-
-  const activeSockets = [...activeSocketIds]
-    .map((id) => io.sockets.sockets.get(id))
-    .filter(Boolean);
-
-  room.players.forEach((player) => {
-    const matchedSocket = activeSockets.find((activeSocket) => {
-      const activeNickname =
-        typeof activeSocket.nickname === "string"
-          ? activeSocket.nickname.trim()
-          : "";
-      const playerNickname =
-        typeof player.nickname === "string" ? player.nickname.trim() : "";
-      return (
-        activeNickname && playerNickname && activeNickname === playerNickname
-      );
-    });
-
-    if (matchedSocket) {
-      const previousId = player.id;
-      player.id = matchedSocket.id;
-      if (room.host === previousId) {
-        room.host = matchedSocket.id;
-      }
+                if (!targetShielded) {
     }
   });
 
@@ -1241,6 +1164,67 @@ io.on("connection", (socket) => {
       // 실제 효과는 애니메이션이 끝난 뒤 적용
       setTimeout(async () => {
         try {
+          // Helper: try to find a socket for a player (by id or nickname) and consume shield if present.
+          // Returns the socket id if a shield was consumed, otherwise returns false.
+          const tryConsumeShield = (playerRef) => {
+            try {
+              let resolvedSock = null;
+              let lookupId = typeof playerRef === "string" ? playerRef : playerRef && playerRef.id;
+              if (lookupId) resolvedSock = io.sockets.sockets.get(lookupId);
+              // fallback: match by nickname if socket not found
+              if (!resolvedSock && playerRef && playerRef.nickname) {
+                for (const [sid, sock] of io.sockets.sockets) {
+                  if (sock && sock.nickname === playerRef.nickname) {
+                    resolvedSock = sock;
+                    break;
+                  }
+                }
+              }
+              if (resolvedSock) resolvedSock.specialCards = resolvedSock.specialCards || {};
+              console.log(
+                `[debug] tryConsumeShield resolved for ref=${JSON.stringify(
+                  playerRef && { id: playerRef.id, nickname: playerRef.nickname },
+                )} -> socketExists=${!!resolvedSock}`,
+              );
+              if (resolvedSock && Number(resolvedSock.specialCards[SHIELD_CARD_ID] || 0) > 0) {
+                resolvedSock.specialCards[SHIELD_CARD_ID] =
+                  Number(resolvedSock.specialCards[SHIELD_CARD_ID] || 0) - 1;
+                if (resolvedSock.specialCards[SHIELD_CARD_ID] <= 0)
+                  delete resolvedSock.specialCards[SHIELD_CARD_ID];
+                // persist change and emit updated profile
+                savePlayer(
+                  resolvedSock.nickname,
+                  resolvedSock.level || 1,
+                  resolvedSock.coins || 0,
+                  {
+                    items: Array.isArray(resolvedSock.items) ? resolvedSock.items : [],
+                    specialCards: resolvedSock.specialCards || {},
+                  },
+                  resolvedSock.experience || 0,
+                  resolvedSock.ownedCharacters || ["player_1"],
+                  resolvedSock.currentCharacter || resolvedSock.avatarKey || "player_1",
+                ).catch((e) => console.warn("savePlayer error on shield consume", e));
+                try {
+                  resolvedSock.emit("myProfile", {
+                    nickname: resolvedSock.nickname,
+                    level: Number(resolvedSock.level) || 1,
+                    coins: Number(resolvedSock.coins) || 0,
+                    items: Array.isArray(resolvedSock.items) ? resolvedSock.items : [],
+                    experience: Number(resolvedSock.experience) || 0,
+                    avatarKey: resolvedSock.currentCharacter || resolvedSock.avatarKey || "player_1",
+                    specialCards: resolvedSock.specialCards || {},
+                    owned_characters: resolvedSock.owned_characters || ["player_1"],
+                    current_character: resolvedSock.currentCharacter || "player_1",
+                  });
+                } catch (e) {}
+                return resolvedSock.id;
+              }
+            } catch (e) {
+              console.warn("tryConsumeShield error", e);
+            }
+            return false;
+          };
+
           // 기존 로직: 카드별 효과 적용
           if (cardId === 7) {
             // 차감
@@ -1257,67 +1241,7 @@ io.on("connection", (socket) => {
 
             const stolenFrom = [];
 
-            const tryConsumeShield = (playerId) => {
-              try {
-                const s = io.sockets.sockets.get(playerId);
-                if (s) s.specialCards = s.specialCards || {};
-                console.log(
-                  `[debug] tryConsumeShield check for ${playerId}: socketExists=${!!s}`,
-                );
-                if (s)
-                  console.log(
-                    `[debug] tryConsumeShield current specialCards=`,
-                    s.specialCards,
-                  );
-                if (
-                  s &&
-                  s.specialCards &&
-                  Number(s.specialCards[SHIELD_CARD_ID] || 0) > 0
-                ) {
-                  console.log(
-                    `[debug] tryConsumeShield consuming shield for ${playerId}`,
-                  );
-                  s.specialCards[SHIELD_CARD_ID] =
-                    Number(s.specialCards[SHIELD_CARD_ID] || 0) - 1;
-                  if (s.specialCards[SHIELD_CARD_ID] <= 0)
-                    delete s.specialCards[SHIELD_CARD_ID];
-                  // persist change and emit updated profile
-                  savePlayer(
-                    s.nickname,
-                    s.level || 1,
-                    s.coins || 0,
-                    {
-                      items: Array.isArray(s.items) ? s.items : [],
-                      specialCards: s.specialCards || {},
-                    },
-                    s.experience || 0,
-                    s.ownedCharacters || ["player_1"],
-                    s.currentCharacter || s.avatarKey || "player_1",
-                  ).catch((e) =>
-                    console.warn("savePlayer error on shield consume", e),
-                  );
-                  try {
-                    s.emit("myProfile", {
-                      nickname: s.nickname,
-                      level: Number(s.level) || 1,
-                      coins: Number(s.coins) || 0,
-                      items: Array.isArray(s.items) ? s.items : [],
-                      experience: Number(s.experience) || 0,
-                      avatarKey:
-                        s.currentCharacter || s.avatarKey || "player_1",
-                      specialCards: s.specialCards || {},
-                      owned_characters: s.ownedCharacters || ["player_1"],
-                      current_character: s.currentCharacter || "player_1",
-                    });
-                  } catch (e) {}
-                  return true;
-                }
-              } catch (e) {
-                console.warn("tryConsumeShield error", e);
-              }
-              return false;
-            };
-
+            
             const recipientPlayer = room.players.find(
               (p) => p.id === socket.id,
             );
@@ -1326,18 +1250,18 @@ io.on("connection", (socket) => {
                 recipientPlayer.myDeck = [];
               socket.myDeck = recipientPlayer.myDeck;
 
-              givers.forEach((giver) => {
+              for (const giver of givers) {
                 if (giver.myDeck && giver.myDeck.length > 0) {
-                  const consumed = tryConsumeShield(giver.id);
-                  if (consumed) {
-                    shieldedGlobal.push(giver.id);
+                  const consumedId = tryConsumeShield(giver);
+                  if (consumedId) {
+                    shieldedGlobal.push(consumedId);
                   } else {
                     const card = giver.myDeck.pop();
                     recipientPlayer.myDeck.unshift(card);
                     stolenFrom.push(giver.id);
                   }
                 }
-              });
+              }
               console.log(
                 `[debug] thief result for ${socket.nickname}: stolenFrom=`,
                 stolenFrom,
@@ -1350,18 +1274,18 @@ io.on("connection", (socket) => {
                   ? socket.myDeck
                   : [];
 
-              givers.forEach((giver) => {
+              for (const giver of givers) {
                 if (giver.myDeck && giver.myDeck.length > 0) {
-                  const consumed = tryConsumeShield(giver.id);
-                  if (consumed) {
-                    shieldedGlobal.push(giver.id);
+                  const consumedId = tryConsumeShield(giver);
+                  if (consumedId) {
+                    shieldedGlobal.push(consumedId);
                   } else {
                     const card = giver.myDeck.pop();
                     socket.myDeck.unshift(card);
                     stolenFrom.push(giver.id);
                   }
                 }
-              });
+              }
               console.log(
                 `[debug] thief result for ${socket.nickname}: stolenFrom=`,
                 stolenFrom,
