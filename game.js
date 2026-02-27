@@ -6506,28 +6506,29 @@ class GameScene extends Phaser.Scene {
               });
             }
 
-            // 생성한 block effect 등록 (각 사용은 개별 effect로 관리)
-            const effectId = `block_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
-            this.blockEffects = this.blockEffects || [];
-            this.blockEffects.push({
-              id: effectId,
-              issuer: data.by,
-              remainingTurns: 2,
-            });
+            // 서버가 플레이어 상태를 제공하면 그것을 신뢰하여 병합합니다 (서버가 blockcard 적용을 처리함)
+            if (Array.isArray(data.players) && data.players.length > 0) {
+              this.roundData.players.forEach((oldPlayer) => {
+                const newPlayer = data.players.find(
+                  (p) => p.id === oldPlayer.id,
+                );
+                if (newPlayer) {
+                  const preservedOpenStack = oldPlayer.openStack;
+                  Object.assign(oldPlayer, newPlayer);
+                  oldPlayer.openStack = preservedOpenStack;
+                }
+              });
+            }
 
-            // 각 생존 플레이어의 openStack 위에 한 장의 blockcard를 추가 (중복 방지)
-            this.roundData.players.forEach((p) => {
-              if (!p || p.isEliminated) return;
-              if (!p.openStack) p.openStack = [];
-              const top = p.openStack[p.openStack.length - 1];
-              if (!top || top.type !== "blockcard") {
-                p.openStack.push({
-                  type: "blockcard",
-                  issuer: data.by,
-                  effectId,
-                });
-              }
-            });
+            // 서버가 전달한 effectId가 있으면 등록(클라이언트가 중복으로 openStack을 변경하지 않도록 함)
+            if (data.effectId) {
+              this.blockEffects = this.blockEffects || [];
+              this.blockEffects.push({
+                id: data.effectId,
+                issuer: data.by,
+                remainingTurns: 2,
+              });
+            }
 
             this.blockActive = true;
             this.blockBy = data.by;
