@@ -2385,6 +2385,25 @@ io.on("connection", (socket) => {
 
     syncRoomPlayersWithActiveSockets(room, io);
 
+    // 시작 직전에 room.players의 specialCards를 실시간 소켓과 동기화합니다.
+    // (게임 시작 직후 공격이 들어오는 경우에 대비한 안전장치)
+    try {
+      room.players.forEach((p) => {
+        try {
+          const s = p && p.id ? io.sockets.sockets.get(p.id) : null;
+          if (s && s.specialCards && Object.keys(s.specialCards).length > 0) {
+            p.specialCards = s.specialCards;
+          } else {
+            p.specialCards = p.specialCards || {};
+          }
+        } catch (e) {
+          // ignore per-player sync error
+        }
+      });
+    } catch (e) {
+      console.warn("startGame: failed to sync specialCards", e);
+    }
+
     // 1. 방장 권한 체크
     if (room.host !== socket.id) {
       emitServerDebug(room, "startGameRequest.blocked", {
