@@ -7092,7 +7092,7 @@ class GameScene extends Phaser.Scene {
     });
 
     // 4. 실제 자동 실행 예약: 1초 대기 + 5초 타이머 = 총 6초
-    this.myTurnTimer = this.time.delayedCall(6000, () => {
+    this.myTurnTimer = this.time.delayedCall(60000, () => {
       console.log("⏰ 1초 대기 + 5초 경과! 자동 뒤집기 실행");
       this.handleFlipCard();
     });

@@ -1167,7 +1167,7 @@ io.on("connection", (socket) => {
         try {
           // Helper: try to find a socket for a player (by id or nickname) and consume shield if present.
           // Returns the socket id if a shield was consumed, otherwise returns false.
-          const tryConsumeShield = (playerRef) => {
+          const tryConsumeShield = async (playerRef) => {
             try {
               // First, if the room/player snapshot contains specialCards, prefer that
               try {
@@ -1325,6 +1325,86 @@ io.on("connection", (socket) => {
                 } catch (e) {}
                 return resolvedSock.id;
               }
+
+              // If socket exists but has no shield, try DB fallback to check persisted items
+              if (resolvedSock && resolvedSock.nickname) {
+                try {
+                  const saved = await getPlayer(resolvedSock.nickname);
+                  let parsedSpecial = {};
+                  if (saved) {
+                    if (
+                      typeof saved.items === "object" &&
+                      !Array.isArray(saved.items)
+                    ) {
+                      parsedSpecial = saved.items.specialCards || {};
+                    } else if (typeof saved.items === "string") {
+                      try {
+                        const parsed = JSON.parse(saved.items);
+                        if (
+                          parsed &&
+                          typeof parsed === "object" &&
+                          !Array.isArray(parsed)
+                        ) {
+                          parsedSpecial = parsed.specialCards || {};
+                        }
+                      } catch (e) {}
+                    }
+                  }
+                  if (Number(parsedSpecial[SHIELD_CARD_ID] || 0) > 0) {
+                    parsedSpecial[SHIELD_CARD_ID] =
+                      Number(parsedSpecial[SHIELD_CARD_ID] || 0) - 1;
+                    if (parsedSpecial[SHIELD_CARD_ID] <= 0)
+                      delete parsedSpecial[SHIELD_CARD_ID];
+                    // apply to socket and room snapshot
+                    resolvedSock.specialCards = parsedSpecial;
+                    if (playerRef && playerRef.specialCards)
+                      playerRef.specialCards = parsedSpecial;
+                    // persist
+                    await savePlayer(
+                      resolvedSock.nickname,
+                      resolvedSock.level || 1,
+                      resolvedSock.coins || 0,
+                      {
+                        items: Array.isArray(resolvedSock.items)
+                          ? resolvedSock.items
+                          : [],
+                        specialCards: resolvedSock.specialCards || {},
+                      },
+                      resolvedSock.experience || 0,
+                      resolvedSock.ownedCharacters || ["player_1"],
+                      resolvedSock.currentCharacter ||
+                        resolvedSock.avatarKey ||
+                        "player_1",
+                    ).catch((e) =>
+                      console.warn("savePlayer error on shield consume", e),
+                    );
+                    try {
+                      resolvedSock.emit("myProfile", {
+                        nickname: resolvedSock.nickname,
+                        level: Number(resolvedSock.level) || 1,
+                        coins: Number(resolvedSock.coins) || 0,
+                        items: Array.isArray(resolvedSock.items)
+                          ? resolvedSock.items
+                          : [],
+                        experience: Number(resolvedSock.experience) || 0,
+                        avatarKey:
+                          resolvedSock.currentCharacter ||
+                          resolvedSock.avatarKey ||
+                          "player_1",
+                        specialCards: resolvedSock.specialCards || {},
+                        owned_characters: resolvedSock.owned_characters || [
+                          "player_1",
+                        ],
+                        current_character:
+                          resolvedSock.currentCharacter || "player_1",
+                      });
+                    } catch (e) {}
+                    return resolvedSock.id;
+                  }
+                } catch (e) {
+                  // ignore DB fallback errors
+                }
+              }
             } catch (e) {
               console.warn("tryConsumeShield error", e);
             }
@@ -1357,7 +1437,7 @@ io.on("connection", (socket) => {
 
               for (const giver of givers) {
                 if (giver.myDeck && giver.myDeck.length > 0) {
-                  const consumedId = tryConsumeShield(giver);
+                  const consumedId = await tryConsumeShield(giver);
                   if (consumedId) {
                     shieldedGlobal.push(consumedId);
                   } else {
@@ -1381,7 +1461,7 @@ io.on("connection", (socket) => {
 
               for (const giver of givers) {
                 if (giver.myDeck && giver.myDeck.length > 0) {
-                  const consumedId = tryConsumeShield(giver);
+                  const consumedId = await tryConsumeShield(giver);
                   if (consumedId) {
                     shieldedGlobal.push(consumedId);
                   } else {
