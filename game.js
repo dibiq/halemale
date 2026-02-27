@@ -6394,6 +6394,35 @@ class GameScene extends Phaser.Scene {
           if (data.by) this.specialUsedThisTurn[data.by] = true;
         } catch (e) {}
 
+        // 중앙 방패 발동 애니메이션 재생 (서버가 shielded를 보고한 경우)
+        try {
+          if (Array.isArray(data.shielded) && data.shielded.length > 0) {
+            const names = (
+              Array.isArray(data.players)
+                ? data.players
+                : this.roundData.players || []
+            )
+              .map((p) => ({ id: p.id, nickname: p.nickname }))
+              .filter((p) => data.shielded.includes(p.id))
+              .map((p) => p.nickname || p.id);
+            const subtitle =
+              names.length > 0
+                ? `${names.join(", ")}님이 방패로 막았습니다.`
+                : "공격이 방패로 막혔습니다.";
+            try {
+              this.playSpecialAnimation({
+                imageKey: "shield",
+                title: "방패 발동",
+                subtitle,
+              });
+            } catch (e) {
+              console.warn("playSpecialAnimation (shield) error", e);
+            }
+          }
+        } catch (e) {
+          console.warn("specialUsed shielded handling error", e);
+        }
+
         // 도둑 카드 사용 연출: 서버가 보낸 recipients(fromIds)와 by(id)를 사용해 애니메이션 재생
         if (
           Number(data.cardId) === 7 &&
@@ -6456,6 +6485,12 @@ class GameScene extends Phaser.Scene {
                       "[debug] specialUsed shielded ids:",
                       data.shielded,
                     );
+                    try {
+                      this.showToast(
+                        `방패 소모: ${data.shielded.join(",")}`,
+                        "#f1c40f",
+                      );
+                    } catch (e) {}
                     data.shielded.forEach((id) => this.showShieldEffect(id));
                   }
                 }
@@ -6508,6 +6543,12 @@ class GameScene extends Phaser.Scene {
                         "[debug] specialUsed (king) shielded ids:",
                         data.shielded,
                       );
+                      try {
+                        this.showToast(
+                          `방패 소모: ${data.shielded.join(",")}`,
+                          "#f1c40f",
+                        );
+                      } catch (e) {}
                       data.shielded.forEach((id) => this.showShieldEffect(id));
                     }
                   }
@@ -6569,6 +6610,12 @@ class GameScene extends Phaser.Scene {
                 "[debug] specialUsed (block) shielded ids:",
                 data.shielded,
               );
+              try {
+                this.showToast(
+                  `방패 소모: ${data.shielded.join(",")}`,
+                  "#f1c40f",
+                );
+              } catch (e) {}
               data.shielded.forEach((id) => this.showShieldEffect(id));
             }
             if (data.message) this.showToast(data.message, "#f39c12");

@@ -1257,11 +1257,22 @@ io.on("connection", (socket) => {
             const tryConsumeShield = (playerId) => {
               try {
                 const s = io.sockets.sockets.get(playerId);
+                console.log(
+                  `[debug] tryConsumeShield check for ${playerId}: socketExists=${!!s}`,
+                );
+                if (s)
+                  console.log(
+                    `[debug] tryConsumeShield current specialCards=`,
+                    s.specialCards,
+                  );
                 if (
                   s &&
                   s.specialCards &&
                   Number(s.specialCards[SHIELD_CARD_ID] || 0) > 0
                 ) {
+                  console.log(
+                    `[debug] tryConsumeShield consuming shield for ${playerId}`,
+                  );
                   s.specialCards[SHIELD_CARD_ID] =
                     Number(s.specialCards[SHIELD_CARD_ID] || 0) - 1;
                   if (s.specialCards[SHIELD_CARD_ID] <= 0)
@@ -1297,7 +1308,9 @@ io.on("connection", (socket) => {
                   } catch (e) {}
                   return true;
                 }
-              } catch (e) {}
+              } catch (e) {
+                console.warn("tryConsumeShield error", e);
+              }
               return false;
             };
 
@@ -1311,7 +1324,8 @@ io.on("connection", (socket) => {
 
               givers.forEach((giver) => {
                 if (giver.myDeck && giver.myDeck.length > 0) {
-                  if (tryConsumeShield(giver.id)) {
+                  const consumed = tryConsumeShield(giver.id);
+                  if (consumed) {
                     shieldedGlobal.push(giver.id);
                   } else {
                     const card = giver.myDeck.pop();
@@ -1320,6 +1334,12 @@ io.on("connection", (socket) => {
                   }
                 }
               });
+              console.log(
+                `[debug] thief result for ${socket.nickname}: stolenFrom=`,
+                stolenFrom,
+                `shielded=`,
+                shieldedGlobal,
+              );
             } else {
               if (!Array.isArray(socket.myDeck))
                 socket.myDeck = Array.isArray(socket.myDeck)
@@ -1328,7 +1348,8 @@ io.on("connection", (socket) => {
 
               givers.forEach((giver) => {
                 if (giver.myDeck && giver.myDeck.length > 0) {
-                  if (tryConsumeShield(giver.id)) {
+                  const consumed = tryConsumeShield(giver.id);
+                  if (consumed) {
                     shieldedGlobal.push(giver.id);
                   } else {
                     const card = giver.myDeck.pop();
@@ -1337,6 +1358,12 @@ io.on("connection", (socket) => {
                   }
                 }
               });
+              console.log(
+                `[debug] thief result for ${socket.nickname}: stolenFrom=`,
+                stolenFrom,
+                `shielded=`,
+                shieldedGlobal,
+              );
             }
 
             recipients.push(...stolenFrom);

@@ -45,6 +45,12 @@ function createClient(name) {
       B.emit("joinRoom", { roomId: roomId, nickname: "GuestSim" });
     }, 300);
 
+    // Guest buys a shield for testing (cardId 5)
+    setTimeout(() => {
+      console.log("Guest buying shield (cardId 5)");
+      B.emit("buySpecialCard", { cardId: 5, cardPrice: 0 });
+    }, 450);
+
     // after both join, mark Guest ready then Host requests start
     setTimeout(() => {
       console.log("Guest toggling ready");
