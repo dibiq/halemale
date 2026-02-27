@@ -787,18 +787,15 @@ class LobbyScene extends Phaser.Scene {
         } else {
           localStorage.setItem("specialCards", JSON.stringify(parsed));
 
-          // DEBUG: ensure developer start inventory for certain special cards
+          // DEBUG: for testing only, give a shield if none present
           try {
             const specialOwned =
               JSON.parse(localStorage.getItem("specialCards")) || {};
-            // ids: 4=lock,5=shield,6=block(먹물),7=thief,8=king
-            [4, 5, 6, 7, 8].forEach((id) => {
-              if (!Number.isFinite(Number(specialOwned[id]))) {
-                specialOwned[id] = 10;
-              }
-            });
+            if (!Number.isFinite(Number(specialOwned[5] || 0))) {
+              specialOwned[5] = 10; // shield id
+            }
             localStorage.setItem("specialCards", JSON.stringify(specialOwned));
-            console.log("[debug] ensured starting specialCards:", specialOwned);
+            console.log("[debug] ensured starting shield only:", specialOwned);
           } catch (e) {
             console.warn("[debug] failed to set debug specialCards", e);
           }
