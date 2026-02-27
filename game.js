@@ -6438,6 +6438,12 @@ class GameScene extends Phaser.Scene {
                     })),
                   );
                   this.renderTable(this.roundData.players);
+                  if (
+                    Array.isArray(data.shielded) &&
+                    data.shielded.length > 0
+                  ) {
+                    data.shielded.forEach((id) => this.showShieldEffect(id));
+                  }
                 }
                 if (data.message) this.showToast(data.message, "#2ecc71");
               } catch (e) {
@@ -6480,6 +6486,12 @@ class GameScene extends Phaser.Scene {
                       }
                     });
                     this.renderTable(this.roundData.players);
+                    if (
+                      Array.isArray(data.shielded) &&
+                      data.shielded.length > 0
+                    ) {
+                      data.shielded.forEach((id) => this.showShieldEffect(id));
+                    }
                   }
                   if (data.message) this.showToast(data.message, "#2ecc71");
                 } catch (e) {
@@ -6495,30 +6507,22 @@ class GameScene extends Phaser.Scene {
         if (Number(data.cardId) === 6 && data.by) {
           console.log("[client specialUsed] block branch, data:", data);
           try {
-            // 서버가 보낸 플레이어 상태가 있으면 병합 (openStack 보존)
+            // 서버가 보낸 플레이어 상태가 있으면 병합합니다.
+            // 서버는 openCardStack에 blockcard를 추가해 보낼 수 있으므로,
+            // 가능하면 서버의 openCardStack을 클라이언트 openStack에 즉시 반영합니다.
             if (Array.isArray(data.players) && data.players.length > 0) {
               this.roundData.players.forEach((oldPlayer) => {
                 const newPlayer = data.players.find(
                   (p) => p.id === oldPlayer.id,
                 );
                 if (newPlayer) {
-                  const preservedOpenStack = oldPlayer.openStack;
+                  const preservedOpenStack = oldPlayer.openStack || [];
                   Object.assign(oldPlayer, newPlayer);
-                  oldPlayer.openStack = preservedOpenStack;
-                }
-              });
-            }
-
-            // 서버가 플레이어 상태를 제공하면 그것을 신뢰하여 병합합니다 (서버가 blockcard 적용을 처리함)
-            if (Array.isArray(data.players) && data.players.length > 0) {
-              this.roundData.players.forEach((oldPlayer) => {
-                const newPlayer = data.players.find(
-                  (p) => p.id === oldPlayer.id,
-                );
-                if (newPlayer) {
-                  const preservedOpenStack = oldPlayer.openStack;
-                  Object.assign(oldPlayer, newPlayer);
-                  oldPlayer.openStack = preservedOpenStack;
+                  if (Array.isArray(newPlayer.openCardStack)) {
+                    oldPlayer.openStack = [...newPlayer.openCardStack];
+                  } else {
+                    oldPlayer.openStack = preservedOpenStack;
+                  }
                 }
               });
             }
@@ -6534,6 +6538,7 @@ class GameScene extends Phaser.Scene {
                 id: data.effectId,
                 issuer: data.by,
                 remainingTurns: 2,
+                shielded: Array.isArray(data.shielded) ? data.shielded : [],
               });
             }
 
@@ -6541,6 +6546,9 @@ class GameScene extends Phaser.Scene {
             this.blockBy = data.by;
 
             this.renderTable(this.roundData.players);
+            if (Array.isArray(data.shielded) && data.shielded.length > 0) {
+              data.shielded.forEach((id) => this.showShieldEffect(id));
+            }
             if (data.message) this.showToast(data.message, "#f39c12");
           } catch (e) {
             console.warn("specialUsed block merge error", e);
@@ -7212,6 +7220,11 @@ class GameScene extends Phaser.Scene {
           cardBg.disableInteractive();
         } else {
           cardBg.on("pointerdown", () => {
+            // Prevent double-clicks: mark as clicked and disable interaction immediately
+            if (cardBg._clicked) return;
+            cardBg._clicked = true;
+            cardBg.disableInteractive();
+
             if ((this.specialUsedThisTurn || {})[myIdForFlag]) {
               this.showToast(
                 "이미 이 턴에 특수카드를 사용했습니다!",
@@ -7219,6 +7232,13 @@ class GameScene extends Phaser.Scene {
               );
               return;
             }
+
+            // Optimistic guard so rapid clicks (during tween) won't trigger again
+            try {
+              this.specialUsedThisTurn = this.specialUsedThisTurn || {};
+              this.specialUsedThisTurn[myIdForFlag] = true;
+            } catch (e) {}
+
             this.sound.play("pop", { volume: 0.1 });
             this.tweens.add({
               targets: [cardBg, cardImg, countTxt],
@@ -7671,11 +7691,19 @@ class GameScene extends Phaser.Scene {
       Array.isArray(this.blockEffects) &&
       this.blockEffects.some((e) => e.issuer === viewerId);
 
+    const submitterShielded =
+      Array.isArray(this.blockEffects) &&
+      this.blockEffects.some(
+        (e) => Array.isArray(e.shielded) && e.shielded.includes(data.playerId),
+      );
+
     console.log(
       "[flip] viewerId=",
       viewerId,
       "viewerIsIssuer=",
       viewerIsIssuer,
+      "submitterShielded=",
+      submitterShielded,
       "blockEffects=",
       this.blockEffects,
     );
@@ -7693,7 +7721,8 @@ class GameScene extends Phaser.Scene {
           if (
             Array.isArray(this.blockEffects) &&
             this.blockEffects.length > 0 &&
-            !viewerIsIssuer
+            !viewerIsIssuer &&
+            !submitterShielded
           ) {
             // block active and viewer is NOT issuer -> keep back texture (do not reveal)
             if (!revealLogged) {
@@ -7739,6 +7768,66 @@ class GameScene extends Phaser.Scene {
         this.renderTable(this.roundData.players);
       },
     });
+  }
+
+  showShieldEffect(playerId) {
+    try {
+      if (!this.roundData || !Array.isArray(this.roundData.players)) return;
+      const players = this.roundData.players;
+      const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
+      let myIndex = players.findIndex((p) => p.id === myId);
+      if (myIndex === -1) myIndex = 0;
+      const sortedPlayers = [
+        ...players.slice(myIndex),
+        ...players.slice(0, myIndex),
+      ];
+      const playerCount = sortedPlayers.length;
+      const { width, height } = this.cameras.main;
+      const pos =
+        playerCount === 2
+          ? [
+              { x: width * 0.5, y: height * 0.75, rotation: 0 },
+              { x: width * 0.5, y: height * 0.18, rotation: 180 },
+            ]
+          : playerCount === 3
+            ? [
+                { x: width * 0.5, y: height * 0.75, rotation: 0 },
+                { x: width * 0.11, y: height * 0.45, rotation: 90 },
+                { x: width * 0.89, y: height * 0.45, rotation: -90 },
+              ]
+            : [
+                { x: width * 0.5, y: height * 0.75, rotation: 0 },
+                { x: width * 0.11, y: height * 0.45, rotation: 90 },
+                { x: width * 0.5, y: height * 0.18, rotation: 180 },
+                { x: width * 0.89, y: height * 0.45, rotation: -90 },
+              ];
+
+      const targetIdx = players.findIndex((p) => p.id === playerId);
+      if (targetIdx === -1) return;
+      const relIdx = (targetIdx - myIndex + players.length) % players.length;
+      const layout = pos[relIdx];
+      if (!layout) return;
+
+      const shieldSprite = this.add
+        .image(layout.x, layout.y - 20, "shield")
+        .setDisplaySize(48, 48)
+        .setDepth(6000)
+        .setAlpha(0.95);
+      this.tweens.add({
+        targets: shieldSprite,
+        y: shieldSprite.y - 10,
+        alpha: 0,
+        duration: 900,
+        ease: "Cubic.out",
+        onComplete: () => {
+          try {
+            shieldSprite.destroy();
+          } catch (e) {}
+        },
+      });
+    } catch (e) {
+      console.warn("showShieldEffect error", e);
+    }
   }
 
   playPenaltyAnimation(data) {

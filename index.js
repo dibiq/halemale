@@ -1381,6 +1381,7 @@ io.on("connection", (socket) => {
               pSock.specialCards &&
               Number(pSock.specialCards[SHIELD_CARD_ID] || 0) > 0
             ) {
+              // Consume shield but still add a blockcard visually.
               pSock.specialCards[SHIELD_CARD_ID] =
                 Number(pSock.specialCards[SHIELD_CARD_ID] || 0) - 1;
               if (pSock.specialCards[SHIELD_CARD_ID] <= 0)
@@ -1415,15 +1416,17 @@ io.on("connection", (socket) => {
                   current_character: pSock.currentCharacter || "player_1",
                 });
               } catch (e) {}
-              return;
+              // DO NOT return here; still add a visual blockcard below so UI parity is maintained.
             }
           } catch (e) {}
 
           if (!top || top.type !== "blockcard") {
+            const wasShielded = shieldedGlobal.includes(pl.id);
             pl.openCardStack.push({
               type: "blockcard",
               issuer: socket.id,
               effectId,
+              shielded: wasShielded || false,
             });
           }
         });
