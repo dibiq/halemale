@@ -7624,6 +7624,32 @@ class GameScene extends Phaser.Scene {
     const perRecipient = data.penaltyPerRecipient || 1;
     const totalCardsToFly = targetPlayers.length * perRecipient;
     if (totalCardsToFly === 0) {
+      // 수신자가 없더라도 시각적 피드백을 줌 (작은 카드 흩날림)
+      const px = this.add.container();
+      for (let i = 0; i < 3; i += 1) {
+        const c = this.add
+          .image(
+            startPos.x + (Math.random() - 0.5) * 20,
+            startPos.y + (Math.random() - 0.5) * 10,
+            "card_back",
+          )
+          .setDisplaySize(width * 0.12, width * 0.18)
+          .setDepth(2000 + i);
+        px.add(c);
+        this.tweens.add({
+          targets: c,
+          x: startPos.x + (Math.random() - 0.5) * dist,
+          y: startPos.y + (Math.random() - 0.5) * dist * 0.5,
+          alpha: 0,
+          angle: (Math.random() - 0.5) * 360,
+          duration: 380 + i * 60,
+          ease: "Cubic.out",
+          onComplete: () => c.destroy(),
+        });
+      }
+      if (this.cache && this.cache.audio && this.cache.audio.exists("pop")) {
+        this.sound.play("pop", { volume: 0.12 });
+      }
       // 바닥 카드 보존을 위해 openStack만 유지하면서 나머지 업데이트
       this.roundData.players.forEach((oldPlayer) => {
         const newPlayer = data.players.find((p) => p.id === oldPlayer.id);
@@ -7633,7 +7659,9 @@ class GameScene extends Phaser.Scene {
           oldPlayer.openStack = preservedOpenStack;
         }
       });
-      this.renderTable(this.roundData.players);
+      this.time.delayedCall(420, () =>
+        this.renderTable(this.roundData.players),
+      );
       return;
     }
 
