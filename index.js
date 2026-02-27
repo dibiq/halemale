@@ -1058,6 +1058,23 @@ io.on("connection", (socket) => {
       const payload = data && typeof data === "object" ? data : {};
       const cardId = Number(payload.cardId || 0);
 
+      // Helper to refresh snapshots from live sockets (safe to call frequently)
+      const refreshRoomSpecialCards = (room) => {
+        if (!room || !Array.isArray(room.players)) return;
+        room.players.forEach((p) => {
+          if (!p || !p.id) return;
+          const s = io.sockets.sockets.get(p.id);
+          const sockCards = s && s.specialCards ? s.specialCards : {};
+          console.log(
+            `[debug] refreshRoomSpecialCards player=${p.nickname} id=${p.id} socketCards=${JSON.stringify(sockCards)}`,
+          );
+          if (s && s.specialCards) {
+            // copy to avoid mutation issues
+            p.specialCards = { ...s.specialCards };
+          }
+        });
+      };
+
       // 현재는 block(6), thief (7)와 king (8)를 서버에서 처리
       if (![6, 7, 8].includes(cardId)) {
         if (typeof cb === "function")
@@ -1071,6 +1088,9 @@ io.on("connection", (socket) => {
           cb({ success: false, message: "invalid_room" });
         return;
       }
+
+      // 최신 specialCards를 소켓에서 다시 가져와서 방 스냅샷을 갱신합니다.
+      refreshRoomSpecialCards(room);
 
       // 사용자는 자신의 턴에만 사용할 수 있음
       const currentTurnPlayer = room.players[room.turnIndex];
