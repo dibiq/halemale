@@ -1097,6 +1097,11 @@ io.on("connection", (socket) => {
 
       // 최신 specialCards를 소켓에서 다시 가져와서 방 스냅샷을 갱신합니다.
       refreshRoomSpecialCards(room);
+      // ensure the current socket also has up-to-date counts (in case they changed elsewhere)
+      const mePlayer = room.players.find((p) => p && p.id === socket.id);
+      if (mePlayer && mePlayer.specialCards) {
+        socket.specialCards = { ...mePlayer.specialCards };
+      }
 
       // auto-lock requests are allowed anytime; other cards require your turn
       if (!isAutoLockPenalty) {
