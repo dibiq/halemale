@@ -998,6 +998,7 @@ class LobbyScene extends Phaser.Scene {
     }
     const currentIdx = this.profileAvatarKeys.indexOf(currentKey);
     this.profileAvatarIndex = currentIdx >= 0 ? currentIdx : 0;
+    // create sprite at container origin (0,0)
     this.profileImage = this.add
       .sprite(0, 0, currentAvatarTexture)
       .setDisplaySize(profileSize, profileSize);
@@ -1031,32 +1032,23 @@ class LobbyScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    const levelBadge = this.add
-      .circle(
-        -profileSize * 0.35,
-        profileSize * 0.35,
-        profileSize * 0.2,
-        0xe67e22,
-      )
-      .setStrokeStyle(2, 0xffffff, 1);
-
-    this.profileLevelText = this.add
-      .text(-profileSize * 0.35, profileSize * 0.35, "1", {
-        fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.035}px`,
-        color: "#ffffff",
-        fontWeight: "bold",
-      })
-      .setOrigin(0.5);
-
+    // single combined level+nickname text
     this.profileIdText = this.add
-      .text(0, profileSize * 0.72, this.myProfile.nickname, {
-        fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.045}px`,
-        color: "#ffffff",
-        fontWeight: "bold",
-      })
-      .setOrigin(0.5);
+      .text(
+        0,
+        profileSize * 0.72,
+        `LV.${this.myProfile.level} ${this.myProfile.nickname}`,
+        {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.045}px`,
+          color: "#ffffff",
+          fontWeight: "bold",
+          stroke: "#000000",
+          strokeThickness: 2,
+        },
+      )
+      .setOrigin(0.5)
+      .setDepth(10000);
 
     // 코인 + 경험치 표시 영역 (한 줄)
     const statY = profileSize * 1.06;
@@ -1130,8 +1122,6 @@ class LobbyScene extends Phaser.Scene {
       avatarLeftIcon,
       avatarRightBtn,
       avatarRightIcon,
-      levelBadge,
-      this.profileLevelText,
       this.profileIdText,
       this.profileStatusBg,
       this.profileCoinText,
@@ -1139,6 +1129,13 @@ class LobbyScene extends Phaser.Scene {
       this.profileExpBarFill,
       this.profileExpText,
     ]);
+    // ensure image & text are centered inside container
+    if (this.profileImage) {
+      this.profileImage.setPosition(0, 0);
+    }
+    if (this.profileIdText) {
+      this.profileIdText.setPosition(0, profileSize * 0.72);
+    }
 
     avatarLeftBtn.on("pointerdown", () => {
       this.sound.play("pop", { volume: 0.08 });
@@ -1589,8 +1586,8 @@ class LobbyScene extends Phaser.Scene {
       this.hasReceivedProfileStats = true;
     }
 
+    // combined text exists check
     if (
-      !this.profileLevelText ||
       !this.profileIdText ||
       !this.profileCoinText ||
       !this.profileExpBarFill ||
@@ -1599,8 +1596,10 @@ class LobbyScene extends Phaser.Scene {
       return;
     }
 
-    this.profileLevelText.setText(`${this.myProfile.level}`);
-    this.profileIdText.setText(this.myProfile.nickname);
+    // update combined level+nickname text
+    this.profileIdText.setText(
+      `LV.${this.myProfile.level} ${this.myProfile.nickname}`,
+    );
     this.profileCoinText.setText(`X ${this.myProfile.coins}`);
 
     // 경험치 바 업데이트
