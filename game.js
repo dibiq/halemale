@@ -522,6 +522,10 @@ class LobbyScene extends Phaser.Scene {
     this.isSingle = false; // 로비는 항상 멀티플레이
     this.coinShopElements = []; // 코인 팝업 요소들
 
+    // 사운드 인스턴스를 미리 만들어두어 중복 재생 문제 해결
+    // 단순 볼륨 설정은 여기서 하면 됨
+    this.successSound = null;
+
     this.lobbyChatMessages = this.lobbyChatMessages || [];
     this.lobbyChatTexts = [];
     this.lobbyChatLayout = null;
@@ -537,6 +541,11 @@ class LobbyScene extends Phaser.Scene {
     this.currentShopPopupCloseHandler = null;
 
     const savedNickname = localStorage.getItem("nickname");
+
+    // successSound 초기화 (로드 이후에만 호출되므로 안전)
+    if (this.cache && this.cache.audio && this.cache.audio.exists("irassai")) {
+      this.successSound = this.sound.add("irassai", { volume: 0.3 });
+    }
 
     // helper that gathers and emits the inventory payload directly
     const emitInventory = (reason = "initial") => {
@@ -2426,39 +2435,39 @@ class LobbyScene extends Phaser.Scene {
         id: 4,
         key: "lock",
         icon: "lock",
-        name: "🔒 자물쇠",
-        description: "카드를 잠궈 방어합니다",
+        name: "패널티 방어",
+        description: "실수해도 카드를 잃지 않아요",
         price: 180,
       },
       {
         id: 5,
         key: "shield",
         icon: "shield",
-        name: "🛡️ 방패",
-        description: "한 번의 패널티를 막습니다",
+        name: "방패",
+        description: "공격을 막아서 카드를 지켜요",
         price: 170,
       },
       {
         id: 6,
         key: "ink",
         icon: "block",
-        name: "🖋️ 먹물",
-        description: "상대의 카드를 혼란시킵니다",
+        name: "먹물",
+        description: "상대방 카드에 먹물을 뿌려요",
         price: 160,
       },
       {
         id: 7,
         key: "thief",
         icon: "thief",
-        name: "🦹 도둑",
-        description: "생존 플레이어들로부터 카드 3장씩 훔칩니다",
+        name: "도둑",
+        description: "모두에게서 카드 3장씩 뺏어와요",
         price: 220,
       },
       {
         id: 8,
         key: "king",
         icon: "king",
-        name: "👑 왕",
+        name: "왕",
         description: "특수한 보너스 효과를 부여합니다",
         price: 300,
       },
@@ -2467,14 +2476,14 @@ class LobbyScene extends Phaser.Scene {
     const characterItems = [
       {
         key: "player_1",
-        name: "🍳 기본 요리사",
-        description: "기본 제공 캐릭터",
+        name: "아기 곰돌이",
+        description: "귀여운 아기 곰돌이에요",
         price: 0,
       },
       {
         key: "player_2",
-        name: "🧑‍🍳 요리사 2",
-        description: "단단한 스킬의 베테랑",
+        name: "명품 곰돌이",
+        description: "럭셔리한 명품 곰돌이에요",
         price: 300,
       },
       {
@@ -2778,8 +2787,8 @@ class LobbyScene extends Phaser.Scene {
           const iconKey = card.icon || card.key || "itembg";
           if (this.textures.exists(iconKey)) {
             iconImg = this.add
-              .image(0, -150, iconKey)
-              .setDisplaySize(width * 0.12, width * 0.12)
+              .image(0, 0, iconKey)
+              .setDisplaySize(width * 0.5, width * 0.55)
               .setOrigin(0.5);
           }
         } catch (e) {
@@ -2787,7 +2796,7 @@ class LobbyScene extends Phaser.Scene {
         }
 
         const nameText = this.add
-          .text(0, -80, card.name, {
+          .text(0, height * -0.12, card.name, {
             fontFamily: GAME_FONTS.main,
             fontSize: `${width * 0.07}px`,
             color: "#39ff14",
@@ -2798,7 +2807,7 @@ class LobbyScene extends Phaser.Scene {
           .setOrigin(0.5);
 
         const descText = this.add
-          .text(0, -25, card.description, {
+          .text(0, height * 0.12, card.description, {
             fontFamily: GAME_FONTS.main,
             fontSize: `${width * 0.04}px`,
             color: "#ffffff",
@@ -2810,7 +2819,7 @@ class LobbyScene extends Phaser.Scene {
           .setOrigin(0.5);
 
         const priceText = this.add
-          .text(0, 25, `💰 ${card.price}`, {
+          .text(0, height * 0.08, `💰 ${card.price}`, {
             fontFamily: GAME_FONTS.main,
             fontSize: `${width * 0.05}px`,
             color: "#ffd700",
@@ -2821,7 +2830,7 @@ class LobbyScene extends Phaser.Scene {
           .setOrigin(0.5);
 
         const ownedText = this.add
-          .text(0, 65, `보유중: ${ownedCount}개`, {
+          .text(0, height * -0.089, `보유중: ${ownedCount}개`, {
             fontFamily: GAME_FONTS.main,
             fontSize: `${width * 0.035}px`,
             color: "#2ecc71",
@@ -2860,15 +2869,15 @@ class LobbyScene extends Phaser.Scene {
             avatarTexture = "chef";
           }
           avatarSprite = this.add
-            .sprite(0, -120, avatarTexture)
-            .setDisplaySize(width * 0.2, width * 0.2);
+            .sprite(0, height * 0.0, avatarTexture)
+            .setDisplaySize(width * 0.3, width * 0.3);
           this.applyAvatarAnimation(avatarSprite, character.key);
         } catch (e) {
           console.warn("shop avatar sprite error", e);
         }
 
         const nameText = this.add
-          .text(0, -80, character.name, {
+          .text(0, height * -0.12, character.name, {
             fontFamily: GAME_FONTS.main,
             fontSize: `${width * 0.065}px`,
             color: "#4ecdc4",
@@ -2879,7 +2888,7 @@ class LobbyScene extends Phaser.Scene {
           .setOrigin(0.5);
 
         const descText = this.add
-          .text(0, -25, character.description, {
+          .text(0, height * 0.14, character.description, {
             fontFamily: GAME_FONTS.main,
             fontSize: `${width * 0.04}px`,
             color: "#ffffff",
@@ -2891,18 +2900,23 @@ class LobbyScene extends Phaser.Scene {
           .setOrigin(0.5);
 
         const priceText = this.add
-          .text(0, 25, character.price > 0 ? `💰 ${character.price}` : "무료", {
-            fontFamily: GAME_FONTS.main,
-            fontSize: `${width * 0.05}px`,
-            color: "#ffd700",
-            fontWeight: "bold",
-            stroke: "#000000",
-            strokeThickness: 4,
-          })
+          .text(
+            0,
+            height * 0.1,
+            character.price > 0 ? `💰 ${character.price}` : "무료",
+            {
+              fontFamily: GAME_FONTS.main,
+              fontSize: `${width * 0.05}px`,
+              color: "#ffd700",
+              fontWeight: "bold",
+              stroke: "#000000",
+              strokeThickness: 4,
+            },
+          )
           .setOrigin(0.5);
 
         const ownedText = this.add
-          .text(0, 65, isOwned ? "보유중" : "미보유", {
+          .text(0, height * -0.09, isOwned ? "보유중" : "미보유", {
             fontFamily: GAME_FONTS.main,
             fontSize: `${width * 0.035}px`,
             color: isOwned ? "#2ecc71" : "#ff6b6b",
@@ -4379,10 +4393,10 @@ class LobbyScene extends Phaser.Scene {
     // 2. 팝업 컨테이너 생성 (모든 팝업 요소를 이 안에 담습니다)
     const popupContainer = this.add.container(centerX, popupY).setDepth(101);
 
-    // 3. 팝업 배경 이미지 (컨테이너 내부 0, 0 위치)
+    // 3. 팝업 배경 이미지 (컨테이너 내부 0, 0 위치) - 프로필 배경으로 교체
     const popupBg = this.add
-      .image(0, 0, "popupbg")
-      .setDisplaySize(width * 0.7, height * 0.28);
+      .image(0, 0, "profilebg")
+      .setDisplaySize(width * 0.7, height * 0.35);
 
     // 4. 안내 텍스트 (위로 90px)
     const titleText = this.add
@@ -5141,7 +5155,7 @@ class LobbyScene extends Phaser.Scene {
 
     // 2. 팝업 배경
     const popupBg = this.add
-      .image(centerX, centerY, "popupbg")
+      .image(centerX, centerY, "profilebg")
       .setDepth(4001)
       .setDisplaySize(width * 0.75, height * 0.25);
 
@@ -7798,6 +7812,13 @@ class GameScene extends Phaser.Scene {
     console.log("[playWinAnimation] this=", this);
     // ensure animations are enabled when called
     this.skipWinAvatarAnim = false;
+    // avoid overlapping avatar animations
+    if (this.avatarAnimInProgress) {
+      console.log(
+        "[playWinAnimation] avatar anim already in progress, skipping",
+      );
+      // still play other effects but skip creating new sprite
+    }
     const { width, height } = this.cameras.main;
     const { players, prevPlayers, winnerId } = data;
 
@@ -7848,7 +7869,9 @@ class GameScene extends Phaser.Scene {
           "[playWinAnimation] this.getPlayer1SpriteSheets=",
           typeof this.getPlayer1SpriteSheets,
         );
-        if (avatarKey) {
+        if (avatarKey && !this.avatarAnimInProgress) {
+          // mark in-progress to prevent duplicates
+          this.avatarAnimInProgress = true;
           // make sure frames exist (player2 splitting may create textures)
           ensurePlayer2Frames(this);
           console.log("[playWinAnimation] preparing sprite for", avatarKey);
@@ -7872,10 +7895,14 @@ class GameScene extends Phaser.Scene {
             if (anim) {
               anim.repeat = 0;
             }
+            const clearFlag = () => {
+              this.avatarAnimInProgress = false;
+            };
             tempSprite.on("animationcomplete", () => {
               try {
                 tempSprite.destroy();
               } catch (e) {}
+              clearFlag();
             });
             // safety timeout in case animation never completes
             try {
@@ -7883,6 +7910,7 @@ class GameScene extends Phaser.Scene {
                 if (tempSprite && tempSprite.active) {
                   tempSprite.destroy();
                 }
+                clearFlag();
               });
             } catch (e) {}
           } else {
@@ -9064,8 +9092,18 @@ class GameScene extends Phaser.Scene {
       if (successWindow) {
         // 💥 성공 시 스펙타클한 이펙트 추가
         this.playSuccessEffect();
-        // 성공 사운드
-        this.sound.play("irassai", { volume: 0.3 });
+        // 성공 사운드: 재생 중인 클립이 있다면 멈추고 새로 재생
+        // play via single shared instance if available
+        if (this.successSound) {
+          if (this.successSound.isPlaying) this.successSound.stop();
+          this.successSound.play();
+        } else {
+          // fallback
+          try {
+            this.sound.stopByKey("irassai");
+          } catch (e) {}
+          this.sound.play("irassai", { volume: 0.3 });
+        }
 
         this.processSingleBell(this.myId || "PLAYER_ME");
       } else {
@@ -9419,7 +9457,18 @@ class GameScene extends Phaser.Scene {
     } else if (this.cache.audio.exists("pop")) {
       this.sound.play("pop", { volume: 0.2 });
     }
-    this.sound.play("irassai", { volume: 0.3 });
+    // AI도 irassai가 겹치지 않도록 체크
+    // AI도 기존 사운드를 중단하고 재생
+    // AI: reuse shared sound if exists
+    if (this.successSound) {
+      if (this.successSound.isPlaying) this.successSound.stop();
+      this.successSound.play();
+    } else {
+      try {
+        this.sound.stopByKey("irassai");
+      } catch (e) {}
+      this.sound.play("irassai", { volume: 0.3 });
+    }
 
     // 3. 승리 처리
     this.processSingleBell(aiId);
@@ -11322,15 +11371,15 @@ class GameScene extends Phaser.Scene {
 
     // 2. 팝업 배경
     const popupBg = this.add
-      .image(centerX, centerY, "popupbg")
+      .image(centerX, centerY, "profilebg")
       .setDepth(4001)
-      .setDisplaySize(width * 0.75, height * 0.25);
+      .setDisplaySize(width * 0.75, height * 0.23);
 
     // 3. 메시지 텍스트
     const msgText = this.add
-      .text(centerX, centerY - 40, message, {
+      .text(centerX, height * 0.46, message, {
         fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.045}px`,
+        fontSize: `${width * 0.055}px`,
         color: "#ffffff",
         align: "center",
         wordWrap: { width: width * 0.6 },
@@ -11359,13 +11408,13 @@ class GameScene extends Phaser.Scene {
 
     this.currentGamePopupCloseHandler = closeAlert;
 
-    const btnY = centerY + 50;
-    const btnGap = width * 0.18;
+    const btnY = height * 0.54;
+    const btnGap = width * 0.15;
 
     // --- 취소 버튼 ---
     const cancelBtn = this.add
       .image(centerX - btnGap, btnY, "uibtn")
-      .setDisplaySize(width * 0.3, height * 0.06)
+      .setDisplaySize(width * 0.23, height * 0.06)
       .setInteractive({ useHandCursor: true })
       .setDepth(4002)
       .setTint(0xffaaaa);
@@ -11396,7 +11445,7 @@ class GameScene extends Phaser.Scene {
     // --- 확인 버튼 ---
     const confirmBtn = this.add
       .image(centerX + btnGap, btnY, "uibtn")
-      .setDisplaySize(width * 0.3, height * 0.06)
+      .setDisplaySize(width * 0.23, height * 0.06)
       .setInteractive({ useHandCursor: true })
       .setDepth(4002);
 
