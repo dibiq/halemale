@@ -2648,7 +2648,7 @@ class LobbyScene extends Phaser.Scene {
     const buyButtonY = popupY + height * 0.31;
 
     const coinDisplayBg = this.add
-      .image(centerX, coinDisplayY, "itembg")
+      .image(centerX, coinDisplayY, "roombg")
       .setDisplaySize(width * 0.3, height * 0.04);
 
     this.shopCoinText = this.add
@@ -2729,7 +2729,7 @@ class LobbyScene extends Phaser.Scene {
       .text(centerX - width * 0.38, popupY + height * 0.03, "◀", {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.05}px`,
-        color: "#ffffff",
+        color: "#f5e1c3", // beige tone
         fontWeight: "bold",
         stroke: "#000000",
         strokeThickness: 3,
@@ -2746,7 +2746,7 @@ class LobbyScene extends Phaser.Scene {
       .text(centerX + width * 0.38, popupY + height * 0.03, "▶", {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.05}px`,
-        color: "#ffffff",
+        color: "#f5e1c3", // beige tone
         fontWeight: "bold",
         stroke: "#000000",
         strokeThickness: 3,
@@ -2756,7 +2756,7 @@ class LobbyScene extends Phaser.Scene {
     const buyBtn = this.add
       .image(centerX, buyButtonY, "ui_btn")
       .setDisplaySize(width * 0.35, height * 0.07)
-      .setTint(shopBuyBtnTint)
+      .setTint(shopNavBtnTint)
       .setInteractive({ useHandCursor: true });
 
     const buyBtnText = this.add
