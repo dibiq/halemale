@@ -1801,6 +1801,12 @@ io.on("connection", (socket) => {
           console.log(
             `[specialUsed] cardId=${cardId} by=${socket.id} recipients=${JSON.stringify(recipients)} shielded=${JSON.stringify(shieldedGlobal)} effectId=${emittedEffectId}`,
           );
+          // determine duration again for event payload
+          let turns;
+          if (cardId === 6) {
+            const activePlayers = room.players.filter((p) => !p.isEliminated);
+            turns = activePlayers.length * 2;
+          }
           io.to(room.roomId).emit("specialUsed", {
             cardId: cardId,
             by: socket.id,
