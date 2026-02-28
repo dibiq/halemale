@@ -3236,13 +3236,11 @@ io.on("connection", (socket) => {
     p.openCard = card;
     p.openCardStack.push(card);
 
-    // 블록(먹물) 이펙트가 있는 경우: 제출한 플레이어가 이펙트의 발행자라면 remainingTurns 감소
+    // 블록(먹물) 이펙트가 있는 경우: 어떤 플레이어가 제출하든 모든 effect의 남은 턴을 감소
     try {
       if (Array.isArray(room.blockEffects) && room.blockEffects.length > 0) {
         room.blockEffects.forEach((eff) => {
-          if (eff.issuer === p.id) {
-            eff.remainingTurns = (eff.remainingTurns || 0) - 1;
-          }
+          eff.remainingTurns = (eff.remainingTurns || 0) - 1;
         });
 
         const expired = room.blockEffects.filter((e) => e.remainingTurns <= 0);

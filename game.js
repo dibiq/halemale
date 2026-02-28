@@ -6711,8 +6711,12 @@ class GameScene extends Phaser.Scene {
         } catch (e) {}
 
         // 중앙 방패 애니메이션 제거; 대신 각 플레이어 위치에서 개별 효과를 표시함
-        // 먼저 즉시 실행해서 위치가 고정된 시점에 애니메이션이 뜨도록 함
-        if (Array.isArray(data.shielded) && data.shielded.length > 0) {
+        // (먹물에는 방패 효과가 없으므로 cardId 6은 무시)
+        if (
+          Number(data.cardId) !== 6 &&
+          Array.isArray(data.shielded) &&
+          data.shielded.length > 0
+        ) {
           data.shielded.forEach((id) => this.showShieldEffect(id));
         }
         // lock 카드(페널티 면제)도 바로 애니메이션
