@@ -471,23 +471,6 @@ class LobbyScene extends Phaser.Scene {
 
     // 플레이어 애니메이션용 이미지
     this.load.image(
-      "player_1_1",
-      `${ASSET_SERVER}/images/player_1_1.png${VERSION}`,
-    );
-    this.load.image(
-      "player_1_2",
-      `${ASSET_SERVER}/images/player_1_2.png${VERSION}`,
-    );
-    this.load.image(
-      "player_1_3",
-      `${ASSET_SERVER}/images/player_1_3.png${VERSION}`,
-    );
-    this.load.image(
-      "player_1_4",
-      `${ASSET_SERVER}/images/player_1_4.png${VERSION}`,
-    );
-    this.load.image(
-      "player_3_1",
       `${ASSET_SERVER}/images/player_3_1.png${VERSION}`,
     );
     this.load.image(
@@ -1854,6 +1837,15 @@ class LobbyScene extends Phaser.Scene {
       { key: "player_1_sprite_c", frameCount: 21 },
       { key: "player_1_sprite_d", frameCount: 20 },
     ];
+  }
+
+  // choose a texture key to display for a given avatar base key
+  getAvatarDisplayKey(baseKey) {
+    if (this.textures.exists(`${baseKey}_1`)) return `${baseKey}_1`;
+    // use first sheet if available
+    const sheetKey = `${baseKey}_sprite_a`;
+    if (this.textures.exists(sheetKey)) return sheetKey;
+    return null;
   }
 
   canUsePlayer1SpriteSheets() {
@@ -4684,7 +4676,7 @@ class LobbyScene extends Phaser.Scene {
         : `player_${i + 1}`;
       const avatarTextureKey = this.textures.exists(`${baseAvatarKey}_1`)
         ? `${baseAvatarKey}_1`
-        : "player_1_1";
+        : this.getAvatarDisplayKey(baseAvatarKey) || `player_1_sprite_a`;
       const profileX = cardLeft + profileSize * 1.1;
 
       const profileImg = this.add
@@ -5454,7 +5446,7 @@ class LobbyScene extends Phaser.Scene {
           btnY,
           this.textures.exists(`${baseUserAvatar}_1`)
             ? `${baseUserAvatar}_1`
-            : "player_1_1",
+            : this.getAvatarDisplayKey(baseUserAvatar) || "player_1_sprite_a",
         )
         .setDisplaySize(height * 0.045, height * 0.045)
         .setDepth(4002);
@@ -5742,8 +5734,62 @@ class LobbyScene extends Phaser.Scene {
 class GameScene extends Phaser.Scene {
   constructor() {
     super("GameScene");
-    // disable win-avatar animation by default to avoid X boxes
-    this.skipWinAvatarAnim = true;
+    // allow win-avatar animation by default (textures should now exist)
+    this.skipWinAvatarAnim = false;
+  }
+
+  // helper methods for avatar keys and sprite sheets (also copied to LobbyScene)
+  getAvatarAnimKey(baseKey) {
+    return `avatar_anim_${baseKey}`;
+  }
+
+  getAvatarAnimFrameRate(baseKey) {
+    return baseKey === "player_1" || baseKey === "player_2" ? 18 : 2;
+  }
+
+  getAvatarAnimMaxFrame(baseKey) {
+    return baseKey === "player_1" ? 4 : 2; // player_2 handled dynamically
+  }
+
+  getPlayer1SpriteSheets() {
+    return [
+      { key: "player_1_sprite_a", frameCount: 25 },
+      { key: "player_1_sprite_b", frameCount: 25 },
+      { key: "player_1_sprite_c", frameCount: 21 },
+      { key: "player_1_sprite_d", frameCount: 20 },
+    ];
+  }
+
+  canUsePlayer1SpriteSheets() {
+    const spriteSheetKeys = this.getPlayer1SpriteSheets().map((item) => item.key);
+    if (!spriteSheetKeys.every((key) => this.textures.exists(key))) {
+      return false;
+    }
+    const renderer = this.sys?.game?.renderer;
+    const maxTextureSize =
+      typeof renderer?.maxTextureSize === "number"
+        ? renderer.maxTextureSize
+        : 4096;
+    return spriteSheetKeys.every((key) => {
+      const texture = this.textures.get(key);
+      const source = texture?.getSourceImage();
+      const width = Number(source?.width) || 0;
+      const height = Number(source?.height) || 0;
+      return (
+        width > 0 &&
+        height > 0 &&
+        width <= maxTextureSize &&
+        height <= maxTextureSize
+      );
+    });
+  }
+
+  // pick a display key for a base avatar; returns null if none found
+  getAvatarDisplayKey(baseKey) {
+    if (this.textures.exists(`${baseKey}_1`)) return `${baseKey}_1`;
+    const sheetKey = `${baseKey}_sprite_a`;
+    if (this.textures.exists(sheetKey)) return sheetKey;
+    return null;
   }
   safeSyncInventory(reason, extra = {}) {
     try {
@@ -5778,9 +5824,19 @@ class GameScene extends Phaser.Scene {
 
   // avatar animation helpers copied from LobbyScene
   ensureAvatarAnimation(baseKey) {
-    const animKey = this.getAvatarAnimKey(baseKey);
+    // sometimes called with `this` bound to a sprite; normalize to scene
+    let scene = this;
+    if (scene && scene.scene) {
+      scene = scene.scene; // whatever owns the sprite
+    }
+    // if scene still lacks helper, fall back to original this
+    if (!scene || typeof scene.getAvatarAnimKey !== 'function') {
+      scene = this;
+    }
+    console.log('[ensureAvatarAnimation] scene=', scene, 'this=', this, 'constructor=', this && this.constructor && this.constructor.name);
+    const animKey = scene.getAvatarAnimKey(baseKey);
     console.log("[ensureAvatarAnimation] request", baseKey, animKey);
-    if (this.anims.exists(animKey)) {
+    if (scene.anims.exists(animKey)) {
       console.log("[ensureAvatarAnimation] already exists");
       return animKey;
     }
@@ -5891,7 +5947,13 @@ class GameScene extends Phaser.Scene {
   }
 
   applyAvatarAnimation(target, baseKey) {
-    console.log('[applyAvatarAnimation] baseKey=', baseKey, 'target=', target);
+    // ensure we operate on the scene rather than whatever `this` may be
+    const scene = (target && target.scene) ? target.scene : this;
+    console.log('[applyAvatarAnimation] scene=', scene, 'this=', this, 'baseKey=', baseKey, 'target=', target);
+    if (!scene || !scene.add) {
+      console.warn('[applyAvatarAnimation] invalid scene, abort');
+      return;
+    }
     if (!target || !target.active) {
       console.log('[applyAvatarAnimation] target inactive, abort');
       return;
@@ -7760,6 +7822,10 @@ class GameScene extends Phaser.Scene {
   }
 
   playWinAnimation(data) {
+    // inspect `this` context
+    console.log("[playWinAnimation] this=", this);
+    // ensure animations are enabled when called
+    this.skipWinAvatarAnim = false;
     const { width, height } = this.cameras.main;
     const { players, prevPlayers, winnerId } = data;
 
@@ -7797,51 +7863,83 @@ class GameScene extends Phaser.Scene {
 
     // show single avatar animation at center once (for winner)
     let combo = 0;
-    // avatar animation disabled permanently during debugging –
-    // keeps the X box from appearing even if textures are missing
-    if (false && !this.skipWinAvatarAnim) {
+    if (!this.skipWinAvatarAnim) {
       try {
         const centerX = width * 0.5;
         const centerY = height * 0.5;
         const avatarKey = players[winIdx]?.avatarKey || players[winIdx]?.current_character || "player_1";
         console.log("[playWinAnimation] avatarKey=", avatarKey);
+        console.log("[playWinAnimation] this.getPlayer1SpriteSheets=", typeof this.getPlayer1SpriteSheets);
         if (avatarKey) {
           // make sure frames exist (player2 splitting may create textures)
           ensurePlayer2Frames(this);
           console.log("[playWinAnimation] preparing sprite for", avatarKey);
 
           // determine a texture that definitely exists; fall back to defaults
-          let baseTexture = null;
-          if (this.textures.exists(`${avatarKey}_1`)) {
-            baseTexture = `${avatarKey}_1`;
-          } else if (this.textures.exists(avatarKey)) {
+          let baseTexture = this.getAvatarDisplayKey(avatarKey);
+          if (!baseTexture && this.textures.exists(avatarKey)) {
             baseTexture = avatarKey;
-          } else {
-            console.warn(
-              "[playWinAnimation] missing avatar texture for",
-              avatarKey,
-              "using fallback player_1"
-            );
-            baseTexture = this.textures.exists("player_1_1")
-              ? "player_1_1"
-              : "player_1";
           }
+          console.log("[playWinAnimation] computed baseTexture=", baseTexture);
+          console.log("[playWinAnimation] computed baseTexture=", baseTexture);
 
-          const tempSprite = this.add
-            .sprite(centerX, centerY, baseTexture)
-            .setDisplaySize(width * 0.3, width * 0.3)
-            .setDepth(10050);
-          this.applyAvatarAnimation(tempSprite, avatarKey);
-          // ensure the generated animation (if any) runs only once
-          const anim = tempSprite.anims.currentAnim;
-          if (anim) {
-            anim.repeat = 0;
-          }
-          tempSprite.on("animationcomplete", () => {
+          if (baseTexture) {
+            const tempSprite = this.add
+              .sprite(centerX, centerY, baseTexture)
+              .setDisplaySize(width * 0.3, width * 0.3)
+              .setDepth(10050);
+            this.applyAvatarAnimation(tempSprite, avatarKey);
+            // ensure the generated animation (if any) runs only once
+            const anim = tempSprite.anims.currentAnim;
+            if (anim) {
+              anim.repeat = 0;
+            }
+            tempSprite.on("animationcomplete", () => {
+              try {
+                tempSprite.destroy();
+              } catch (e) {}
+            });
+            // safety timeout in case animation never completes
             try {
-              tempSprite.destroy();
+              this.time.delayedCall(2000, () => {
+                if (tempSprite && tempSprite.active) {
+                  tempSprite.destroy();
+                }
+              });
             } catch (e) {}
-          });
+          } else {
+            // fallback: use first frame of player1 sheet if available
+            if (avatarKey === "player_1") {
+              // instead of calling methods, just fall back to a known sheet
+              const fallbackKey = "player_1_sprite_a";
+              if (this.textures.exists(fallbackKey)) {
+                console.log("[playWinAnimation] using hardcoded sheet fallback");
+                const tempSprite = this.add
+                  .sprite(centerX, centerY, fallbackKey, 0)
+                  .setDisplaySize(width * 0.3, width * 0.3)
+                  .setDepth(10050);
+                this.applyAvatarAnimation(tempSprite, avatarKey);
+                const anim = tempSprite.anims.currentAnim;
+                if (anim) anim.repeat = 0;
+                tempSprite.on("animationcomplete", () => {
+                  try {
+                    tempSprite.destroy();
+                  } catch (e) {}
+                });
+                try {
+                  this.time.delayedCall(2000, () => {
+                    if (tempSprite && tempSprite.active) {
+                      tempSprite.destroy();
+                    }
+                  });
+                } catch (e) {}
+              } else {
+                console.warn("[playWinAnimation] no valid texture for avatar", avatarKey);
+              }
+            } else {
+              console.warn("[playWinAnimation] no valid texture for avatar", avatarKey);
+            }
+          }
         }
 
         combo =
@@ -11430,7 +11528,7 @@ class GameScene extends Phaser.Scene {
           btnY,
           this.textures.exists(`${baseUserAvatar}_1`)
             ? `${baseUserAvatar}_1`
-            : "player_1_1",
+            : this.getAvatarDisplayKey(baseUserAvatar) || "player_1_sprite_a",
         )
         .setDisplaySize(height * 0.045, height * 0.045)
         .setDepth(302);
@@ -11698,6 +11796,20 @@ class GameScene extends Phaser.Scene {
 if (typeof LobbyScene !== 'undefined' && typeof GameScene !== 'undefined') {
   LobbyScene.prototype.ensureAvatarAnimation = GameScene.prototype.ensureAvatarAnimation;
   LobbyScene.prototype.applyAvatarAnimation = GameScene.prototype.applyAvatarAnimation;
+
+  // also copy underlying helpers so lobby scene can resolve keys
+  [
+    'getAvatarAnimKey',
+    'getAvatarAnimFrameRate',
+    'getAvatarAnimMaxFrame',
+    'getPlayer1SpriteSheets',
+    'canUsePlayer1SpriteSheets',
+    'getAvatarDisplayKey',
+  ].forEach((fn) => {
+    if (typeof GameScene.prototype[fn] === 'function') {
+      LobbyScene.prototype[fn] = GameScene.prototype[fn];
+    }
+  });
 }
 
 const config = {
