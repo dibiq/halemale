@@ -6433,17 +6433,14 @@ class GameScene extends Phaser.Scene {
         }
       }
 
-      // 카드 제출이 발생하면, 제출한 플레이어가 어떤 block 효과를 발동시킨 issuer인지 확인하고
-      // 해당 issuer에 대한 block effect의 남은 턴을 감소시킵니다. (먹물 사용자는 2턴 유지)
+      // 카드 제출이 발생하면, 모든 활성 block effect의 남은 턴을 감소시킵니다.
+      // 먹물은 생존자 수 * 2번 카드가 제출되면 해제되어야 하므로,
+      // 발동자 여부에 관계없이 global count를 줄입니다.
       try {
         if (Array.isArray(this.blockEffects) && this.blockEffects.length > 0) {
-          const submitterId = data.playerId;
-
-          // 해당 제출 플레이어가 발동자(issuer)인 effect들의 remainingTurns를 감소
+          // decrement every effect every submission
           this.blockEffects.forEach((eff) => {
-            if (eff.issuer === submitterId) {
-              eff.remainingTurns = (eff.remainingTurns || 0) - 1;
-            }
+            eff.remainingTurns = (eff.remainingTurns || 0) - 1;
           });
 
           // 만료된 effect들을 찾고, 해당 effectId를 가진 blockcard들을 모두 제거
@@ -6897,7 +6894,10 @@ class GameScene extends Phaser.Scene {
               this.blockEffects.push({
                 id: data.effectId,
                 issuer: data.by,
-                remainingTurns: 2,
+                remainingTurns:
+                  typeof data.remainingTurns === "number"
+                    ? data.remainingTurns
+                    : 2,
                 shielded: Array.isArray(data.shielded) ? data.shielded : [],
               });
             }
@@ -10586,10 +10586,14 @@ class GameScene extends Phaser.Scene {
         try {
           const effectId = `block_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
           this.blockEffects = this.blockEffects || [];
+          // compute survivors (should be only alive players)
+          const survivorsCount = Array.isArray(this.roundData.players)
+            ? this.roundData.players.filter((p) => !p.isEliminated).length
+            : 1;
           this.blockEffects.push({
             id: effectId,
             issuer: myId,
-            remainingTurns: 2,
+            remainingTurns: survivorsCount * 2,
           });
 
           this.roundData.players.forEach((p) => {

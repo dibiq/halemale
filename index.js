@@ -1672,10 +1672,14 @@ io.on("connection", (socket) => {
             const effectId = `block_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
             emittedEffectId = effectId;
             room.blockEffects = room.blockEffects || [];
+            // duration = number of surviving players * 2 submissions
+            const activePlayers = room.players.filter((p) => !p.isEliminated);
+            const survivorsCount = activePlayers.length;
+            const turns = survivorsCount * 2;
             room.blockEffects.push({
               id: effectId,
               issuer: socket.id,
-              remainingTurns: 2,
+              remainingTurns: turns,
             });
 
             room.players.forEach((pl) => {
@@ -1803,6 +1807,8 @@ io.on("connection", (socket) => {
             players: room.players,
             recipients,
             effectId: emittedEffectId,
+            // include remainingTurns for ink effect so clients can sync
+            remainingTurns: cardId === 6 ? turns : undefined,
             shielded:
               shieldedGlobal && shieldedGlobal.length > 0 ? shieldedGlobal : [],
             message: broadcastMessage,
