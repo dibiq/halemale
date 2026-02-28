@@ -4,24 +4,6 @@ import { title } from "process";
 import { App } from "@capacitor/app";
 import { Network } from "@capacitor/network";
 
-// ===== debug inventory initialization =====
-(function initDebugInventory() {
-  try {
-    const specialOwned =
-      JSON.parse(localStorage.getItem("specialCards") || "{}") || {};
-    // if no cards stored, grant five of each shop item
-    if (Object.keys(specialOwned).length === 0) {
-      [4, 5, 6, 7, 8].forEach((id) => {
-        specialOwned[id] = 5;
-      });
-      localStorage.setItem("specialCards", JSON.stringify(specialOwned));
-      console.log("[debug] initial shop items added:", specialOwned);
-    }
-  } catch (e) {
-    console.warn("[debug] initDebugInventory failed", e);
-  }
-})();
-
 const THUNDER_CARD_TYPE = "thunder";
 const SINGLE_THUNDER_CARD_COUNT = 1;
 const BOMB_CARD_TYPE = "bomb";
@@ -899,33 +881,6 @@ class LobbyScene extends Phaser.Scene {
           );
         } else {
           localStorage.setItem("specialCards", JSON.stringify(parsed));
-
-          // DEBUG: for testing only, give 5 of each shop item on first connection
-          try {
-            let specialOwned =
-              JSON.parse(localStorage.getItem("specialCards")) || {};
-            // ids: 4=lock,5=shield,6=block,7=thief,8=king
-            if (Object.keys(specialOwned).length === 0) {
-              // nothing stored, give all five
-              [4, 5, 6, 7, 8].forEach((id) => {
-                specialOwned[id] = 5;
-              });
-            } else {
-              [4, 5, 6, 7, 8].forEach((id) => {
-                const current = Number(specialOwned[id]);
-                if (!Number.isFinite(current) || current <= 0) {
-                  specialOwned[id] = 5;
-                }
-              });
-            }
-            localStorage.setItem("specialCards", JSON.stringify(specialOwned));
-            console.log(
-              "[debug] ensured starting shop items:",
-              JSON.stringify(specialOwned),
-            );
-          } catch (e) {
-            console.warn("[debug] failed to set debug specialCards", e);
-          }
         }
       }
 
