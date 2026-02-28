@@ -1221,7 +1221,7 @@ io.on("connection", (socket) => {
         7: {
           imageKey: "thief",
           title: "도둑 카드 사용",
-          subtitle: "생존 플레이어들로부터 1장씩 획득합니다.",
+          subtitle: "생존 플레이어들로부터 3장씩 획득합니다.",
         },
         8: {
           imageKey: "king",
@@ -1526,7 +1526,7 @@ io.on("connection", (socket) => {
             socket.specialCards[7] = Number(socket.specialCards[7] || 0) - 1;
             if (socket.specialCards[7] <= 0) delete socket.specialCards[7];
 
-            // thief 효과: 생존 플레이어들(자기 제외, 탈락자 제외)로부터 카드 1장씩 가져옴
+            // thief 효과: 생존 플레이어들(자기 제외, 탈락자 제외)로부터 카드 3장씩 가져옴
             const givers = room.players.filter(
               (p) =>
                 p.id !== socket.id &&
@@ -1550,8 +1550,11 @@ io.on("connection", (socket) => {
                   if (consumedId) {
                     shieldedGlobal.push(consumedId);
                   } else {
-                    const card = giver.myDeck.pop();
-                    recipientPlayer.myDeck.unshift(card);
+                    // steal up to 3 cards from each giver
+                    for (let k = 0; k < 3 && giver.myDeck.length > 0; k += 1) {
+                      const card = giver.myDeck.pop();
+                      recipientPlayer.myDeck.unshift(card);
+                    }
                     stolenFrom.push(giver.id);
                   }
                 }
@@ -1574,8 +1577,10 @@ io.on("connection", (socket) => {
                   if (consumedId) {
                     shieldedGlobal.push(consumedId);
                   } else {
-                    const card = giver.myDeck.pop();
-                    socket.myDeck.unshift(card);
+                    for (let k = 0; k < 3 && giver.myDeck.length > 0; k += 1) {
+                      const card = giver.myDeck.pop();
+                      socket.myDeck.unshift(card);
+                    }
                     stolenFrom.push(giver.id);
                   }
                 }

@@ -2507,7 +2507,7 @@ class LobbyScene extends Phaser.Scene {
         key: "thief",
         icon: "thief",
         name: "🦹 도둑",
-        description: "상대의 카드를 훔칩니다",
+        description: "생존 플레이어들로부터 카드 3장씩 훔칩니다",
         price: 220,
       },
       {
@@ -10500,7 +10500,7 @@ class GameScene extends Phaser.Scene {
                 players: players.map((p) => ({ id: p.id, cards: p.cards })),
               });
               this.showToast(
-                "도둑 카드 사용: 생존 플레이어들로부터 1장씩 획득했습니다!",
+                "도둑 카드 사용: 생존 플레이어들로부터 3장씩 획득했습니다!",
                 "#2ecc71",
               );
             },
