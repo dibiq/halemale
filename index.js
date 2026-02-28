@@ -184,20 +184,20 @@ const RANK_REWARD_COINS = [30, 20, 10];
 const WIN_REWARD_XP = 40;
 const XP_PER_LEVEL = 100;
 const THUNDER_CARD_TYPE = "thunder";
-const THUNDER_CARD_COUNT = 2;
+const THUNDER_CARD_COUNT = 1;
 const BOMB_CARD_TYPE = "bomb";
 // Multiplayer default counts
-const BOMB_CARD_COUNT = 2;
+const BOMB_CARD_COUNT = 1;
 const TON_CARD_TYPE = "ton";
 const TON_CARD_COUNT = 1;
 const PEN_CARD_TYPE = "pen";
-const PEN_CARD_COUNT = 1;
+const PEN_CARD_COUNT = 0;
 const PLUS1_CARD_TYPE = "plus1";
 const PLUS1_CARD_COUNT = 1;
 const PLUS2_CARD_TYPE = "plus2";
-const PLUS2_CARD_COUNT = 1;
+const PLUS2_CARD_COUNT = 0;
 const NOT5_CARD_TYPE = "not5";
-const NOT5_CARD_COUNT = 1;
+const NOT5_CARD_COUNT = 0;
 // 아이템 ID constants (client와 매칭)
 const SHIELD_CARD_ID = 5;
 const SERVER_BUILD = "2026-02-24-thunder-insert-v1";

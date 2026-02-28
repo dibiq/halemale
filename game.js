@@ -23,19 +23,19 @@ import { Network } from "@capacitor/network";
 })();
 
 const THUNDER_CARD_TYPE = "thunder";
-const SINGLE_THUNDER_CARD_COUNT = 3;
+const SINGLE_THUNDER_CARD_COUNT = 1;
 const BOMB_CARD_TYPE = "bomb";
 const SINGLE_BOMB_CARD_COUNT = 1;
 const TON_CARD_TYPE = "ton";
 const SINGLE_TON_CARD_COUNT = 1;
 const PEN_CARD_TYPE = "pen";
-const SINGLE_PEN_CARD_COUNT = 1;
+const SINGLE_PEN_CARD_COUNT = 0;
 const PLUS1_CARD_TYPE = "plus1";
 const SINGLE_PLUS1_CARD_COUNT = 1;
 const PLUS2_CARD_TYPE = "plus2";
-const SINGLE_PLUS2_CARD_COUNT = 1;
+const SINGLE_PLUS2_CARD_COUNT = 0;
 const NOT5_CARD_TYPE = "not5";
-const SINGLE_NOT5_CARD_COUNT = 1;
+const SINGLE_NOT5_CARD_COUNT = 0;
 
 function handleGetUserKey() {
   // ReactNativeWebView가 있는지 먼저 확인
@@ -470,9 +470,7 @@ class LobbyScene extends Phaser.Scene {
     );
 
     // 플레이어 애니메이션용 이미지
-    this.load.image(
-      `${ASSET_SERVER}/images/player_3_1.png${VERSION}`,
-    );
+    this.load.image(`${ASSET_SERVER}/images/player_3_1.png${VERSION}`);
     this.load.image(
       "player_3_2",
       `${ASSET_SERVER}/images/player_3_2.png${VERSION}`,
@@ -1877,7 +1875,6 @@ class LobbyScene extends Phaser.Scene {
     });
   }
 
-
   updateProfileAvatarUI() {
     if (!this.profileImage || !this.profileAvatarKeys) {
       return;
@@ -2972,7 +2969,13 @@ class LobbyScene extends Phaser.Scene {
           .setOrigin(0.5);
 
         if (avatarSprite) {
-          cardDisplayContainer.add([avatarSprite, nameText, descText, priceText, ownedText]);
+          cardDisplayContainer.add([
+            avatarSprite,
+            nameText,
+            descText,
+            priceText,
+            ownedText,
+          ]);
         } else {
           cardDisplayContainer.add([nameText, descText, priceText, ownedText]);
         }
@@ -5761,7 +5764,9 @@ class GameScene extends Phaser.Scene {
   }
 
   canUsePlayer1SpriteSheets() {
-    const spriteSheetKeys = this.getPlayer1SpriteSheets().map((item) => item.key);
+    const spriteSheetKeys = this.getPlayer1SpriteSheets().map(
+      (item) => item.key,
+    );
     if (!spriteSheetKeys.every((key) => this.textures.exists(key))) {
       return false;
     }
@@ -5830,10 +5835,17 @@ class GameScene extends Phaser.Scene {
       scene = scene.scene; // whatever owns the sprite
     }
     // if scene still lacks helper, fall back to original this
-    if (!scene || typeof scene.getAvatarAnimKey !== 'function') {
+    if (!scene || typeof scene.getAvatarAnimKey !== "function") {
       scene = this;
     }
-    console.log('[ensureAvatarAnimation] scene=', scene, 'this=', this, 'constructor=', this && this.constructor && this.constructor.name);
+    console.log(
+      "[ensureAvatarAnimation] scene=",
+      scene,
+      "this=",
+      this,
+      "constructor=",
+      this && this.constructor && this.constructor.name,
+    );
     const animKey = scene.getAvatarAnimKey(baseKey);
     console.log("[ensureAvatarAnimation] request", baseKey, animKey);
     if (scene.anims.exists(animKey)) {
@@ -5909,7 +5921,10 @@ class GameScene extends Phaser.Scene {
           }
           break;
         }
-        console.log("[ensureAvatarAnimation] player2 frames count", frames.length);
+        console.log(
+          "[ensureAvatarAnimation] player2 frames count",
+          frames.length,
+        );
         this.anims.create({
           key: animKey,
           frames,
@@ -5948,14 +5963,23 @@ class GameScene extends Phaser.Scene {
 
   applyAvatarAnimation(target, baseKey) {
     // ensure we operate on the scene rather than whatever `this` may be
-    const scene = (target && target.scene) ? target.scene : this;
-    console.log('[applyAvatarAnimation] scene=', scene, 'this=', this, 'baseKey=', baseKey, 'target=', target);
+    const scene = target && target.scene ? target.scene : this;
+    console.log(
+      "[applyAvatarAnimation] scene=",
+      scene,
+      "this=",
+      this,
+      "baseKey=",
+      baseKey,
+      "target=",
+      target,
+    );
     if (!scene || !scene.add) {
-      console.warn('[applyAvatarAnimation] invalid scene, abort');
+      console.warn("[applyAvatarAnimation] invalid scene, abort");
       return;
     }
     if (!target || !target.active) {
-      console.log('[applyAvatarAnimation] target inactive, abort');
+      console.log("[applyAvatarAnimation] target inactive, abort");
       return;
     }
 
@@ -7871,9 +7895,15 @@ class GameScene extends Phaser.Scene {
       try {
         const centerX = width * 0.5;
         const centerY = height * 0.5;
-        const avatarKey = players[winIdx]?.avatarKey || players[winIdx]?.current_character || "player_1";
+        const avatarKey =
+          players[winIdx]?.avatarKey ||
+          players[winIdx]?.current_character ||
+          "player_1";
         console.log("[playWinAnimation] avatarKey=", avatarKey);
-        console.log("[playWinAnimation] this.getPlayer1SpriteSheets=", typeof this.getPlayer1SpriteSheets);
+        console.log(
+          "[playWinAnimation] this.getPlayer1SpriteSheets=",
+          typeof this.getPlayer1SpriteSheets,
+        );
         if (avatarKey) {
           // make sure frames exist (player2 splitting may create textures)
           ensurePlayer2Frames(this);
@@ -7917,7 +7947,9 @@ class GameScene extends Phaser.Scene {
               // instead of calling methods, just fall back to a known sheet
               const fallbackKey = "player_1_sprite_a";
               if (this.textures.exists(fallbackKey)) {
-                console.log("[playWinAnimation] using hardcoded sheet fallback");
+                console.log(
+                  "[playWinAnimation] using hardcoded sheet fallback",
+                );
                 const tempSprite = this.add
                   .sprite(centerX, centerY, fallbackKey, 0)
                   .setDisplaySize(width * 0.3, width * 0.3)
@@ -7938,10 +7970,16 @@ class GameScene extends Phaser.Scene {
                   });
                 } catch (e) {}
               } else {
-                console.warn("[playWinAnimation] no valid texture for avatar", avatarKey);
+                console.warn(
+                  "[playWinAnimation] no valid texture for avatar",
+                  avatarKey,
+                );
               }
             } else {
-              console.warn("[playWinAnimation] no valid texture for avatar", avatarKey);
+              console.warn(
+                "[playWinAnimation] no valid texture for avatar",
+                avatarKey,
+              );
             }
           }
         }
@@ -7952,90 +7990,87 @@ class GameScene extends Phaser.Scene {
         console.error("[playWinAnimation] avatar animation error", e);
       }
     } else {
-      console.log("[playWinAnimation] avatar animation disabled (static guard)");
+      console.log(
+        "[playWinAnimation] avatar animation disabled (static guard)",
+      );
       combo =
         this.comboState && this.comboState.count ? this.comboState.count : 0;
     }
     if (combo > 1 && this.comboState.lastWinnerId === winnerId) {
-        const comboText = this.add
-          .text(targetPos.x, targetPos.y - height * 0.12, `${combo}콤보!`, {
-            fontFamily: GAME_FONTS.main,
-            fontSize: `${Math.round(width * 0.06)}px`,
-            color: "#FFD66B",
-            stroke: "#4b2e83",
-            strokeThickness: 8,
-            fontWeight: "700",
-          })
-          .setOrigin(0.5)
-          .setDepth(10010)
-          .setScale(0)
-          .setAlpha(0);
+      const comboText = this.add
+        .text(targetPos.x, targetPos.y - height * 0.12, `${combo}콤보!`, {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${Math.round(width * 0.06)}px`,
+          color: "#FFD66B",
+          stroke: "#4b2e83",
+          strokeThickness: 8,
+          fontWeight: "700",
+        })
+        .setOrigin(0.5)
+        .setDepth(10010)
+        .setScale(0)
+        .setAlpha(0);
 
-        this.tweens.add({
-          targets: comboText,
-          scale: 1.15,
-          alpha: 1,
-          duration: 220,
-          ease: "Back.easeOut",
-          onComplete: () => {
-            this.tweens.add({
-              targets: comboText,
-              scale: 1.6,
-              alpha: 0,
-              y: comboText.y - 50,
-              duration: 600,
-              delay: 300,
-              ease: "Power2.easeIn",
-              onComplete: () => comboText.destroy(),
-            });
-          },
-        });
-
-        // 간단한 파티클 버스트
-        const burstCount = 12;
-        for (let i = 0; i < burstCount; i++) {
-          const angle =
-            (Math.PI * 2 * i) / burstCount + (Math.random() - 0.5) * 0.6;
-          const speed = 120 + Math.random() * 160;
-          const px = this.add
-            .circle(
-              targetPos.x,
-              targetPos.y - height * 0.08,
-              width * 0.01,
-              0xffd700,
-              1,
-            )
-            .setDepth(10011);
-          const vx = Math.cos(angle) * speed;
-          const vy = Math.sin(angle) * speed - 30;
+      this.tweens.add({
+        targets: comboText,
+        scale: 1.15,
+        alpha: 1,
+        duration: 220,
+        ease: "Back.easeOut",
+        onComplete: () => {
           this.tweens.add({
-            targets: px,
-            x: targetPos.x + vx,
-            y: targetPos.y - height * 0.08 + vy,
+            targets: comboText,
+            scale: 1.6,
             alpha: 0,
-            scale: 0,
-            duration: 700 + Math.random() * 300,
-            ease: "Power2.easeOut",
-            onComplete: () => px.destroy(),
+            y: comboText.y - 50,
+            duration: 600,
+            delay: 300,
+            ease: "Power2.easeIn",
+            onComplete: () => comboText.destroy(),
           });
-        }
+        },
+      });
 
-        // 콤보 사운드가 있으면 재생, 없으면 보조 사운드
-        if (
-          this.cache &&
-          this.cache.audio &&
-          this.cache.audio.exists("combo")
-        ) {
-          this.sound.play("combo", { volume: 0.35 });
-        } else if (
-          this.cache &&
-          this.cache.audio &&
-          this.cache.audio.exists("irassai")
-        ) {
-          this.sound.play("irassai", { volume: 0.25 });
-        }
+      // 간단한 파티클 버스트
+      const burstCount = 12;
+      for (let i = 0; i < burstCount; i++) {
+        const angle =
+          (Math.PI * 2 * i) / burstCount + (Math.random() - 0.5) * 0.6;
+        const speed = 120 + Math.random() * 160;
+        const px = this.add
+          .circle(
+            targetPos.x,
+            targetPos.y - height * 0.08,
+            width * 0.01,
+            0xffd700,
+            1,
+          )
+          .setDepth(10011);
+        const vx = Math.cos(angle) * speed;
+        const vy = Math.sin(angle) * speed - 30;
+        this.tweens.add({
+          targets: px,
+          x: targetPos.x + vx,
+          y: targetPos.y - height * 0.08 + vy,
+          alpha: 0,
+          scale: 0,
+          duration: 700 + Math.random() * 300,
+          ease: "Power2.easeOut",
+          onComplete: () => px.destroy(),
+        });
       }
-    
+
+      // 콤보 사운드가 있으면 재생, 없으면 보조 사운드
+      if (this.cache && this.cache.audio && this.cache.audio.exists("combo")) {
+        this.sound.play("combo", { volume: 0.35 });
+      } else if (
+        this.cache &&
+        this.cache.audio &&
+        this.cache.audio.exists("irassai")
+      ) {
+        this.sound.play("irassai", { volume: 0.25 });
+      }
+    }
 
     let totalCardsToFly = 0;
     let finishedFlys = 0;
@@ -11801,20 +11836,22 @@ class GameScene extends Phaser.Scene {
 }
 
 // share animation helpers with LobbyScene as well
-if (typeof LobbyScene !== 'undefined' && typeof GameScene !== 'undefined') {
-  LobbyScene.prototype.ensureAvatarAnimation = GameScene.prototype.ensureAvatarAnimation;
-  LobbyScene.prototype.applyAvatarAnimation = GameScene.prototype.applyAvatarAnimation;
+if (typeof LobbyScene !== "undefined" && typeof GameScene !== "undefined") {
+  LobbyScene.prototype.ensureAvatarAnimation =
+    GameScene.prototype.ensureAvatarAnimation;
+  LobbyScene.prototype.applyAvatarAnimation =
+    GameScene.prototype.applyAvatarAnimation;
 
   // also copy underlying helpers so lobby scene can resolve keys
   [
-    'getAvatarAnimKey',
-    'getAvatarAnimFrameRate',
-    'getAvatarAnimMaxFrame',
-    'getPlayer1SpriteSheets',
-    'canUsePlayer1SpriteSheets',
-    'getAvatarDisplayKey',
+    "getAvatarAnimKey",
+    "getAvatarAnimFrameRate",
+    "getAvatarAnimMaxFrame",
+    "getPlayer1SpriteSheets",
+    "canUsePlayer1SpriteSheets",
+    "getAvatarDisplayKey",
   ].forEach((fn) => {
-    if (typeof GameScene.prototype[fn] === 'function') {
+    if (typeof GameScene.prototype[fn] === "function") {
       LobbyScene.prototype[fn] = GameScene.prototype[fn];
     }
   });
