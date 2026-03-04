@@ -1142,6 +1142,55 @@ io.on("connection", (socket) => {
   socket.on("purchaseCharacter", handleBuyCharacter);
   socket.on("characterPurchased", handleBuyCharacter);
 
+  // 특수카드 동기화 요청
+  socket.on("syncSpecialCards", async (clientSpecialCards, cb) => {
+    try {
+      console.log(
+        `[syncSpecialCards] from ${socket.nickname}, clientCards:`,
+        clientSpecialCards,
+      );
+
+      // 서버의 socket.specialCards와 클라이언트의 데이터를 동기화
+      if (
+        typeof clientSpecialCards === "object" &&
+        clientSpecialCards !== null
+      ) {
+        socket.specialCards = { ...clientSpecialCards };
+
+        // 데이터베이스에도 저장
+        try {
+          await savePlayer(
+            socket.nickname,
+            socket.level || 1,
+            socket.coins || 0,
+            {
+              items: Array.isArray(socket.items) ? socket.items : [],
+              specialCards: socket.specialCards || {},
+            },
+            socket.experience || 0,
+            socket.ownedCharacters || ["player_1"],
+            socket.currentCharacter || socket.avatarKey || "player_1",
+          );
+          console.log(`[syncSpecialCards] saved to DB for ${socket.nickname}`);
+        } catch (saveError) {
+          console.warn("syncSpecialCards DB save error", saveError);
+        }
+      }
+
+      if (typeof cb === "function") {
+        cb({
+          success: true,
+          specialCards: socket.specialCards || {},
+        });
+      }
+    } catch (e) {
+      console.error("syncSpecialCards error", e);
+      if (typeof cb === "function") {
+        cb({ success: false, message: "동기화 실패" });
+      }
+    }
+  });
+
   // 특수카드 사용 요청 (예: thief 등)
   socket.on("requestUseSpecial", async (data, cb) => {
     try {
