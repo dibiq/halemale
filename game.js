@@ -119,18 +119,18 @@ socket.off("serverHello").on("serverHello", (payload) => {
 function ensurePlayer2Frames(scene) {
   try {
     if (!scene || !scene.textures) {
-      console.log("[ensurePlayer2Frames] no scene/textures");
+      //console.log("[ensurePlayer2Frames] no scene/textures");
       return;
     }
     // must have the base sprite loaded first
     if (!scene.textures.exists("player_2_sprite")) {
-      console.log("[ensurePlayer2Frames] base sprite not yet available");
+      // console.log("[ensurePlayer2Frames] base sprite not yet available");
       return;
     }
     const tex = scene.textures.get("player_2_sprite");
     const img = tex.getSourceImage();
     if (!img || !img.width || !img.height) {
-      console.log("[ensurePlayer2Frames] invalid image");
+      // console.log("[ensurePlayer2Frames] invalid image");
       return;
     }
 
@@ -173,9 +173,9 @@ function ensurePlayer2Frames(scene) {
         created++;
       }
     }
-    console.log("[ensurePlayer2Frames] created", created, "frames");
+    // console.log("[ensurePlayer2Frames] created", created, "frames");
   } catch (e) {
-    console.error("[ensurePlayer2Frames] error", e);
+    // console.error("[ensurePlayer2Frames] error", e);
   }
 }
 
@@ -939,6 +939,33 @@ class LobbyScene extends Phaser.Scene {
         this.myProfile.coins = data.newCoins;
         localStorage.setItem("profileCoins", String(this.myProfile.coins));
         this.updateMyProfileUI();
+      }
+    });
+
+    // 💡 코인 구매 완료 이벤트 핸들러 추가
+    socket.off("coinPurchased").on("coinPurchased", (data) => {
+      console.log(`💰 [DEBUG] coinPurchased 이벤트 받음:`, data);
+
+      if (data && data.message) {
+        this.showToast(data.message, "#2ecc71");
+      }
+
+      if (data && typeof data.newCoins === "number") {
+        this.myProfile.coins = data.newCoins;
+        localStorage.setItem("profileCoins", String(this.myProfile.coins));
+        this.updateMyProfileUI();
+
+        // 상점 UI가 열려있다면 업데이트
+        if (this.shopCoinText) {
+          this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
+        }
+        if (this.coinShopCurrentCoinText) {
+          this.coinShopCurrentCoinText.setText(
+            `현재 보유: 💰 ${this.myProfile.coins}`,
+          );
+        }
+
+        console.log(`💰 [DEBUG] 코인 업데이트 완료: ${data.newCoins}`);
       }
     });
 
@@ -3385,25 +3412,9 @@ class LobbyScene extends Phaser.Scene {
         const product = coinProducts[tabIndexes.coin];
         this.buyCoin(product.amount);
         this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
-        try {
-          const sceneInstance =
-            typeof game !== "undefined" &&
-            game.scene &&
-            game.scene.keys &&
-            game.scene.keys.GameScene;
-          if (
-            sceneInstance &&
-            typeof sceneInstance.safeSyncInventory === "function"
-          ) {
-            sceneInstance.safeSyncInventory("buyCoin", {
-              boughtCoinAmount: product.amount,
-            });
-          } else {
-            console.warn("safeSyncInventory not available for buyCoin");
-          }
-        } catch (e) {
-          console.warn("buyCoin sync failed", e);
-        }
+        // 💡 buyCoin 함수에서 이미 서버에 addCoins 이벤트를 전송하므로
+        // safeSyncInventory 호출은 중복이며 오류를 발생시킬 수 있음
+        this.showToast(`💰 ${product.amount} 코인 구매 완료!`, "#2ecc71");
         renderShopContent();
       }
     });
@@ -3612,7 +3623,32 @@ class LobbyScene extends Phaser.Scene {
   }
 
   buyCoin(amount) {
-    // 🔹 코인 추가
+    console.log(
+      `💰 [DEBUG] buyCoin 호출: amount=${amount}, isSingle=${this.isSingle}, connected=${socket?.connected}`,
+    );
+
+    // 🔹 멀티플레이인 경우: 서버에 전송하고 응답을 기다림
+    if (!this.isSingle && socket?.connected) {
+      const nickname =
+        this.myProfile.nickname || localStorage.getItem("nickname") || "추추";
+      console.log(
+        `💰 [DEBUG] 서버에 코인 충전 요청 전송: nickname=${nickname}, amount=${amount}`,
+      );
+
+      socket.emit("addCoins", {
+        amount,
+        nickname,
+        playerId: socket.id,
+        timestamp: new Date().toISOString(),
+      });
+
+      // 서버 응답을 기다리므로 여기서는 UI만 표시
+      this.showToast(`💰 ${amount} 코인 충전 요청 중...`, "#f39c12");
+      return;
+    }
+
+    // 🔹 싱글플레이인 경우: 즉시 로컬 업데이트
+    console.log(`💰 [DEBUG] 싱글플레이 모드 - 로컬 코인 업데이트`);
     this.myProfile.coins += amount;
     localStorage.setItem("profileCoins", String(this.myProfile.coins));
 
@@ -3626,11 +3662,6 @@ class LobbyScene extends Phaser.Scene {
       this.coinShopCurrentCoinText.setText(
         `현재 보유: 💰 ${this.myProfile.coins}`,
       );
-    }
-
-    // 🔹 서버에 전송 (멀티플레이인 경우)
-    if (!this.isSingle && socket.connected) {
-      socket.emit("addCoins", { amount });
     }
 
     // 🔹 프로필 업데이트
@@ -6078,24 +6109,24 @@ class GameScene extends Phaser.Scene {
     if (!scene || typeof scene.getAvatarAnimKey !== "function") {
       scene = this;
     }
-    console.log(
+    /*console.log(
       "[ensureAvatarAnimation] scene=",
       scene,
       "this=",
       this,
       "constructor=",
       this && this.constructor && this.constructor.name,
-    );
+    );*/
     const animKey = scene.getAvatarAnimKey(baseKey);
-    console.log("[ensureAvatarAnimation] request", baseKey, animKey);
+    //console.log("[ensureAvatarAnimation] request", baseKey, animKey);
     if (scene.anims.exists(animKey)) {
-      console.log("[ensureAvatarAnimation] already exists");
+      //console.log("[ensureAvatarAnimation] already exists");
       return animKey;
     }
 
     try {
       if (baseKey === "player_1" && this.canUsePlayer1SpriteSheets()) {
-        console.log("[ensureAvatarAnimation] using player1 sprite sheets");
+        //console.log("[ensureAvatarAnimation] using player1 sprite sheets");
         const sheetMetas = this.getPlayer1SpriteSheets()
           .map(({ key: textureKey, frameCount }) => {
             const texture = this.textures.get(textureKey);
@@ -6149,7 +6180,7 @@ class GameScene extends Phaser.Scene {
 
       // dynamic handling for player_2 (grid split above)
       if (baseKey === "player_2") {
-        console.log("[ensureAvatarAnimation] building player2 frames");
+        //console.log("[ensureAvatarAnimation] building player2 frames");
         const frames = [];
         let idx = 1;
         while (true) {
@@ -6161,10 +6192,10 @@ class GameScene extends Phaser.Scene {
           }
           break;
         }
-        console.log(
+        /*console.log(
           "[ensureAvatarAnimation] player2 frames count",
           frames.length,
-        );
+        );*/
         this.anims.create({
           key: animKey,
           frames,
@@ -6196,7 +6227,7 @@ class GameScene extends Phaser.Scene {
 
       return animKey;
     } catch (err) {
-      console.error("[ensureAvatarAnimation] error", err);
+      //console.error("[ensureAvatarAnimation] error", err);
       return null;
     }
   }
@@ -6204,7 +6235,7 @@ class GameScene extends Phaser.Scene {
   applyAvatarAnimation(target, baseKey) {
     // ensure we operate on the scene rather than whatever `this` may be
     const scene = target && target.scene ? target.scene : this;
-    console.log(
+    /*console.log(
       "[applyAvatarAnimation] scene=",
       scene,
       "this=",
@@ -6213,13 +6244,13 @@ class GameScene extends Phaser.Scene {
       baseKey,
       "target=",
       target,
-    );
+    );*/
     if (!scene || !scene.add) {
-      console.warn("[applyAvatarAnimation] invalid scene, abort");
+      // console.warn("[applyAvatarAnimation] invalid scene, abort");
       return;
     }
     if (!target || !target.active) {
-      console.log("[applyAvatarAnimation] target inactive, abort");
+      // console.log("[applyAvatarAnimation] target inactive, abort");
       return;
     }
 

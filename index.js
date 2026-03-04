@@ -1001,10 +1001,41 @@ io.on("connection", (socket) => {
 
   // 코인 추가 구매 이벤트
   socket.on("addCoins", async (data) => {
-    const { amount } = data;
+    const { amount, nickname, playerId, timestamp } = data;
+
+    console.log(`💰 [DEBUG] addCoins 요청 받음:`, {
+      amount,
+      clientNickname: nickname,
+      socketNickname: socket.nickname,
+      playerId,
+      timestamp,
+      socketId: socket.id,
+      socketCoins: socket.coins,
+    });
+
+    // 닉네임 결정 (클라이언트에서 보낸 것을 우선 사용)
+    const targetNickname = nickname || socket.nickname;
+    if (!targetNickname) {
+      console.error(`❌ addCoins: 닉네임이 없음. data:`, data);
+      socket.emit("buyItemError", "닉네임 정보가 없습니다.");
+      return;
+    }
+
+    // socket.nickname 동기화
+    if (nickname && socket.nickname !== nickname) {
+      console.log(
+        `🔄 socket.nickname 업데이트: ${socket.nickname} → ${nickname}`,
+      );
+      socket.nickname = nickname;
+    }
 
     // 1. 코인 추가
-    socket.coins += amount;
+    const previousCoins = Number(socket.coins) || 0;
+    socket.coins = previousCoins + amount;
+
+    console.log(
+      `💰 [DEBUG] 코인 업데이트: ${previousCoins} → ${socket.coins} (+${amount})`,
+    );
 
     // 2. DB에 저장
     const mergedItems = {
@@ -1014,22 +1045,28 @@ io.on("connection", (socket) => {
 
     try {
       await savePlayer(
-        socket.nickname,
-        socket.level,
+        targetNickname,
+        socket.level || 1,
         socket.coins,
         mergedItems,
-        socket.experience,
-        socket.ownedCharacters,
-        socket.currentCharacter,
+        socket.experience || 0,
+        socket.ownedCharacters || ["player_1"],
+        socket.currentCharacter || "player_1",
       );
-      console.log(`✅ ${socket.nickname} 코인 ${amount} 충전 DB 저장 완료`);
+      console.log(
+        `✅ ${targetNickname} 코인 ${amount} 충전 DB 저장 완료 (총 코인: ${socket.coins})`,
+      );
     } catch (e) {
-      console.error(`❌ ${socket.nickname} 코인 충전 DB 저장 실패:`, e);
+      console.error(`❌ ${targetNickname} 코인 충전 DB 저장 실패:`, e);
+      // 롤백
+      socket.coins = previousCoins;
+      socket.emit("buyItemError", "코인 충전 처리 중 오류가 발생했습니다.");
+      return;
     }
 
     // 3. 클라이언트에 최신 프로필 전송
     socket.emit("myProfile", {
-      nickname: socket.nickname,
+      nickname: targetNickname,
       level: Number(socket.level) || 1,
       coins: Number(socket.coins) || 0,
       items: Array.isArray(socket.items) ? socket.items : [],
@@ -1040,8 +1077,15 @@ io.on("connection", (socket) => {
       current_character: socket.currentCharacter || "player_1",
     });
 
+    // 성공 응답 전송
+    socket.emit("coinPurchased", {
+      amount,
+      newCoins: socket.coins,
+      message: "코인 충전이 완료되었습니다!",
+    });
+
     console.log(
-      `✅ ${socket.nickname}이(가) 코인 ${amount}개 구매 (현재 보유: ${socket.coins}개)`,
+      `✅ [FINAL] ${targetNickname}이(가) 코인 ${amount}개 구매 완료 (현재 보유: ${socket.coins}개)`,
     );
   });
 
