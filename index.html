@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
   <head>
     <meta charset="UTF-8" />
@@ -17,9 +17,14 @@
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 
     <style>
-      body {
+      html,
+      body,
+      #game-container {
         margin: 0;
-        background: #332211;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        background: #0f172a; /* match Phaser backgroundColor */
         overflow: hidden;
         font-family: "Jua", sans-serif;
       }
