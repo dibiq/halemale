@@ -34,6 +34,28 @@ function isAllowedOrigin(origin) {
   }
 }
 
+// ------------------------------------------------------------------
+// nickname utility for multiplayer rooms
+// ------------------------------------------------------------------
+function makeUniqueNickname(room, desired) {
+  if (!room || !Array.isArray(room.players)) return desired;
+  let base = desired || "요리사";
+  base = String(base).trim();
+  if (!base) base = "요리사";
+  let nickname = base;
+  let count = 1;
+  // if a player with the same nickname but different socket id exists,
+  // append a suffix (#1, #2 etc) until it is unique.
+  while (
+    room.players.some(
+      (p) => p.nickname === nickname && p.id !== this.socket?.id,
+    )
+  ) {
+    nickname = `${base}#${count++}`;
+  }
+  return nickname;
+}
+
 function syncRoomPlayersWithActiveSockets(room, io) {
   if (!room || !Array.isArray(room.players)) return;
   const uniquePlayers = [];
@@ -2069,13 +2091,19 @@ io.on("connection", (socket) => {
     const roomId = (
       typeof data === "object" ? data.roomId : data
     ).toUpperCase();
-    const nickname =
+    let nickname =
       (typeof data === "object" ? data.nickname : socket.nickname) || "요리사";
     const avatarKey =
       typeof data === "object" && /^player_[1-4]$/.test(data.avatarKey)
         ? data.avatarKey
         : socket.avatarKey || "player_1";
     const room = rooms[roomId];
+
+    // if room exists, make sure nickname is unique within that room
+    if (room) {
+      nickname = makeUniqueNickname.call({ socket }, room, nickname);
+    }
+
     const existingByNickname = room
       ? room.players.find(
           (p) =>
@@ -2184,12 +2212,17 @@ io.on("connection", (socket) => {
   socket.on("joinPublicRoom", async (data) => {
     console.log("🌐 joinPublicRoom 호출됨, 받은 data:", JSON.stringify(data));
     const roomId = data.roomId;
-    const nickname = data.nickname || socket.nickname || "요리사";
+    let nickname = data.nickname || socket.nickname || "요리사";
     const avatarKey = /^player_[1-4]$/.test(data.avatarKey)
       ? data.avatarKey
       : socket.avatarKey || "player_1";
     const inputPassword = data.password || null;
     const room = rooms[roomId];
+
+    if (room) {
+      nickname = makeUniqueNickname.call({ socket }, room, nickname);
+    }
+
     const existingByNickname = room
       ? room.players.find(
           (p) =>
