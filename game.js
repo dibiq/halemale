@@ -11034,13 +11034,63 @@ class GameScene extends Phaser.Scene {
         this.resultCountdownTimer.remove();
         this.resultCountdownTimer = null;
       }
-      this.scene.start("LobbyScene", {
-        fromGame: true,
+
+      // 게임에서 방으로 돌아갈 때 서버에 다시 joinRoom 요청하여 닉네임 중복 처리
+      const storedNickname = localStorage.getItem("nickname") || "요리사";
+
+      // 타임아웃 처리
+      const timeoutId = setTimeout(() => {
+        console.log("⚠️ joinRoom 응답 타임아웃, 강제로 LobbyScene 이동");
+        this.scene.start("LobbyScene", {
+          fromGame: true,
+          roomId: this.roundData.roomId,
+          players: this.roundData.players,
+          hostId: this.roundData.hostId,
+          maxPlayers: this.roundData.maxPlayers || 4,
+          roomName: this.roundData.roomName || "대기실",
+        });
+      }, 3000);
+
+      // joinRoom 응답(playerJoined)을 받으면 LobbyScene으로 전환
+      const handlePlayerJoined = (data) => {
+        clearTimeout(timeoutId);
+        socket.off("playerJoined", handlePlayerJoined);
+        socket.off("joinRoomError", handleJoinError);
+
+        this.scene.start("LobbyScene", {
+          fromGame: true,
+          roomId: data.roomId,
+          players: data.players,
+          hostId: data.hostId,
+          maxPlayers: data.max || 4,
+          roomName: data.roomName || "대기실",
+        });
+      };
+
+      const handleJoinError = (error) => {
+        clearTimeout(timeoutId);
+        socket.off("playerJoined", handlePlayerJoined);
+        socket.off("joinRoomError", handleJoinError);
+
+        console.log("⚠️ joinRoom 에러:", error);
+        // 에러 발생 시에도 강제로 LobbyScene 이동
+        this.scene.start("LobbyScene", {
+          fromGame: true,
+          roomId: this.roundData.roomId,
+          players: this.roundData.players,
+          hostId: this.roundData.hostId,
+          maxPlayers: this.roundData.maxPlayers || 4,
+          roomName: this.roundData.roomName || "대기실",
+        });
+      };
+
+      socket.on("playerJoined", handlePlayerJoined);
+      socket.on("joinRoomError", handleJoinError);
+
+      socket.emit("joinRoom", {
         roomId: this.roundData.roomId,
-        players: this.roundData.players,
-        hostId: this.roundData.hostId,
-        maxPlayers: this.roundData.maxPlayers || 4,
-        roomName: this.roundData.roomName || "대기실",
+        nickname: storedNickname,
+        avatarKey: this.avatarKey || "player_1",
       });
     };
 

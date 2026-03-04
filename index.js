@@ -2091,7 +2091,7 @@ io.on("connection", (socket) => {
     const roomId = (
       typeof data === "object" ? data.roomId : data
     ).toUpperCase();
-    let nickname =
+    const originalNickname =
       (typeof data === "object" ? data.nickname : socket.nickname) || "요리사";
     const avatarKey =
       typeof data === "object" && /^player_[1-4]$/.test(data.avatarKey)
@@ -2099,21 +2099,28 @@ io.on("connection", (socket) => {
         : socket.avatarKey || "player_1";
     const room = rooms[roomId];
 
-    // if room exists, make sure nickname is unique within that room
-    if (room) {
-      nickname = makeUniqueNickname.call({ socket }, room, nickname);
+    if (!room) return socket.emit("joinRoomError", "방이 존재하지 않습니다.");
+
+    // 먼저 기존 플레이어인지 확인 (socket ID 또는 원본 닉네임으로)
+    const existingPlayerById = room.players.find((p) => p.id === socket.id);
+    const existingPlayerByNickname = room.players.find(
+      (p) =>
+        typeof p.nickname === "string" &&
+        p.nickname.trim() === String(originalNickname || "").trim(),
+    );
+    const isRejoin = Boolean(existingPlayerById || existingPlayerByNickname);
+
+    // 재접속이 아닌 새 접속인 경우에만 고유 닉네임 생성
+    let nickname = originalNickname;
+    if (!isRejoin) {
+      nickname = makeUniqueNickname.call({ socket }, room, originalNickname);
+    } else {
+      // 재접속인 경우 기존 닉네임 사용
+      nickname = existingPlayerByNickname
+        ? existingPlayerByNickname.nickname
+        : originalNickname;
     }
 
-    const existingByNickname = room
-      ? room.players.find(
-          (p) =>
-            typeof p.nickname === "string" &&
-            p.nickname.trim() === String(nickname || "").trim(),
-        )
-      : null;
-    const isRejoin = Boolean(existingByNickname);
-
-    if (!room) return socket.emit("joinRoomError", "방이 존재하지 않습니다.");
     if (!isRejoin && room.players.length >= room.maxPlayers)
       return socket.emit("joinRoomError", "인원 초과");
     if (room.isGameStarted)
@@ -2127,7 +2134,9 @@ io.on("connection", (socket) => {
     try {
       localStorage.setItem("nickname", nickname);
     } catch (e) {}
-    console.log(`🚪 joinRoom - socket.nickname 설정됨: ${socket.nickname}`);
+    console.log(
+      `🚪 joinRoom - socket.nickname 설정됨: ${socket.nickname}, isRejoin: ${isRejoin}`,
+    );
 
     // 💡 [추가] nickname으로 DB에서 플레이어 정보 조회 (level, coins, experience 복원)
     const savedData = await getPlayer(nickname);
@@ -2216,27 +2225,35 @@ io.on("connection", (socket) => {
   socket.on("joinPublicRoom", async (data) => {
     console.log("🌐 joinPublicRoom 호출됨, 받은 data:", JSON.stringify(data));
     const roomId = data.roomId;
-    let nickname = data.nickname || socket.nickname || "요리사";
+    const originalNickname = data.nickname || socket.nickname || "요리사";
     const avatarKey = /^player_[1-4]$/.test(data.avatarKey)
       ? data.avatarKey
       : socket.avatarKey || "player_1";
     const inputPassword = data.password || null;
     const room = rooms[roomId];
 
-    if (room) {
-      nickname = makeUniqueNickname.call({ socket }, room, nickname);
+    if (!room) return socket.emit("joinRoomError", "방이 존재하지 않습니다.");
+
+    // 먼저 기존 플레이어인지 확인 (socket ID 또는 원본 닉네임으로)
+    const existingPlayerById = room.players.find((p) => p.id === socket.id);
+    const existingPlayerByNickname = room.players.find(
+      (p) =>
+        typeof p.nickname === "string" &&
+        p.nickname.trim() === String(originalNickname || "").trim(),
+    );
+    const isRejoin = Boolean(existingPlayerById || existingPlayerByNickname);
+
+    // 재접속이 아닌 새 접속인 경우에만 고유 닉네임 생성
+    let nickname = originalNickname;
+    if (!isRejoin) {
+      nickname = makeUniqueNickname.call({ socket }, room, originalNickname);
+    } else {
+      // 재접속인 경우 기존 닉네임 사용
+      nickname = existingPlayerByNickname
+        ? existingPlayerByNickname.nickname
+        : originalNickname;
     }
 
-    const existingByNickname = room
-      ? room.players.find(
-          (p) =>
-            typeof p.nickname === "string" &&
-            p.nickname.trim() === String(nickname || "").trim(),
-        )
-      : null;
-    const isRejoin = Boolean(existingByNickname);
-
-    if (!room) return socket.emit("joinRoomError", "방이 존재하지 않습니다.");
     // 비공개 방이면 비밀번호 검증
     if (!room.isPublic) {
       if (!inputPassword || inputPassword !== room.password) {
@@ -2256,7 +2273,7 @@ io.on("connection", (socket) => {
       localStorage.setItem("nickname", nickname);
     } catch (e) {}
     console.log(
-      `🌐 joinPublicRoom - socket.nickname 설정됨: ${socket.nickname}`,
+      `🌐 joinPublicRoom - socket.nickname 설정됨: ${socket.nickname}, isRejoin: ${isRejoin}`,
     );
 
     // 💡 [추가] nickname으로 DB에서 플레이어 정보 조회 (level, coins, experience 복원)
