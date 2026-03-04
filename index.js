@@ -181,6 +181,44 @@ async function getPlayer(id) {
   }
 }
 
+// DB 기반 닉네임 중복 체크
+async function checkNicknameExists(nickname) {
+  if (!pool) return false;
+
+  try {
+    const res = await pool.query("SELECT id FROM players WHERE id = $1", [
+      nickname,
+    ]);
+    return res.rows.length > 0;
+  } catch (err) {
+    console.error("❌ 닉네임 중복 체크 에러:", err);
+    return false;
+  }
+}
+
+// DB 기반 고유 닉네임 생성
+async function makeUniqueNicknameFromDB(desiredNickname) {
+  if (!pool) return desiredNickname;
+
+  let base = desiredNickname || "요리사";
+  base = String(base).trim();
+  if (!base) base = "요리사";
+
+  let nickname = base;
+  let count = 1;
+
+  try {
+    // 원본 닉네임이 이미 존재하는지 확인
+    while (await checkNicknameExists(nickname)) {
+      nickname = `${base}#${count++}`;
+    }
+    return nickname;
+  } catch (err) {
+    console.error("❌ 고유 닉네임 생성 에러:", err);
+    return `${base}#${Date.now()}`; // 에러 시 타임스탬프를 suffix로 사용
+  }
+}
+
 app.use(
   cors({
     origin: (origin, callback) => {
@@ -190,6 +228,7 @@ app.use(
     credentials: true,
   }),
 );
+app.use(express.json()); // JSON 파싱 미들웨어
 app.use(express.static(path.join(__dirname, "public")));
 
 const io = new Server(server, {
@@ -475,6 +514,43 @@ app.get("/api/public-rooms", (req, res) => {
   res.set("Pragma", "no-cache");
   res.set("Expires", "0");
   res.json(getRoomListPayload());
+});
+
+// 닉네임 중복 체크 API
+app.post("/api/check-nickname", async (req, res) => {
+  try {
+    const { nickname } = req.body;
+
+    if (!nickname || typeof nickname !== "string") {
+      return res.status(400).json({ error: "올바른 닉네임을 입력해주세요" });
+    }
+
+    const trimmedNickname = nickname.trim();
+    if (!trimmedNickname) {
+      return res.status(400).json({ error: "닉네임은 비어있을 수 없습니다" });
+    }
+
+    const exists = await checkNicknameExists(trimmedNickname);
+
+    if (exists) {
+      // 중복된 경우 에러 반환
+      res.status(409).json({
+        error: "이미 사용 중인 닉네임입니다",
+        exists: true,
+        nickname: trimmedNickname,
+      });
+    } else {
+      // 중복되지 않은 경우 사용 가능
+      res.json({
+        success: true,
+        exists: false,
+        nickname: trimmedNickname,
+      });
+    }
+  } catch (error) {
+    console.error("❌ 닉네임 체크 API 에러:", error);
+    res.status(500).json({ error: "서버 오류가 발생했습니다" });
+  }
 });
 
 // 공개 방 목록을 모든 클라이언트에게 브로드캐스트하는 헬퍼 함수
@@ -2091,7 +2167,7 @@ io.on("connection", (socket) => {
     const roomId = (
       typeof data === "object" ? data.roomId : data
     ).toUpperCase();
-    const originalNickname =
+    const nickname =
       (typeof data === "object" ? data.nickname : socket.nickname) || "요리사";
     const avatarKey =
       typeof data === "object" && /^player_[1-4]$/.test(data.avatarKey)
@@ -2101,25 +2177,12 @@ io.on("connection", (socket) => {
 
     if (!room) return socket.emit("joinRoomError", "방이 존재하지 않습니다.");
 
-    // 먼저 기존 플레이어인지 확인 (socket ID 또는 원본 닉네임으로)
+    // 기존 플레이어인지 확인
     const existingPlayerById = room.players.find((p) => p.id === socket.id);
     const existingPlayerByNickname = room.players.find(
-      (p) =>
-        typeof p.nickname === "string" &&
-        p.nickname.trim() === String(originalNickname || "").trim(),
+      (p) => p.nickname === nickname,
     );
     const isRejoin = Boolean(existingPlayerById || existingPlayerByNickname);
-
-    // 재접속이 아닌 새 접속인 경우에만 고유 닉네임 생성
-    let nickname = originalNickname;
-    if (!isRejoin) {
-      nickname = makeUniqueNickname.call({ socket }, room, originalNickname);
-    } else {
-      // 재접속인 경우 기존 닉네임 사용
-      nickname = existingPlayerByNickname
-        ? existingPlayerByNickname.nickname
-        : originalNickname;
-    }
 
     if (!isRejoin && room.players.length >= room.maxPlayers)
       return socket.emit("joinRoomError", "인원 초과");
@@ -2130,10 +2193,6 @@ io.on("connection", (socket) => {
     socket.roomId = roomId;
     socket.nickname = nickname;
     socket.avatarKey = avatarKey;
-    // persist adjusted nickname locally so reload/lobby return keeps it
-    try {
-      localStorage.setItem("nickname", nickname);
-    } catch (e) {}
     console.log(
       `🚪 joinRoom - socket.nickname 설정됨: ${socket.nickname}, isRejoin: ${isRejoin}`,
     );
@@ -2225,7 +2284,7 @@ io.on("connection", (socket) => {
   socket.on("joinPublicRoom", async (data) => {
     console.log("🌐 joinPublicRoom 호출됨, 받은 data:", JSON.stringify(data));
     const roomId = data.roomId;
-    const originalNickname = data.nickname || socket.nickname || "요리사";
+    const nickname = data.nickname || socket.nickname || "요리사";
     const avatarKey = /^player_[1-4]$/.test(data.avatarKey)
       ? data.avatarKey
       : socket.avatarKey || "player_1";
@@ -2234,25 +2293,12 @@ io.on("connection", (socket) => {
 
     if (!room) return socket.emit("joinRoomError", "방이 존재하지 않습니다.");
 
-    // 먼저 기존 플레이어인지 확인 (socket ID 또는 원본 닉네임으로)
+    // 기존 플레이어인지 확인
     const existingPlayerById = room.players.find((p) => p.id === socket.id);
     const existingPlayerByNickname = room.players.find(
-      (p) =>
-        typeof p.nickname === "string" &&
-        p.nickname.trim() === String(originalNickname || "").trim(),
+      (p) => p.nickname === nickname,
     );
     const isRejoin = Boolean(existingPlayerById || existingPlayerByNickname);
-
-    // 재접속이 아닌 새 접속인 경우에만 고유 닉네임 생성
-    let nickname = originalNickname;
-    if (!isRejoin) {
-      nickname = makeUniqueNickname.call({ socket }, room, originalNickname);
-    } else {
-      // 재접속인 경우 기존 닉네임 사용
-      nickname = existingPlayerByNickname
-        ? existingPlayerByNickname.nickname
-        : originalNickname;
-    }
 
     // 비공개 방이면 비밀번호 검증
     if (!room.isPublic) {
@@ -2269,9 +2315,6 @@ io.on("connection", (socket) => {
     socket.roomId = roomId;
     socket.nickname = nickname;
     socket.avatarKey = avatarKey;
-    try {
-      localStorage.setItem("nickname", nickname);
-    } catch (e) {}
     console.log(
       `🌐 joinPublicRoom - socket.nickname 설정됨: ${socket.nickname}, isRejoin: ${isRejoin}`,
     );

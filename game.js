@@ -4505,12 +4505,74 @@ class LobbyScene extends Phaser.Scene {
     this.currentJoinPopupCloseHandler = closeNicknamePopup;
 
     // --- 이벤트 처리 ---
-    confirmBtnImg.once("pointerdown", () => {
-      const nickname = el.value.trim() || "요리사";
+    confirmBtnImg.on("pointerdown", async () => {
+      const inputNickname = el.value.trim() || "요리사";
 
-      closeNicknamePopup();
+      // 로딩 상태 표시
+      confirmBtnText.setText("확인 중...");
+      confirmBtnImg.removeInteractive();
 
-      if (callback) callback(nickname);
+      try {
+        // 닉네임 중복 체크 API 호출
+        const response = await fetch(`${SERVER_URL}/api/check-nickname`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ nickname: inputNickname }),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          if (response.status === 409) {
+            // 중복된 닉네임인 경우 - 에러 메시지 표시하고 다시 입력 받기
+            this.addGameLog(
+              `"${inputNickname}" 닉네임이 이미 사용 중입니다. 다른 닉네임을 입력해주세요.`,
+              "#e74c3c",
+            );
+
+            // 버튼 상태 복원하여 다시 입력할 수 있도록 함
+            confirmBtnText.setText("확인");
+            confirmBtnImg.setInteractive({ useHandCursor: true });
+            el.value = ""; // 입력창 비우기
+            el.focus(); // 포커스 다시 주기
+            return;
+          } else {
+            throw new Error(result.error || `HTTP ${response.status}`);
+          }
+        }
+
+        // 중복되지 않은 경우 - 닉네임 사용 가능
+        const finalNickname = result.nickname;
+
+        // 닉네임을 localStorage에 저장
+        try {
+          localStorage.setItem("nickname", finalNickname);
+        } catch (e) {
+          console.warn("localStorage 저장 실패:", e);
+        }
+
+        closeNicknamePopup();
+
+        if (callback) callback(finalNickname);
+      } catch (error) {
+        console.error("닉네임 체크 실패:", error);
+        // 에러 발생 시 원본 닉네임 사용하고 localStorage에 저장
+        try {
+          localStorage.setItem("nickname", inputNickname);
+        } catch (e) {
+          console.warn("localStorage 저장 실패:", e);
+        }
+
+        this.addGameLog(
+          "닉네임 확인 중 오류가 발생했습니다. 입력된 닉네임을 사용합니다.",
+          "#e74c3c",
+        );
+
+        closeNicknamePopup();
+        if (callback) callback(inputNickname);
+      }
     });
   }
 
