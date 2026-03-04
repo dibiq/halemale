@@ -1089,73 +1089,6 @@ io.on("connection", (socket) => {
     );
   });
 
-  // 💡 일반 아이템 구매 이벤트 (누락된 기능 추가)
-  socket.on("buyItem", async (data) => {
-    const { itemId, itemPrice, itemType, itemName } = data;
-
-    // 1. 코인 확인
-    if ((Number(socket.coins) || 0) < itemPrice) {
-      socket.emit("buyItemError", "코인이 부족합니다.");
-      return;
-    }
-
-    // 2. 코인 차감
-    socket.coins = (Number(socket.coins) || 0) - itemPrice;
-
-    // 3. 아이템 추가
-    if (!Array.isArray(socket.items)) {
-      socket.items = [];
-    }
-    socket.items.push({
-      id: itemId,
-      type: itemType || "general",
-      name: itemName || `Item ${itemId}`,
-      purchaseDate: new Date().toISOString(),
-    });
-
-    // 4. DB에 저장
-    const mergedItems = {
-      items: socket.items,
-      specialCards: socket.specialCards || {},
-    };
-
-    try {
-      await savePlayer(
-        socket.nickname,
-        socket.level || 1,
-        socket.coins,
-        mergedItems,
-        socket.experience || 0,
-        socket.ownedCharacters || ["player_1"],
-        socket.currentCharacter || "player_1",
-      );
-
-      // 5. 클라이언트에 최신 프로필 전송
-      socket.emit("myProfile", {
-        nickname: socket.nickname,
-        level: Number(socket.level) || 1,
-        coins: Number(socket.coins) || 0,
-        items: socket.items,
-        experience: Number(socket.experience) || 0,
-        avatarKey: socket.currentCharacter || socket.avatarKey || "player_1",
-        specialCards: socket.specialCards || {},
-        owned_characters: socket.ownedCharacters || ["player_1"],
-        current_character: socket.currentCharacter || "player_1",
-      });
-
-      socket.emit("itemPurchased", { itemId, newCoins: socket.coins });
-      console.log(
-        `✅ ${socket.nickname} 아이템 ${itemId} 구매 완료 (잔여 코인: ${socket.coins})`,
-      );
-    } catch (e) {
-      console.error("일반 아이템 구매 중 DB 저장 실패:", e);
-      socket.emit("buyItemError", "구매 처리 중 오류가 발생했습니다.");
-      // 롤백
-      socket.coins = (Number(socket.coins) || 0) + itemPrice;
-      socket.items.pop();
-    }
-  });
-
   const handleBuyCharacter = async (data) => {
     const payload = data && typeof data === "object" ? data : {};
     const targetPlayerId =
@@ -1219,7 +1152,9 @@ io.on("connection", (socket) => {
       return;
     }
 
-    socket.coins = (Number(socket.coins) || 0) - characterPrice;
+    // 코인 및 캐릭터 정보 업데이트
+    const previousCoins = Number(socket.coins) || 0;
+    socket.coins = previousCoins - characterPrice;
     socket.ownedCharacters = normalizeOwnedCharacters([
       ...(socket.ownedCharacters || ["player_1"]),
       characterKey,
@@ -1232,36 +1167,61 @@ io.on("connection", (socket) => {
       specialCards: socket.specialCards || {},
     };
 
-    await savePlayer(
-      targetPlayerId,
-      socket.level,
-      socket.coins,
-      mergedItems,
-      socket.experience,
-      socket.ownedCharacters,
-      socket.currentCharacter,
-    );
+    try {
+      await savePlayer(
+        targetPlayerId,
+        socket.level,
+        socket.coins,
+        mergedItems,
+        socket.experience,
+        socket.ownedCharacters,
+        socket.currentCharacter,
+      );
 
-    socket.emit("myProfile", {
-      nickname: targetPlayerId,
-      level: Number(socket.level) || 1,
-      coins: Number(socket.coins) || 0,
-      items: Array.isArray(socket.items) ? socket.items : [],
-      experience: Number(socket.experience) || 0,
-      avatarKey: socket.currentCharacter || socket.avatarKey || "player_1",
-      specialCards: socket.specialCards || {},
-      owned_characters: socket.ownedCharacters || ["player_1"],
-      current_character: socket.currentCharacter || "player_1",
-    });
+      // 성공시 클라이언트에 최신 프로필 전송
+      socket.emit("myProfile", {
+        nickname: targetPlayerId,
+        level: Number(socket.level) || 1,
+        coins: Number(socket.coins) || 0,
+        items: Array.isArray(socket.items) ? socket.items : [],
+        experience: Number(socket.experience) || 0,
+        avatarKey: socket.currentCharacter || socket.avatarKey || "player_1",
+        specialCards: socket.specialCards || {},
+        owned_characters: socket.ownedCharacters || ["player_1"],
+        current_character: socket.currentCharacter || "player_1",
+      });
 
-    console.log(
-      `✅ ${targetPlayerId} 캐릭터 구매 완료: ${characterKey}, 남은 코인 ${socket.coins}`,
-    );
+      // 성공 응답 전송
+      socket.emit("characterPurchased", {
+        characterKey,
+        characterPrice,
+        newCoins: socket.coins,
+        message: "케릭터 구매가 완료되었습니다!",
+      });
+
+      console.log(
+        `✅ ${targetPlayerId} 캐릭터 구매 완료: ${characterKey}, 남은 코인 ${socket.coins}`,
+      );
+    } catch (e) {
+      console.error(`❌ ${targetPlayerId} 캐릭터 구매 DB 저장 실패:`, e);
+      // 롤백
+      socket.coins = previousCoins;
+      socket.ownedCharacters = socket.ownedCharacters.filter(
+        (char) => char !== characterKey,
+      );
+      if (socket.currentCharacter === characterKey) {
+        socket.currentCharacter = socket.ownedCharacters[0] || "player_1";
+        socket.avatarKey = socket.currentCharacter;
+      }
+      socket.emit(
+        "buyCharacterError",
+        "케릭터 구매 처리 중 오류가 발생했습니다.",
+      );
+      return;
+    }
   };
 
   socket.on("buyCharacter", handleBuyCharacter);
-  socket.on("purchaseCharacter", handleBuyCharacter);
-  socket.on("characterPurchased", handleBuyCharacter);
 
   // 특수카드 동기화 요청
   socket.on("syncSpecialCards", async (clientSpecialCards, cb) => {
