@@ -2123,6 +2123,10 @@ io.on("connection", (socket) => {
     socket.roomId = roomId;
     socket.nickname = nickname;
     socket.avatarKey = avatarKey;
+    // persist adjusted nickname locally so reload/lobby return keeps it
+    try {
+      localStorage.setItem("nickname", nickname);
+    } catch (e) {}
     console.log(`🚪 joinRoom - socket.nickname 설정됨: ${socket.nickname}`);
 
     // 💡 [추가] nickname으로 DB에서 플레이어 정보 조회 (level, coins, experience 복원)
@@ -2248,6 +2252,9 @@ io.on("connection", (socket) => {
     socket.roomId = roomId;
     socket.nickname = nickname;
     socket.avatarKey = avatarKey;
+    try {
+      localStorage.setItem("nickname", nickname);
+    } catch (e) {}
     console.log(
       `🌐 joinPublicRoom - socket.nickname 설정됨: ${socket.nickname}`,
     );

@@ -7841,6 +7841,14 @@ class GameScene extends Phaser.Scene {
   }
 
   playWinAnimation(data) {
+    // block further inputs by placing a transparent fullscreen overlay
+    const { width, height } = this.cameras.main;
+    const overlay = this.add
+      .rectangle(0, 0, width, height, 0x000000, 0)
+      .setOrigin(0)
+      .setDepth(11000)
+      .setInteractive();
+
     // inspect `this` context
     console.log("[playWinAnimation] this=", this);
     // ensure animations are enabled when called
@@ -7852,7 +7860,6 @@ class GameScene extends Phaser.Scene {
       );
       // still play other effects but skip creating new sprite
     }
-    const { width, height } = this.cameras.main;
     const { players, prevPlayers, winnerId } = data;
 
     // 💥 멀티플레이 정답 시 스펙타클한 이펙트
@@ -8046,6 +8053,7 @@ class GameScene extends Phaser.Scene {
 
     if (totalCardsToFly === 0) {
       this.renderTable(players);
+      overlay.destroy();
       return;
     }
 
@@ -8107,6 +8115,7 @@ class GameScene extends Phaser.Scene {
                 });
                 this.renderTable(this.roundData.players);
                 this.sound.play("pop", { volume: 0.3 });
+                if (overlay) overlay.destroy();
               }
             },
           });
