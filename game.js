@@ -970,8 +970,10 @@ class LobbyScene extends Phaser.Scene {
     const actionBtnW = width * 0.28;
     const actionBtnGap = width * 0.03;
     const actionBtnOffset = actionBtnW + actionBtnGap;
+    const actionBtnSpacing = btnH * 1.4; // 세로 간격
 
-    const multiBtn = this.add.container(centerX - actionBtnOffset, actionBtnY);
+    // vertical stack: 멀티 위, 싱글 중앙, 상점 아래
+    const multiBtn = this.add.container(centerX, actionBtnY - actionBtnSpacing);
 
     const profileCenterY = y;
     const profileSize = width * 0.2;
@@ -1247,7 +1249,7 @@ class LobbyScene extends Phaser.Scene {
     /* =======================================================
    상점 버튼 추가
 ======================================================= */
-    const shopBtn = this.add.container(centerX + actionBtnOffset, actionBtnY);
+    const shopBtn = this.add.container(centerX, actionBtnY + actionBtnSpacing);
     const shopBtnImg = this.add
       .image(0, 0, "uibtn")
       .setDisplaySize(actionBtnW, btnH * 1.2)
@@ -11848,19 +11850,46 @@ if (typeof LobbyScene !== "undefined" && typeof GameScene !== "undefined") {
     }
   });
 }
+// pick scale mode based on orientation.  portrait devices get ENVELOP
+// which fills the width and crops top/bottom; landscape devices use FIT
+// so the full 9:16 world is visible with black bars on the shorter axis.
+// the body background color has already been set to match the game, so
+// the "bars" are invisible.
+const isPortraitInit = window.innerHeight > window.innerWidth;
+const initialMode = isPortraitInit ? Phaser.Scale.ENVELOP : Phaser.Scale.FIT;
 
 const config = {
   type: Phaser.AUTO,
   parent: "game-container", // 🔹 위에서 만든 div ID와 일치해야 함
-  width: 1080, // 기준 해상도 (세로형 게임 기준)
+  width: 1080, // 기준 해상도 (세로형 게임 기준, 내부 논리 크기)
   height: 1920,
   backgroundColor: "#0f172a",
   scale: {
-    mode: Phaser.Scale.FIT,
+    mode: initialMode,
     autoCenter: Phaser.Scale.CENTER_BOTH,
+    resolution: window.devicePixelRatio || 1,
   },
   dom: { createContainer: true }, // ✅ 여기를 추가
   scene: [LobbyScene, GameScene],
 };
 
-new Phaser.Game(config);
+const game = new Phaser.Game(config);
+
+// adjust when orientation/size changes
+window.addEventListener("resize", () => {
+  if (!game || !game.scale) return;
+  const portrait = window.innerHeight > window.innerWidth;
+  const mode = portrait ? Phaser.Scale.ENVELOP : Phaser.Scale.FIT;
+  if (game.scale.mode !== mode) {
+    game.scale.setMode(mode);
+  }
+
+  // camera bounds update (optional)
+  if (game.scene && game.scene.keys) {
+    Object.values(game.scene.keys).forEach((scene) => {
+      if (scene && scene.cameras && scene.cameras.main) {
+        scene.cameras.main.setBounds(0, 0, game.scale.width, game.scale.height);
+      }
+    });
+  }
+});

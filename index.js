@@ -12,6 +12,10 @@ const pool = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL }) : null;
 
 function getAllowedOrigins() {
   return [
+    "https://halemale.apps.tossmini.com",
+    "https://halemale.private-apps.tossmini.com",
+    "http://192.168.10.113:5173",
+    "http://localhost:5173",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "http://0.0.0.0:3000",
