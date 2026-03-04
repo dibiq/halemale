@@ -4506,7 +4506,23 @@ class LobbyScene extends Phaser.Scene {
 
     // --- 이벤트 처리 ---
     confirmBtnImg.on("pointerdown", async () => {
-      const inputNickname = el.value.trim() || "요리사";
+      const inputNickname = el.value.trim();
+
+      // 입력값이 비어있으면 에러 메시지 표시하고 리턴
+      if (!inputNickname) {
+        const errorMessage = "닉네임을 입력해주세요.";
+
+        if (typeof this.addGameLog === "function") {
+          this.addGameLog(errorMessage, "#e74c3c");
+        } else if (typeof this.showToast === "function") {
+          this.showToast(errorMessage, "#e74c3c");
+        } else {
+          console.log(errorMessage);
+        }
+
+        el.focus(); // 포커스 다시 주기
+        return;
+      }
 
       // 로딩 상태 표시
       confirmBtnText.setText("확인 중...");
@@ -4527,16 +4543,22 @@ class LobbyScene extends Phaser.Scene {
         if (!response.ok) {
           if (response.status === 409) {
             // 중복된 닉네임인 경우 - 에러 메시지 표시하고 다시 입력 받기
-            this.addGameLog(
-              `"${inputNickname}" 닉네임이 이미 사용 중입니다. 다른 닉네임을 입력해주세요.`,
-              "#e74c3c",
-            );
+            const errorMessage = `닉네임이 이미 사용 중입니다`;
+
+            // 현재 씬에 따라 적절한 메시지 표시 함수 사용
+            if (typeof this.addGameLog === "function") {
+              this.addGameLog(errorMessage, "#e74c3c");
+            } else if (typeof this.showToast === "function") {
+              this.showToast(errorMessage, "#e74c3c");
+            } else {
+              console.log(errorMessage);
+            }
 
             // 버튼 상태 복원하여 다시 입력할 수 있도록 함
             confirmBtnText.setText("확인");
             confirmBtnImg.setInteractive({ useHandCursor: true });
-            el.value = ""; // 입력창 비우기
             el.focus(); // 포커스 다시 주기
+            el.select(); // 기존 텍스트를 선택 상태로 만들어 쉽게 수정할 수 있도록 함
             return;
           } else {
             throw new Error(result.error || `HTTP ${response.status}`);
@@ -4565,10 +4587,17 @@ class LobbyScene extends Phaser.Scene {
           console.warn("localStorage 저장 실패:", e);
         }
 
-        this.addGameLog(
-          "닉네임 확인 중 오류가 발생했습니다. 입력된 닉네임을 사용합니다.",
-          "#e74c3c",
-        );
+        const errorMessage =
+          "닉네임 확인 중 오류가 발생했습니다. 입력된 닉네임을 사용합니다.";
+
+        // 현재 씬에 따라 적절한 메시지 표시 함수 사용
+        if (typeof this.addGameLog === "function") {
+          this.addGameLog(errorMessage, "#e74c3c");
+        } else if (typeof this.showToast === "function") {
+          this.showToast(errorMessage, "#e74c3c");
+        } else {
+          console.log(errorMessage);
+        }
 
         closeNicknamePopup();
         if (callback) callback(inputNickname);
@@ -7911,6 +7940,20 @@ class GameScene extends Phaser.Scene {
       .setDepth(11000)
       .setInteractive();
 
+    // 애니메이션 완료 추적 변수들을 함수 시작 부분에 선언
+    let totalCardsToFly = 0;
+    let finishedFlys = 0;
+    let characterAnimationDone = false;
+    let cardAnimationDone = false;
+
+    // 애니메이션이 완전히 끝났는지 체크하는 함수
+    const checkAllAnimationsComplete = () => {
+      if (characterAnimationDone && cardAnimationDone) {
+        this.renderTable(data.players);
+        if (overlay) overlay.destroy();
+      }
+    };
+
     // inspect `this` context
     console.log("[playWinAnimation] this=", this);
     // ensure animations are enabled when called
@@ -7920,6 +7963,7 @@ class GameScene extends Phaser.Scene {
       console.log(
         "[playWinAnimation] avatar anim already in progress, skipping",
       );
+      characterAnimationDone = true; // 애니메이션이 이미 진행 중이면 스킵되므로 완료 처리
       // still play other effects but skip creating new sprite
     }
     const { players, prevPlayers, winnerId } = data;
@@ -7987,33 +8031,49 @@ class GameScene extends Phaser.Scene {
           this.getAvatarDisplayKey(avatarKey) ||
           (this.textures.exists(avatarKey) ? avatarKey : null);
 
-        if (baseTexture) {
-          tempSprite.setTexture(baseTexture);
-          this.applyAvatarAnimation(tempSprite, avatarKey);
-          const anim = tempSprite.anims.currentAnim;
-          if (anim) {
-            anim.repeat = 0;
-          }
-          const clearFlag = () => {
-            this.avatarAnimInProgress = false;
-            tempSprite.setVisible(false);
-          };
-          tempSprite.once("animationcomplete", () => {
-            clearFlag();
-          });
-          // safety timeout
-          this.time.delayedCall(2000, () => {
-            if (tempSprite && tempSprite.active) {
-              tempSprite.setVisible(false);
+        if (baseTexture && this.textures.exists(baseTexture)) {
+          try {
+            tempSprite.setTexture(baseTexture);
+            this.applyAvatarAnimation(tempSprite, avatarKey);
+            const anim = tempSprite.anims.currentAnim;
+            if (anim) {
+              anim.repeat = 0;
             }
-            clearFlag();
-          });
+            const clearFlag = () => {
+              this.avatarAnimInProgress = false;
+              tempSprite.setVisible(false);
+              characterAnimationDone = true;
+              checkAllAnimationsComplete();
+            };
+            tempSprite.once("animationcomplete", () => {
+              clearFlag();
+            });
+            // safety timeout
+            this.time.delayedCall(2000, () => {
+              if (tempSprite && tempSprite.active) {
+                tempSprite.setVisible(false);
+              }
+              clearFlag();
+            });
+          } catch (textureError) {
+            console.error(
+              "[playWinAnimation] texture setting error",
+              textureError,
+            );
+            this.avatarAnimInProgress = false;
+            characterAnimationDone = true;
+            checkAllAnimationsComplete();
+          }
         } else {
           console.warn(
             "[playWinAnimation] no valid texture for avatar",
             avatarKey,
+            "baseTexture:",
+            baseTexture,
           );
           this.avatarAnimInProgress = false;
+          characterAnimationDone = true;
+          checkAllAnimationsComplete();
         }
 
         combo =
@@ -8021,11 +8081,14 @@ class GameScene extends Phaser.Scene {
       } catch (e) {
         console.error("[playWinAnimation] avatar animation error", e);
         this.avatarAnimInProgress = false;
+        characterAnimationDone = true; // 에러 발생 시에도 캐릭터 애니메이션 완료 처리
+        checkAllAnimationsComplete();
       }
     } else {
       console.log(
         "[playWinAnimation] avatar animation disabled (static guard)",
       );
+      characterAnimationDone = true; // 캐릭터 애니메이션이 비활성화된 경우 즉시 완료 처리
       combo =
         this.comboState && this.comboState.count ? this.comboState.count : 0;
     }
@@ -8105,18 +8168,18 @@ class GameScene extends Phaser.Scene {
       }
     }
 
-    let totalCardsToFly = 0;
-    let finishedFlys = 0;
-
     // 1. 전체 날려야 할 카드 총 개수 먼저 계산
-    prevPlayers.forEach((p) => {
+    data.prevPlayers.forEach((p) => {
       if (p.openStack) totalCardsToFly += p.openStack.length;
     });
 
     if (totalCardsToFly === 0) {
-      this.renderTable(players);
-      overlay.destroy();
-      return;
+      cardAnimationDone = true;
+      // 카드 애니메이션이 없어도 캐릭터 애니메이션이 끝날 때까지 기다림
+      if (characterAnimationDone) {
+        checkAllAnimationsComplete();
+      }
+      // return 제거하여 캐릭터 애니메이션은 계속 진행되도록 함
     }
 
     // 💡 [수정] 애니메이션 시작 직후 바닥 카드를 즉시 비우고 렌더링
@@ -8170,20 +8233,26 @@ class GameScene extends Phaser.Scene {
 
               // 모든 카드가 다 날아갔을 때
               if (finishedFlys === totalCardsToFly) {
-                // 3. 데이터 비우기 및 최종 렌더링
+                // 3. 데이터 비우기
                 this.roundData.players.forEach((player) => {
                   player.openStack = [];
                   player.isFlipping = false;
                 });
-                this.renderTable(this.roundData.players);
                 this.sound.play("pop", { volume: 0.3 });
-                if (overlay) overlay.destroy();
+                cardAnimationDone = true;
+                checkAllAnimationsComplete();
               }
             },
           });
         });
       }
     });
+
+    // 함수 마지막에 애니메이션 상태 최종 체크
+    // (카드와 캐릭터 애니메이션 모두 즉시 완료되는 경우 대비)
+    setTimeout(() => {
+      checkAllAnimationsComplete();
+    }, 100);
   }
 
   playCardFlipAnimation(data) {
@@ -10836,7 +10905,7 @@ class GameScene extends Phaser.Scene {
       .rectangle(width / 2, height / 2, width, height, 0x000000, 0.65)
       .setInteractive();
     const podiumBg = this.add
-      .image(width / 2, height * 0.46, "resultbg")
+      .image(width / 2, height / 2, "resultbg")
       .setDisplaySize(width * 1.0, height * 1.0);
 
     container.add([overlay, podiumBg]);
