@@ -1201,24 +1201,7 @@ io.on("connection", (socket) => {
         }
       }
 
-      // 보유 여부 확인 (로그 추가)
-      // If server-side specialCards is missing/empty, give only a shield for safety during tests.
-      if (
-        !socket.specialCards ||
-        Object.keys(socket.specialCards).length === 0
-      ) {
-        socket.specialCards = socket.specialCards || {};
-        if (
-          !Number.isFinite(Number(socket.specialCards[SHIELD_CARD_ID] || 0))
-        ) {
-          socket.specialCards[SHIELD_CARD_ID] = 10;
-        }
-        console.log(
-          `[debug] requestUseSpecial filled missing shield for ${socket.nickname}:`,
-          socket.specialCards,
-        );
-      }
-
+      // 보유 여부 확인
       console.log(
         `[debug] requestUseSpecial from ${socket.nickname} (${socket.id}) cardId=${cardId} specialCards=`,
         socket.specialCards,
@@ -2745,33 +2728,6 @@ io.on("connection", (socket) => {
               p.specialCards,
             )}`,
           );
-          // 테스트용 기본값: 방패 10개 채워줌
-          if (
-            !Number.isFinite(Number(p.specialCards[SHIELD_CARD_ID] || 0)) ||
-            Number(p.specialCards[SHIELD_CARD_ID] || 0) <= 0
-          ) {
-            p.specialCards[SHIELD_CARD_ID] = 10;
-            console.log(
-              `[debug] startGame default shield assigned to player ${p.nickname} (${p.id})`,
-            );
-            if (s) {
-              s.specialCards[SHIELD_CARD_ID] = 10;
-              savePlayer(
-                s.nickname,
-                s.level || 1,
-                s.coins || 0,
-                {
-                  items: Array.isArray(s.items) ? s.items : [],
-                  specialCards: s.specialCards || {},
-                },
-                s.experience || 0,
-                s.ownedCharacters || ["player_1"],
-                s.currentCharacter || s.avatarKey || "player_1",
-              ).catch((e) =>
-                console.warn("savePlayer error on default shield", e),
-              );
-            }
-          }
         } catch (e) {
           // ignore per-player sync error
         }
@@ -2948,7 +2904,7 @@ io.on("connection", (socket) => {
       }
     }
     injectTonCardsToPlayers(room.players, TON_CARD_COUNT);
-    // Pen 카드 주입 (테스트용 기본 1장)
+    // Pen 카드 주입
     function injectPenCardsToPlayers(players, penCount) {
       if (!Array.isArray(players) || players.length === 0) return;
 

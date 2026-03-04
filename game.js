@@ -4765,7 +4765,7 @@ class LobbyScene extends Phaser.Scene {
       const profileX = cardLeft + profileSize * 1.1;
 
       const profileImg = this.add
-        .sprite(profileX, pos.y - cardH * 0.05, avatarTextureKey)
+        .sprite(profileX, pos.y - cardH * 0.0, avatarTextureKey)
         .setDisplaySize(profileSize * 2, profileSize * 2);
       this.lobbyUIContainer.add(profileImg);
       this.applyAvatarAnimation(profileImg, baseAvatarKey);
