@@ -33,6 +33,10 @@ function handleGetUserKey() {
   return "GUEST_USER";
 }
 
+// treat a few common local hostnames as "production" when
+// deciding the default SERVER_URL.  this allows dev builds opened on
+// localhost to still connect to the remote render server without
+// needing to supply a query string or env var.
 const PRODUCTION_HOSTS = new Set([
   "halemale.onrender.com",
   "halemale-client.onrender.com",
@@ -40,10 +44,26 @@ const PRODUCTION_HOSTS = new Set([
   "halemale.private-apps.tossmini.com",
   "skewer-master.apps.tossmini.com",
   "skewer-master.private-apps.tossmini.com",
+  // also honor common development hostnames as production
+  "localhost",
+  "127.0.0.1",
+  "0.0.0.0",
 ]);
 const browserHost =
   typeof window !== "undefined" ? window.location.hostname : "";
-const isProductionBrowser = PRODUCTION_HOSTS.has(browserHost);
+
+// private LAN addresses should also behave like production (the remote
+// render server is preferred over whatever service might be running on
+// the local machine).  covers 10.x, 127.x, 169.254.x, 172.16-31.x, and
+// 192.168.x ranges.
+function isPrivateHost(host) {
+  return /^(?:10|127|169\.254|192\.168|172\.(?:1[6-9]|2[0-9]|3[0-1]))\./.test(
+    host,
+  );
+}
+
+const isProductionBrowser =
+  PRODUCTION_HOSTS.has(browserHost) || isPrivateHost(browserHost);
 const envServerUrl =
   typeof import.meta !== "undefined" && import.meta.env
     ? import.meta.env.VITE_SERVER_URL
