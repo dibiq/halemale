@@ -928,6 +928,20 @@ class LobbyScene extends Phaser.Scene {
       this.updateMyProfileUI(profile);
     });
 
+    // 💡 아이템 구매 이벤트 핸들러 추가 (누락된 기능)
+    socket.off("buyItemError").on("buyItemError", (message) => {
+      this.showToast(message || "아이템 구매에 실패했습니다.", "#e74c3c");
+    });
+
+    socket.off("itemPurchased").on("itemPurchased", (data) => {
+      this.showToast("아이템 구매가 완료되었습니다!", "#2ecc71");
+      if (data && typeof data.newCoins === "number") {
+        this.myProfile.coins = data.newCoins;
+        localStorage.setItem("profileCoins", String(this.myProfile.coins));
+        this.updateMyProfileUI();
+      }
+    });
+
     socket.off("lobbyChatMessage").on("lobbyChatMessage", (payload) => {
       if (!payload || typeof payload.message !== "string") return;
       const nickname = payload.nickname || "요리사";
@@ -2533,6 +2547,38 @@ class LobbyScene extends Phaser.Scene {
       },
     ];
 
+    // 💡 일반 아이템 배열 추가 (누락된 기능)
+    const generalItems = [
+      {
+        id: 1,
+        name: "체력 포션",
+        description: "체력을 완전히 회복시켜줍니다",
+        price: 50,
+        type: "consumable",
+      },
+      {
+        id: 2,
+        name: "마나 포션",
+        description: "마나를 완전히 회복시켜줍니다",
+        price: 50,
+        type: "consumable",
+      },
+      {
+        id: 3,
+        name: "행운의 부적",
+        description: "운을 증가시켜주는 신비한 부적",
+        price: 150,
+        type: "accessory",
+      },
+      {
+        id: 4,
+        name: "경험치 부스터",
+        description: "다음 게임에서 경험치 2배 획득",
+        price: 200,
+        type: "booster",
+      },
+    ];
+
     const coinProducts = [
       { amount: 500, display: "$0.99" },
       { amount: 1000, display: "$1.99" },
@@ -2698,10 +2744,11 @@ class LobbyScene extends Phaser.Scene {
     const tabs = [
       { key: "special", label: "특수카드" },
       { key: "character", label: "케릭터" },
+      { key: "item", label: "아이템" },
       { key: "coin", label: "코인" },
     ];
     let currentTab = "special";
-    const tabIndexes = { special: 0, character: 0, coin: 0 };
+    const tabIndexes = { special: 0, character: 0, item: 0, coin: 0 };
 
     const tabButtonWidth = width * 0.18;
     const tabButtonHeight = height * 0.05;
@@ -2978,6 +3025,55 @@ class LobbyScene extends Phaser.Scene {
         }
       }
 
+      if (currentTab === "item") {
+        const item = generalItems[index];
+
+        // 아이템 이미지 (임시 아이콘)
+        const itemIcon = this.add
+          .text(0, -height * 0.05, "📦", {
+            fontSize: `${width * 0.15}px`,
+          })
+          .setOrigin(0.5);
+
+        const nameText = this.add
+          .text(0, -20, item.name, {
+            fontFamily: GAME_FONTS.main,
+            fontSize: `${width * 0.06}px`,
+            color: "#FFD700",
+            fontWeight: "bold",
+            stroke: "#000000",
+            strokeThickness: 3,
+          })
+          .setOrigin(0.5);
+
+        const descText = this.add
+          .text(0, 15, item.description, {
+            fontFamily: GAME_FONTS.main,
+            fontSize: `${width * 0.04}px`,
+            color: "#FFFFFF",
+            fontWeight: "bold",
+            stroke: "#000000",
+            strokeThickness: 2,
+            align: "center",
+            wordWrap: { width: width * 0.6 },
+          })
+          .setOrigin(0.5);
+
+        const priceText = this.add
+          .text(0, 60, `💰 ${item.price}`, {
+            fontFamily: GAME_FONTS.main,
+            fontSize: `${width * 0.05}px`,
+            color: "#00ff00",
+            fontWeight: "bold",
+            stroke: "#000000",
+            strokeThickness: 3,
+          })
+          .setOrigin(0.5);
+
+        cardDisplayContainer.add([itemIcon, nameText, descText, priceText]);
+        buyBtnText.setText("구매하기");
+      }
+
       if (currentTab === "coin") {
         const product = coinProducts[index];
 
@@ -3037,7 +3133,9 @@ class LobbyScene extends Phaser.Scene {
           ? specialCards.length
           : currentTab === "character"
             ? characterItems.length
-            : coinProducts.length;
+            : currentTab === "item"
+              ? generalItems.length
+              : coinProducts.length;
 
       this.sound.play("pop", { volume: 0.08 });
       this.tweens.add({
@@ -3058,7 +3156,9 @@ class LobbyScene extends Phaser.Scene {
           ? specialCards.length
           : currentTab === "character"
             ? characterItems.length
-            : coinProducts.length;
+            : currentTab === "item"
+              ? generalItems.length
+              : coinProducts.length;
 
       this.sound.play("pop", { volume: 0.08 });
       this.tweens.add({
@@ -3220,6 +3320,64 @@ class LobbyScene extends Phaser.Scene {
         }
         this.showToast(`${character.name} 구매 완료!`, "#2ecc71");
         renderShopContent();
+        return;
+      }
+
+      if (currentTab === "item") {
+        const item = generalItems[tabIndexes.item];
+        if (this.myProfile.coins >= item.price) {
+          this.myProfile.coins -= item.price;
+          localStorage.setItem("profileCoins", String(this.myProfile.coins));
+
+          // 로컬 아이템 추가
+          const ownedItems = JSON.parse(
+            localStorage.getItem("ownedItems") || "[]",
+          );
+          ownedItems.push({
+            id: item.id,
+            name: item.name,
+            type: item.type,
+            purchaseDate: new Date().toISOString(),
+          });
+          localStorage.setItem("ownedItems", JSON.stringify(ownedItems));
+
+          this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
+          this.updateMyProfileUI();
+
+          if (!this.isSingle && socket.connected) {
+            socket.emit("buyItem", {
+              itemId: item.id,
+              itemPrice: item.price,
+              itemType: item.type,
+              itemName: item.name,
+            });
+          }
+
+          try {
+            const sceneInstance =
+              typeof game !== "undefined" &&
+              game.scene &&
+              game.scene.keys &&
+              game.scene.keys.GameScene;
+            if (
+              sceneInstance &&
+              typeof sceneInstance.safeSyncInventory === "function"
+            ) {
+              sceneInstance.safeSyncInventory("buyItem", {
+                boughtItemId: item.id,
+              });
+            } else {
+              console.warn("safeSyncInventory not available for buyItem");
+            }
+          } catch (e) {
+            console.warn("buyItem sync failed", e);
+          }
+
+          this.showToast(`${item.name} 구매 완료!`, "#2ecc71");
+          renderShopContent();
+        } else {
+          this.showToast("코인이 부족합니다!", "#e74c3c");
+        }
         return;
       }
 
