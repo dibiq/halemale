@@ -644,6 +644,18 @@ class LobbyScene extends Phaser.Scene {
     const savedAvatarKey = localStorage.getItem("profileAvatarKey");
     const savedAvatarIndex = this.profileAvatarKeys.indexOf(savedAvatarKey);
     this.profileAvatarIndex = savedAvatarIndex >= 0 ? savedAvatarIndex : 0;
+    // 🔧 preload avatar animations for all possible keys so that
+    // ensureAvatarAnimation() cost is paid once during startup rather
+    // than during the win animation. This also forces player2 frames
+    // to be generated early.
+    this.profileAvatarKeys.forEach((k) => {
+      try {
+        ensurePlayer2Frames(this);
+        this.ensureAvatarAnimation(k);
+      } catch (e) {
+        console.warn("avatar preload failed for", k, e);
+      }
+    });
 
     bgmEnabled = localStorage.getItem("bgmEnabled") !== "false";
 
@@ -7885,102 +7897,61 @@ class GameScene extends Phaser.Scene {
           players[winIdx]?.avatarKey ||
           players[winIdx]?.current_character ||
           "player_1";
-        console.log("[playWinAnimation] avatarKey=", avatarKey);
-        console.log(
-          "[playWinAnimation] this.getPlayer1SpriteSheets=",
-          typeof this.getPlayer1SpriteSheets,
-        );
-        if (avatarKey && !this.avatarAnimInProgress) {
-          // mark in-progress to prevent duplicates
-          this.avatarAnimInProgress = true;
-          // make sure frames exist (player2 splitting may create textures)
-          ensurePlayer2Frames(this);
-          console.log("[playWinAnimation] preparing sprite for", avatarKey);
 
-          // determine a texture that definitely exists; fall back to defaults
-          let baseTexture = this.getAvatarDisplayKey(avatarKey);
-          if (!baseTexture && this.textures.exists(avatarKey)) {
-            baseTexture = avatarKey;
-          }
-          console.log("[playWinAnimation] computed baseTexture=", baseTexture);
-          console.log("[playWinAnimation] computed baseTexture=", baseTexture);
+        // use a reusable sprite instance to avoid allocation overhead
+        if (!this._winAvatarSprite) {
+          this._winAvatarSprite = this.add
+            .sprite(centerX, centerY, avatarKey)
+            .setDepth(10050)
+            .setVisible(false);
+        }
+        const tempSprite = this._winAvatarSprite;
+        tempSprite.x = centerX;
+        tempSprite.y = centerY;
+        tempSprite.setVisible(true);
 
-          if (baseTexture) {
-            const tempSprite = this.add
-              .sprite(centerX, centerY, baseTexture)
-              .setDisplaySize(width * 0.3, width * 0.3)
-              .setDepth(10050);
-            this.applyAvatarAnimation(tempSprite, avatarKey);
-            // ensure the generated animation (if any) runs only once
-            const anim = tempSprite.anims.currentAnim;
-            if (anim) {
-              anim.repeat = 0;
-            }
-            const clearFlag = () => {
-              this.avatarAnimInProgress = false;
-            };
-            tempSprite.on("animationcomplete", () => {
-              try {
-                tempSprite.destroy();
-              } catch (e) {}
-              clearFlag();
-            });
-            // safety timeout in case animation never completes
-            try {
-              this.time.delayedCall(2000, () => {
-                if (tempSprite && tempSprite.active) {
-                  tempSprite.destroy();
-                }
-                clearFlag();
-              });
-            } catch (e) {}
-          } else {
-            // fallback: use first frame of player1 sheet if available
-            if (avatarKey === "player_1") {
-              // instead of calling methods, just fall back to a known sheet
-              const fallbackKey = "player_1_sprite_a";
-              if (this.textures.exists(fallbackKey)) {
-                console.log(
-                  "[playWinAnimation] using hardcoded sheet fallback",
-                );
-                const tempSprite = this.add
-                  .sprite(centerX, centerY, fallbackKey, 0)
-                  .setDisplaySize(width * 0.3, width * 0.3)
-                  .setDepth(10050);
-                this.applyAvatarAnimation(tempSprite, avatarKey);
-                const anim = tempSprite.anims.currentAnim;
-                if (anim) anim.repeat = 0;
-                tempSprite.on("animationcomplete", () => {
-                  try {
-                    tempSprite.destroy();
-                  } catch (e) {}
-                });
-                try {
-                  this.time.delayedCall(2000, () => {
-                    if (tempSprite && tempSprite.active) {
-                      tempSprite.destroy();
-                    }
-                  });
-                } catch (e) {}
-              } else {
-                console.warn(
-                  "[playWinAnimation] no valid texture for avatar",
-                  avatarKey,
-                );
-              }
-            } else {
-              console.warn(
-                "[playWinAnimation] no valid texture for avatar",
-                avatarKey,
-              );
-            }
+        // mark in-progress to prevent duplicates
+        this.avatarAnimInProgress = true;
+
+        // ensure avatar animation exists (should be preloaded above)
+        const baseTexture =
+          this.getAvatarDisplayKey(avatarKey) ||
+          (this.textures.exists(avatarKey) ? avatarKey : null);
+
+        if (baseTexture) {
+          tempSprite.setTexture(baseTexture);
+          this.applyAvatarAnimation(tempSprite, avatarKey);
+          const anim = tempSprite.anims.currentAnim;
+          if (anim) {
+            anim.repeat = 0;
           }
+          const clearFlag = () => {
+            this.avatarAnimInProgress = false;
+            tempSprite.setVisible(false);
+          };
+          tempSprite.once("animationcomplete", () => {
+            clearFlag();
+          });
+          // safety timeout
+          this.time.delayedCall(2000, () => {
+            if (tempSprite && tempSprite.active) {
+              tempSprite.setVisible(false);
+            }
+            clearFlag();
+          });
+        } else {
+          console.warn(
+            "[playWinAnimation] no valid texture for avatar",
+            avatarKey,
+          );
+          this.avatarAnimInProgress = false;
         }
 
         combo =
           this.comboState && this.comboState.count ? this.comboState.count : 0;
       } catch (e) {
         console.error("[playWinAnimation] avatar animation error", e);
+        this.avatarAnimInProgress = false;
       }
     } else {
       console.log(
@@ -9139,6 +9110,28 @@ class GameScene extends Phaser.Scene {
         socket.emit("ringBell");
         return;
       }
+
+      // ── 즉시 정답/실패 시각 피드백 (네트워크 대기 중) ──
+      // 서버 판단과 100% 일치하지 않을 수 있지만, 사용자 경험 개선을
+      // 위해 가능한 경우 결과를 미리 보여준다.
+      try {
+        const totals = this.calculateTotalFruits && this.calculateTotalFruits();
+        const isFive = totals
+          ? Object.values(totals).some((c) => c === 5)
+          : false;
+        const hasThunder = this.hasThunderOnTable && this.hasThunderOnTable();
+        const hasNot5 = this.hasNot5OnTable ? this.hasNot5OnTable() : false;
+        const successWindow = hasThunder || (hasNot5 ? !isFive : isFive);
+        if (successWindow) {
+          // 플레이어가 정답일 가능성이 높으므로 즉시 성공 이펙트만 재생
+          this.playSuccessEffect();
+        } else {
+          this.playFailureEffect();
+        }
+      } catch (e) {
+        console.warn("handleRingBell optimistic feedback failed", e);
+      }
+
       socket.emit("ringBell");
     }
   }
