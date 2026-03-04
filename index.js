@@ -1819,7 +1819,9 @@ io.on("connection", (socket) => {
               try {
                 const pSock = io.sockets.sockets.get(pl.id);
                 if (pSock) pSock.specialCards = pSock.specialCards || {};
+                // 먹물 카드 사용자는 공격 대상이 아니므로 방패 소모하지 않음
                 if (
+                  pl.id !== socket.id && // 사용자 본인은 제외
                   pSock &&
                   Number(pSock.specialCards[SHIELD_CARD_ID] || 0) > 0
                 ) {
