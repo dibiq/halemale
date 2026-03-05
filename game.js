@@ -930,6 +930,11 @@ class LobbyScene extends Phaser.Scene {
       this.showToast(message || "케릭터 구매에 실패했습니다.", "#e74c3c");
     });
 
+    // 💡 케릭터 착용 에러 이벤트 핸들러 추가
+    socket.off("equipCharacterError").on("equipCharacterError", (message) => {
+      this.showToast(message || "착용에 실패했습니다.", "#e74c3c");
+    });
+
     socket.off("characterPurchased").on("characterPurchased", (data) => {
       console.log("🎭 케릭터 구매 성공:", data);
 
@@ -945,7 +950,7 @@ class LobbyScene extends Phaser.Scene {
         this.updateMyProfileUI();
       }
 
-      // 케릭터 장착만 처리 (소유권은 myProfile 이벤트에서 처리)
+      // 케릭터 착용만 처리 (소유권은 myProfile 이벤트에서 처리)
       if (data.characterKey) {
         equipCharacter(data.characterKey);
 
@@ -972,7 +977,14 @@ class LobbyScene extends Phaser.Scene {
 
       this.showToast("케릭터 구매가 완료되었습니다!", "#2ecc71");
 
-      // 상점 새로고침은 myProfile 이벤트에서 처리됨
+      // 상점 새로고침으로 즉시 UI 반영
+      if (this.isShopOpen && typeof renderShopContent === "function") {
+        renderShopContent();
+      }
+    });
+
+    // 💡 코인 구매 완료 이벤트 핸들러 추가
+    socket.off("coinPurchased").on("coinPurchased", (data) => {
       console.log(`💰 [DEBUG] coinPurchased 이벤트 받음:`, data);
 
       if (data && data.message) {
@@ -2630,10 +2642,22 @@ class LobbyScene extends Phaser.Scene {
     };
 
     const getOwnedCharacters = () => {
+      // 서버의 myProfile 데이터가 있으면 그것을 사용, 없으면 기본값
+      if (this.myProfile && Array.isArray(this.myProfile.owned_characters)) {
+        const owned = {};
+        this.myProfile.owned_characters.forEach((key) => {
+          if (typeof key === "string" && /^player_[1-4]$/.test(key)) {
+            owned[key] = true;
+          }
+        });
+        owned.player_1 = true; // 기본 케릭터는 항상 소유
+        return owned;
+      }
+
+      // 백업용: 로컬스토리지 (서버 데이터가 없을 때만)
       const owned = normalizeOwnedCharacters(
         JSON.parse(localStorage.getItem("ownedCharacters") || "{}"),
       );
-      localStorage.setItem("ownedCharacters", JSON.stringify(owned));
       return owned;
     };
 
@@ -3215,7 +3239,23 @@ class LobbyScene extends Phaser.Scene {
         const isOwned = !!ownedCharacters[character.key];
 
         if (isOwned) {
-          equipCharacter(character.key);
+          // 서버에 케릭터 착용 요청
+          if (!this.isSingle && socket.connected) {
+            const resolvedPlayerId =
+              this.myProfile.nickname ||
+              localStorage.getItem("nickname") ||
+              this.myNickname ||
+              "요리사";
+
+            socket.emit("equipCharacter", {
+              nickname: resolvedPlayerId,
+              characterKey: character.key,
+            });
+          } else {
+            // 싱글플레이어 모드에서만 로컬 착용
+            equipCharacter(character.key);
+          }
+
           this.showToast(`${character.name} 착용 완료!`, "#2ecc71");
           renderShopContent();
           return;

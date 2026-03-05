@@ -1242,6 +1242,72 @@ io.on("connection", (socket) => {
 
   socket.on("buyCharacter", handleBuyCharacter);
 
+  // 케릭터 착용 이벤트 핸들러
+  socket.on("equipCharacter", async (data) => {
+    const { nickname: targetNickname, characterKey } = data;
+    const resolvedNickname = targetNickname || socket.nickname;
+
+    if (!resolvedNickname) {
+      socket.emit("equipCharacterError", "닉네임 정보가 없습니다.");
+      return;
+    }
+
+    if (!characterKey || !normalizeCharacterKey(characterKey)) {
+      socket.emit("equipCharacterError", "유효하지 않은 캐릭터입니다.");
+      return;
+    }
+
+    // 소유 캐릭터인지 확인
+    const ownedCharacters = socket.ownedCharacters || ["player_1"];
+    if (
+      !ownedCharacters.includes(characterKey) &&
+      characterKey !== "player_1"
+    ) {
+      socket.emit("equipCharacterError", "소유하지 않은 캐릭터입니다.");
+      return;
+    }
+
+    // 착용 처리
+    socket.currentCharacter = characterKey;
+    socket.avatarKey = characterKey;
+
+    // DB에 저장
+    const mergedItems = {
+      items: Array.isArray(socket.items) ? socket.items : [],
+      specialCards: socket.specialCards || {},
+    };
+
+    try {
+      await savePlayer(
+        resolvedNickname,
+        socket.level || 1,
+        socket.coins || 0,
+        mergedItems,
+        socket.experience || 0,
+        socket.ownedCharacters || ["player_1"],
+        socket.currentCharacter,
+      );
+
+      // 최신 프로필 정보 전송
+      socket.emit("myProfile", {
+        nickname: resolvedNickname,
+        level: Number(socket.level) || 1,
+        coins: Number(socket.coins) || 0,
+        items: Array.isArray(socket.items) ? socket.items : [],
+        experience: Number(socket.experience) || 0,
+        avatarKey: socket.currentCharacter || "player_1",
+        specialCards: socket.specialCards || {},
+        owned_characters: socket.ownedCharacters || ["player_1"],
+        current_character: socket.currentCharacter || "player_1",
+      });
+
+      console.log(`✅ ${resolvedNickname} 케릭터 착용 완료: ${characterKey}`);
+    } catch (e) {
+      console.error(`❌ ${resolvedNickname} 케릭터 착용 DB 저장 실패:`, e);
+      socket.emit("equipCharacterError", "착용 처리 중 오류가 발생했습니다.");
+    }
+  });
+
   // 특수카드 동기화 요청
   socket.on("syncSpecialCards", async (clientSpecialCards, cb) => {
     try {
