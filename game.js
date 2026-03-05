@@ -19,6 +19,44 @@ const SINGLE_PLUS2_CARD_COUNT = 0;
 const NOT5_CARD_TYPE = "not5";
 const SINGLE_NOT5_CARD_COUNT = 0;
 const TUTORIAL_STATE_KEY = "tutorialCompleted";
+const TUTORIAL_STAGE_CONFIGS = [
+  {
+    key: "flip",
+    title: "1단계 · 카드 제출",
+    description: "내 덱을 눌러 첫 카드를 제출해보세요!",
+    pointer: "deck",
+    reward: 20,
+  },
+  {
+    key: "ringFive",
+    title: "2단계 · 숫자 5",
+    description: "바닥의 과일 합이 5가 되면 즉시 종을 눌러주세요!",
+    pointer: "deck",
+    reward: 20,
+  },
+  {
+    key: "bomb",
+    title: "3단계 · 특수카드: 폭탄",
+    description: "폭탄 카드가 나오면 종을 누르지 말고 카드만 제출하세요.",
+    pointer: "deck",
+    reward: 20,
+  },
+  {
+    key: "thunder",
+    title: "4단계 · 특수카드: 번개",
+    description: "번개 카드가 나오면 폭탄이 없을 때 누구보다 빨리 종을 치세요!",
+    pointer: "bell",
+    reward: 20,
+  },
+  {
+    key: "plus1",
+    title: "5단계 · 특수카드: Plus1",
+    description:
+      "Plus1 카드가 있으면 카드 숫자에 +1이 적용됩니다. 이를 고려해 종을 누르세요!",
+    pointer: "deck",
+    reward: 20,
+  },
+];
 
 function handleGetUserKey() {
   // ReactNativeWebView가 있는지 먼저 확인
@@ -544,6 +582,7 @@ class LobbyScene extends Phaser.Scene {
     this.coinShopElements = []; // 코인 팝업 요소들
     this.tutorialOverlayContainer = null;
     this.currentTutorialCloseHandler = null;
+    this.tutorialOverlayScheduled = false;
     this.hasCompletedTutorial =
       localStorage.getItem(TUTORIAL_STATE_KEY) === "true";
 
@@ -662,6 +701,7 @@ class LobbyScene extends Phaser.Scene {
         this.updateMyProfileUI({ nickname: this.myNickname });
         // inventory sync
         emitInventory();
+        this.scheduleTutorialOverlay();
       });
     } else {
       // 3. 이미 닉네임이 있다면 팝업 없이 바로 서버로 전송
@@ -673,6 +713,7 @@ class LobbyScene extends Phaser.Scene {
       emitInventory();
       // (선택 사항) 로딩 중이라면 바로 메인 화면으로 진입하는 로직 실행
       console.log(`반가워요, ${savedNickname} 요리사님!`);
+      this.scheduleTutorialOverlay();
     }
 
     this.profileAvatarKeys = ["player_1", "player_2", "player_3", "player_4"];
@@ -1360,15 +1401,6 @@ class LobbyScene extends Phaser.Scene {
     this.updateMyProfileUI();
     this.updateProfileAvatarUI();
 
-    if (!this.hasCompletedTutorial) {
-      this.time.delayedCall(400, () => {
-        if (!this.scene.isActive("LobbyScene") || this.hasCompletedTutorial) {
-          return;
-        }
-        this.showTutorialOverlay();
-      });
-    }
-
     const multiBtnImg = this.add
       .image(0, 0, "uibtn")
       .setDisplaySize(actionBtnW, btnH * 1.2)
@@ -1911,6 +1943,24 @@ class LobbyScene extends Phaser.Scene {
     }
   }
 
+  scheduleTutorialOverlay() {
+    if (this.hasCompletedTutorial) return;
+    if (this.tutorialOverlayScheduled || this.tutorialOverlayContainer) return;
+
+    this.tutorialOverlayScheduled = true;
+    this.time.delayedCall(400, () => {
+      this.tutorialOverlayScheduled = false;
+      if (
+        !this.scene.isActive("LobbyScene") ||
+        this.hasCompletedTutorial ||
+        this.tutorialOverlayContainer
+      ) {
+        return;
+      }
+      this.showTutorialOverlay();
+    });
+  }
+
   showTutorialOverlay() {
     if (this.hasCompletedTutorial || this.tutorialOverlayContainer) {
       return;
@@ -2002,6 +2052,11 @@ class LobbyScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
+    const beginTutorialFlow = () => {
+      this.closeTutorialOverlay();
+      this.startTutorialGame();
+    };
+
     startBtn.on("pointerdown", () => {
       this.sound.play("pop", { volume: 0.1 });
       this.tweens.add({
@@ -2011,8 +2066,9 @@ class LobbyScene extends Phaser.Scene {
         duration: 80,
         yoyo: true,
         onComplete: () => {
-          this.closeTutorialOverlay();
-          this.startTutorialGame();
+          this.ensureNicknameBeforeTutorial(() => {
+            beginTutorialFlow();
+          });
         },
       });
     });
@@ -2044,6 +2100,41 @@ class LobbyScene extends Phaser.Scene {
     ]);
 
     this.currentTutorialCloseHandler = () => this.closeTutorialOverlay();
+  }
+
+  ensureNicknameBeforeTutorial(onReady) {
+    const finalizeNickname = (rawNickname) => {
+      const nickname = (rawNickname || "").trim() || "요리사";
+      try {
+        localStorage.setItem("nickname", nickname);
+      } catch (e) {
+        console.warn("failed to persist nickname", e);
+      }
+      this.myNickname = nickname;
+
+      socket.emit("setNickname", {
+        nickname,
+        avatarKey: this.getSelectedAvatarKey(),
+      });
+
+      if (typeof this.updateMyProfileUI === "function") {
+        this.updateMyProfileUI({ nickname });
+      }
+
+      if (typeof onReady === "function") {
+        onReady();
+      }
+    };
+
+    const savedNickname = localStorage.getItem("nickname");
+    if (savedNickname && savedNickname.trim().length > 0) {
+      finalizeNickname(savedNickname);
+      return;
+    }
+
+    this.showNicknamePopup((confirmedNickname) => {
+      finalizeNickname(confirmedNickname);
+    });
   }
 
   closeTutorialOverlay() {
@@ -7922,6 +8013,10 @@ class GameScene extends Phaser.Scene {
     // 1. 기존 타이머가 있다면 즉시 제거
     this.clearMyTurnTimer();
 
+    if (this.isTutorialMode) {
+      return;
+    }
+
     //const { width } = this.cameras.main;
     const { width, height } = this.cameras.main;
 
@@ -8001,7 +8096,7 @@ class GameScene extends Phaser.Scene {
 
     // 차례인 사람 강조 색상 (노란색 계열)
     if (!isEliminated && isMyTurn) {
-      if (isMe) {
+      if (isMe && !this.isTutorialMode) {
         this.startMyAutoTimer(p, layout);
       }
 
@@ -9645,6 +9740,11 @@ class GameScene extends Phaser.Scene {
     // 1. 게임 준비 상태 확인
     if (!this.isGameReady) return;
 
+    if (this.isTutorialMode && this.tutorialState?.forbidBell) {
+      this.showToast("폭탄 카드일 땐 종을 누를 수 없어요!", "#f97316");
+      return;
+    }
+
     const hasOpenCards = Array.isArray(this.roundData?.players)
       ? this.roundData.players.some((player) => {
           const hasOpenStack =
@@ -9750,17 +9850,254 @@ class GameScene extends Phaser.Scene {
 
     const rewardCoins = Number(this.tutorialConfig?.rewardCoins);
     this.tutorialState = {
-      step: 0,
+      stageIndex: 0,
+      currentStageKey: TUTORIAL_STAGE_CONFIGS[0]?.key || "flip",
       pointerObjects: [],
       rewardCoins: Number.isFinite(rewardCoins) ? rewardCoins : 80,
       requireBellSuccess: false,
+      expectedBellType: null,
+      forbidBell: false,
+      stageRewardsTotal: 0,
+      completedStages: new Set(),
+      pendingTimers: [],
     };
 
-    this.showTutorialMessage({
-      title: "첫 번째 카드",
-      description: "내 덱을 눌러 첫 카드를 뒤집어보세요!",
-      pointer: "deck",
+    this.setTutorialStage(0);
+  }
+
+  getTutorialStageConfig(index = this.tutorialState?.stageIndex || 0) {
+    return TUTORIAL_STAGE_CONFIGS[index] || null;
+  }
+
+  setTutorialStage(nextIndex) {
+    if (!this.isTutorialMode || !this.tutorialState) return;
+    if (!Number.isInteger(nextIndex))
+      nextIndex = this.tutorialState.stageIndex || 0;
+
+    if (nextIndex >= TUTORIAL_STAGE_CONFIGS.length || nextIndex < 0) {
+      this.tutorialState.currentStageKey = null;
+      return;
+    }
+
+    this.tutorialState.stageIndex = nextIndex;
+    const stageConfig = this.getTutorialStageConfig(nextIndex);
+    this.tutorialState.currentStageKey = stageConfig?.key || null;
+    this.tutorialState.requireBellSuccess = false;
+    this.tutorialState.expectedBellType = null;
+    this.tutorialState.forbidBell = false;
+    this.clearTutorialPendingTimers();
+
+    if (stageConfig) {
+      this.showTutorialMessage(stageConfig);
+      this.prepareTutorialScenario(stageConfig.key);
+    }
+  }
+
+  prepareTutorialScenario(stageKey) {
+    if (!this.isTutorialMode || !stageKey) return;
+    switch (stageKey) {
+      case "flip":
+        this.clearTutorialTable();
+        this.setTutorialTurn(this.myId || "PLAYER_ME");
+        this.canClick = true;
+        break;
+      case "ringFive":
+        this.prepareRingFiveScenario();
+        break;
+      case "bomb":
+        this.prepareBombScenario();
+        break;
+      case "thunder":
+        this.prepareThunderScenario();
+        break;
+      case "plus1":
+        this.preparePlusOneScenario();
+        break;
+      default:
+        break;
+    }
+  }
+
+  completeTutorialStage(stageKey) {
+    if (!this.isTutorialMode || !this.tutorialState) return;
+    if (!stageKey) return;
+
+    if (!this.tutorialState.completedStages) {
+      this.tutorialState.completedStages = new Set();
+    }
+
+    if (this.tutorialState.completedStages.has(stageKey)) {
+      return;
+    }
+
+    this.tutorialState.completedStages.add(stageKey);
+    const stageConfig = TUTORIAL_STAGE_CONFIGS.find((s) => s.key === stageKey);
+    const reward = stageConfig?.reward || 0;
+    if (reward > 0) {
+      this.rewardTutorialCoins(reward, `${stageConfig.title} 완료`);
+    }
+
+    const nextIndex = (this.tutorialState.stageIndex || 0) + 1;
+    if (nextIndex < TUTORIAL_STAGE_CONFIGS.length) {
+      this.setTutorialStage(nextIndex);
+    } else {
+      this.tutorialState.currentStageKey = null;
+      this.tutorialState.requireBellSuccess = false;
+      this.tutorialState.expectedBellType = null;
+      this.showTutorialCompletionOverlay();
+    }
+  }
+
+  rewardTutorialCoins(amount, reason) {
+    if (!Number.isFinite(amount) || amount <= 0) return;
+    if (!this.tutorialState) return;
+
+    this.tutorialState.stageRewardsTotal =
+      (this.tutorialState.stageRewardsTotal || 0) + amount;
+
+    if (!this.myProfile) this.myProfile = {};
+    const prev = Number(this.myProfile.coins) || 0;
+    this.myProfile.coins = prev + amount;
+    if (typeof this.updateMyProfileUI === "function") {
+      this.updateMyProfileUI();
+    }
+
+    this.showToast(`보상 ${amount}💰 (${reason})`, "#22c55e");
+
+    try {
+      this.safeSyncInventory("tutorialStageReward", {
+        coins: amount,
+        reason,
+      });
+    } catch (e) {
+      console.warn("tutorial stage reward sync failed", e);
+    }
+  }
+
+  clearTutorialTable() {
+    if (!Array.isArray(this.roundData?.players)) return;
+    this.roundData.players.forEach((p) => {
+      p.openStack = [];
+      p.openCard = null;
+      p.openStackCount = 0;
     });
+    this.renderTable(this.roundData.players);
+  }
+
+  forceNextCardForPlayer(playerId, card) {
+    if (!card || !playerId) return;
+    const deck = this.getSingleDeck(playerId);
+    deck.push({ ...card });
+    const player = this.roundData.players.find((p) => p.id === playerId);
+    if (player) {
+      player.cards = (Number(player.cards) || 0) + 1;
+      player.remainingCards = player.cards;
+    }
+  }
+
+  prepareRingFiveScenario() {
+    const myId = this.myId || "PLAYER_ME";
+    const tutor = this.roundData.players.find((p) => p.id !== myId);
+    if (!tutor) return;
+
+    this.clearTutorialTable();
+    this.setTutorialTurn(myId);
+    this.canClick = true;
+    this.tutorialState.expectingPlayerFlipForFive = true;
+    this.tutorialState.expectingAiFive = false;
+    this.tutorialState.requireBellSuccess = false;
+    this.tutorialState.expectedBellType = null;
+    this.forceNextCardForPlayer(myId, { fruit: 1, count: 2 });
+    this.forceNextCardForPlayer(tutor.id, { fruit: 1, count: 3 });
+  }
+
+  prepareBombScenario() {
+    const myId = this.myId || "PLAYER_ME";
+    this.clearTutorialTable();
+    this.setTutorialTurn(myId);
+    this.canClick = true;
+    this.tutorialState.forbidBell = true;
+    this.tutorialState.awaitingBombFlip = true;
+    this.forceNextCardForPlayer(myId, { type: BOMB_CARD_TYPE });
+  }
+
+  prepareThunderScenario() {
+    const myId = this.myId || "PLAYER_ME";
+    const tutor = this.roundData.players.find((p) => p.id !== myId);
+    if (!tutor) return;
+
+    this.clearTutorialTable();
+    this.setTutorialTurn(tutor.id);
+    this.forceNextCardForPlayer(tutor.id, { type: THUNDER_CARD_TYPE });
+    this.tutorialState.requireBellSuccess = false;
+    this.tutorialState.expectedBellType = null;
+    this.canClick = false;
+    this.scheduleTutorialFlip(tutor.id, 500);
+  }
+
+  preparePlusOneScenario() {
+    const myId = this.myId || "PLAYER_ME";
+    const tutor = this.roundData.players.find((p) => p.id !== myId);
+    if (!tutor) return;
+
+    this.clearTutorialTable();
+    this.setTutorialTurn(myId);
+    this.forceNextCardForPlayer(myId, { type: PLUS1_CARD_TYPE });
+    this.forceNextCardForPlayer(tutor.id, { fruit: 2, count: 4 });
+    this.canClick = true;
+    this.tutorialState.awaitingPlusOneFlip = true;
+    this.tutorialState.waitingForPlusOneBell = false;
+    this.tutorialState.requireBellSuccess = false;
+    this.tutorialState.expectedBellType = null;
+  }
+
+  setTutorialTurn(playerId) {
+    if (!this.isTutorialMode || !playerId) return;
+    if (!Array.isArray(this.roundData?.players)) return;
+    const idx = this.roundData.players.findIndex((p) => p.id === playerId);
+    if (idx >= 0) {
+      this.turnIndex = idx;
+      this.updateTurnEffect();
+    }
+  }
+
+  scheduleTutorialFlip(playerId, delay = 500) {
+    if (!this.isTutorialMode || !playerId) return;
+    const timer = this.time.delayedCall(delay, () => {
+      this.removeTrackedTutorialTimer(timer);
+      if (!this.isGameStarted) return;
+      this.setTutorialTurn(playerId);
+      this.processSingleFlip(playerId);
+    });
+    this.trackTutorialTimer(timer);
+  }
+
+  trackTutorialTimer(timer) {
+    if (!this.tutorialState) return;
+    if (!Array.isArray(this.tutorialState.pendingTimers)) {
+      this.tutorialState.pendingTimers = [];
+    }
+    if (timer) {
+      this.tutorialState.pendingTimers.push(timer);
+    }
+  }
+
+  removeTrackedTutorialTimer(timer) {
+    if (!timer || !Array.isArray(this.tutorialState?.pendingTimers)) return;
+    const idx = this.tutorialState.pendingTimers.indexOf(timer);
+    if (idx >= 0) {
+      this.tutorialState.pendingTimers.splice(idx, 1);
+    }
+  }
+
+  clearTutorialPendingTimers() {
+    if (!Array.isArray(this.tutorialState?.pendingTimers)) return;
+    this.tutorialState.pendingTimers.forEach((timer) => {
+      if (timer && typeof timer.remove === "function") {
+        timer.remove();
+      }
+    });
+    this.tutorialState.pendingTimers = [];
   }
 
   showTutorialMessage({ title, description, pointer = null }) {
@@ -9890,27 +10227,117 @@ class GameScene extends Phaser.Scene {
     if (!this.isTutorialMode || !this.tutorialState) return;
 
     const myId = this.myId || "PLAYER_ME";
-    if (playerId === myId && this.tutorialState.step === 0) {
-      this.tutorialState.step = 1;
+    const isMe = playerId === myId;
+    const stageKey = this.tutorialState.currentStageKey;
+    if (!stageKey) return;
+
+    if (stageKey === "flip" && isMe) {
+      this.completeTutorialStage("flip");
+      return;
+    }
+
+    if (stageKey === "ringFive") {
+      if (isMe && this.tutorialState.expectingPlayerFlipForFive) {
+        this.tutorialState.expectingPlayerFlipForFive = false;
+        this.tutorialState.expectingAiFive = true;
+        this.showTutorialMessage({
+          title: "좋아요!",
+          description: "AI가 카드를 내려 합계가 5가 되면 종을 눌러요.",
+        });
+        const tutor = this.roundData.players.find((p) => p.id !== myId);
+        if (tutor) {
+          this.scheduleTutorialFlip(tutor.id, 700);
+        }
+        return;
+      }
+
+      if (!isMe && this.tutorialState.expectingAiFive) {
+        const totals = this.calculateTotalFruits();
+        const hasFive = Object.values(totals).some((count) => count === 5);
+        const hasBomb = this.hasBombOnTable();
+        if (hasFive && !hasBomb) {
+          this.tutorialState.expectingAiFive = false;
+          this.tutorialState.requireBellSuccess = true;
+          this.tutorialState.expectedBellType = "ringFive";
+          this.showTutorialMessage({
+            title: "지금이 기회!",
+            description:
+              "바닥 합이 5개입니다. 중앙 종을 눌러 카드를 가져가세요!",
+            pointer: "bell",
+          });
+        }
+        return;
+      }
+    }
+
+    if (
+      stageKey === "plus1" &&
+      !isMe &&
+      this.tutorialState.waitingForPlusOneBell
+    ) {
+      const totals = this.calculateTotalFruits();
+      const hasFive = Object.values(totals).some((count) => count === 5);
+      const hasBomb = this.hasBombOnTable();
+      if (hasFive && !hasBomb) {
+        this.tutorialState.requireBellSuccess = true;
+        this.tutorialState.expectedBellType = "plus1";
+        this.showTutorialMessage({
+          title: "Plus1 효과!",
+          description:
+            "카드 숫자에 +1이 적용되어 5가 되었습니다. 종을 눌러보세요!",
+          pointer: "bell",
+        });
+      }
+    }
+  }
+
+  handleTutorialCardDrawn(playerId, card) {
+    if (!this.isTutorialMode || !this.tutorialState) return;
+    const myId = this.myId || "PLAYER_ME";
+    const isMe = playerId === myId;
+    const stageKey = this.tutorialState.currentStageKey;
+    if (!stageKey) return;
+
+    if (stageKey === "bomb" && isMe && card?.type === BOMB_CARD_TYPE) {
+      this.tutorialState.awaitingBombFlip = false;
       this.showTutorialMessage({
-        title: "잘했어요!",
-        description:
-          "상대도 한 장을 올릴 거예요. 바닥의 과일 수를 계속 살펴보세요.",
+        title: "폭탄 등장!",
+        description: "폭탄 카드일 땐 종을 누르지 않고 카드만 제출하면 돼요.",
+        pointer: null,
+      });
+      this.time.delayedCall(600, () => {
+        this.tutorialState.forbidBell = false;
+        this.completeTutorialStage("bomb");
       });
       return;
     }
 
-    if (playerId !== myId && this.tutorialState.step >= 1) {
-      const totals = this.calculateTotalFruits();
-      const hasFive = Object.values(totals).some((count) => count === 5);
-      if (hasFive && !this.tutorialState.requireBellSuccess) {
-        this.tutorialState.step = 2;
-        this.tutorialState.requireBellSuccess = true;
-        this.showTutorialMessage({
-          title: "지금이 기회!",
-          description: "바닥 합이 5개입니다. 중앙 종을 눌러 카드를 가져가세요!",
-          pointer: "bell",
-        });
+    if (stageKey === "thunder" && !isMe && card?.type === THUNDER_CARD_TYPE) {
+      if (this.hasBombOnTable()) {
+        return;
+      }
+      this.tutorialState.requireBellSuccess = true;
+      this.tutorialState.expectedBellType = "thunder";
+      this.showTutorialMessage({
+        title: "번개 카드!",
+        description: "폭탄이 없으니 누구보다 빨리 종을 눌러보세요!",
+        pointer: "bell",
+      });
+      return;
+    }
+
+    if (stageKey === "plus1" && isMe && card?.type === PLUS1_CARD_TYPE) {
+      this.tutorialState.awaitingPlusOneFlip = false;
+      this.tutorialState.waitingForPlusOneBell = true;
+      this.showTutorialMessage({
+        title: "Plus1 활성화",
+        description:
+          "이제 바닥 모든 카드 숫자에 +1이 적용됩니다. 합계를 잘 살펴보세요!",
+      });
+      this.canClick = false;
+      const tutor = this.roundData.players.find((p) => p.id !== myId);
+      if (tutor) {
+        this.scheduleTutorialFlip(tutor.id, 700);
       }
     }
   }
@@ -9922,9 +10349,29 @@ class GameScene extends Phaser.Scene {
     if (winnerId !== myId) return;
     if (!this.tutorialState.requireBellSuccess) return;
 
-    this.tutorialState.requireBellSuccess = false;
-    this.tutorialState.step = 3;
-    this.showTutorialCompletionOverlay();
+    const stageKey = this.tutorialState.currentStageKey;
+    const expectedType = this.tutorialState.expectedBellType;
+
+    if (stageKey === "ringFive" && expectedType === "ringFive") {
+      this.tutorialState.requireBellSuccess = false;
+      this.tutorialState.expectedBellType = null;
+      this.completeTutorialStage("ringFive");
+      return;
+    }
+
+    if (stageKey === "thunder" && expectedType === "thunder") {
+      this.tutorialState.requireBellSuccess = false;
+      this.tutorialState.expectedBellType = null;
+      this.completeTutorialStage("thunder");
+      return;
+    }
+
+    if (stageKey === "plus1" && expectedType === "plus1") {
+      this.tutorialState.requireBellSuccess = false;
+      this.tutorialState.expectedBellType = null;
+      this.tutorialState.waitingForPlusOneBell = false;
+      this.completeTutorialStage("plus1");
+    }
   }
 
   showTutorialCompletionOverlay() {
@@ -9933,6 +10380,7 @@ class GameScene extends Phaser.Scene {
     this.tutorialState.completionShown = true;
 
     this.updateTutorialPointer(null);
+    this.clearTutorialPendingTimers();
     if (this.tutorialState.overlay) {
       this.tutorialState.overlay.destroy();
       this.tutorialState.overlay = null;
@@ -9975,6 +10423,18 @@ class GameScene extends Phaser.Scene {
       )
       .setOrigin(0.5);
 
+    const stageBonus = this.tutorialState.stageRewardsTotal || 0;
+    const stageBonusText = this.add
+      .text(width / 2, height * 0.47, `단계 보상 합계: +${stageBonus} 코인`, {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.038}px`,
+        color: "#facc15",
+        fontWeight: "bold",
+        stroke: "#000",
+        strokeThickness: 4,
+      })
+      .setOrigin(0.5);
+
     const reward = this.tutorialState.rewardCoins || 80;
     const rewardText = this.add
       .text(width / 2, height * 0.51, `보상: +${reward} 코인`, {
@@ -10008,6 +10468,7 @@ class GameScene extends Phaser.Scene {
       panel,
       title,
       desc,
+      stageBonusText,
       rewardText,
       confirmBtn,
       confirmTxt,
@@ -10015,6 +10476,7 @@ class GameScene extends Phaser.Scene {
 
     const finalizeTutorial = () => {
       this.sound.play("pop", { volume: 0.12 });
+      this.hasCompletedTutorial = true;
       try {
         localStorage.setItem(TUTORIAL_STATE_KEY, "true");
       } catch (e) {
@@ -10333,6 +10795,10 @@ class GameScene extends Phaser.Scene {
     if (!player.openStack || !Array.isArray(player.openStack))
       player.openStack = [];
     player.openStack.push(randomCard); // 즉시 누적해서 기존 바닥 카드들이 유지되게 함
+
+    if (this.isTutorialMode) {
+      this.handleTutorialCardDrawn(playerId, randomCard);
+    }
 
     const animationData = {
       playerId: playerId,
@@ -10791,6 +11257,11 @@ class GameScene extends Phaser.Scene {
 
   nextTurn() {
     if (!this.isSingle || !this.isGameStarted) return;
+
+    if (this.isTutorialMode) {
+      this.isFlipping = false;
+      return;
+    }
 
     if (this.myTurnTimer) {
       this.myTurnTimer.remove();
