@@ -1152,11 +1152,18 @@ io.on("connection", (socket) => {
       return;
     }
 
+    // 이미 소유한 케릭터인지 확인
+    const currentOwnedCharacters = socket.ownedCharacters || ["player_1"];
+    if (currentOwnedCharacters.includes(characterKey)) {
+      socket.emit("buyCharacterError", "이미 소유한 케릭터입니다.");
+      return;
+    }
+
     // 코인 및 캐릭터 정보 업데이트
     const previousCoins = Number(socket.coins) || 0;
     socket.coins = previousCoins - characterPrice;
     socket.ownedCharacters = normalizeOwnedCharacters([
-      ...(socket.ownedCharacters || ["player_1"]),
+      ...currentOwnedCharacters,
       characterKey,
     ]);
     socket.currentCharacter = characterKey;

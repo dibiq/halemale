@@ -934,15 +934,54 @@ class LobbyScene extends Phaser.Scene {
     });
 
     socket.off("characterPurchased").on("characterPurchased", (data) => {
-      this.showToast("케릭터 구매가 완료되었습니다!", "#2ecc71");
+      console.log("🎭 케릭터 구매 성공:", data);
+
+      // 서버 응답 기반으로 로컬 상태 업데이트
       if (data && typeof data.newCoins === "number") {
         this.myProfile.coins = data.newCoins;
         localStorage.setItem("profileCoins", String(this.myProfile.coins));
+
+        // 상점이 열려있다면 코인 표시 업데이트
+        if (this.shopCoinText) {
+          this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
+        }
+
         this.updateMyProfileUI();
       }
+
+      // 케릭터 소유권 및 장착 처리
+      if (data.characterKey) {
+        const ownedCharacters = getOwnedCharacters();
+        ownedCharacters[data.characterKey] = true;
+        saveOwnedCharacters(ownedCharacters);
+        equipCharacter(data.characterKey);
+
+        // safeSyncInventory 호출
+        try {
+          const sceneInstance =
+            typeof game !== "undefined" &&
+            game.scene &&
+            game.scene.keys &&
+            game.scene.keys.GameScene;
+          if (
+            sceneInstance &&
+            typeof sceneInstance.safeSyncInventory === "function"
+          ) {
+            sceneInstance.safeSyncInventory("buyCharacter", {
+              boughtCharacter: data.characterKey,
+              bought_character: data.characterKey,
+            });
+          }
+        } catch (e) {
+          console.warn("buyCharacter sync failed", e);
+        }
+      }
+
+      this.showToast("케릭터 구매가 완료되었습니다!", "#2ecc71");
+
       // 상점 내용 새로고침
-      if (this.isShopOpen && typeof this.renderShopContent === "function") {
-        this.renderShopContent();
+      if (this.isShopOpen && typeof renderShopContent === "function") {
+        renderShopContent();
       }
     });
 
@@ -3202,15 +3241,7 @@ class LobbyScene extends Phaser.Scene {
           return;
         }
 
-        this.myProfile.coins -= character.price;
-        localStorage.setItem("profileCoins", String(this.myProfile.coins));
-        this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
-
-        ownedCharacters[character.key] = true;
-        saveOwnedCharacters(ownedCharacters);
-        equipCharacter(character.key);
-        this.updateMyProfileUI();
-
+        // 서버에 케릭터 구매 요청 (로컬 상태 변경 없이)
         if (!this.isSingle && socket.connected) {
           const resolvedPlayerId =
             this.myProfile.nickname ||
@@ -3222,46 +3253,34 @@ class LobbyScene extends Phaser.Scene {
             id: resolvedPlayerId,
             userId: resolvedPlayerId,
             player_id: resolvedPlayerId,
-            nickname: this.myProfile.nickname,
+            nickname: this.myProfile.nickname || resolvedPlayerId,
             playerId: socket.id,
             characterKey: character.key,
             characterId,
             characterPrice: character.price,
             currentCharacter: character.key,
             current_character: character.key,
-            ownedCharacters: Object.keys(ownedCharacters).filter(
-              (key) => ownedCharacters[key],
-            ),
-            owned_characters: Object.keys(ownedCharacters).filter(
-              (key) => ownedCharacters[key],
-            ),
             coins: Number(this.myProfile.coins) || 0,
           };
 
           socket.emit("buyCharacter", characterPayload);
+
+          // 서버 응답을 기다리므로 여기서는 아무것도 하지 않음
+          return;
+        } else {
+          // 싱글플레이어 모드에서만 로컬 처리
+          this.myProfile.coins -= character.price;
+          localStorage.setItem("profileCoins", String(this.myProfile.coins));
+          this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
+
+          ownedCharacters[character.key] = true;
+          saveOwnedCharacters(ownedCharacters);
+          equipCharacter(character.key);
+          this.updateMyProfileUI();
+          this.showToast(`${character.name} 구매 완료!`, "#2ecc71");
+          renderShopContent();
         }
 
-        try {
-          const sceneInstance =
-            typeof game !== "undefined" &&
-            game.scene &&
-            game.scene.keys &&
-            game.scene.keys.GameScene;
-          if (
-            sceneInstance &&
-            typeof sceneInstance.safeSyncInventory === "function"
-          ) {
-            sceneInstance.safeSyncInventory("buyCharacter", {
-              boughtCharacter: character.key,
-              bought_character: character.key,
-            });
-          } else {
-            console.warn("safeSyncInventory not available for buyCharacter");
-          }
-        } catch (e) {
-          console.warn("buyCharacter sync failed", e);
-        }
-        // 성공 메시지는 서버 응답을 받은 후 표시
         return;
       }
 
