@@ -18,6 +18,7 @@ const PLUS2_CARD_TYPE = "plus2";
 const SINGLE_PLUS2_CARD_COUNT = 0;
 const NOT5_CARD_TYPE = "not5";
 const SINGLE_NOT5_CARD_COUNT = 0;
+const TUTORIAL_STATE_KEY = "tutorialCompleted";
 
 function handleGetUserKey() {
   // ReactNativeWebView가 있는지 먼저 확인
@@ -541,6 +542,10 @@ class LobbyScene extends Phaser.Scene {
     this.backPressExitWindowMs = 2000;
     this.isSingle = false; // 로비는 항상 멀티플레이
     this.coinShopElements = []; // 코인 팝업 요소들
+    this.tutorialOverlayContainer = null;
+    this.currentTutorialCloseHandler = null;
+    this.hasCompletedTutorial =
+      localStorage.getItem(TUTORIAL_STATE_KEY) === "true";
 
     // 사운드 인스턴스를 미리 만들어두어 중복 재생 문제 해결
     // 단순 볼륨 설정은 여기서 하면 됨
@@ -1105,6 +1110,12 @@ class LobbyScene extends Phaser.Scene {
     });
 
     this.backHandler = await App.addListener("backButton", () => {
+      if (typeof this.currentTutorialCloseHandler === "function") {
+        this.currentTutorialCloseHandler();
+        this.lastBackPressedAt = 0;
+        return;
+      }
+
       if (typeof this.currentJoinPopupCloseHandler === "function") {
         this.currentJoinPopupCloseHandler();
         this.lastBackPressedAt = 0;
@@ -1348,6 +1359,15 @@ class LobbyScene extends Phaser.Scene {
 
     this.updateMyProfileUI();
     this.updateProfileAvatarUI();
+
+    if (!this.hasCompletedTutorial) {
+      this.time.delayedCall(400, () => {
+        if (!this.scene.isActive("LobbyScene") || this.hasCompletedTutorial) {
+          return;
+        }
+        this.showTutorialOverlay();
+      });
+    }
 
     const multiBtnImg = this.add
       .image(0, 0, "uibtn")
@@ -1888,6 +1908,161 @@ class LobbyScene extends Phaser.Scene {
         currentCharacter: selectedKey,
         current_character: selectedKey,
       });
+    }
+  }
+
+  showTutorialOverlay() {
+    if (this.hasCompletedTutorial || this.tutorialOverlayContainer) {
+      return;
+    }
+
+    const { width, height } = this.cameras.main;
+    const centerX = width / 2;
+    const popupY = height * 0.5;
+
+    this.tutorialOverlayContainer = this.add.container(0, 0).setDepth(6000);
+
+    const overlay = this.add
+      .rectangle(centerX, height * 0.5, width, height, 0x000000, 0.86)
+      .setInteractive();
+
+    const panel = this.add
+      .image(centerX, popupY, "popupbg")
+      .setDisplaySize(width * 0.82, height * 0.7);
+
+    const title = this.add
+      .text(centerX, popupY - height * 0.26, "튜토리얼 : 싱글플레이 안내", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.07}px`,
+        color: "#ffd700",
+        fontWeight: "bold",
+        stroke: "#000000",
+        strokeThickness: 6,
+      })
+      .setOrigin(0.5);
+
+    const subtitle = this.add
+      .text(
+        centerX,
+        popupY - height * 0.17,
+        "싱글플레이 화면으로 기본 조작을 익히고 튜토리얼을 완료하세요!",
+        {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.038}px`,
+          color: "#ffffff",
+          align: "center",
+          stroke: "#000000",
+          strokeThickness: 3,
+          wordWrap: { width: width * 0.7 },
+        },
+      )
+      .setOrigin(0.5);
+
+    const steps = [
+      "싱글플레이 버튼을 눌러 튜토리얼 전용 게임을 시작하세요.",
+      "AI와 플레이하며 카드 뒤집기와 벨 사용 흐름을 익혀보세요.",
+      "끝까지 완료하면 멀티플레이도 훨씬 수월해집니다!",
+    ];
+
+    const stepStartY = popupY - height * 0.05;
+    steps.forEach((line, idx) => {
+      const stepText = this.add
+        .text(
+          centerX - width * 0.32,
+          stepStartY + idx * height * 0.07,
+          `• ${line}`,
+          {
+            fontFamily: GAME_FONTS.main,
+            fontSize: `${width * 0.038}px`,
+            color: "#e2e8f0",
+            fontWeight: "bold",
+            stroke: "#000000",
+            strokeThickness: 2,
+            wordWrap: { width: width * 0.64 },
+          },
+        )
+        .setOrigin(0, 0.5);
+      this.tutorialOverlayContainer.add(stepText);
+    });
+
+    const startBtn = this.add
+      .image(centerX, popupY + height * 0.18, "ui_btn")
+      .setDisplaySize(width * 0.45, height * 0.075)
+      .setTint(0x2ecc71)
+      .setInteractive({ useHandCursor: true });
+
+    const startBtnText = this.add
+      .text(centerX, popupY + height * 0.18, "튜토리얼 시작", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.05}px`,
+        color: "#ffffff",
+        fontWeight: "bold",
+        stroke: "#000000",
+        strokeThickness: 4,
+      })
+      .setOrigin(0.5);
+
+    startBtn.on("pointerdown", () => {
+      this.sound.play("pop", { volume: 0.1 });
+      this.tweens.add({
+        targets: [startBtn, startBtnText],
+        scaleX: "*=0.95",
+        scaleY: "*=0.95",
+        duration: 80,
+        yoyo: true,
+        onComplete: () => {
+          this.closeTutorialOverlay();
+          this.startTutorialGame();
+        },
+      });
+    });
+
+    const skipText = this.add
+      .text(centerX, popupY + height * 0.28, "나중에 할게요", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.035}px`,
+        color: "#f1f5f9",
+        stroke: "#000000",
+        strokeThickness: 3,
+      })
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true });
+
+    skipText.on("pointerdown", () => {
+      this.sound.play("btn", { volume: 0.08 });
+      this.closeTutorialOverlay();
+    });
+
+    this.tutorialOverlayContainer.add([
+      overlay,
+      panel,
+      title,
+      subtitle,
+      startBtn,
+      startBtnText,
+      skipText,
+    ]);
+
+    this.currentTutorialCloseHandler = () => this.closeTutorialOverlay();
+  }
+
+  closeTutorialOverlay() {
+    if (this.tutorialOverlayContainer) {
+      this.tutorialOverlayContainer.destroy();
+      this.tutorialOverlayContainer = null;
+    }
+    this.currentTutorialCloseHandler = null;
+  }
+
+  completeTutorial() {
+    if (this.hasCompletedTutorial) {
+      return;
+    }
+    this.hasCompletedTutorial = true;
+    try {
+      localStorage.setItem(TUTORIAL_STATE_KEY, "true");
+    } catch (e) {
+      console.warn("failed to persist tutorial state", e);
     }
   }
 
@@ -2536,6 +2711,55 @@ class LobbyScene extends Phaser.Scene {
     };
 
     this.scene.start("GameScene", singleGameData);
+  }
+
+  startTutorialGame() {
+    const myId = socket.id || "PLAYER_ME";
+    const myNickname = localStorage.getItem("nickname") || "나";
+    const tutorId = "AI_TUTOR";
+
+    const tutorialDeckLayout = {
+      [myId]: [
+        { fruit: 1, count: 2 },
+        { fruit: 3, count: 1 },
+        { fruit: 2, count: 4 },
+      ],
+      [tutorId]: [
+        { fruit: 1, count: 3 },
+        { fruit: 4, count: 2 },
+        { fruit: 2, count: 2 },
+      ],
+    };
+
+    const buildPlayer = (id, nickname) => ({
+      id,
+      nickname,
+      cards: tutorialDeckLayout[id]?.length || 0,
+      isReady: true,
+      openCard: null,
+      openCardStack: [],
+    });
+
+    const tutorialPlayers = [
+      buildPlayer(myId, myNickname),
+      buildPlayer(tutorId, "가이드 요리사"),
+    ];
+
+    const tutorialConfig = {
+      deckLayout: tutorialDeckLayout,
+      rewardCoins: 80,
+    };
+
+    this.scene.start("GameScene", {
+      roomId: "TUTORIAL",
+      maxPlayers: tutorialPlayers.length,
+      isSingle: true,
+      hostId: myId,
+      aiDifficulty: "easy",
+      players: tutorialPlayers,
+      isTutorialMode: true,
+      tutorialConfig,
+    });
   }
 
   showSingleDifficultyPopup() {
@@ -6389,6 +6613,9 @@ class GameScene extends Phaser.Scene {
       aiDifficulty: data.aiDifficulty || "normal",
     };
 
+    this.isTutorialMode = !!data.isTutorialMode;
+    this.tutorialConfig = data.tutorialConfig || null;
+
     // 콤보 상태: 같은 플레이어가 연속 정답을 맞출 때 카운트
     this.comboState = {
       lastWinnerId: null,
@@ -6421,6 +6648,7 @@ class GameScene extends Phaser.Scene {
     this.blockActive = false;
     this.blockBy = null; // 마지막으로 사용한 플레이어(선택사항)
     this.blockEffects = []; // [{ id, issuer, remainingTurns }]
+    this.tutorialState = null;
   }
 
   async create() {
@@ -7377,6 +7605,10 @@ class GameScene extends Phaser.Scene {
 
     // 초기 테이블 렌더링
     this.renderTable(this.roundData.players);
+
+    if (this.isTutorialMode) {
+      this.activateTutorialGuide();
+    }
 
     // 셧다운 시 리스너 해제
     this.events.once("shutdown", () => {
@@ -9385,6 +9617,11 @@ class GameScene extends Phaser.Scene {
       return;
     }
 
+    if (this.isTutorialMode && this.tutorialState?.requireBellSuccess) {
+      this.showToast("먼저 종을 눌러보세요!", "#f1c40f");
+      return;
+    }
+
     // 내 차례 검증이 끝난 뒤에만 입력 잠금
     this.canClick = false;
 
@@ -9506,6 +9743,312 @@ class GameScene extends Phaser.Scene {
 
       socket.emit("ringBell");
     }
+  }
+
+  activateTutorialGuide() {
+    if (!this.isTutorialMode) return;
+
+    const rewardCoins = Number(this.tutorialConfig?.rewardCoins);
+    this.tutorialState = {
+      step: 0,
+      pointerObjects: [],
+      rewardCoins: Number.isFinite(rewardCoins) ? rewardCoins : 80,
+      requireBellSuccess: false,
+    };
+
+    this.showTutorialMessage({
+      title: "첫 번째 카드",
+      description: "내 덱을 눌러 첫 카드를 뒤집어보세요!",
+      pointer: "deck",
+    });
+  }
+
+  showTutorialMessage({ title, description, pointer = null }) {
+    if (!this.isTutorialMode) return;
+    const { width, height } = this.cameras.main;
+
+    if (!this.tutorialState) {
+      this.tutorialState = {
+        step: 0,
+        pointerObjects: [],
+        rewardCoins: 80,
+        requireBellSuccess: false,
+      };
+    }
+
+    if (!this.tutorialState.overlay) {
+      const container = this.add
+        .container(width / 2, height * 0.1)
+        .setDepth(9000);
+      const bg = this.add
+        .rectangle(0, 0, width * 0.92, height * 0.16, 0x020617, 0.92)
+        .setOrigin(0.5)
+        .setStrokeStyle(4, 0x38bdf8, 0.85);
+      const titleText = this.add
+        .text(0, -height * 0.03, title || "", {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.05}px`,
+          color: "#f8fafc",
+          fontStyle: "bold",
+          stroke: "#000000",
+          strokeThickness: 5,
+        })
+        .setOrigin(0.5);
+      const descText = this.add
+        .text(0, height * 0.02, description || "", {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.035}px`,
+          color: "#e2e8f0",
+          align: "center",
+          wordWrap: { width: width * 0.78 },
+          stroke: "#000",
+          strokeThickness: 4,
+        })
+        .setOrigin(0.5);
+
+      container.add([bg, titleText, descText]);
+      this.tutorialState.overlay = container;
+      this.tutorialState.overlayBg = bg;
+      this.tutorialState.titleText = titleText;
+      this.tutorialState.descText = descText;
+    } else {
+      this.tutorialState.overlay.setPosition(width / 2, height * 0.1);
+    }
+
+    if (title && this.tutorialState.titleText) {
+      this.tutorialState.titleText.setText(title);
+    }
+    if (description && this.tutorialState.descText) {
+      this.tutorialState.descText.setText(description);
+    }
+
+    this.updateTutorialPointer(pointer);
+  }
+
+  updateTutorialPointer(pointerKey) {
+    if (!this.tutorialState) return;
+
+    if (!Array.isArray(this.tutorialState.pointerObjects)) {
+      this.tutorialState.pointerObjects = [];
+    }
+
+    this.tutorialState.pointerObjects.forEach((obj) => {
+      if (!obj) return;
+      this.tweens.killTweensOf(obj);
+      obj.destroy();
+    });
+    this.tutorialState.pointerObjects = [];
+
+    if (!pointerKey) return;
+
+    const { width, height } = this.cameras.main;
+    const pointerPositions = {
+      deck: { x: width * 0.5, y: height * 0.78 },
+      bell: { x: width * 0.5, y: height * 0.43 },
+    };
+
+    const pos = pointerPositions[pointerKey];
+    if (!pos) return;
+
+    const circle = this.add
+      .circle(pos.x, pos.y, width * 0.09, 0xffffff, 0.1)
+      .setStrokeStyle(5, 0xfff3c4, 0.8)
+      .setDepth(9001);
+    this.tutorialState.pointerObjects.push(circle);
+    this.tweens.add({
+      targets: circle,
+      scale: { from: 0.85, to: 1.1 },
+      alpha: { from: 0.45, to: 0.15 },
+      duration: 650,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.easeInOut",
+    });
+
+    const arrow = this.add
+      .text(pos.x, pos.y - width * 0.1, "👇", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.08}px`,
+        color: "#ffffff",
+        stroke: "#000000",
+        strokeThickness: 6,
+      })
+      .setOrigin(0.5)
+      .setDepth(9002);
+    this.tutorialState.pointerObjects.push(arrow);
+    this.tweens.add({
+      targets: arrow,
+      y: pos.y - width * 0.07,
+      duration: 520,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.easeInOut",
+    });
+  }
+
+  handleTutorialAfterFlip(playerId) {
+    if (!this.isTutorialMode || !this.tutorialState) return;
+
+    const myId = this.myId || "PLAYER_ME";
+    if (playerId === myId && this.tutorialState.step === 0) {
+      this.tutorialState.step = 1;
+      this.showTutorialMessage({
+        title: "잘했어요!",
+        description:
+          "상대도 한 장을 올릴 거예요. 바닥의 과일 수를 계속 살펴보세요.",
+      });
+      return;
+    }
+
+    if (playerId !== myId && this.tutorialState.step >= 1) {
+      const totals = this.calculateTotalFruits();
+      const hasFive = Object.values(totals).some((count) => count === 5);
+      if (hasFive && !this.tutorialState.requireBellSuccess) {
+        this.tutorialState.step = 2;
+        this.tutorialState.requireBellSuccess = true;
+        this.showTutorialMessage({
+          title: "지금이 기회!",
+          description: "바닥 합이 5개입니다. 중앙 종을 눌러 카드를 가져가세요!",
+          pointer: "bell",
+        });
+      }
+    }
+  }
+
+  handleTutorialBellResolved(winnerId) {
+    if (!this.isTutorialMode || !this.tutorialState) return;
+
+    const myId = this.myId || "PLAYER_ME";
+    if (winnerId !== myId) return;
+    if (!this.tutorialState.requireBellSuccess) return;
+
+    this.tutorialState.requireBellSuccess = false;
+    this.tutorialState.step = 3;
+    this.showTutorialCompletionOverlay();
+  }
+
+  showTutorialCompletionOverlay() {
+    if (!this.isTutorialMode || !this.tutorialState) return;
+    if (this.tutorialState.completionShown) return;
+    this.tutorialState.completionShown = true;
+
+    this.updateTutorialPointer(null);
+    if (this.tutorialState.overlay) {
+      this.tutorialState.overlay.destroy();
+      this.tutorialState.overlay = null;
+    }
+
+    const { width, height } = this.cameras.main;
+    const container = this.add.container(0, 0).setDepth(10000);
+    const dim = this.add
+      .rectangle(width / 2, height / 2, width, height, 0x000000, 0.78)
+      .setInteractive();
+    const panel = this.add
+      .image(width / 2, height / 2, "popupbg")
+      .setDisplaySize(width * 0.8, height * 0.6);
+
+    const title = this.add
+      .text(width / 2, height * 0.33, "튜토리얼 완료!", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.075}px`,
+        color: "#ffe082",
+        fontWeight: "bold",
+        stroke: "#000",
+        strokeThickness: 6,
+      })
+      .setOrigin(0.5);
+
+    const desc = this.add
+      .text(
+        width / 2,
+        height * 0.42,
+        "카드 뒤집기와 종 사용을 완벽하게 익혔어요!",
+        {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.04}px`,
+          color: "#ffffff",
+          align: "center",
+          wordWrap: { width: width * 0.68 },
+          stroke: "#000000",
+          strokeThickness: 4,
+        },
+      )
+      .setOrigin(0.5);
+
+    const reward = this.tutorialState.rewardCoins || 80;
+    const rewardText = this.add
+      .text(width / 2, height * 0.51, `보상: +${reward} 코인`, {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.05}px`,
+        color: "#22c55e",
+        fontWeight: "bold",
+        stroke: "#000",
+        strokeThickness: 5,
+      })
+      .setOrigin(0.5);
+
+    const confirmBtn = this.add
+      .image(width / 2, height * 0.62, "ui_btn")
+      .setDisplaySize(width * 0.5, height * 0.09)
+      .setTint(0x22c55e)
+      .setInteractive({ useHandCursor: true });
+    const confirmTxt = this.add
+      .text(width / 2, height * 0.62, "보상 받기", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.05}px`,
+        color: "#ffffff",
+        fontWeight: "bold",
+        stroke: "#000",
+        strokeThickness: 4,
+      })
+      .setOrigin(0.5);
+
+    container.add([
+      dim,
+      panel,
+      title,
+      desc,
+      rewardText,
+      confirmBtn,
+      confirmTxt,
+    ]);
+
+    const finalizeTutorial = () => {
+      this.sound.play("pop", { volume: 0.12 });
+      try {
+        localStorage.setItem(TUTORIAL_STATE_KEY, "true");
+      } catch (e) {
+        console.warn("failed to persist tutorial completion", e);
+      }
+
+      try {
+        this.safeSyncInventory("tutorialReward", { coins: reward });
+      } catch (e) {
+        console.warn("tutorial reward sync failed", e);
+      }
+
+      this.isGameStarted = false;
+      this.canClick = false;
+      this.time.removeAllEvents();
+
+      container.destroy();
+      this.scene.start("LobbyScene", {
+        fromTutorial: true,
+        tutorialCompleted: true,
+        rewardCoins: reward,
+      });
+    };
+
+    confirmBtn.on("pointerdown", () => {
+      this.tweens.add({
+        targets: [confirmBtn, confirmTxt],
+        scaleX: "*=0.95",
+        scaleY: "*=0.95",
+        duration: 90,
+        yoyo: true,
+        onComplete: finalizeTutorial,
+      });
+    });
   }
 
   playThiefAnimation({
@@ -9728,7 +10271,7 @@ class GameScene extends Phaser.Scene {
   }
 
   checkFruitCountForAI() {
-    if (!this.isSingle) return;
+    if (!this.isSingle || this.isTutorialMode) return;
 
     const totals = this.calculateTotalFruits();
     const isFive = Object.values(totals).some((count) => count === 5);
@@ -9805,6 +10348,10 @@ class GameScene extends Phaser.Scene {
     // 즉시 렌더링 (새 카드가 기존 스택 위에 쌓인 것을 바로 보여줌)
     this.renderTable(this.roundData.players);
 
+    if (this.isTutorialMode) {
+      this.handleTutorialAfterFlip(playerId, randomCard);
+    }
+
     // 5. 💡 마지막 카드를 낸 순간 알림 (기사회생 독려)
     if (playerId === myId && player.cards === 0) {
       this.showToast(
@@ -9819,7 +10366,7 @@ class GameScene extends Phaser.Scene {
   }
   // AI가 종을 치는 로직
   handleAiRingBell(aiId) {
-    if (!this.isSingle || !this.isGameStarted) return;
+    if (!this.isSingle || !this.isGameStarted || this.isTutorialMode) return;
 
     // 방어: 호출 시점에 이미 탈락했거나 카드가 0장인 AI는 처리하지 않음
     const aiPlayer = this.roundData.players.find((p) => p.id === aiId);
@@ -10416,6 +10963,10 @@ class GameScene extends Phaser.Scene {
       this.canClick = true;
       this.isFlipping = false;
     }
+
+    if (this.isTutorialMode) {
+      this.handleTutorialBellResolved(winnerId);
+    }
   }
 
   createRandomFruitCard() {
@@ -10441,6 +10992,27 @@ class GameScene extends Phaser.Scene {
     if (!this.isSingle || !Array.isArray(this.roundData?.players)) return;
 
     this.singleDeckByPlayer = {};
+
+    const tutorialDeckLayout =
+      this.isTutorialMode && this.tutorialConfig?.deckLayout
+        ? this.tutorialConfig.deckLayout
+        : null;
+
+    if (tutorialDeckLayout) {
+      this.roundData.players.forEach((player) => {
+        const layout = Array.isArray(tutorialDeckLayout[player.id])
+          ? tutorialDeckLayout[player.id]
+          : [];
+        const normalized = layout.map((card) => ({ ...card })).reverse();
+        this.singleDeckByPlayer[player.id] = normalized;
+        const cardCount = normalized.length;
+        player.cards = cardCount;
+        player.remainingCards = cardCount;
+        player.openStack = [];
+        player.openCard = null;
+      });
+      return;
+    }
 
     const deckSlots = [];
     this.roundData.players.forEach((player) => {
