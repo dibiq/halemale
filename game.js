@@ -568,8 +568,20 @@ class LobbyScene extends Phaser.Scene {
     }
 
     // helper that gathers and emits the inventory payload directly
-    const emitInventory = (reason = "initial") => {
+    const emitInventory = (reason = "initial", options = {}) => {
       try {
+        const requireServerProfile =
+          typeof options.requireServerProfile === "boolean"
+            ? options.requireServerProfile
+            : true;
+
+        if (requireServerProfile && !this.hasServerProfileSnapshot) {
+          console.log(
+            `[inventory-sync] skipped ${reason}: awaiting server profile`,
+          );
+          return;
+        }
+
         const storedNick = localStorage.getItem("nickname") || "요리사";
         const resolvedPlayerId =
           (this.myProfile && this.myProfile.nickname) ||
@@ -588,12 +600,38 @@ class LobbyScene extends Phaser.Scene {
           player_id: resolvedPlayerId,
           nickname: (this.myProfile && this.myProfile.nickname) || storedNick,
           playerId: socket.id,
-          coins: Number((this.myProfile && this.myProfile.coins) || 0) || 0,
           items,
           specialCards: specialCardsOwned,
-          ownedCharacters: [],
-          currentCharacter: this.getSelectedAvatarKey(),
         };
+
+        if (this.hasServerProfileSnapshot) {
+          const safeCoins = Number(this.myProfile && this.myProfile.coins);
+          if (Number.isFinite(safeCoins)) {
+            payload.coins = safeCoins;
+          }
+
+          const ownedCharacters = Array.isArray(
+            this.myProfile && this.myProfile.owned_characters,
+          )
+            ? this.myProfile.owned_characters.filter(
+                (key) => typeof key === "string" && /^player_[1-4]$/.test(key),
+              )
+            : [];
+          if (ownedCharacters.length > 0) {
+            payload.ownedCharacters = ownedCharacters;
+            payload.owned_characters = ownedCharacters;
+          }
+
+          const currentCharacter = this.getSelectedAvatarKey();
+          if (
+            typeof currentCharacter === "string" &&
+            /^player_[1-4]$/.test(currentCharacter)
+          ) {
+            payload.currentCharacter = currentCharacter;
+            payload.current_character = currentCharacter;
+          }
+        }
+
         socket.emit("syncPlayerInventory", payload);
         socket.emit("syncInventory", payload);
         socket.emit("updatePlayerInventory", payload);
@@ -632,18 +670,27 @@ class LobbyScene extends Phaser.Scene {
       console.log(`반가워요, ${savedNickname} 요리사님!`);
     }
 
-    this.myProfile = {
-      nickname: this.myNickname || savedNickname || "요리사",
-      level: Number(localStorage.getItem("profileLevel")) || 1,
-      coins: Number(localStorage.getItem("profileCoins")) || 0,
-      experience: Number(localStorage.getItem("profileExperience")) || 0,
-    };
-    this.hasReceivedProfileStats = false;
-
     this.profileAvatarKeys = ["player_1", "player_2", "player_3", "player_4"];
     const savedAvatarKey = localStorage.getItem("profileAvatarKey");
     const savedAvatarIndex = this.profileAvatarKeys.indexOf(savedAvatarKey);
     this.profileAvatarIndex = savedAvatarIndex >= 0 ? savedAvatarIndex : 0;
+    const initialAvatarKey =
+      typeof savedAvatarKey === "string" &&
+      /^player_[1-4]$/.test(savedAvatarKey)
+        ? savedAvatarKey
+        : this.profileAvatarKeys[this.profileAvatarIndex] || "player_1";
+
+    this.myProfile = {
+      nickname: this.myNickname || savedNickname || "요리사",
+      level: 1,
+      coins: 0,
+      experience: 0,
+      owned_characters: ["player_1"],
+      current_character: initialAvatarKey || "player_1",
+      avatarKey: initialAvatarKey || "player_1",
+    };
+    this.hasServerProfileSnapshot = false;
+    this.hasReceivedProfileStats = false;
     // 🔧 preload avatar animations for all possible keys so that
     // ensureAvatarAnimation() cost is paid once during startup rather
     // than during the win animation. This also forces player2 frames
@@ -725,7 +772,8 @@ class LobbyScene extends Phaser.Scene {
       }
     });
 
-    socket.off("myProfile").on("myProfile", (profile) => {
+    socket.off("myProfile").on("myProfile", (profilePayload) => {
+      const profile = profilePayload || {};
       const normalizeSpecialCardId = (rawId) => {
         if (rawId === null || rawId === undefined) return null;
 
@@ -843,9 +891,7 @@ class LobbyScene extends Phaser.Scene {
         return normalized;
       };
 
-      let mergedOwnedCharacters = normalizeOwnedCharacters(
-        JSON.parse(localStorage.getItem("ownedCharacters") || "{}"),
-      );
+      let mergedOwnedCharacters = normalizeOwnedCharacters({});
 
       if (profile && Array.isArray(profile.owned_characters)) {
         const ownedCharactersFromServer = {};
@@ -860,6 +906,10 @@ class LobbyScene extends Phaser.Scene {
         });
         // 케릭터 소유권은 서버 전용으로 관리, 로컬스토리지 저장하지 않음
       }
+
+      profile.owned_characters = Object.keys(mergedOwnedCharacters).filter(
+        (key) => mergedOwnedCharacters[key],
+      );
 
       // after merging inventory update, ensure frames exist for player 2
       ensurePlayer2Frames(this);
@@ -879,7 +929,7 @@ class LobbyScene extends Phaser.Scene {
           const idx = this.profileAvatarKeys.indexOf(profile.current_character);
           if (idx >= 0) {
             this.profileAvatarIndex = idx;
-            this.updateProfileAvatarUI();
+            this.updateProfileAvatarUI(profile.current_character);
           }
         }
       }
@@ -897,7 +947,7 @@ class LobbyScene extends Phaser.Scene {
           const idx = this.profileAvatarKeys.indexOf(profile.avatarKey);
           if (idx >= 0) {
             this.profileAvatarIndex = idx;
-            this.updateProfileAvatarUI();
+            this.updateProfileAvatarUI(profile.avatarKey);
           }
         }
       }
@@ -918,6 +968,13 @@ class LobbyScene extends Phaser.Scene {
       }
 
       this.updateMyProfileUI(profile);
+      this.hasServerProfileSnapshot = true;
+
+      try {
+        emitInventory("postProfileSync");
+      } catch (e) {
+        console.warn("postProfileSync emit failed", e);
+      }
 
       // 상점이 열려있다면 새로고침하여 최신 소유 정보 반영
       if (this.isShopOpen && typeof renderShopContent === "function") {
@@ -952,7 +1009,16 @@ class LobbyScene extends Phaser.Scene {
 
       // 케릭터 착용만 처리 (소유권은 myProfile 이벤트에서 처리)
       if (data.characterKey) {
-        equipCharacter(data.characterKey);
+        if (!this.myProfile) {
+          this.myProfile = {};
+        }
+        if (!Array.isArray(this.myProfile.owned_characters)) {
+          this.myProfile.owned_characters = ["player_1"];
+        }
+        if (!this.myProfile.owned_characters.includes(data.characterKey)) {
+          this.myProfile.owned_characters.push(data.characterKey);
+        }
+        this.equipCharacter(data.characterKey);
 
         // safeSyncInventory 호출
         try {
@@ -1669,7 +1735,40 @@ class LobbyScene extends Phaser.Scene {
       typeof profile.coins !== "undefined" ||
       typeof profile.experience !== "undefined";
 
+    const normalizeCharacterKey = (value) =>
+      typeof value === "string" && /^player_[1-4]$/.test(value) ? value : null;
+
+    const incomingOwnedCharacters = Array.isArray(profile.owned_characters)
+      ? profile.owned_characters
+      : Array.isArray(prev.owned_characters)
+        ? prev.owned_characters
+        : [];
+
+    const normalizedOwnedCharacters = Array.from(
+      new Set(
+        ["player_1"].concat(
+          incomingOwnedCharacters.filter(
+            (key) => typeof key === "string" && /^player_[1-4]$/.test(key),
+          ),
+        ),
+      ),
+    );
+
+    const normalizedCurrentCharacter =
+      normalizeCharacterKey(profile.current_character) ||
+      normalizeCharacterKey(profile.avatarKey) ||
+      normalizeCharacterKey(prev.current_character) ||
+      "player_1";
+
+    const normalizedAvatarKey =
+      normalizeCharacterKey(profile.avatarKey) ||
+      normalizeCharacterKey(profile.current_character) ||
+      normalizeCharacterKey(prev.avatarKey) ||
+      normalizedCurrentCharacter;
+
     this.myProfile = {
+      ...prev,
+      ...profile,
       nickname:
         profile.nickname ||
         prev.nickname ||
@@ -1678,14 +1777,10 @@ class LobbyScene extends Phaser.Scene {
       level: Number(profile.level ?? prev.level ?? 1) || 1,
       coins: Number(profile.coins ?? prev.coins ?? 0) || 0,
       experience: Number(profile.experience ?? prev.experience ?? 0) || 0,
+      owned_characters: normalizedOwnedCharacters,
+      current_character: normalizedCurrentCharacter,
+      avatarKey: normalizedAvatarKey,
     };
-
-    localStorage.setItem("profileLevel", String(this.myProfile.level));
-    localStorage.setItem("profileCoins", String(this.myProfile.coins));
-    localStorage.setItem(
-      "profileExperience",
-      String(this.myProfile.experience),
-    );
 
     if (
       hasIncomingStats &&
@@ -1750,16 +1845,12 @@ class LobbyScene extends Phaser.Scene {
       return ["player_1"];
     }
 
-    let owned = {};
-    try {
-      owned = JSON.parse(localStorage.getItem("ownedCharacters") || "{}");
-    } catch (err) {
-      owned = {};
-    }
+    const ownedList = Array.isArray(this.myProfile?.owned_characters)
+      ? this.myProfile.owned_characters
+      : [];
+    const ownedSet = new Set(["player_1", ...ownedList]);
 
-    const ownedKeys = allKeys.filter(
-      (key) => key === "player_1" || !!owned[key],
-    );
+    const ownedKeys = allKeys.filter((key) => ownedSet.has(key));
     return ownedKeys.length > 0 ? ownedKeys : ["player_1"];
   }
 
@@ -1781,7 +1872,7 @@ class LobbyScene extends Phaser.Scene {
     const selectedIndex = this.profileAvatarKeys.indexOf(selectedKey);
     this.profileAvatarIndex = selectedIndex >= 0 ? selectedIndex : 0;
     localStorage.setItem("profileAvatarKey", selectedKey);
-    this.updateProfileAvatarUI();
+    this.updateProfileAvatarUI(selectedKey);
 
     if (!this.isSingle && socket.connected) {
       const resolvedPlayerId =
@@ -1943,12 +2034,25 @@ class LobbyScene extends Phaser.Scene {
     });
   }
 
-  updateProfileAvatarUI() {
+  updateProfileAvatarUI(forcedKey = null) {
     if (!this.profileImage || !this.profileAvatarKeys) {
       return;
     }
 
-    const baseKey = this.getSelectedAvatarKey();
+    let baseKey = null;
+    if (
+      typeof forcedKey === "string" &&
+      /^player_[1-4]$/.test(forcedKey.trim())
+    ) {
+      baseKey = forcedKey.trim();
+    } else {
+      baseKey = this.getSelectedAvatarKey();
+    }
+
+    if (!baseKey) {
+      baseKey = "player_1";
+    }
+
     const selectedIndex = this.profileAvatarKeys.indexOf(baseKey);
     if (selectedIndex >= 0) {
       this.profileAvatarIndex = selectedIndex;
@@ -2536,6 +2640,41 @@ class LobbyScene extends Phaser.Scene {
     this.currentJoinPopupCloseHandler = null;
   }
 
+  equipCharacter(avatarKey) {
+    const idx = this.profileAvatarKeys.indexOf(avatarKey);
+    if (idx >= 0) {
+      this.profileAvatarIndex = idx;
+      this.updateProfileAvatarUI(avatarKey);
+
+      if (!this.myProfile) {
+        this.myProfile = {};
+      }
+      this.myProfile.current_character = avatarKey;
+      this.myProfile.avatarKey = avatarKey;
+      if (Array.isArray(this.myProfile.owned_characters)) {
+        if (!this.myProfile.owned_characters.includes(avatarKey)) {
+          this.myProfile.owned_characters.push(avatarKey);
+        }
+      }
+
+      if (!this.isSingle && socket.connected) {
+        const resolvedPlayerId =
+          this.myProfile.nickname ||
+          localStorage.getItem("nickname") ||
+          this.myNickname ||
+          "요리사";
+
+        socket.emit("setCurrentCharacter", {
+          id: resolvedPlayerId,
+          userId: resolvedPlayerId,
+          nickname: this.myProfile.nickname,
+          currentCharacter: avatarKey,
+          current_character: avatarKey,
+        });
+      }
+    }
+  }
+
   showShopPopup() {
     this.isJoinPopupOpen = true;
     this.setLobbyChatInputHidden(true);
@@ -2642,28 +2781,29 @@ class LobbyScene extends Phaser.Scene {
     };
 
     const getOwnedCharacters = () => {
-      // 서버의 myProfile 데이터가 있으면 그것을 사용, 없으면 기본값
+      const owned = {};
       if (this.myProfile && Array.isArray(this.myProfile.owned_characters)) {
-        const owned = {};
         this.myProfile.owned_characters.forEach((key) => {
           if (typeof key === "string" && /^player_[1-4]$/.test(key)) {
             owned[key] = true;
           }
         });
-        owned.player_1 = true; // 기본 케릭터는 항상 소유
-        return owned;
       }
-
-      // 백업용: 로컬스토리지 (서버 데이터가 없을 때만)
-      const owned = normalizeOwnedCharacters(
-        JSON.parse(localStorage.getItem("ownedCharacters") || "{}"),
-      );
+      owned.player_1 = true;
       return owned;
     };
 
     const saveOwnedCharacters = (ownedCharacters) => {
       const normalized = normalizeOwnedCharacters(ownedCharacters);
-      localStorage.setItem("ownedCharacters", JSON.stringify(normalized));
+      const ownedList = Object.keys(normalized).filter(
+        (key) => normalized[key],
+      );
+      if (!this.myProfile) {
+        this.myProfile = {};
+      }
+      if (this.myProfile) {
+        this.myProfile.owned_characters = ownedList;
+      }
     };
 
     const getCharacterIdFromKey = (characterKey) => {
@@ -2691,11 +2831,6 @@ class LobbyScene extends Phaser.Scene {
         }))
         .filter((item) => Number.isFinite(item.id) && item.count > 0);
 
-      const ownedCharacters = Object.entries(getOwnedCharacters())
-        .filter(([, owned]) => !!owned)
-        .map(([key]) => key);
-
-      const currentCharacter = this.getSelectedAvatarKey();
       const payload = {
         reason,
         id: resolvedPlayerId,
@@ -2703,46 +2838,40 @@ class LobbyScene extends Phaser.Scene {
         player_id: resolvedPlayerId,
         nickname: this.myProfile.nickname,
         playerId: socket.id,
-        coins: Number(this.myProfile.coins) || 0,
         items,
         specialCards: specialCardsOwned,
-        ownedCharacters,
-        currentCharacter,
-        owned_characters: ownedCharacters,
-        current_character: currentCharacter,
         ...extra,
       };
+
+      if (this.hasServerProfileSnapshot) {
+        const safeCoins = Number(this.myProfile.coins);
+        if (Number.isFinite(safeCoins)) {
+          payload.coins = safeCoins;
+        }
+
+        const ownedCharacters = Object.entries(getOwnedCharacters())
+          .filter(([, owned]) => !!owned)
+          .map(([key]) => key);
+        if (ownedCharacters.length > 0) {
+          payload.ownedCharacters = ownedCharacters;
+          payload.owned_characters = ownedCharacters;
+        }
+
+        const currentCharacter = this.getSelectedAvatarKey();
+        if (
+          typeof currentCharacter === "string" &&
+          /^player_[1-4]$/.test(currentCharacter)
+        ) {
+          payload.currentCharacter = currentCharacter;
+          payload.current_character = currentCharacter;
+        }
+      }
 
       socket.emit("syncPlayerInventory", payload);
       socket.emit("syncInventory", payload);
       socket.emit("updatePlayerInventory", payload);
       socket.emit("updateProfile", payload);
       socket.emit("savePlayerProfile", payload);
-    };
-
-    const equipCharacter = (avatarKey) => {
-      const idx = this.profileAvatarKeys.indexOf(avatarKey);
-      if (idx >= 0) {
-        this.profileAvatarIndex = idx;
-        localStorage.setItem("profileAvatarKey", avatarKey);
-        this.updateProfileAvatarUI();
-
-        if (!this.isSingle && socket.connected) {
-          const resolvedPlayerId =
-            this.myProfile.nickname ||
-            localStorage.getItem("nickname") ||
-            this.myNickname ||
-            "요리사";
-
-          socket.emit("setCurrentCharacter", {
-            id: resolvedPlayerId,
-            userId: resolvedPlayerId,
-            nickname: this.myProfile.nickname,
-            currentCharacter: avatarKey,
-            current_character: avatarKey,
-          });
-        }
-      }
     };
 
     if (this.shopPopupContainer) this.shopPopupContainer.destroy();
@@ -3179,7 +3308,6 @@ class LobbyScene extends Phaser.Scene {
         const card = specialCards[tabIndexes.special];
         if (this.myProfile.coins >= card.price) {
           this.myProfile.coins -= card.price;
-          localStorage.setItem("profileCoins", String(this.myProfile.coins));
 
           const specialCardsOwned =
             JSON.parse(localStorage.getItem("specialCards")) || {};
@@ -3253,7 +3381,7 @@ class LobbyScene extends Phaser.Scene {
             });
           } else {
             // 싱글플레이어 모드에서만 로컬 착용
-            equipCharacter(character.key);
+            this.equipCharacter(character.key);
           }
 
           this.showToast(`${character.name} 착용 완료!`, "#2ecc71");
@@ -3299,7 +3427,7 @@ class LobbyScene extends Phaser.Scene {
 
           ownedCharacters[character.key] = true;
           saveOwnedCharacters(ownedCharacters);
-          equipCharacter(character.key);
+          this.equipCharacter(character.key);
           this.updateMyProfileUI();
           this.showToast(`${character.name} 구매 완료!`, "#2ecc71");
           renderShopContent();
@@ -3550,7 +3678,6 @@ class LobbyScene extends Phaser.Scene {
     // 🔹 싱글플레이인 경우: 즉시 로컬 업데이트
     console.log(`💰 [DEBUG] 싱글플레이 모드 - 로컬 코인 업데이트`);
     this.myProfile.coins += amount;
-    localStorage.setItem("profileCoins", String(this.myProfile.coins));
 
     // 🔹 스토어의 코인 텍스트 업데이트 (상점 팝업이 뒤에 있을 때)
     if (this.shopCoinText) {
@@ -5910,6 +6037,11 @@ class GameScene extends Phaser.Scene {
     super("GameScene");
     // allow win-avatar animation by default (textures should now exist)
     this.skipWinAvatarAnim = false;
+    this.profileStats = {
+      level: 1,
+      coins: 0,
+      experience: 0,
+    };
   }
 
   // helper methods for avatar keys and sprite sheets (also copied to LobbyScene)
@@ -6428,20 +6560,31 @@ class GameScene extends Phaser.Scene {
     });
 
     socket.off("myProfile").on("myProfile", (profile) => {
-      const prevLevel = Number(localStorage.getItem("profileLevel")) || 1;
-      const newLevel = Number(profile?.level) || prevLevel;
+      const prevStats = this.profileStats || {
+        level: 1,
+        coins: 0,
+        experience: 0,
+      };
+      const prevLevel = Number(prevStats.level) || 1;
+      const incomingLevel = Number(profile?.level);
       const incomingCoins = Number(profile?.coins);
       const incomingExperience = Number(profile?.experience);
+
+      const newLevel = Number.isFinite(incomingLevel)
+        ? incomingLevel
+        : prevLevel;
       const safeCoins = Number.isFinite(incomingCoins)
         ? incomingCoins
-        : Number(localStorage.getItem("profileCoins")) || 0;
+        : Number(prevStats.coins) || 0;
       const safeExperience = Number.isFinite(incomingExperience)
         ? incomingExperience
-        : Number(localStorage.getItem("profileExperience")) || 0;
+        : Number(prevStats.experience) || 0;
 
-      localStorage.setItem("profileLevel", String(newLevel));
-      localStorage.setItem("profileCoins", String(safeCoins));
-      localStorage.setItem("profileExperience", String(safeExperience));
+      this.profileStats = {
+        level: newLevel,
+        coins: safeCoins,
+        experience: safeExperience,
+      };
 
       if (newLevel > prevLevel) {
         this.showToast(`레벨 업! Lv.${prevLevel} → Lv.${newLevel}`, "#2ecc71");
