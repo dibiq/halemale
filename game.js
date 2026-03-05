@@ -35,22 +35,32 @@ const TUTORIAL_STAGE_CONFIGS = [
     reward: 20,
   },
   {
+    key: "wrongBell",
+    title: "3단계 · 패널티 체험",
+    description:
+      "합계가 5가 아닐 때 종을 누르면 어떤 패널티가 있는지 직접 확인해보세요.",
+    pointer: "deck",
+    reward: 20,
+  },
+  {
     key: "bomb",
-    title: "3단계 · 특수카드: 폭탄",
-    description: "폭탄 카드가 나오면 종을 누르지 말고 카드만 제출하세요.",
+    title: "4단계 · 특수카드: 폭탄",
+    description:
+      "폭탄이 열린 동안엔 합이 5여도 종을 누르면 실수예요. 카드만 제출하세요!",
     pointer: "deck",
     reward: 20,
   },
   {
     key: "thunder",
-    title: "4단계 · 특수카드: 번개",
-    description: "번개 카드가 나오면 폭탄이 없을 때 누구보다 빨리 종을 치세요!",
-    pointer: "bell",
+    title: "5단계 · 특수카드: 번개",
+    description:
+      "내 카드 합이 5가 아니어도 번개가 나오면 즉시 종을 눌러 카드를 가져가요!",
+    pointer: "deck",
     reward: 20,
   },
   {
     key: "plus1",
-    title: "5단계 · 특수카드: Plus1",
+    title: "6단계 · 특수카드: Plus1",
     description:
       "Plus1 카드가 있으면 카드 숫자에 +1이 적용됩니다. 이를 고려해 종을 누르세요!",
     pointer: "deck",
@@ -9860,6 +9870,12 @@ class GameScene extends Phaser.Scene {
       stageRewardsTotal: 0,
       completedStages: new Set(),
       pendingTimers: [],
+      pendingBombFollowup: false,
+      awaitingPreThunderFlip: false,
+      awaitingBombCover: false,
+      awaitingWrongBellPlayerFlip: false,
+      awaitingWrongBellAiFlip: false,
+      requireWrongBellPenalty: false,
     };
 
     this.setTutorialStage(0);
@@ -9885,6 +9901,12 @@ class GameScene extends Phaser.Scene {
     this.tutorialState.requireBellSuccess = false;
     this.tutorialState.expectedBellType = null;
     this.tutorialState.forbidBell = false;
+    this.tutorialState.pendingBombFollowup = false;
+    this.tutorialState.awaitingPreThunderFlip = false;
+    this.tutorialState.awaitingBombCover = false;
+    this.tutorialState.awaitingWrongBellPlayerFlip = false;
+    this.tutorialState.awaitingWrongBellAiFlip = false;
+    this.tutorialState.requireWrongBellPenalty = false;
     this.clearTutorialPendingTimers();
 
     if (stageConfig) {
@@ -9903,6 +9925,9 @@ class GameScene extends Phaser.Scene {
         break;
       case "ringFive":
         this.prepareRingFiveScenario();
+        break;
+      case "wrongBell":
+        this.prepareWrongBellScenario();
         break;
       case "bomb":
         this.prepareBombScenario();
@@ -10011,14 +10036,39 @@ class GameScene extends Phaser.Scene {
     this.forceNextCardForPlayer(tutor.id, { fruit: 1, count: 3 });
   }
 
+  prepareWrongBellScenario() {
+    const myId = this.myId || "PLAYER_ME";
+    const tutor = this.roundData.players.find((p) => p.id !== myId);
+    if (!tutor) return;
+
+    this.clearTutorialTable();
+    this.setTutorialTurn(myId);
+    this.canClick = true;
+    this.tutorialState.awaitingWrongBellPlayerFlip = true;
+    this.tutorialState.awaitingWrongBellAiFlip = false;
+    this.tutorialState.requireWrongBellPenalty = false;
+    this.tutorialState.requireBellSuccess = false;
+    this.tutorialState.expectedBellType = null;
+    this.tutorialState.forbidBell = true;
+    this.forceNextCardForPlayer(myId, { fruit: 1, count: 3 });
+    this.forceNextCardForPlayer(tutor.id, { fruit: 1, count: 1 });
+  }
+
   prepareBombScenario() {
     const myId = this.myId || "PLAYER_ME";
+    const tutor = this.roundData.players.find((p) => p.id !== myId);
     this.clearTutorialTable();
     this.setTutorialTurn(myId);
     this.canClick = true;
     this.tutorialState.forbidBell = true;
     this.tutorialState.awaitingBombFlip = true;
+    this.tutorialState.pendingBombFollowup = false;
+    this.tutorialState.awaitingBombCover = false;
+    this.forceNextCardForPlayer(myId, { fruit: 3, count: 2 });
     this.forceNextCardForPlayer(myId, { type: BOMB_CARD_TYPE });
+    if (tutor) {
+      this.forceNextCardForPlayer(tutor.id, { fruit: 2, count: 5 });
+    }
   }
 
   prepareThunderScenario() {
@@ -10027,12 +10077,13 @@ class GameScene extends Phaser.Scene {
     if (!tutor) return;
 
     this.clearTutorialTable();
-    this.setTutorialTurn(tutor.id);
+    this.setTutorialTurn(myId);
+    this.forceNextCardForPlayer(myId, { fruit: 3, count: 3 });
     this.forceNextCardForPlayer(tutor.id, { type: THUNDER_CARD_TYPE });
     this.tutorialState.requireBellSuccess = false;
     this.tutorialState.expectedBellType = null;
-    this.canClick = false;
-    this.scheduleTutorialFlip(tutor.id, 500);
+    this.tutorialState.awaitingPreThunderFlip = true;
+    this.canClick = true;
   }
 
   preparePlusOneScenario() {
@@ -10270,6 +10321,70 @@ class GameScene extends Phaser.Scene {
       }
     }
 
+    if (stageKey === "bomb" && isMe && this.tutorialState.awaitingBombCover) {
+      this.tutorialState.awaitingBombCover = false;
+      this.tutorialState.forbidBell = false;
+      this.tutorialState.requireBellSuccess = true;
+      this.tutorialState.expectedBellType = "bombSafe";
+      this.showTutorialMessage({
+        title: "폭탄이 가려졌어요!",
+        description:
+          "이제 폭탄이 보이지 않으니 합계 5일 때 종을 눌러 카드를 가져가요!",
+        pointer: "bell",
+      });
+      return;
+    }
+
+    if (stageKey === "wrongBell") {
+      if (isMe && this.tutorialState.awaitingWrongBellPlayerFlip) {
+        this.tutorialState.awaitingWrongBellPlayerFlip = false;
+        this.tutorialState.awaitingWrongBellAiFlip = true;
+        this.canClick = false;
+        this.showTutorialMessage({
+          title: "합계를 살펴봐요",
+          description:
+            "지금은 합계가 3장입니다. AI가 한 장을 더 내려줄 때까지 기다려요.",
+        });
+        const tutor = this.roundData.players.find((p) => p.id !== myId);
+        if (tutor) {
+          this.scheduleTutorialFlip(tutor.id, 700);
+        }
+        return;
+      }
+
+      if (!isMe && this.tutorialState.awaitingWrongBellAiFlip) {
+        this.tutorialState.awaitingWrongBellAiFlip = false;
+        this.tutorialState.requireWrongBellPenalty = true;
+        this.tutorialState.forbidBell = false;
+        this.setTutorialTurn(myId);
+        this.canClick = false;
+        this.showTutorialMessage({
+          title: "이번엔 일부러 틀려봐요",
+          description:
+            "바닥 합계가 아직 5가 아니어도 종을 누르면 패널티가 생깁니다. 체험해보세요!",
+          pointer: "bell",
+        });
+        return;
+      }
+    }
+
+    if (stageKey === "thunder" && isMe) {
+      if (this.tutorialState.awaitingPreThunderFlip) {
+        this.tutorialState.awaitingPreThunderFlip = false;
+        this.canClick = false;
+        this.showTutorialMessage({
+          title: "준비하세요",
+          description:
+            "내 카드는 3장이지만 상대가 번개를 내면 합계 5가 아니어도 종을 눌러야 해요.",
+        });
+        const tutor = this.roundData.players.find((p) => p.id !== myId);
+        if (tutor) {
+          this.scheduleTutorialFlip(tutor.id, 700);
+        }
+        return;
+      }
+    }
+
     if (
       stageKey === "plus1" &&
       !isMe &&
@@ -10300,15 +10415,48 @@ class GameScene extends Phaser.Scene {
 
     if (stageKey === "bomb" && isMe && card?.type === BOMB_CARD_TYPE) {
       this.tutorialState.awaitingBombFlip = false;
+      this.tutorialState.pendingBombFollowup = true;
+      this.tutorialState.awaitingBombCover = false;
+      this.canClick = false;
       this.showTutorialMessage({
         title: "폭탄 등장!",
-        description: "폭탄 카드일 땐 종을 누르지 않고 카드만 제출하면 돼요.",
+        description:
+          "폭탄이 깔린 동안에는 합이 5가 되어도 종을 누르면 실패예요. 잠시만 기다려요.",
         pointer: null,
       });
-      this.time.delayedCall(600, () => {
-        this.tutorialState.forbidBell = false;
-        this.completeTutorialStage("bomb");
-      });
+      const tutor = this.roundData.players.find((p) => p.id !== myId);
+      if (tutor) {
+        this.scheduleTutorialFlip(tutor.id, 700);
+      } else {
+        this.time.delayedCall(700, () => {
+          this.tutorialState.forbidBell = false;
+          this.tutorialState.pendingBombFollowup = false;
+          this.completeTutorialStage("bomb");
+        });
+      }
+      return;
+    }
+
+    if (
+      stageKey === "bomb" &&
+      !isMe &&
+      this.tutorialState.pendingBombFollowup
+    ) {
+      const totals = this.calculateTotalFruits();
+      const hasFive = Object.values(totals).some((count) => count === 5);
+      if (hasFive || card?.count === 5) {
+        this.tutorialState.pendingBombFollowup = false;
+        this.tutorialState.awaitingBombCover = true;
+        this.tutorialState.forbidBell = true;
+        this.canClick = true;
+        this.setTutorialTurn(myId);
+        this.showTutorialMessage({
+          title: "아직은 금지!",
+          description:
+            "상대 카드가 5여도 폭탄이 보이는 동안엔 종을 누르면 안 돼요. 내 덱을 한 번 더 눌러 폭탄을 덮어보세요!",
+          pointer: "deck",
+        });
+      }
       return;
     }
 
@@ -10320,7 +10468,8 @@ class GameScene extends Phaser.Scene {
       this.tutorialState.expectedBellType = "thunder";
       this.showTutorialMessage({
         title: "번개 카드!",
-        description: "폭탄이 없으니 누구보다 빨리 종을 눌러보세요!",
+        description:
+          "내가 낸 카드는 3이라 합이 5가 아니어도 번개가 나오면 즉시 종을 쳐서 카드를 가져가요!",
         pointer: "bell",
       });
       return;
@@ -10356,6 +10505,13 @@ class GameScene extends Phaser.Scene {
       this.tutorialState.requireBellSuccess = false;
       this.tutorialState.expectedBellType = null;
       this.completeTutorialStage("ringFive");
+      return;
+    }
+
+    if (stageKey === "bomb" && expectedType === "bombSafe") {
+      this.tutorialState.requireBellSuccess = false;
+      this.tutorialState.expectedBellType = null;
+      this.completeTutorialStage("bomb");
       return;
     }
 
@@ -11252,6 +11408,27 @@ class GameScene extends Phaser.Scene {
     // 5. 내 카드가 0이 되었다면 패배 판정을 위해 턴 체크
     if (loser.id === (this.myId || "PLAYER_ME") && loser.cards <= 0) {
       this.nextTurn();
+    }
+
+    if (
+      this.isTutorialMode &&
+      this.tutorialState?.currentStageKey === "wrongBell" &&
+      this.tutorialState.requireWrongBellPenalty &&
+      failedPlayerId === (this.myId || "PLAYER_ME")
+    ) {
+      this.tutorialState.requireWrongBellPenalty = false;
+      this.tutorialState.forbidBell = true;
+      this.canClick = false;
+      this.showTutorialMessage({
+        title: "패널티 체험 완료",
+        description:
+          "합계가 5가 아닐 때 종을 치면 카드가 줄어듭니다. 항상 합계를 확인하세요!",
+      });
+      const timer = this.time.delayedCall(1400, () => {
+        this.removeTrackedTutorialTimer(timer);
+        this.completeTutorialStage("wrongBell");
+      });
+      this.trackTutorialTimer(timer);
     }
   }
 
