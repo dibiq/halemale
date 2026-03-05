@@ -23,51 +23,103 @@ const QUEST_PROGRESS_STORAGE_KEY = "singleQuestProgress";
 const QUEST_CONFIGS = [
   {
     key: "bell_master",
-    title: "정답 3번 맞추기",
-    description: "싱글에서 종을 정확히 맞추는 경험을 3회 달성하세요.",
-    target: 3,
+    type: "count",
+    titleTemplate: "정답 {target}번 맞추기",
+    descriptionTemplate: "싱글에서 종을 정확히 {target}번 눌러보세요.",
+    initialTarget: 3,
+    targetIncrement: 2,
+    rewardCoins: 30,
   },
   {
     key: "big_haul",
-    title: "정답 시 5장 획득",
-    description: "한 번의 정답으로 카드 5장 이상을 가져가보세요.",
-    target: 1,
+    type: "threshold",
+    titleTemplate: "정답 시 {threshold}장 획득",
+    descriptionTemplate: "한 번의 정답으로 카드 {threshold}장을 가져가세요.",
+    initialTarget: 1,
+    targetIncrement: 0,
+    initialThreshold: 5,
+    thresholdIncrement: 5,
+    rewardCoins: 40,
   },
   {
     key: "penalty_runner",
-    title: "패널티 3회 체험",
-    description: "실수로 종을 쳐서 패널티를 3번 받아보세요.",
-    target: 3,
+    type: "count",
+    titleTemplate: "패널티 {target}회 체험",
+    descriptionTemplate: "실수로 종을 쳐서 패널티를 {target}번 받아보세요.",
+    initialTarget: 3,
+    targetIncrement: 2,
+    rewardCoins: 25,
   },
   {
     key: "bomb_flip",
-    title: "폭탄 카드 3회 오픈",
-    description: "내 덱에서 폭탄 카드를 총 3번 뒤집어보세요.",
-    target: 3,
+    type: "count",
+    titleTemplate: "폭탄 카드 {target}회 오픈",
+    descriptionTemplate: "내 덱에서 폭탄 카드를 총 {target}번 뒤집어보세요.",
+    initialTarget: 3,
+    targetIncrement: 2,
+    rewardCoins: 25,
   },
   {
     key: "combo_duo",
-    title: "2콤보 성공",
-    description: "정답을 연속 2번 맞춰 콤보를 달성하세요.",
-    target: 1,
+    type: "count",
+    titleTemplate: "{target}콤보 성공",
+    descriptionTemplate: "정답을 연속 {target}번 맞춰 콤보를 달성하세요.",
+    initialTarget: 1,
+    targetIncrement: 1,
+    rewardCoins: 35,
   },
   {
     key: "final_victory",
-    title: "싱글 최종 승리",
-    description: "싱글플레이에서 최종 승리를 1회 기록하세요.",
-    target: 1,
+    type: "count",
+    titleTemplate: "싱글 최종 승리 {target}회",
+    descriptionTemplate: "싱글플레이에서 최종 승리를 {target}번 기록하세요.",
+    initialTarget: 1,
+    targetIncrement: 1,
+    rewardCoins: 50,
   },
   {
     key: "thunder_flip",
-    title: "번개 카드 3회 오픈",
-    description: "내 덱에서 번개 카드를 총 3번 뒤집어보세요.",
-    target: 3,
+    type: "count",
+    titleTemplate: "번개 카드 {target}회 오픈",
+    descriptionTemplate: "내 덱에서 번개 카드를 총 {target}번 뒤집어보세요.",
+    initialTarget: 3,
+    targetIncrement: 2,
+    rewardCoins: 25,
   },
 ];
 const QUEST_CONFIG_MAP = QUEST_CONFIGS.reduce((acc, quest) => {
   acc[quest.key] = quest;
   return acc;
 }, {});
+
+function formatQuestTemplate(template, vars) {
+  if (!template) return "";
+  return template
+    .replace(/\{target\}/g, vars.target ?? "")
+    .replace(/\{threshold\}/g, vars.threshold ?? "");
+}
+
+function buildQuestRuntime(quest, entry = {}) {
+  const stage = Math.max(0, Number(entry.stage) || 0);
+  const baseTarget = Math.max(1, Number(quest.initialTarget) || 1);
+  const targetIncrement = Number(quest.targetIncrement) || 0;
+  const target = Math.max(1, baseTarget + stage * targetIncrement);
+  let threshold;
+  if (typeof quest.initialThreshold === "number") {
+    const base = Number(quest.initialThreshold) || 0;
+    const increment = Number(quest.thresholdIncrement) || 0;
+    threshold = base + stage * increment;
+  }
+  const textVars = { target, threshold };
+
+  return {
+    stage,
+    target,
+    threshold,
+    title: formatQuestTemplate(quest.titleTemplate, textVars),
+    description: formatQuestTemplate(quest.descriptionTemplate, textVars),
+  };
+}
 const TUTORIAL_STAGE_CONFIGS = [
   {
     key: "flip",
@@ -8558,7 +8610,7 @@ class GameScene extends Phaser.Scene {
     });
   }
 
-  playWinAnimation(data) {
+  playWinAnimation(data = {}) {
     // block further inputs by placing a transparent fullscreen overlay
     const { width, height } = this.cameras.main;
     const overlay = this.add
@@ -8581,10 +8633,13 @@ class GameScene extends Phaser.Scene {
       }
     };
 
+    const skipAvatarAnim =
+      typeof data.skipAvatar === "boolean" ? data.skipAvatar : false;
+
     // inspect `this` context
     console.log("[playWinAnimation] this=", this);
     // ensure animations are enabled when called
-    this.skipWinAvatarAnim = false;
+    this.skipWinAvatarAnim = skipAvatarAnim;
     // avoid overlapping avatar animations
     if (this.avatarAnimInProgress) {
       console.log(
@@ -10281,6 +10336,7 @@ class GameScene extends Phaser.Scene {
       return;
     }
 
+    this.teardownQuestUI();
     const snapshot = this.loadQuestProgressSnapshot();
     this.questState = {
       progress: snapshot,
@@ -10298,6 +10354,7 @@ class GameScene extends Phaser.Scene {
       this.questState.container = null;
       this.questState.rows = {};
     }
+    this.questState = null;
   }
 
   loadQuestProgressSnapshot() {
@@ -10313,12 +10370,18 @@ class GameScene extends Phaser.Scene {
 
     QUEST_CONFIGS.forEach((quest) => {
       const raw = stored[quest.key] || {};
-      const count = Number(raw.count) || 0;
-      const completed = Boolean(raw.completed) || count >= quest.target;
-      safe[quest.key] = {
-        count: Math.min(count, quest.target),
-        completed,
-      };
+      let count = Math.max(0, Number(raw.count) || 0);
+      let stage = Math.max(0, Number(raw.stage) || 0);
+      let runtime = buildQuestRuntime(quest, { stage, count: 0 });
+      const loopGuard = 50;
+      let guard = 0;
+      while (count >= runtime.target && guard < loopGuard) {
+        count -= runtime.target;
+        stage += 1;
+        runtime = buildQuestRuntime(quest, { stage, count: 0 });
+        guard += 1;
+      }
+      safe[quest.key] = { count, stage };
     });
     return safe;
   }
@@ -10331,13 +10394,22 @@ class GameScene extends Phaser.Scene {
         const entry = this.questState.progress?.[quest.key];
         payload[quest.key] = {
           count: entry ? entry.count : 0,
-          completed: Boolean(entry?.completed),
+          stage: entry ? entry.stage || 0 : 0,
         };
       });
       localStorage.setItem(QUEST_PROGRESS_STORAGE_KEY, JSON.stringify(payload));
     } catch (e) {
       console.warn("failed to save quest progress", e);
     }
+  }
+
+  getQuestRuntimeState(key) {
+    if (!this.questState) return null;
+    const quest = QUEST_CONFIG_MAP[key];
+    const entry = this.questState.progress?.[key];
+    if (!quest || !entry) return null;
+    const runtime = buildQuestRuntime(quest, entry);
+    return { quest, entry, ...runtime };
   }
 
   renderQuestPanel() {
@@ -10389,47 +10461,112 @@ class GameScene extends Phaser.Scene {
           color: "#e2e8f0",
         })
         .setOrigin(0, 0.5);
-      row.add([rowBg, rowText]);
+      rowText.y = rowHeight * 0.32;
+
+      const barWidth = rowWidth - 24;
+      const barHeight = Math.max(6, rowHeight * 0.18);
+      const barY = rowHeight - barHeight * 0.8;
+      const progressTrack = this.add
+        .rectangle(12, barY, barWidth, barHeight, 0x0f172a, 0.75)
+        .setOrigin(0, 0.5)
+        .setStrokeStyle(1, 0x1d4ed8, 0.55);
+      const progressFill = this.add
+        .rectangle(12, barY, barWidth, barHeight, 0x38bdf8, 0.95)
+        .setOrigin(0, 0.5)
+        .setScale(0, 1);
+      const progressLabel = this.add
+        .text(rowWidth - 12, barY, "0/0", {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${Math.max(12, width * 0.018)}px`,
+          color: "#cbd5f5",
+        })
+        .setOrigin(1, 0.5);
+
+      row.add([rowBg, progressTrack, progressFill, rowText, progressLabel]);
       container.add(row);
-      this.questState.rows[quest.key] = { text: rowText, bg: rowBg };
+      this.questState.rows[quest.key] = {
+        text: rowText,
+        bg: rowBg,
+        barTrack: progressTrack,
+        barFill: progressFill,
+        barLabel: progressLabel,
+        barWidth,
+      };
       this.refreshQuestRow(quest.key);
     });
   }
 
   refreshQuestRow(key) {
     if (!this.questState) return;
-    const quest = QUEST_CONFIG_MAP[key];
-    const entry = this.questState.progress?.[key];
     const row = this.questState.rows?.[key];
-    if (!quest || !entry || !row) return;
+    const state = this.getQuestRuntimeState(key);
+    if (!row || !state) return;
 
-    const prefix = entry.completed ? "✅" : "•";
-    const progressText = entry.completed
-      ? "완료"
-      : `${entry.count}/${quest.target}`;
-    row.text.setText(`${prefix} ${quest.title} (${progressText})`);
-    row.text.setColor(entry.completed ? "#34d399" : "#e2e8f0");
+    const rewardText = state.quest.rewardCoins
+      ? ` · +${state.quest.rewardCoins}💰`
+      : "";
+    row.text.setText(`${state.title}${rewardText}`);
+    row.text.setColor("#e2e8f0");
     if (row.bg) {
-      row.bg.setFillStyle(entry.completed ? 0x14532d : 0x1f2937, 0.85);
+      row.bg.setFillStyle(0x1f2937, 0.85);
+    }
+    if (row.barLabel) {
+      row.barLabel.setText(`${state.entry.count}/${state.target}`);
+    }
+    if (row.barFill) {
+      const ratio = Math.max(
+        0,
+        Math.min(1, state.entry.count / Math.max(1, state.target)),
+      );
+      row.barFill.setScale(ratio, 1);
     }
   }
 
-  updateQuestProgress(key, amount = 1) {
-    if (!this.questState || !QUEST_CONFIG_MAP[key]) return;
-    const entry = this.questState.progress?.[key];
-    if (!entry) return;
-    if (entry.completed) return;
+  incrementQuestCounter(key, amount = 1) {
+    if (!this.questState) return;
+    const state = this.getQuestRuntimeState(key);
+    if (!state || amount <= 0) return;
 
-    entry.count = Math.min(
-      QUEST_CONFIG_MAP[key].target,
-      entry.count + (Number(amount) || 0),
+    state.entry.count = Math.min(
+      state.target,
+      state.entry.count + (Number(amount) || 0),
     );
-    if (entry.count >= QUEST_CONFIG_MAP[key].target) {
-      entry.completed = true;
-      this.showToast(`${QUEST_CONFIG_MAP[key].title} 완료!`, "#22c55e");
+
+    if (state.entry.count >= state.target) {
+      this.handleQuestCompletion(state);
+    } else {
+      this.refreshQuestRow(key);
+      this.saveQuestProgressSnapshot();
     }
-    this.refreshQuestRow(key);
+  }
+
+  applyThresholdQuest(key, value) {
+    if (!this.questState) return;
+    const state = this.getQuestRuntimeState(key);
+    if (!state || typeof state.threshold !== "number") return;
+    if (Number(value) < state.threshold) return;
+    this.incrementQuestCounter(key, 1);
+  }
+
+  handleQuestCompletion(state) {
+    const { quest, entry, title } = state;
+    const questKey = quest.key;
+    if (quest.rewardCoins) {
+      this.rewardQuestCoins(quest.rewardCoins, title, questKey);
+    } else {
+      this.showToast(`${title} 완료!`, "#22c55e");
+    }
+
+    entry.stage = (entry.stage || 0) + 1;
+    entry.count = 0;
+
     this.saveQuestProgressSnapshot();
+    this.refreshQuestRow(questKey);
+
+    const nextState = this.getQuestRuntimeState(questKey);
+    if (nextState) {
+      this.showToast(`${nextState.title} 시작!`, "#38bdf8");
+    }
   }
 
   handleQuestEvent(eventKey, payload = {}) {
@@ -10437,32 +10574,52 @@ class GameScene extends Phaser.Scene {
     const myId = this.myId || "PLAYER_ME";
     switch (eventKey) {
       case "bellSuccess":
-        this.updateQuestProgress("bell_master", 1);
-        if (payload.cardsWon >= 5) {
-          this.updateQuestProgress("big_haul", 1);
+        this.incrementQuestCounter("bell_master", 1);
+        if (typeof payload.cardsWon === "number") {
+          this.applyThresholdQuest("big_haul", payload.cardsWon);
         }
         if (
           this.comboState &&
           this.comboState.lastWinnerId === myId &&
           (this.comboState.count || 0) >= 2
         ) {
-          this.updateQuestProgress("combo_duo", 1);
+          this.incrementQuestCounter("combo_duo", 1);
         }
         break;
       case "penalty":
-        this.updateQuestProgress("penalty_runner", 1);
+        this.incrementQuestCounter("penalty_runner", 1);
         break;
       case "bombOpened":
-        this.updateQuestProgress("bomb_flip", 1);
+        this.incrementQuestCounter("bomb_flip", 1);
         break;
       case "thunderOpened":
-        this.updateQuestProgress("thunder_flip", 1);
+        this.incrementQuestCounter("thunder_flip", 1);
         break;
       case "gameWin":
-        this.updateQuestProgress("final_victory", 1);
+        this.incrementQuestCounter("final_victory", 1);
         break;
       default:
         break;
+    }
+  }
+
+  rewardQuestCoins(amount, reason, questKey) {
+    if (!Number.isFinite(amount) || amount <= 0) return;
+    if (!this.myProfile) this.myProfile = {};
+    const prev = Number(this.myProfile.coins) || 0;
+    this.myProfile.coins = prev + amount;
+    if (typeof this.updateMyProfileUI === "function") {
+      this.updateMyProfileUI();
+    }
+
+    this.showToast(`퀘스트 보상 ${amount}💰 (${reason})`, "#22c55e");
+    try {
+      this.safeSyncInventory("questReward", {
+        coins: amount,
+        questKey,
+      });
+    } catch (e) {
+      console.warn("quest reward sync failed", e);
     }
   }
 
@@ -11856,11 +12013,12 @@ class GameScene extends Phaser.Scene {
       return clone;
     });
 
-    // 5. 애니메이션 실행 (멀티와 동일한 흐름)
+    // 5. 애니메이션 실행 (싱글은 캐릭터 연출만 생략)
     this.playWinAnimation({
       winnerId: winner.id,
       players: updatedPlayers,
       prevPlayers: prevPlayers,
+      skipAvatar: this.isSingle,
     });
 
     // 즉시 로컬 상태 업데이트 (애니메이션이 끝나면 openStack은 playWinAnimation에서 비워집니다)
