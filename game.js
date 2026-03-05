@@ -858,10 +858,7 @@ class LobbyScene extends Phaser.Scene {
           ...mergedOwnedCharacters,
           ...ownedCharactersFromServer,
         });
-        localStorage.setItem(
-          "ownedCharacters",
-          JSON.stringify(mergedOwnedCharacters),
-        );
+        // 케릭터 소유권은 서버 전용으로 관리, 로컬스토리지 저장하지 않음
       }
 
       // after merging inventory update, ensure frames exist for player 2
@@ -882,7 +879,6 @@ class LobbyScene extends Phaser.Scene {
           const idx = this.profileAvatarKeys.indexOf(profile.current_character);
           if (idx >= 0) {
             this.profileAvatarIndex = idx;
-            localStorage.setItem("profileAvatarKey", profile.current_character);
             this.updateProfileAvatarUI();
           }
         }
@@ -901,7 +897,6 @@ class LobbyScene extends Phaser.Scene {
           const idx = this.profileAvatarKeys.indexOf(profile.avatarKey);
           if (idx >= 0) {
             this.profileAvatarIndex = idx;
-            localStorage.setItem("profileAvatarKey", profile.avatarKey);
             this.updateProfileAvatarUI();
           }
         }
@@ -917,15 +912,17 @@ class LobbyScene extends Phaser.Scene {
           collectSpecialCardsFromPayload(profile.specialCards, profile.items);
 
         if (sourceHadData && parsedCount === 0) {
-          console.warn(
-            "특수카드 데이터 파싱 실패: 기존 로컬 데이터를 유지합니다.",
-          );
-        } else {
-          localStorage.setItem("specialCards", JSON.stringify(parsed));
+          console.warn("특수카드 데이터 파싱 실패: 서버 데이터를 무시합니다.");
         }
+        // 특수카드는 서버 전용으로 관리, 로컬스토리지 저장하지 않음
       }
 
       this.updateMyProfileUI(profile);
+
+      // 상점이 열려있다면 새로고침하여 최신 소유 정보 반영
+      if (this.isShopOpen && typeof renderShopContent === "function") {
+        renderShopContent();
+      }
     });
 
     // 💡 케릭터 구매 이벤트 핸들러 추가
@@ -936,10 +933,9 @@ class LobbyScene extends Phaser.Scene {
     socket.off("characterPurchased").on("characterPurchased", (data) => {
       console.log("🎭 케릭터 구매 성공:", data);
 
-      // 서버 응답 기반으로 로컬 상태 업데이트
+      // 서버 응답 기반으로 UI만 업데이트 (로컬스토리지 저장 없음)
       if (data && typeof data.newCoins === "number") {
         this.myProfile.coins = data.newCoins;
-        localStorage.setItem("profileCoins", String(this.myProfile.coins));
 
         // 상점이 열려있다면 코인 표시 업데이트
         if (this.shopCoinText) {
@@ -949,11 +945,8 @@ class LobbyScene extends Phaser.Scene {
         this.updateMyProfileUI();
       }
 
-      // 케릭터 소유권 및 장착 처리
+      // 케릭터 장착만 처리 (소유권은 myProfile 이벤트에서 처리)
       if (data.characterKey) {
-        const ownedCharacters = getOwnedCharacters();
-        ownedCharacters[data.characterKey] = true;
-        saveOwnedCharacters(ownedCharacters);
         equipCharacter(data.characterKey);
 
         // safeSyncInventory 호출
@@ -979,14 +972,7 @@ class LobbyScene extends Phaser.Scene {
 
       this.showToast("케릭터 구매가 완료되었습니다!", "#2ecc71");
 
-      // 상점 내용 새로고침
-      if (this.isShopOpen && typeof renderShopContent === "function") {
-        renderShopContent();
-      }
-    });
-
-    // 💡 코인 구매 완료 이벤트 핸들러 추가
-    socket.off("coinPurchased").on("coinPurchased", (data) => {
+      // 상점 새로고침은 myProfile 이벤트에서 처리됨
       console.log(`💰 [DEBUG] coinPurchased 이벤트 받음:`, data);
 
       if (data && data.message) {
@@ -995,7 +981,6 @@ class LobbyScene extends Phaser.Scene {
 
       if (data && typeof data.newCoins === "number") {
         this.myProfile.coins = data.newCoins;
-        localStorage.setItem("profileCoins", String(this.myProfile.coins));
         this.updateMyProfileUI();
 
         // 상점 UI가 열려있다면 업데이트
@@ -3270,7 +3255,6 @@ class LobbyScene extends Phaser.Scene {
         } else {
           // 싱글플레이어 모드에서만 로컬 처리
           this.myProfile.coins -= character.price;
-          localStorage.setItem("profileCoins", String(this.myProfile.coins));
           this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
 
           ownedCharacters[character.key] = true;

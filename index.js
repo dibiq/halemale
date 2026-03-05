@@ -1206,18 +1206,30 @@ io.on("connection", (socket) => {
         message: "케릭터 구매가 완료되었습니다!",
       });
 
+      // 최신 프로필 정보도 다시 전송하여 UI 동기화
+      socket.emit("myProfile", {
+        nickname: targetPlayerId,
+        level: Number(socket.level) || 1,
+        coins: Number(socket.coins) || 0,
+        items: Array.isArray(socket.items) ? socket.items : [],
+        experience: Number(socket.experience) || 0,
+        avatarKey: socket.currentCharacter || socket.avatarKey || "player_1",
+        specialCards: socket.specialCards || {},
+        owned_characters: socket.ownedCharacters || ["player_1"],
+        current_character: socket.currentCharacter || "player_1",
+      });
+
       console.log(
         `✅ ${targetPlayerId} 캐릭터 구매 완료: ${characterKey}, 남은 코인 ${socket.coins}`,
       );
     } catch (e) {
       console.error(`❌ ${targetPlayerId} 캐릭터 구매 DB 저장 실패:`, e);
-      // 롤백
+      // 롤백 - 원래 상태로 되돌리기
       socket.coins = previousCoins;
-      socket.ownedCharacters = socket.ownedCharacters.filter(
-        (char) => char !== characterKey,
-      );
+      socket.ownedCharacters = currentOwnedCharacters; // 기존 상태로 완전 복원
       if (socket.currentCharacter === characterKey) {
-        socket.currentCharacter = socket.ownedCharacters[0] || "player_1";
+        // 새로 설정된 currentCharacter도 원래대로 되돌리기
+        socket.currentCharacter = currentOwnedCharacters[0] || "player_1";
         socket.avatarKey = socket.currentCharacter;
       }
       socket.emit(
