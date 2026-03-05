@@ -19,6 +19,55 @@ const SINGLE_PLUS2_CARD_COUNT = 0;
 const NOT5_CARD_TYPE = "not5";
 const SINGLE_NOT5_CARD_COUNT = 0;
 const TUTORIAL_STATE_KEY = "tutorialCompleted";
+const QUEST_PROGRESS_STORAGE_KEY = "singleQuestProgress";
+const QUEST_CONFIGS = [
+  {
+    key: "bell_master",
+    title: "정답 3번 맞추기",
+    description: "싱글에서 종을 정확히 맞추는 경험을 3회 달성하세요.",
+    target: 3,
+  },
+  {
+    key: "big_haul",
+    title: "정답 시 5장 획득",
+    description: "한 번의 정답으로 카드 5장 이상을 가져가보세요.",
+    target: 1,
+  },
+  {
+    key: "penalty_runner",
+    title: "패널티 3회 체험",
+    description: "실수로 종을 쳐서 패널티를 3번 받아보세요.",
+    target: 3,
+  },
+  {
+    key: "bomb_flip",
+    title: "폭탄 카드 3회 오픈",
+    description: "내 덱에서 폭탄 카드를 총 3번 뒤집어보세요.",
+    target: 3,
+  },
+  {
+    key: "combo_duo",
+    title: "2콤보 성공",
+    description: "정답을 연속 2번 맞춰 콤보를 달성하세요.",
+    target: 1,
+  },
+  {
+    key: "final_victory",
+    title: "싱글 최종 승리",
+    description: "싱글플레이에서 최종 승리를 1회 기록하세요.",
+    target: 1,
+  },
+  {
+    key: "thunder_flip",
+    title: "번개 카드 3회 오픈",
+    description: "내 덱에서 번개 카드를 총 3번 뒤집어보세요.",
+    target: 3,
+  },
+];
+const QUEST_CONFIG_MAP = QUEST_CONFIGS.reduce((acc, quest) => {
+  acc[quest.key] = quest;
+  return acc;
+}, {});
 const TUTORIAL_STAGE_CONFIGS = [
   {
     key: "flip",
@@ -6750,6 +6799,7 @@ class GameScene extends Phaser.Scene {
     this.blockBy = null; // 마지막으로 사용한 플레이어(선택사항)
     this.blockEffects = []; // [{ id, issuer, remainingTurns }]
     this.tutorialState = null;
+    this.questState = null;
   }
 
   async create() {
@@ -6757,6 +6807,12 @@ class GameScene extends Phaser.Scene {
     if (this.resultContainer) {
       this.resultContainer.destroy();
       this.resultContainer = null;
+    }
+
+    if (this.events && typeof this.events.once === "function") {
+      this.events.once("shutdown", () => {
+        this.teardownQuestUI();
+      });
     }
 
     // 특수카드 사용(턴당 1회) 추적 초기화
@@ -6806,8 +6862,10 @@ class GameScene extends Phaser.Scene {
       this.turnIndex = 0; // 내 차례부터 시작
       this.isGameStarted = true;
       this.initializeSingleDecks();
+      this.initQuestSystem();
     } else {
       this.myId = socket.id;
+      this.teardownQuestUI();
     }
 
     this.isPopupOpen = false;
@@ -9504,6 +9562,10 @@ class GameScene extends Phaser.Scene {
     this.isGameStarted = false;
     this.isGameReady = false;
 
+    if (this.isSingle && !this.isTutorialMode && result === "WIN") {
+      this.handleQuestEvent("gameWin");
+    }
+
     // 💡 모든 타이머 중지 (AI의 뒤집기나 종치기 등)
     this.time.removeAllEvents();
 
@@ -10211,6 +10273,197 @@ class GameScene extends Phaser.Scene {
     }
 
     this.updateTutorialPointer(pointer);
+  }
+
+  initQuestSystem() {
+    if (!this.isSingle || this.isTutorialMode) {
+      this.teardownQuestUI();
+      return;
+    }
+
+    const snapshot = this.loadQuestProgressSnapshot();
+    this.questState = {
+      progress: snapshot,
+      container: null,
+      rows: {},
+    };
+    this.renderQuestPanel();
+  }
+
+  teardownQuestUI() {
+    if (this.questState?.container) {
+      this.questState.container.destroy();
+    }
+    if (this.questState) {
+      this.questState.container = null;
+      this.questState.rows = {};
+    }
+  }
+
+  loadQuestProgressSnapshot() {
+    const safe = {};
+    let stored = {};
+    try {
+      stored = JSON.parse(
+        localStorage.getItem(QUEST_PROGRESS_STORAGE_KEY) || "{}",
+      );
+    } catch (e) {
+      stored = {};
+    }
+
+    QUEST_CONFIGS.forEach((quest) => {
+      const raw = stored[quest.key] || {};
+      const count = Number(raw.count) || 0;
+      const completed = Boolean(raw.completed) || count >= quest.target;
+      safe[quest.key] = {
+        count: Math.min(count, quest.target),
+        completed,
+      };
+    });
+    return safe;
+  }
+
+  saveQuestProgressSnapshot() {
+    if (!this.questState) return;
+    try {
+      const payload = {};
+      QUEST_CONFIGS.forEach((quest) => {
+        const entry = this.questState.progress?.[quest.key];
+        payload[quest.key] = {
+          count: entry ? entry.count : 0,
+          completed: Boolean(entry?.completed),
+        };
+      });
+      localStorage.setItem(QUEST_PROGRESS_STORAGE_KEY, JSON.stringify(payload));
+    } catch (e) {
+      console.warn("failed to save quest progress", e);
+    }
+  }
+
+  renderQuestPanel() {
+    if (!this.questState || !QUEST_CONFIGS.length) return;
+    if (this.questState.container) {
+      this.questState.container.destroy();
+    }
+
+    const { width, height } = this.cameras.main;
+    const panelWidth = Math.min(width * 0.42, 420);
+    const rowHeight = Math.max(height * 0.045, 36);
+    const padding = 16;
+    const headerHeight = rowHeight;
+    const panelHeight =
+      padding * 2 + headerHeight + QUEST_CONFIGS.length * (rowHeight + 6);
+
+    const container = this.add
+      .container(width * 0.03, height * 0.53)
+      .setDepth(1600);
+    const bg = this.add
+      .rectangle(0, 0, panelWidth, panelHeight, 0x020617, 0.82)
+      .setOrigin(0, 0)
+      .setStrokeStyle(2, 0x38bdf8, 0.5);
+    const titleText = this.add
+      .text(padding, padding + headerHeight * 0.25, "싱글 퀘스트", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${Math.max(18, width * 0.025)}px`,
+        color: "#f8fafc",
+        fontStyle: "bold",
+      })
+      .setOrigin(0, 0);
+    container.add([bg, titleText]);
+
+    this.questState.container = container;
+    this.questState.rows = {};
+
+    QUEST_CONFIGS.forEach((quest, index) => {
+      const rowY = padding + headerHeight + index * (rowHeight + 6);
+      const rowWidth = panelWidth - padding * 2;
+      const row = this.add.container(padding, rowY).setDepth(1601 + index * 2);
+      const rowBg = this.add
+        .rectangle(0, 0, rowWidth, rowHeight, 0x1f2937, 0.8)
+        .setOrigin(0, 0)
+        .setStrokeStyle(1, 0x475569, 0.7);
+      const rowText = this.add
+        .text(12, rowHeight / 2, "", {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${Math.max(14, width * 0.023)}px`,
+          color: "#e2e8f0",
+        })
+        .setOrigin(0, 0.5);
+      row.add([rowBg, rowText]);
+      container.add(row);
+      this.questState.rows[quest.key] = { text: rowText, bg: rowBg };
+      this.refreshQuestRow(quest.key);
+    });
+  }
+
+  refreshQuestRow(key) {
+    if (!this.questState) return;
+    const quest = QUEST_CONFIG_MAP[key];
+    const entry = this.questState.progress?.[key];
+    const row = this.questState.rows?.[key];
+    if (!quest || !entry || !row) return;
+
+    const prefix = entry.completed ? "✅" : "•";
+    const progressText = entry.completed
+      ? "완료"
+      : `${entry.count}/${quest.target}`;
+    row.text.setText(`${prefix} ${quest.title} (${progressText})`);
+    row.text.setColor(entry.completed ? "#34d399" : "#e2e8f0");
+    if (row.bg) {
+      row.bg.setFillStyle(entry.completed ? 0x14532d : 0x1f2937, 0.85);
+    }
+  }
+
+  updateQuestProgress(key, amount = 1) {
+    if (!this.questState || !QUEST_CONFIG_MAP[key]) return;
+    const entry = this.questState.progress?.[key];
+    if (!entry) return;
+    if (entry.completed) return;
+
+    entry.count = Math.min(
+      QUEST_CONFIG_MAP[key].target,
+      entry.count + (Number(amount) || 0),
+    );
+    if (entry.count >= QUEST_CONFIG_MAP[key].target) {
+      entry.completed = true;
+      this.showToast(`${QUEST_CONFIG_MAP[key].title} 완료!`, "#22c55e");
+    }
+    this.refreshQuestRow(key);
+    this.saveQuestProgressSnapshot();
+  }
+
+  handleQuestEvent(eventKey, payload = {}) {
+    if (!this.questState || this.isTutorialMode) return;
+    const myId = this.myId || "PLAYER_ME";
+    switch (eventKey) {
+      case "bellSuccess":
+        this.updateQuestProgress("bell_master", 1);
+        if (payload.cardsWon >= 5) {
+          this.updateQuestProgress("big_haul", 1);
+        }
+        if (
+          this.comboState &&
+          this.comboState.lastWinnerId === myId &&
+          (this.comboState.count || 0) >= 2
+        ) {
+          this.updateQuestProgress("combo_duo", 1);
+        }
+        break;
+      case "penalty":
+        this.updateQuestProgress("penalty_runner", 1);
+        break;
+      case "bombOpened":
+        this.updateQuestProgress("bomb_flip", 1);
+        break;
+      case "thunderOpened":
+        this.updateQuestProgress("thunder_flip", 1);
+        break;
+      case "gameWin":
+        this.updateQuestProgress("final_victory", 1);
+        break;
+      default:
+        break;
+    }
   }
 
   updateTutorialPointer(pointerKey) {
@@ -10952,6 +11205,15 @@ class GameScene extends Phaser.Scene {
       player.openStack = [];
     player.openStack.push(randomCard); // 즉시 누적해서 기존 바닥 카드들이 유지되게 함
 
+    if (!this.isTutorialMode && playerId === myId) {
+      if (randomCard?.type === BOMB_CARD_TYPE) {
+        this.handleQuestEvent("bombOpened");
+      }
+      if (randomCard?.type === THUNDER_CARD_TYPE) {
+        this.handleQuestEvent("thunderOpened");
+      }
+    }
+
     if (this.isTutorialMode) {
       this.handleTutorialCardDrawn(playerId, randomCard);
     }
@@ -11326,6 +11588,10 @@ class GameScene extends Phaser.Scene {
       console.warn("processPenaltySingle auto-lock error", e);
     }
 
+    if (!this.isTutorialMode && failedPlayerId === (this.myId || "PLAYER_ME")) {
+      this.handleQuestEvent("penalty");
+    }
+
     // 💥 패널티 발생 시 강력한 실패 효과
     this.playFailureEffect();
 
@@ -11556,6 +11822,10 @@ class GameScene extends Phaser.Scene {
       };
     }
     if (this.comboState) this.comboState.lastTime = Date.now();
+
+    if (!this.isTutorialMode && winner.id === (this.myId || "PLAYER_ME")) {
+      this.handleQuestEvent("bellSuccess", { cardsWon: totalCollected });
+    }
 
     // 3. 턴 인덱스를 승자로 고정
     this.turnIndex = winnerIdx;
