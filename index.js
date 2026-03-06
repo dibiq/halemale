@@ -3361,7 +3361,7 @@ io.on("connection", (socket) => {
       p.cards = p.myDeck.length; // 💡 이 줄을 추가해서 개수를 명시적으로 저장
       p.openCard = null;
       p.openCardStack = [];
-      p.isReady = false;
+      p.isReady = p.isBot ? true : false;
       p.isEliminated = false; // 시작할 때 초기화
     });
 
