@@ -124,22 +124,21 @@ const TUTORIAL_STAGE_CONFIGS = [
   {
     key: "flip",
     title: "1단계 · 카드 제출",
-    description: "내 덱을 눌러 첫 카드를 제출해보세요!",
+    description: "내 카드를 눌러 카드를 제출해보세요!",
     pointer: "deck",
     reward: 20,
   },
   {
     key: "ringFive",
-    title: "2단계 · 숫자 5",
-    description: "바닥의 과일 합이 5가 되면 즉시 종을 눌러주세요!",
+    title: "2단계 · 카드 획득",
+    description: "바닥의 과일 합이 5가 되면 종을 눌러주세요!",
     pointer: "deck",
     reward: 20,
   },
   {
     key: "wrongBell",
-    title: "3단계 · 패널티 체험",
-    description:
-      "합계가 5가 아닐 때 종을 누르면 어떤 패널티가 있는지 직접 확인해보세요.",
+    title: "3단계 · 패널티",
+    description: "숫자합이 5가 아닐 때 종을 누르면 카드를 한 장씩 뺏겨요.",
     pointer: "deck",
     reward: 20,
   },
@@ -147,7 +146,7 @@ const TUTORIAL_STAGE_CONFIGS = [
     key: "bomb",
     title: "4단계 · 특수카드: 폭탄",
     description:
-      "폭탄이 열린 동안엔 합이 5여도 종을 누르면 실수예요. 카드만 제출하세요!",
+      "폭탄이 열린 동안엔 합이 5여도 종을 누르면 안돼요. 카드만 제출하세요!",
     pointer: "deck",
     reward: 20,
   },
@@ -155,15 +154,15 @@ const TUTORIAL_STAGE_CONFIGS = [
     key: "thunder",
     title: "5단계 · 특수카드: 번개",
     description:
-      "내 카드 합이 5가 아니어도 번개가 나오면 즉시 종을 눌러 카드를 가져가요!",
+      "카드 합이 5가 아니어도 번개가 나오면 즉시 종을 눌러 카드를 가져가요!",
     pointer: "deck",
     reward: 20,
   },
   {
     key: "plus1",
-    title: "6단계 · 특수카드: Plus1",
+    title: "6단계 · 특수카드: +1",
     description:
-      "Plus1 카드가 있으면 카드 숫자에 +1이 적용됩니다. 이를 고려해 종을 누르세요!",
+      "+1 카드가 있으면 모든 카드 숫자에 +1이 적용됩니다. 이를 계산해 종을 누르세요!",
     pointer: "deck",
     reward: 20,
   },
@@ -2630,7 +2629,7 @@ class LobbyScene extends Phaser.Scene {
     const { width, height } = this.cameras.main;
 
     // 토스트 컨테이너 생성
-    const toast = this.add.container(width / 2, -100).setDepth(2000);
+    const toast = this.add.container(width / 2, -50).setDepth(2000);
 
     const bg = this.add
       .rectangle(0, 0, Math.floor(width * 0.6), 64, 0x000000, 0.75)
@@ -10324,10 +10323,10 @@ class GameScene extends Phaser.Scene {
 
     if (!this.tutorialState.overlay) {
       const container = this.add
-        .container(width / 2, height * 0.1)
+        .container(width / 2, height * 0.92)
         .setDepth(9000);
       const bg = this.add
-        .rectangle(0, 0, width * 0.92, height * 0.16, 0x020617, 0.92)
+        .rectangle(0, 0, width * 0.92, height * 0.13, 0x020617, 0.92)
         .setOrigin(0.5)
         .setStrokeStyle(4, 0x38bdf8, 0.85);
       const titleText = this.add
@@ -10358,7 +10357,7 @@ class GameScene extends Phaser.Scene {
       this.tutorialState.titleText = titleText;
       this.tutorialState.descText = descText;
     } else {
-      this.tutorialState.overlay.setPosition(width / 2, height * 0.1);
+      this.tutorialState.overlay.setPosition(width / 2, height * 0.92);
     }
 
     if (title && this.tutorialState.titleText) {
@@ -10855,11 +10854,11 @@ class GameScene extends Phaser.Scene {
         this.tutorialState.expectingAiFive = true;
         this.showTutorialMessage({
           title: "좋아요!",
-          description: "AI가 카드를 내려 합계가 5가 되면 종을 눌러요.",
+          description: "AI가 카드를 내서 합계가 5가 되면 종을 눌러요.",
         });
         const tutor = this.roundData.players.find((p) => p.id !== myId);
         if (tutor) {
-          this.scheduleTutorialFlip(tutor.id, 700);
+          this.scheduleTutorialFlip(tutor.id, 3000);
         }
         return;
       }
@@ -10874,8 +10873,7 @@ class GameScene extends Phaser.Scene {
           this.tutorialState.expectedBellType = "ringFive";
           this.showTutorialMessage({
             title: "지금이 기회!",
-            description:
-              "바닥 합이 5개입니다. 중앙 종을 눌러 카드를 가져가세요!",
+            description: "바닥 합이 5개입니다. 종을 눌러 카드를 가져가세요!",
             pointer: "bell",
           });
         }
@@ -10903,13 +10901,13 @@ class GameScene extends Phaser.Scene {
         this.tutorialState.awaitingWrongBellAiFlip = true;
         this.canClick = false;
         this.showTutorialMessage({
-          title: "합계를 살펴봐요",
+          title: "과일 숫자를 살펴봐요",
           description:
             "지금은 합계가 3장입니다. AI가 한 장을 더 내려줄 때까지 기다려요.",
         });
         const tutor = this.roundData.players.find((p) => p.id !== myId);
         if (tutor) {
-          this.scheduleTutorialFlip(tutor.id, 700);
+          this.scheduleTutorialFlip(tutor.id, 3000);
         }
         return;
       }
@@ -10923,7 +10921,7 @@ class GameScene extends Phaser.Scene {
         this.showTutorialMessage({
           title: "이번엔 일부러 틀려봐요",
           description:
-            "바닥 합계가 아직 5가 아니어도 종을 누르면 패널티가 생깁니다. 체험해보세요!",
+            "바닥 합계가 5가 아닐때 종을 누르면 패널티가 받아요. 눌러보세요!",
           pointer: "bell",
         });
         return;
@@ -10941,7 +10939,7 @@ class GameScene extends Phaser.Scene {
         });
         const tutor = this.roundData.players.find((p) => p.id !== myId);
         if (tutor) {
-          this.scheduleTutorialFlip(tutor.id, 700);
+          this.scheduleTutorialFlip(tutor.id, 3000);
         }
         return;
       }
@@ -10959,7 +10957,7 @@ class GameScene extends Phaser.Scene {
         this.tutorialState.requireBellSuccess = true;
         this.tutorialState.expectedBellType = "plus1";
         this.showTutorialMessage({
-          title: "Plus1 효과!",
+          title: "+1 효과!",
           description:
             "카드 숫자에 +1이 적용되어 5가 되었습니다. 종을 눌러보세요!",
           pointer: "bell",
@@ -10988,9 +10986,9 @@ class GameScene extends Phaser.Scene {
       });
       const tutor = this.roundData.players.find((p) => p.id !== myId);
       if (tutor) {
-        this.scheduleTutorialFlip(tutor.id, 700);
+        this.scheduleTutorialFlip(tutor.id, 3000);
       } else {
-        this.time.delayedCall(700, () => {
+        this.time.delayedCall(3000, () => {
           this.tutorialState.forbidBell = false;
           this.tutorialState.pendingBombFollowup = false;
           this.completeTutorialStage("bomb");
@@ -11041,14 +11039,14 @@ class GameScene extends Phaser.Scene {
       this.tutorialState.awaitingPlusOneFlip = false;
       this.tutorialState.waitingForPlusOneBell = true;
       this.showTutorialMessage({
-        title: "Plus1 활성화",
+        title: "+1 활성화",
         description:
           "이제 바닥 모든 카드 숫자에 +1이 적용됩니다. 합계를 잘 살펴보세요!",
       });
       this.canClick = false;
       const tutor = this.roundData.players.find((p) => p.id !== myId);
       if (tutor) {
-        this.scheduleTutorialFlip(tutor.id, 700);
+        this.scheduleTutorialFlip(tutor.id, 3000);
       }
     }
   }
@@ -11110,11 +11108,11 @@ class GameScene extends Phaser.Scene {
       .rectangle(width / 2, height / 2, width, height, 0x000000, 0.78)
       .setInteractive();
     const panel = this.add
-      .image(width / 2, height / 2, "popupbg")
-      .setDisplaySize(width * 0.8, height * 0.6);
+      .image(width / 2, height / 2, "profilebg")
+      .setDisplaySize(width * 0.8, height * 0.45);
 
     const title = this.add
-      .text(width / 2, height * 0.33, "튜토리얼 완료!", {
+      .text(width / 2, height * 0.36, "튜토리얼 완료!", {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.075}px`,
         color: "#ffe082",
@@ -11127,35 +11125,35 @@ class GameScene extends Phaser.Scene {
     const desc = this.add
       .text(
         width / 2,
-        height * 0.42,
-        "카드 뒤집기와 종 사용을 완벽하게 익혔어요!",
+        height * 0.45,
+        "게임방법을 완벽하게 익혔어요!\n싱글플레이를 통해\n실력을 쌓아보세요!",
         {
           fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.04}px`,
+          fontSize: `${width * 0.045}px`,
           color: "#ffffff",
           align: "center",
-          wordWrap: { width: width * 0.68 },
+          wordWrap: { width: width * 0.6 },
           stroke: "#000000",
           strokeThickness: 4,
         },
       )
       .setOrigin(0.5);
 
-    const stageBonus = this.tutorialState.stageRewardsTotal || 0;
+    /*const stageBonus = this.tutorialState.stageRewardsTotal || 0;
     const stageBonusText = this.add
       .text(width / 2, height * 0.47, `단계 보상 합계: +${stageBonus} 코인`, {
         fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.038}px`,
+        fontSize: `${width * 0.045}px`,
         color: "#facc15",
         fontWeight: "bold",
         stroke: "#000",
         strokeThickness: 4,
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5);*/
 
     const reward = this.tutorialState.rewardCoins || 80;
     const rewardText = this.add
-      .text(width / 2, height * 0.51, `보상: +${reward} 코인`, {
+      .text(width / 2, height * 0.53, `추가보상: +${reward} 코인`, {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.05}px`,
         color: "#22c55e",
@@ -11167,7 +11165,7 @@ class GameScene extends Phaser.Scene {
 
     const confirmBtn = this.add
       .image(width / 2, height * 0.62, "ui_btn")
-      .setDisplaySize(width * 0.5, height * 0.09)
+      .setDisplaySize(width * 0.35, height * 0.07)
       .setTint(0x22c55e)
       .setInteractive({ useHandCursor: true });
     const confirmTxt = this.add
@@ -11186,7 +11184,7 @@ class GameScene extends Phaser.Scene {
       panel,
       title,
       desc,
-      stageBonusText,
+      //stageBonusText,
       rewardText,
       confirmBtn,
       confirmTxt,
@@ -13487,8 +13485,23 @@ class GameScene extends Phaser.Scene {
     // 토스트 컨테이너
     const toast = this.add.container(width / 2, -50).setDepth(10000);
 
+    const bg = this.add
+      .rectangle(0, 0, Math.floor(width * 0.85), 60, 0x000000, 0.75)
+      .setOrigin(0.5);
+
+    const txt = this.add
+      .text(0, 0, message, {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${Math.floor(width * 0.05)}px`,
+        color: color,
+        fontWeight: "bold",
+        stroke: "#000000",
+        strokeThickness: 4,
+      })
+      .setOrigin(0.5);
+
     // 배경 (반투명 검정 바)
-    const bg = this.add.rectangle(0, 0, width * 0.7, 40, 0x000000, 0.7);
+    /*const bg = this.add.rectangle(0, 0, width * 0.7, 40, 0x000000, 0.7);
     bg.setStrokeStyle(2, 0xffffff, 0.5); // 테두리
 
     // 텍스트
@@ -13499,7 +13512,7 @@ class GameScene extends Phaser.Scene {
         color: color,
         fontWeight: "bold",
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5);*/
 
     toast.add([bg, txt]);
 
@@ -13513,7 +13526,7 @@ class GameScene extends Phaser.Scene {
       duration: 500,
       ease: "Back.easeOut",
       onComplete: () => {
-        this.time.delayedCall(1000, () => {
+        this.time.delayedCall(2000, () => {
           // 2초 대기
           this.tweens.add({
             targets: toast,
