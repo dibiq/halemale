@@ -812,13 +812,10 @@ function getHumanReactionBaseline(room) {
 }
 
 function buildMatchAiProfile(room) {
-  // Use current players' reaction speed as a baseline, then randomize.
+  // Use current players' reaction speed as a baseline.
   const baseline = getHumanReactionBaseline(room);
-  const scale = 0.7 + Math.random() * 0.6; // 0.7x ~ 1.3x
-  const reactionTime = clampNumber(Math.round(baseline * scale), 500, 2800);
-  const flipBase = Math.round(baseline * 0.7);
-  const flipScale = 0.85 + Math.random() * 0.3; // 0.85x ~ 1.15x
-  const flipDelay = clampNumber(Math.round(flipBase * flipScale), 450, 2400);
+  const reactionTime = clampNumber(Math.round(baseline * 1.1), 500, 3000);
+  const flipDelay = clampNumber(Math.round(baseline * 0.8), 450, 2400);
 
   return {
     flipDelay,
@@ -916,13 +913,14 @@ function scheduleAiBell(room, io) {
 
   if (!isCorrectBell) return;
 
+  const baseline = getHumanReactionBaseline(room);
   room.players.forEach((player) => {
     if (!isBotPlayer(player)) return;
     if (player.isEliminated) return;
     if (!player.myDeck || player.myDeck.length <= 0) return;
 
-    const baseDelay = Number(player.aiProfile?.reactionTime || 1600);
-    const delay = baseDelay + Math.floor(Math.random() * 300);
+    const baseDelay = clampNumber(Math.round(baseline * 1.1), 500, 3200);
+    const delay = baseDelay + Math.floor(Math.random() * 120);
     room.aiTimers.bells[player.id] = setTimeout(() => {
       handleAiBell(room, io, player.id);
     }, delay);
