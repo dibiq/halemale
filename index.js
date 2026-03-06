@@ -977,11 +977,14 @@ function handleAiFlip(room, io, playerId) {
       if (room) room.isFlipping = false;
       return;
     }
+
+    // 다음 턴 진행 전에 뒤집기 잠금 해제
+    room.isFlipping = false;
+
     const dir = typeof room.turnDirection === "number" ? room.turnDirection : 1;
     room.turnIndex =
       (room.turnIndex + dir + room.players.length) % room.players.length;
     processSkipTurn(room, io);
-    room.isFlipping = false;
   }, 150);
 }
 
@@ -3895,13 +3898,15 @@ io.on("connection", (socket) => {
         return;
       }
 
+      // 다음 턴 진행 전에 뒤집기 잠금 해제
+      room.isFlipping = false;
+
       // 다음 턴으로 넘김 (탈락자는 processSkipTurn에서 자동으로 건너뜀)
       const dir =
         typeof room.turnDirection === "number" ? room.turnDirection : 1;
       room.turnIndex =
         (room.turnIndex + dir + room.players.length) % room.players.length;
       processSkipTurn(room, io);
-      room.isFlipping = false;
     }, 150);
   });
 
