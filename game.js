@@ -2134,9 +2134,8 @@ class LobbyScene extends Phaser.Scene {
           `• ${line}`,
           {
             fontFamily: GAME_FONTS.main,
-            fontSize: `${width * 0.038}px`,
+            fontSize: `${width * 0.035}px`,
             color: "#e2e8f0",
-            fontWeight: "bold",
             stroke: "#000000",
             strokeThickness: 2,
             wordWrap: { width: width * 0.64 },
@@ -6874,39 +6873,47 @@ class GameScene extends Phaser.Scene {
     ensurePlayer2Frames(this);
 
     const difficultyMultipliers = {
-      easy: 1.4,
-      normal: 1,
+      easy: 1.6,
+      normal: 1.2,
       hard: 0.75,
     };
     const aiMultiplier =
       difficultyMultipliers[this.roundData.aiDifficulty] || 1;
+    const hardReactionBoost = this.roundData.aiDifficulty === "hard" ? 0.7 : 2;
+    const hardFlipBoost = this.roundData.aiDifficulty === "hard" ? 0.7 : 1;
 
     const baseAiSettings = [
       {
         id: "AI_1",
         nickname: "초보",
-        reactionTime: 2500,
-        flipDelay: 1500,
+        reactionTime: 500,
+        flipDelay: 1200,
       }, // 느림
       {
         id: "AI_2",
         nickname: "중급",
-        reactionTime: 1800,
+        reactionTime: 500,
         flipDelay: 1200,
       }, // 보통
       {
         id: "AI_3",
         nickname: "천재",
-        reactionTime: 1200,
+        reactionTime: 500,
         flipDelay: 1000,
       }, // 빠름
     ];
 
-    this.aiSettings = baseAiSettings.map((ai) => ({
-      ...ai,
-      reactionTime: Math.round(ai.reactionTime * aiMultiplier),
-      flipDelay: Math.round(ai.flipDelay * aiMultiplier),
-    }));
+    this.aiSettings = baseAiSettings.map((ai) => {
+      const speedBoost = ai.id === "AI_3" ? 1 : hardReactionBoost;
+      const flipBoost = ai.id === "AI_3" ? 1 : hardFlipBoost;
+      const difficultyScale = Math.max(0.35, aiMultiplier * speedBoost);
+      const flipScale = Math.max(0.35, aiMultiplier * flipBoost);
+      return {
+        ...ai,
+        reactionTime: Math.round(ai.reactionTime * difficultyScale),
+        flipDelay: Math.round(ai.flipDelay * flipScale),
+      };
+    });
 
     if (this.isSingle) {
       // 싱글플레이면 소켓 ID가 아닌 "PLAYER_ME" 혹은 players[0].id를 내 ID로 강제 지정
@@ -10372,16 +10379,22 @@ class GameScene extends Phaser.Scene {
       const raw = stored[quest.key] || {};
       let count = Math.max(0, Number(raw.count) || 0);
       let stage = Math.max(0, Number(raw.stage) || 0);
+      const ready = Boolean(raw.ready);
       let runtime = buildQuestRuntime(quest, { stage, count: 0 });
       const loopGuard = 50;
       let guard = 0;
-      while (count >= runtime.target && guard < loopGuard) {
+      while (!ready && count >= runtime.target && guard < loopGuard) {
         count -= runtime.target;
         stage += 1;
         runtime = buildQuestRuntime(quest, { stage, count: 0 });
         guard += 1;
       }
-      safe[quest.key] = { count, stage };
+      const entry = {
+        count,
+        stage,
+        ready: ready && runtime ? true : false,
+      };
+      safe[quest.key] = entry;
     });
     return safe;
   }
@@ -10395,6 +10408,7 @@ class GameScene extends Phaser.Scene {
         payload[quest.key] = {
           count: entry ? entry.count : 0,
           stage: entry ? entry.stage || 0 : 0,
+          ready: Boolean(entry?.ready),
         };
       });
       localStorage.setItem(QUEST_PROGRESS_STORAGE_KEY, JSON.stringify(payload));
@@ -10482,7 +10496,42 @@ class GameScene extends Phaser.Scene {
         })
         .setOrigin(1, 0.5);
 
-      row.add([rowBg, progressTrack, progressFill, rowText, progressLabel]);
+      const claimBtnWidth = Math.max(60, rowHeight * 1.6);
+      const claimBtnHeight = rowHeight * 0.55;
+      const claimBtn = this.add
+        .container(rowWidth - claimBtnWidth * 0.55, rowHeight * 0.3)
+        .setDepth(2000 + index * 2);
+      const claimBg = this.add
+        .rectangle(0, 0, claimBtnWidth, claimBtnHeight, 0x22c55e, 0.9)
+        .setOrigin(0.5)
+        .setStrokeStyle(2, 0x15803d, 0.9);
+      const claimLabel = this.add
+        .text(0, 0, "수령", {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${Math.max(12, width * 0.02)}px`,
+          color: "#f8fafc",
+          fontStyle: "bold",
+        })
+        .setOrigin(0.5);
+      claimBtn.add([claimBg, claimLabel]);
+
+      const triggerClaim = () => this.handleQuestClaim(quest.key);
+      claimBg
+        .setInteractive({ useHandCursor: true })
+        .on("pointerdown", triggerClaim);
+      claimLabel
+        .setInteractive({ useHandCursor: true })
+        .on("pointerdown", triggerClaim);
+      claimBtn.setVisible(false);
+
+      row.add([
+        rowBg,
+        progressTrack,
+        progressFill,
+        rowText,
+        progressLabel,
+        claimBtn,
+      ]);
       container.add(row);
       this.questState.rows[quest.key] = {
         text: rowText,
@@ -10491,6 +10540,9 @@ class GameScene extends Phaser.Scene {
         barFill: progressFill,
         barLabel: progressLabel,
         barWidth,
+        claimBtn,
+        claimBg,
+        claimLabel,
       };
       this.refreshQuestRow(quest.key);
     });
@@ -10520,12 +10572,50 @@ class GameScene extends Phaser.Scene {
       );
       row.barFill.setScale(ratio, 1);
     }
+    if (row.claimBtn) {
+      const ready = Boolean(state.entry.ready);
+      row.claimBtn.setVisible(true);
+      row.claimBtn.setAlpha(ready ? 1 : 0.85);
+
+      if (row.claimBg) {
+        row.claimBg.setFillStyle(
+          ready ? 0x22c55e : 0x3b3f51,
+          ready ? 0.95 : 0.65,
+        );
+        if (ready) {
+          if (!row.claimBg.input || !row.claimBg.input.enabled) {
+            row.claimBg.setInteractive({ useHandCursor: true });
+          }
+          if (row.claimBg.input) {
+            row.claimBg.input.cursor = "pointer";
+          }
+        } else if (row.claimBg.input && row.claimBg.input.enabled) {
+          row.claimBg.disableInteractive();
+        }
+      }
+
+      if (row.claimLabel) {
+        row.claimLabel.setAlpha(ready ? 1 : 0.45);
+        row.claimLabel.setColor(ready ? "#f8fafc" : "#94a3b8");
+        if (ready) {
+          if (!row.claimLabel.input || !row.claimLabel.input.enabled) {
+            row.claimLabel.setInteractive({ useHandCursor: true });
+          }
+          if (row.claimLabel.input) {
+            row.claimLabel.input.cursor = "pointer";
+          }
+        } else if (row.claimLabel.input && row.claimLabel.input.enabled) {
+          row.claimLabel.disableInteractive();
+        }
+      }
+    }
   }
 
   incrementQuestCounter(key, amount = 1) {
     if (!this.questState) return;
     const state = this.getQuestRuntimeState(key);
     if (!state || amount <= 0) return;
+    if (state.entry.ready) return;
 
     state.entry.count = Math.min(
       state.target,
@@ -10533,7 +10623,11 @@ class GameScene extends Phaser.Scene {
     );
 
     if (state.entry.count >= state.target) {
-      this.handleQuestCompletion(state);
+      state.entry.count = state.target;
+      state.entry.ready = true;
+      this.refreshQuestRow(key);
+      this.saveQuestProgressSnapshot();
+      this.onQuestReady(state);
     } else {
       this.refreshQuestRow(key);
       this.saveQuestProgressSnapshot();
@@ -10544,11 +10638,40 @@ class GameScene extends Phaser.Scene {
     if (!this.questState) return;
     const state = this.getQuestRuntimeState(key);
     if (!state || typeof state.threshold !== "number") return;
+    if (state.entry.ready) return;
     if (Number(value) < state.threshold) return;
     this.incrementQuestCounter(key, 1);
   }
 
-  handleQuestCompletion(state) {
+  tryAdvanceComboQuest() {
+    if (!this.questState) return;
+    const state = this.getQuestRuntimeState("combo_duo");
+    if (!state || state.entry.ready) return;
+    const myId = this.myId || "PLAYER_ME";
+    if (!this.comboState || this.comboState.lastWinnerId !== myId) return;
+    const comboCount = Math.max(0, Number(this.comboState.count) || 0);
+    if (comboCount < state.target) return;
+    const remaining =
+      state.target - Math.min(state.target, state.entry.count || 0);
+    if (remaining <= 0) return;
+    this.incrementQuestCounter("combo_duo", remaining);
+  }
+
+  onQuestReady(state) {
+    this.showToast(
+      `${state.title} 완료! 수령 버튼을 눌러 보상을 받아요.`,
+      "#22c55e",
+    );
+  }
+
+  handleQuestClaim(key) {
+    if (!this.questState) return;
+    const state = this.getQuestRuntimeState(key);
+    if (!state || !state.entry.ready) {
+      this.showToast("아직 수령할 보상이 없어요!", "#f97316");
+      return;
+    }
+
     const { quest, entry, title } = state;
     const questKey = quest.key;
     if (quest.rewardCoins) {
@@ -10559,6 +10682,7 @@ class GameScene extends Phaser.Scene {
 
     entry.stage = (entry.stage || 0) + 1;
     entry.count = 0;
+    entry.ready = false;
 
     this.saveQuestProgressSnapshot();
     this.refreshQuestRow(questKey);
@@ -10578,13 +10702,7 @@ class GameScene extends Phaser.Scene {
         if (typeof payload.cardsWon === "number") {
           this.applyThresholdQuest("big_haul", payload.cardsWon);
         }
-        if (
-          this.comboState &&
-          this.comboState.lastWinnerId === myId &&
-          (this.comboState.count || 0) >= 2
-        ) {
-          this.incrementQuestCounter("combo_duo", 1);
-        }
+        this.tryAdvanceComboQuest();
         break;
       case "penalty":
         this.incrementQuestCounter("penalty_runner", 1);
