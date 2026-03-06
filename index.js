@@ -779,6 +779,279 @@ function processSkipTurn(room, io) {
       })),
     });
   }
+
+  // Schedule AI turn if the next player is a bot.
+  scheduleAiTurn(room, io);
+}
+
+const MULTI_AI_PRESETS = [
+  { label: "초보", flipDelay: 1500, reactionTime: 2400 },
+  { label: "중급", flipDelay: 1250, reactionTime: 1800 },
+  { label: "천재", flipDelay: 1000, reactionTime: 1200 },
+];
+
+function ensureAiState(room) {
+  if (!room) return;
+  if (typeof room.aiCounter !== "number") room.aiCounter = 0;
+  if (!room.aiTimers) {
+    room.aiTimers = { turn: null, bells: {} };
+  }
+  if (!room.aiTimers.bells) room.aiTimers.bells = {};
+}
+
+function clearAiTurnTimer(room) {
+  if (room && room.aiTimers && room.aiTimers.turn) {
+    clearTimeout(room.aiTimers.turn);
+    room.aiTimers.turn = null;
+  }
+}
+
+function clearAiBellTimers(room) {
+  if (!room || !room.aiTimers || !room.aiTimers.bells) return;
+  Object.values(room.aiTimers.bells).forEach((timer) => {
+    if (timer) clearTimeout(timer);
+  });
+  room.aiTimers.bells = {};
+}
+
+function isBotPlayer(player) {
+  return Boolean(player && player.isBot);
+}
+
+function buildAiPlayer(room) {
+  ensureAiState(room);
+  const idx = room.aiCounter % MULTI_AI_PRESETS.length;
+  const preset = MULTI_AI_PRESETS[idx];
+  const aiNumber = room.aiCounter + 1;
+  room.aiCounter += 1;
+
+  return {
+    id: `AI_BOT_${aiNumber}`,
+    nickname: `AI ${preset.label}`,
+    avatarKey: `player_${((aiNumber - 1) % 4) + 1}`,
+    level: 1,
+    coins: 0,
+    experience: 0,
+    specialCards: {},
+    items: [],
+    myDeck: [],
+    openCard: null,
+    openCardStack: [],
+    isReady: true,
+    isEliminated: false,
+    isBot: true,
+    aiProfile: {
+      flipDelay: preset.flipDelay,
+      reactionTime: preset.reactionTime,
+    },
+  };
+}
+
+function scheduleAiTurn(room, io) {
+  if (!room || !room.isGameStarted) return;
+  ensureAiState(room);
+  clearAiTurnTimer(room);
+
+  const current = room.players[room.turnIndex];
+  if (!isBotPlayer(current)) return;
+  if (!current.myDeck || current.myDeck.length === 0) return;
+  if (room.isFlipping) return;
+
+  const delayBase = Number(current.aiProfile?.flipDelay || 1200);
+  const delay = delayBase + Math.floor(Math.random() * 250);
+
+  room.aiTimers.turn = setTimeout(() => {
+    if (!room.isGameStarted) return;
+    const active = room.players[room.turnIndex];
+    if (!active || active.id !== current.id) return;
+    handleAiFlip(room, io, current.id);
+  }, delay);
+}
+
+function scheduleAiBell(room, io) {
+  if (!room || !room.isGameStarted) return;
+  if (room.bellLocked) return;
+  ensureAiState(room);
+  clearAiBellTimers(room);
+
+  const totals = getFruitTotals(room.players);
+  const isFive = Object.values(totals).some((t) => t === 5);
+  const hasThunder = hasThunderCardOnTable(room.players);
+  const hasBomb = hasBombCardOnTable(room.players);
+  const hasNot5 = hasNot5CardOnTable(room.players);
+  const isCorrectBell =
+    !hasBomb && (hasThunder || (hasNot5 ? !isFive : isFive));
+
+  if (!isCorrectBell) return;
+
+  room.players.forEach((player) => {
+    if (!isBotPlayer(player)) return;
+    if (player.isEliminated) return;
+    if (!player.myDeck || player.myDeck.length <= 0) return;
+
+    const baseDelay = Number(player.aiProfile?.reactionTime || 1600);
+    const delay = baseDelay + Math.floor(Math.random() * 300);
+    room.aiTimers.bells[player.id] = setTimeout(() => {
+      handleAiBell(room, io, player.id);
+    }, delay);
+  });
+}
+
+function handleAiFlip(room, io, playerId) {
+  if (!room || !room.isGameStarted) return;
+  if (room.isFlipping) return;
+
+  const p = room.players.find((pl) => pl.id === playerId);
+  if (!p || !p.myDeck || p.myDeck.length === 0) return;
+  if (room.players[room.turnIndex]?.id !== playerId) return;
+
+  if (room.bellLocked) {
+    room.bellLocked = false;
+  }
+
+  room.isFlipping = true;
+  room.lastFlipTime = Date.now();
+
+  const card = p.myDeck.pop();
+  p.openCard = card;
+  p.openCardStack.push(card);
+
+  try {
+    if (Array.isArray(room.blockEffects) && room.blockEffects.length > 0) {
+      room.blockEffects.forEach((eff) => {
+        eff.remainingTurns = (eff.remainingTurns || 0) - 1;
+      });
+
+      const expired = room.blockEffects.filter((e) => e.remainingTurns <= 0);
+      if (expired.length > 0) {
+        const expiredIds = new Set(expired.map((e) => e.id));
+        room.players.forEach((pl) => {
+          if (!pl || !Array.isArray(pl.openCardStack)) return;
+          pl.openCardStack = pl.openCardStack.filter(
+            (c) => !(c && c.type === "blockcard" && expiredIds.has(c.effectId)),
+          );
+        });
+
+        room.blockEffects = room.blockEffects.filter(
+          (e) => e.remainingTurns > 0,
+        );
+      }
+    }
+  } catch (e) {
+    console.warn("blockEffects processing error", e);
+  }
+
+  if (isTonCard(card)) {
+    room.turnDirection = room.turnDirection === -1 ? 1 : -1;
+  }
+
+  const totals = getFruitTotals(room.players);
+  const isFive = Object.values(totals).some((t) => t === 5);
+  const hasThunder = hasThunderCardOnTable(room.players);
+  const isBellSuccessWindow = isFive || hasThunder;
+
+  if (p.myDeck.length === 0) {
+    if (!isBellSuccessWindow) {
+      p.isEliminated = true;
+    }
+  }
+
+  io.to(room.roomId).emit("cardFlipped", {
+    playerId: p.id,
+    card,
+    openCardStack: p.openCardStack,
+    nextTurnId: p.id,
+    remainingCount: p.myDeck.length,
+    isEliminated: p.isEliminated,
+  });
+
+  scheduleAiBell(room, io);
+
+  if (p.isEliminated && checkGameOver(room, io)) {
+    room.isFlipping = false;
+    return;
+  }
+
+  setTimeout(() => {
+    if (!room || !room.isGameStarted) {
+      if (room) room.isFlipping = false;
+      return;
+    }
+    const dir = typeof room.turnDirection === "number" ? room.turnDirection : 1;
+    room.turnIndex =
+      (room.turnIndex + dir + room.players.length) % room.players.length;
+    processSkipTurn(room, io);
+    room.isFlipping = false;
+  }, 150);
+}
+
+function handleAiBell(room, io, playerId) {
+  if (!room || !room.isGameStarted) return;
+  if (room.bellLocked) return;
+  if (room.isFlipping) return;
+
+  const p = room.players.find((pl) => pl.id === playerId);
+  if (!p || p.isEliminated) return;
+
+  const hasOpenCards = room.players.some((player) => {
+    const hasOpenStack =
+      Array.isArray(player.openCardStack) && player.openCardStack.length > 0;
+    const hasOpenCard = Boolean(player.openCard);
+    return hasOpenStack || hasOpenCard;
+  });
+  if (!hasOpenCards) return;
+
+  const totals = getFruitTotals(room.players);
+  const isFive = Object.values(totals).some((t) => t === 5);
+  const hasThunder = hasThunderCardOnTable(room.players);
+  const hasBomb = hasBombCardOnTable(room.players);
+  const hasNot5 = hasNot5CardOnTable(room.players);
+  const isCorrectBell =
+    !hasBomb && (hasThunder || (hasNot5 ? !isFive : isFive));
+  if (!isCorrectBell) return;
+
+  clearAiBellTimers(room);
+  room.bellLocked = true;
+
+  const reactionTimeMs = room.lastFlipTime ? Date.now() - room.lastFlipTime : 0;
+  const reactionTimeSec = (reactionTimeMs / 1000).toFixed(2);
+
+  let collected = [];
+  room.players.forEach((player) => {
+    collected = [...collected, ...player.openCardStack];
+    player.openCardStack = [];
+    player.openCard = null;
+  });
+
+  const winnerIdx = room.players.findIndex((pl) => pl.id === playerId);
+  const winner = room.players[winnerIdx];
+  if (!winner) return;
+
+  winner.myDeck = [...collected, ...winner.myDeck];
+  room.turnIndex = winnerIdx;
+
+  room.players.forEach((pl) => {
+    pl.cards = pl.myDeck.length;
+    if (pl.cards === 0) {
+      pl.isEliminated = true;
+    } else {
+      pl.isEliminated = false;
+    }
+  });
+
+  if (checkGameOver(room, io)) return;
+
+  io.to(room.roomId).emit("bellResult", {
+    success: true,
+    winnerId: winner.id,
+    winnerNickname: winner.nickname,
+    players: room.players,
+    nextTurnId: winner.id,
+    collectedCount: collected.length,
+    reactionTime: reactionTimeSec,
+  });
+
+  processSkipTurn(room, io);
 }
 
 function emitServerDebug(room, event, payload = {}) {
@@ -2330,6 +2603,8 @@ io.on("connection", (socket) => {
       roomName: roomName,
       password: password, // 💡 비밀번호 저장 (비공개 방만)
       blockEffects: [], // 현재 방에 적용된 블록(먹물) 이펙트 목록
+      aiCounter: 0,
+      aiTimers: { turn: null, bells: {} },
     };
     const playerData = {
       id: socket.id,
@@ -2632,6 +2907,26 @@ io.on("connection", (socket) => {
         roomName: room.roomName,
       });
     }
+  });
+
+  socket.on("addAiPlayer", () => {
+    const room = rooms[socket.roomId];
+    if (!room || room.isGameStarted) return;
+    if (room.host !== socket.id) return;
+    if (room.players.length >= room.maxPlayers) return;
+
+    const aiPlayer = buildAiPlayer(room);
+    room.players.push(aiPlayer);
+
+    io.to(room.roomId).emit("playerJoined", {
+      roomId: room.roomId,
+      players: room.players,
+      hostId: room.host,
+      max: room.maxPlayers,
+      roomName: room.roomName,
+      newPlayerNickname: aiPlayer.nickname,
+      isRejoin: false,
+    });
   });
 
   socket.on("lobbyChatMessage", (data) => {
@@ -3402,6 +3697,9 @@ io.on("connection", (socket) => {
       nextTurnId: room.players[room.turnIndex].id,
       totalPlayers: room.players.length,
     });
+
+    // If the first turn belongs to a bot, schedule its action.
+    scheduleAiTurn(room, io);
     respond({
       ok: true,
       stage: "GAME_STARTED",
@@ -3583,6 +3881,8 @@ io.on("connection", (socket) => {
       isEliminated: p.isEliminated, // 💡 이 값을 반드시 포함해서 보냅니다!
     });
 
+    scheduleAiBell(room, io);
+
     if (p.isEliminated && checkGameOver(room, io)) {
       room.isFlipping = false;
       return;
@@ -3609,6 +3909,8 @@ io.on("connection", (socket) => {
     const room = rooms[sock.roomId];
     if (!room || !room.isGameStarted) return;
     if (room.bellLocked) return;
+
+    clearAiBellTimers(room);
 
     // If a flip is currently being processed, wait briefly and re-evaluate
     if (room.isFlipping) {

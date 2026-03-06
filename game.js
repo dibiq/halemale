@@ -5364,6 +5364,46 @@ class LobbyScene extends Phaser.Scene {
         })
         .setOrigin(0.5);
       this.lobbyUIContainer.add(emptyTxt);
+
+      const isEmptySlot = i >= players.length;
+      const canAddAi = isHost && isEmptySlot && players.length < maxPlayers;
+      if (canAddAi) {
+        const aiBtnY = pos.y + cardH * 0.18;
+        const aiBtn = this.add
+          .image(pos.x, aiBtnY, "uibtn")
+          .setDisplaySize(cardW * 0.55, height * 0.045)
+          .setTint(0x3498db)
+          .setInteractive({ useHandCursor: true });
+        const aiBtnText = this.add
+          .text(pos.x, aiBtnY, "AI추가", {
+            fontFamily: GAME_FONTS.main,
+            fontSize: `${width * 0.03}px`,
+            color: "#ffffff",
+            fontWeight: "bold",
+          })
+          .setOrigin(0.5);
+        this.lobbyUIContainer.add([aiBtn, aiBtnText]);
+
+        aiBtn.on("pointerdown", () => {
+          if (this.aiAddPending) return;
+          this.aiAddPending = true;
+          this.sound.play("pop", { volume: 0.1 });
+          this.tweens.add({
+            targets: [aiBtn, aiBtnText],
+            scaleX: "*=0.95",
+            scaleY: "*=0.95",
+            duration: 80,
+            yoyo: true,
+            ease: "Quad.easeInOut",
+            onComplete: () => {
+              socket.emit("addAiPlayer");
+              this.time.delayedCall(400, () => {
+                this.aiAddPending = false;
+              });
+            },
+          });
+        });
+      }
     }
 
     // 플레이어 카드 그리기
