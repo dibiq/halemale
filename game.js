@@ -4314,6 +4314,10 @@ class LobbyScene extends Phaser.Scene {
           const maxVisibleRooms = 4;
           const roomsPerPage = 4;
           const listWidth = width * 0.58;
+          const itemGap = 10;
+          const popupBgHeight = height * 0.5;
+          const contentTop = -popupBgHeight * 0.5 + height * 0.06;
+          const listStartY = contentTop + roomItemHeight * 0.5;
 
           // 페이지 상태 관리
           let currentPage = 0;
@@ -4334,7 +4338,7 @@ class LobbyScene extends Phaser.Scene {
             for (let i = startIdx; i < endIdx; i++) {
               const room = rooms[i];
               const pageIndex = i - startIdx;
-              const itemY = pageIndex * (roomItemHeight + 10);
+              const itemY = listStartY + pageIndex * (roomItemHeight + itemGap);
 
               const isPlaying = room.isGameStarted === true;
 
@@ -4420,70 +4424,67 @@ class LobbyScene extends Phaser.Scene {
 
           // 페이지 버튼 추가 (방 목록 아래에)
           if (totalPages > 1) {
-            const pageButtonY = (maxVisibleRooms + 1) * (roomItemHeight + 10);
+            const pageButtonY =
+              listStartY +
+              maxVisibleRooms * (roomItemHeight + itemGap) +
+              height * 0.01;
             const buttonGap = width * 0.15;
 
             // 이전 버튼
-            const prevBtnBg = this.add
-              .rectangle(
-                -buttonGap,
-                pageButtonY,
-                width * 0.2,
-                height * 0.05,
-                0x3498db,
-              )
-              .setInteractive({ useHandCursor: true });
             const prevBtnText = this.add
               .text(-buttonGap, pageButtonY, "◀ 이전", {
                 fontFamily: "Jua",
                 fontSize: `${width * 0.028}px`,
                 color: "#ffffff",
+                stroke: "#000000",
+                strokeThickness: 3,
               })
-              .setOrigin(0.5);
+              .setOrigin(0.5)
+              .setInteractive({ useHandCursor: true });
 
             // 다음 버튼
-            const nextBtnBg = this.add
-              .rectangle(
-                buttonGap,
-                pageButtonY,
-                width * 0.2,
-                height * 0.05,
-                0x3498db,
-              )
-              .setInteractive({ useHandCursor: true });
             const nextBtnText = this.add
               .text(buttonGap, pageButtonY, "다음 ▶", {
                 fontFamily: "Jua",
                 fontSize: `${width * 0.028}px`,
                 color: "#ffffff",
+                stroke: "#000000",
+                strokeThickness: 3,
               })
-              .setOrigin(0.5);
+              .setOrigin(0.5)
+              .setInteractive({ useHandCursor: true });
 
             // 페이지 표시
             const pageIndicator = this.add
               .text(0, pageButtonY, `${currentPage + 1}/${totalPages}`, {
                 fontFamily: "Jua",
                 fontSize: `${width * 0.028}px`,
-                color: "#cccccc",
+                color: "#ffffff",
+                stroke: "#000000",
+                strokeThickness: 3,
               })
               .setOrigin(0.5);
 
             // 버튼 상태 업데이트
             const updateButtonStates = () => {
               if (currentPage === 0) {
-                prevBtnBg.setFillStyle(0x7f8c8d);
-                prevBtnBg.disableInteractive();
+                prevBtnText.setColor("#ffffff");
+                prevBtnText.setStroke("#000000");
+                prevBtnText.disableInteractive();
               } else {
-                prevBtnBg.setFillStyle(0x3498db);
-                prevBtnBg.setInteractive({ useHandCursor: true });
+                prevBtnText.setColor("#ffffff");
+                prevBtnText.setStroke("#000000");
+                prevBtnText.setInteractive({ useHandCursor: true });
               }
 
               if (currentPage === totalPages - 1) {
-                nextBtnBg.setFillStyle(0x7f8c8d);
-                nextBtnBg.disableInteractive();
+                nextBtnText.setColor("#ffffff");
+                nextBtnText.setStroke("#000000");
+                nextBtnText.disableInteractive();
               } else {
-                nextBtnBg.setFillStyle(0x3498db);
-                nextBtnBg.setInteractive({ useHandCursor: true });
+                nextBtnText.setColor("#ffffff");
+                nextBtnText.setStroke("#000000");
+                nextBtnText.setInteractive({ useHandCursor: true });
               }
 
               pageIndicator.setText(`${currentPage + 1}/${totalPages}`);
@@ -4492,15 +4493,6 @@ class LobbyScene extends Phaser.Scene {
             updateButtonStates();
 
             // 이전 버튼 클릭
-            prevBtnBg.on("pointerdown", () => {
-              if (currentPage > 0) {
-                this.sound.play("pop", { volume: 0.1 });
-                currentPage--;
-                displayRoomsPage();
-                updateButtonStates();
-              }
-            });
-
             prevBtnText.on("pointerdown", () => {
               if (currentPage > 0) {
                 this.sound.play("pop", { volume: 0.1 });
@@ -4511,15 +4503,6 @@ class LobbyScene extends Phaser.Scene {
             });
 
             // 다음 버튼 클릭
-            nextBtnBg.on("pointerdown", () => {
-              if (currentPage < totalPages - 1) {
-                this.sound.play("pop", { volume: 0.1 });
-                currentPage++;
-                displayRoomsPage();
-                updateButtonStates();
-              }
-            });
-
             nextBtnText.on("pointerdown", () => {
               if (currentPage < totalPages - 1) {
                 this.sound.play("pop", { volume: 0.1 });
@@ -4529,13 +4512,7 @@ class LobbyScene extends Phaser.Scene {
               }
             });
 
-            container.add([
-              prevBtnBg,
-              prevBtnText,
-              nextBtnBg,
-              nextBtnText,
-              pageIndicator,
-            ]);
+            container.add([prevBtnText, nextBtnText, pageIndicator]);
           }
         };
 
@@ -12983,7 +12960,7 @@ class GameScene extends Phaser.Scene {
       const nameText = this.add
         .text(
           pos.x,
-          pos.y + width * 0.03,
+          pos.y + width * 0,
           player?.nickname || player?.id || "요리사",
           {
             fontFamily: GAME_FONTS.main,
