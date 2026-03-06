@@ -3384,9 +3384,8 @@ io.on("connection", (socket) => {
     room.isFlipping = false;
     room.lastFlipTime = null;
     const total = room.players.length;
-    // 테스트를 위해 덱 크기 조절 가능 (실제 운영 시 deck 사용)
-    // 단위 테스트를 빠르게 하기 위해 각 플레이어당 10장으로 줄입니다.
-    const gameDeck = deck.slice(0, total * 10);
+    // 전체 덱을 사용해 균등 분배
+    const gameDeck = deck;
 
     const matchAiProfile = buildMatchAiProfile(room);
     room.players.forEach((p, idx) => {
