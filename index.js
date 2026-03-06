@@ -784,11 +784,47 @@ function processSkipTurn(room, io) {
   scheduleAiTurn(room, io);
 }
 
-const MULTI_AI_PRESETS = [
-  { label: "초보", flipDelay: 1500, reactionTime: 2400 },
-  { label: "중급", flipDelay: 1250, reactionTime: 1800 },
-  { label: "천재", flipDelay: 1000, reactionTime: 1200 },
-];
+const MULTI_AI_BASE_PROFILE = {
+  flipDelay: 1200,
+  reactionTime: 1700,
+};
+
+function clampNumber(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function getHumanReactionBaseline(room) {
+  const samples = [];
+  if (room && room.reactionSamples) {
+    Object.values(room.reactionSamples).forEach((arr) => {
+      if (Array.isArray(arr)) samples.push(...arr);
+    });
+  }
+
+  if (samples.length === 0) return MULTI_AI_BASE_PROFILE.reactionTime;
+
+  const sorted = samples.slice().sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const median =
+    sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  return clampNumber(Math.round(median), 600, 2600);
+}
+
+function buildMatchAiProfile(room) {
+  // Use current players' reaction speed as a baseline, then randomize.
+  const baseline = getHumanReactionBaseline(room);
+  const scale = 0.7 + Math.random() * 0.6; // 0.7x ~ 1.3x
+  const reactionTime = clampNumber(Math.round(baseline * scale), 500, 2800);
+  const flipBase = Math.round(baseline * 0.7);
+  const flipScale = 0.85 + Math.random() * 0.3; // 0.85x ~ 1.15x
+  const flipDelay = clampNumber(Math.round(flipBase * flipScale), 450, 2400);
+
+  return {
+    flipDelay,
+    reactionTime,
+    baseline,
+  };
+}
 
 function ensureAiState(room) {
   if (!room) return;
@@ -820,14 +856,12 @@ function isBotPlayer(player) {
 
 function buildAiPlayer(room) {
   ensureAiState(room);
-  const idx = room.aiCounter % MULTI_AI_PRESETS.length;
-  const preset = MULTI_AI_PRESETS[idx];
   const aiNumber = room.aiCounter + 1;
   room.aiCounter += 1;
 
   return {
     id: `AI_BOT_${aiNumber}`,
-    nickname: `AI ${preset.label}`,
+    nickname: `AI ${aiNumber}`,
     avatarKey: `player_${((aiNumber - 1) % 4) + 1}`,
     level: 1,
     coins: 0,
@@ -840,10 +874,7 @@ function buildAiPlayer(room) {
     isReady: true,
     isEliminated: false,
     isBot: true,
-    aiProfile: {
-      flipDelay: preset.flipDelay,
-      reactionTime: preset.reactionTime,
-    },
+    aiProfile: null,
   };
 }
 
@@ -2608,6 +2639,7 @@ io.on("connection", (socket) => {
       blockEffects: [], // 현재 방에 적용된 블록(먹물) 이펙트 목록
       aiCounter: 0,
       aiTimers: { turn: null, bells: {} },
+      reactionSamples: {},
     };
     const playerData = {
       id: socket.id,
@@ -3356,6 +3388,7 @@ io.on("connection", (socket) => {
     // 단위 테스트를 빠르게 하기 위해 각 플레이어당 10장으로 줄입니다.
     const gameDeck = deck.slice(0, total * 10);
 
+    const matchAiProfile = buildMatchAiProfile(room);
     room.players.forEach((p, idx) => {
       p.myDeck = gameDeck.filter((_, i) => i % total === idx);
       p.cards = p.myDeck.length; // 💡 이 줄을 추가해서 개수를 명시적으로 저장
@@ -3363,6 +3396,21 @@ io.on("connection", (socket) => {
       p.openCardStack = [];
       p.isReady = p.isBot ? true : false;
       p.isEliminated = false; // 시작할 때 초기화
+      if (p.isBot) {
+        // Keep AI skill similar within a match, with slight variation.
+        const variance = 0.95 + Math.random() * 0.1;
+        p.aiProfile = {
+          flipDelay: Math.max(
+            450,
+            Math.round(matchAiProfile.flipDelay * variance),
+          ),
+          reactionTime: Math.max(
+            500,
+            Math.round(matchAiProfile.reactionTime * variance),
+          ),
+          baseline: matchAiProfile.baseline,
+        };
+      }
     });
 
     injectThunderCardsToPlayers(room.players, THUNDER_CARD_COUNT);
@@ -3963,6 +4011,17 @@ io.on("connection", (socket) => {
         ? Date.now() - room.lastFlipTime
         : 0;
       const reactionTimeSec = (reactionTimeMs / 1000).toFixed(2);
+
+      // Track human reaction times to calibrate AI speed next match.
+      if (!room.reactionSamples) room.reactionSamples = {};
+      const winnerId = sock.id;
+      if (!room.reactionSamples[winnerId]) room.reactionSamples[winnerId] = [];
+      if (reactionTimeMs > 0) {
+        room.reactionSamples[winnerId].push(reactionTimeMs);
+        if (room.reactionSamples[winnerId].length > 5) {
+          room.reactionSamples[winnerId].shift();
+        }
+      }
 
       // --- [성공 시나리오] ---
       let collected = [];
