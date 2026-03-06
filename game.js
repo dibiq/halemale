@@ -2088,13 +2088,13 @@ class LobbyScene extends Phaser.Scene {
       .setInteractive();
 
     const panel = this.add
-      .image(centerX, popupY, "popupbg")
-      .setDisplaySize(width * 0.82, height * 0.7);
+      .image(centerX, popupY, "profilebg")
+      .setDisplaySize(width * 0.82, height * 0.4);
 
     const title = this.add
-      .text(centerX, popupY - height * 0.26, "튜토리얼 : 싱글플레이 안내", {
+      .text(centerX, popupY * 0.75, "튜토리얼", {
         fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.07}px`,
+        fontSize: `${width * 0.06}px`,
         color: "#ffd700",
         fontWeight: "bold",
         stroke: "#000000",
@@ -2105,16 +2105,16 @@ class LobbyScene extends Phaser.Scene {
     const subtitle = this.add
       .text(
         centerX,
-        popupY - height * 0.17,
-        "싱글플레이 화면으로 기본 조작을 익히고 튜토리얼을 완료하세요!",
+        popupY * 0.95,
+        "게임플레이 방법을 익히고 엄청난 보상을 받아가세요!",
         {
           fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.038}px`,
+          fontSize: `${width * 0.05}px`,
           color: "#ffffff",
           align: "center",
           stroke: "#000000",
           strokeThickness: 3,
-          wordWrap: { width: width * 0.7 },
+          wordWrap: { width: width * 0.55 },
         },
       )
       .setOrigin(0.5);
@@ -2146,13 +2146,13 @@ class LobbyScene extends Phaser.Scene {
     });
 
     const startBtn = this.add
-      .image(centerX, popupY + height * 0.18, "ui_btn")
-      .setDisplaySize(width * 0.45, height * 0.075)
+      .image(centerX, popupY * 1.2, "ui_btn")
+      .setDisplaySize(width * 0.33, height * 0.07)
       .setTint(0x2ecc71)
       .setInteractive({ useHandCursor: true });
 
     const startBtnText = this.add
-      .text(centerX, popupY + height * 0.18, "튜토리얼 시작", {
+      .text(centerX, popupY * 1.2, "시작하기", {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.05}px`,
         color: "#ffffff",
@@ -2184,7 +2184,7 @@ class LobbyScene extends Phaser.Scene {
     });
 
     const skipText = this.add
-      .text(centerX, popupY + height * 0.28, "나중에 할게요", {
+      .text(centerX, popupY * 1.42, "나중에 할게요", {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.035}px`,
         color: "#f1f5f9",
