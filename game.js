@@ -5345,7 +5345,7 @@ class LobbyScene extends Phaser.Scene {
       const isEmptySlot = i >= players.length;
       const canAddAi = isHost && isEmptySlot && players.length < maxPlayers;
       if (canAddAi) {
-        const aiBtnY = pos.y + cardH * 0.18;
+        const aiBtnY = pos.y + cardH * 0.21;
         const aiBtn = this.add
           .image(pos.x, aiBtnY, "uibtn")
           .setDisplaySize(cardW * 0.55, height * 0.045)
