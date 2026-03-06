@@ -13,7 +13,7 @@ const SINGLE_TON_CARD_COUNT = 1;
 const PEN_CARD_TYPE = "pen";
 const SINGLE_PEN_CARD_COUNT = 0;
 const PLUS1_CARD_TYPE = "plus1";
-const SINGLE_PLUS1_CARD_COUNT = 1;
+const SINGLE_PLUS1_CARD_COUNT = 12;
 const PLUS2_CARD_TYPE = "plus2";
 const SINGLE_PLUS2_CARD_COUNT = 0;
 const NOT5_CARD_TYPE = "not5";
@@ -6873,45 +6873,53 @@ class GameScene extends Phaser.Scene {
     ensurePlayer2Frames(this);
 
     const difficultyMultipliers = {
-      easy: 1.6,
-      normal: 1.2,
-      hard: 0.75,
+      easy: 1.35,
+      normal: 1,
+      hard: 0.8,
     };
     const aiMultiplier =
       difficultyMultipliers[this.roundData.aiDifficulty] || 1;
-    const hardReactionBoost = this.roundData.aiDifficulty === "hard" ? 0.7 : 2;
-    const hardFlipBoost = this.roundData.aiDifficulty === "hard" ? 0.7 : 1;
+    const isHardMode = this.roundData.aiDifficulty === "hard";
+    const hardReactionScaleById = {
+      AI_1: 0.18,
+      AI_2: 0.22,
+      AI_3: 0.3,
+    };
 
     const baseAiSettings = [
       {
         id: "AI_1",
         nickname: "초보",
-        reactionTime: 500,
-        flipDelay: 1200,
-      }, // 느림
+        reactionTime: 2400,
+        flipDelay: 1500,
+      },
       {
         id: "AI_2",
         nickname: "중급",
-        reactionTime: 500,
-        flipDelay: 1200,
-      }, // 보통
+        reactionTime: 1800,
+        flipDelay: 1250,
+      },
       {
         id: "AI_3",
         nickname: "천재",
-        reactionTime: 500,
+        reactionTime: 1200,
         flipDelay: 1000,
-      }, // 빠름
+      },
     ];
 
     this.aiSettings = baseAiSettings.map((ai) => {
-      const speedBoost = ai.id === "AI_3" ? 1 : hardReactionBoost;
-      const flipBoost = ai.id === "AI_3" ? 1 : hardFlipBoost;
-      const difficultyScale = Math.max(0.35, aiMultiplier * speedBoost);
-      const flipScale = Math.max(0.35, aiMultiplier * flipBoost);
+      const hardReactionScale = hardReactionScaleById[ai.id] || 0.4;
+      const reactionScale = isHardMode
+        ? aiMultiplier * hardReactionScale
+        : aiMultiplier;
+      const flipScale = aiMultiplier;
       return {
         ...ai,
-        reactionTime: Math.round(ai.reactionTime * difficultyScale),
-        flipDelay: Math.round(ai.flipDelay * flipScale),
+        reactionTime: Math.max(
+          120,
+          Math.round(ai.reactionTime * reactionScale),
+        ),
+        flipDelay: Math.max(250, Math.round(ai.flipDelay * flipScale)),
       };
     });
 
@@ -7516,15 +7524,37 @@ class GameScene extends Phaser.Scene {
           Array.isArray(data.recipients) &&
           data.recipients.length > 0
         ) {
-          const prevPlayers = this.roundData.players.map((p) => ({
-            ...p,
-            openStack: p.openStack ? [...p.openStack] : [],
-          }));
-          console.log("[specialUsed event] data:", data);
-          console.log(
-            "[specialUsed event] prevPlayers snapshot:",
-            prevPlayers.map((p) => ({ id: p.id, cards: p.cards })),
+          let prevPlayers;
+          const pendingSnapshot = this.pendingThiefSnapshot;
+          const snapshotFresh =
+            pendingSnapshot &&
+            pendingSnapshot.by === data.by &&
+            (typeof pendingSnapshot.createdAt !== "number" ||
+              Date.now() - pendingSnapshot.createdAt < 10000);
+
+          if (snapshotFresh && Array.isArray(pendingSnapshot.players)) {
+            prevPlayers = pendingSnapshot.players.map((p) => ({
+              ...p,
+              openStack: p.openStack ? [...p.openStack] : [],
+            }));
+            this.pendingThiefSnapshot = null;
+          } else {
+            prevPlayers = this.roundData.players.map((p) => ({
+              ...p,
+              openStack: p.openStack ? [...p.openStack] : [],
+            }));
+          }
+
+          const basePlayers = prevPlayers.map((p) => ({ ...p }));
+          const thiefResult = this.buildThiefPlayerSnapshot(
+            basePlayers,
+            data.by,
+            data.recipients,
           );
+          const updatedPlayers =
+            Array.isArray(data.players) && data.players.length > 0
+              ? data.players
+              : thiefResult.players;
 
           this.playThiefAnimation({
             byId: data.by,
@@ -7532,53 +7562,51 @@ class GameScene extends Phaser.Scene {
             players: prevPlayers,
             onComplete: () => {
               try {
-                if (Array.isArray(data.players) && data.players.length > 0) {
-                  console.log(
-                    "[specialUsed merge] incoming players:",
-                    data.players.map((p) => ({ id: p.id, cards: p.cards })),
-                  );
+                if (
+                  Array.isArray(updatedPlayers) &&
+                  updatedPlayers.length > 0
+                ) {
                   this.roundData.players.forEach((oldPlayer) => {
-                    const newPlayer = data.players.find(
+                    const updated = updatedPlayers.find(
                       (p) => p.id === oldPlayer.id,
                     );
-                    if (newPlayer) {
-                      console.log(
-                        "[specialUsed merge] merging player",
-                        oldPlayer.id,
-                        "oldCards=",
-                        oldPlayer.cards,
-                        "newCards=",
-                        newPlayer.cards,
-                      );
+                    if (updated) {
                       const preservedOpenStack = oldPlayer.openStack;
-                      Object.assign(oldPlayer, newPlayer);
+                      Object.assign(oldPlayer, updated);
                       oldPlayer.openStack = preservedOpenStack;
                     }
                   });
-                  console.log(
-                    "[specialUsed merge] after merge roundData players:",
-                    this.roundData.players.map((p) => ({
-                      id: p.id,
-                      cards: p.cards,
-                    })),
-                  );
+                  this.updateEliminationStatus();
                   this.renderTable(this.roundData.players);
-                  if (
-                    Array.isArray(data.shielded) &&
-                    data.shielded.length > 0
-                  ) {
-                    console.log(
-                      "[debug] specialUsed shielded ids:",
-                      data.shielded,
-                    );
-                    try {
-                      this.showToast(
-                        `방패 소모: ${data.shielded.join(",")}`,
-                        "#f1c40f",
-                      );
-                    } catch (e) {}
-                    data.shielded.forEach((id) => this.showShieldEffect(id));
-                  }
+                }
+
+                const beforeThief = prevPlayers.find((p) => p.id === data.by);
+                const afterThief = Array.isArray(updatedPlayers)
+                  ? updatedPlayers.find((p) => p.id === data.by)
+                  : null;
+                const computedStolen =
+                  beforeThief && afterThief
+                    ? Math.max(
+                        0,
+                        (Number(afterThief.cards) || 0) -
+                          (Number(beforeThief.cards) || 0),
+                      )
+                    : 0;
+                const usingServerPlayers =
+                  Array.isArray(data.players) && data.players.length > 0;
+                const stolenCount = usingServerPlayers
+                  ? computedStolen
+                  : typeof thiefResult?.stolenCount === "number"
+                    ? thiefResult.stolenCount
+                    : computedStolen;
+                const toastColor = stolenCount > 0 ? "#2ecc71" : "#f39c12";
+                const toastMsg =
+                  stolenCount > 0
+                    ? `도둑 카드 사용: 총 ${stolenCount}장을 훔쳤습니다!`
+                    : "도둑 카드 사용: 획득할 카드가 없습니다.";
+                this.showToast(toastMsg, toastColor);
+                if (Array.isArray(data.shielded) && data.shielded.length > 0) {
+                  data.shielded.forEach((id) => this.showShieldEffect(id));
                 }
                 if (data.message) this.showToast(data.message, "#2ecc71");
               } catch (e) {
@@ -9367,6 +9395,9 @@ class GameScene extends Phaser.Scene {
       const timeout = this.time.delayedCall(2500, () => {
         if (handled) return;
         handled = true;
+        if (Number(cardId) === 7) {
+          this.pendingThiefSnapshot = null;
+        }
         this.showToast("서버 응답이 없어 사용이 취소되었습니다.", "#e74c3c");
       });
 
@@ -9381,6 +9412,23 @@ class GameScene extends Phaser.Scene {
           return;
         }
         this.pendingSpecialUse[myId] = true;
+
+        if (Number(cardId) === 7 && Array.isArray(this.roundData?.players)) {
+          try {
+            this.pendingThiefSnapshot = {
+              by: myId,
+              players: this.roundData.players.map((p) => ({
+                ...p,
+                openStack: p.openStack ? [...p.openStack] : [],
+              })),
+              createdAt: Date.now(),
+            };
+          } catch (snapshotErr) {
+            console.warn("store thief snapshot failed", snapshotErr);
+            this.pendingThiefSnapshot = null;
+          }
+        }
+
         const specialCardsOwned =
           JSON.parse(localStorage.getItem("specialCards")) || {};
         specialCardsOwned[cardId] = (specialCardsOwned[cardId] || 0) - 1;
@@ -9438,6 +9486,9 @@ class GameScene extends Phaser.Scene {
           } catch (e) {}
           this.showToast(`${cardName} 사용 요청을 보냈습니다.`, "#f39c12");
         } else {
+          if (Number(cardId) === 7) {
+            this.pendingThiefSnapshot = null;
+          }
           try {
             const serverCards = (res && res.updatedSpecialCards) || null;
             if (serverCards) {
@@ -12497,7 +12548,7 @@ class GameScene extends Phaser.Scene {
         const myId = this.myId || "PLAYER_ME";
         const players = this.roundData.players;
         const givers = players.filter(
-          (p) => p.id !== myId && !p.isEliminated && (Number(p.cards) || 0) > 0,
+          (p) => p && p.id !== myId && !p.isEliminated,
         );
 
         // 애니메이션을 위해 현재 상태 복사
@@ -12506,7 +12557,24 @@ class GameScene extends Phaser.Scene {
           openStack: p.openStack ? [...p.openStack] : [],
         }));
 
-        if (givers.length === 0) {
+        const myDeck = this.getSingleDeck(myId);
+        const stealOrder = [];
+        let stolenCount = 0;
+
+        givers.forEach((giver) => {
+          if (!giver || (Number(giver.cards) || 0) <= 0) return;
+          const giverDeck = this.getSingleDeck(giver.id);
+          if (!Array.isArray(giverDeck) || giverDeck.length === 0) return;
+          const moved = giverDeck.pop();
+          if (!moved) return;
+          myDeck.unshift(moved);
+          stealOrder.push(giver.id);
+          stolenCount += 1;
+          giver.cards = Math.max(0, Number(giver.cards) - 1);
+          giver.remainingCards = giver.cards;
+        });
+
+        if (stolenCount === 0) {
           // 카드 줄 플레이어가 없으면 바로 처리
           specialCardsOwned[cardId] = count - 1;
           if (specialCardsOwned[cardId] <= 0) delete specialCardsOwned[cardId];
@@ -12526,25 +12594,9 @@ class GameScene extends Phaser.Scene {
         } else {
           // 즉시 카드 이동 및 UI 반영 (낙관적 적용)
           try {
-            const myDeck = this.getSingleDeck(myId);
-            givers.forEach((giver) => {
-              const giverDeck = this.getSingleDeck(giver.id);
-              const moved =
-                giverDeck.length > 0
-                  ? giverDeck.pop()
-                  : this.createRandomFruitCard();
-              myDeck.unshift(moved);
-              // 라운드 데이터에도 즉시 반영
-              const gp = players.find((p) => p.id === giver.id);
-              if (gp) {
-                gp.cards = Math.max(0, Number(gp.cards) - 1);
-                gp.remainingCards = gp.cards;
-              }
-            });
-
             const me = players.find((p) => p.id === myId);
             if (me) {
-              me.cards = (me.cards || 0) + givers.length;
+              me.cards = (me.cards || 0) + stolenCount;
               me.remainingCards = me.cards;
             }
 
@@ -12570,11 +12622,11 @@ class GameScene extends Phaser.Scene {
             // 애니메이션은 이전 상태(prevPlayers)를 기준으로 재생
             this.playThiefAnimation({
               byId: myId,
-              fromIds: givers.map((g) => g.id),
+              fromIds: stealOrder,
               players: prevPlayers,
               onComplete: () => {
                 this.showToast(
-                  "도둑 카드 사용: 생존 플레이어들로부터 3장씩 획득했습니다!",
+                  `도둑 카드 사용: 총 ${stolenCount}장을 훔쳤습니다!`,
                   "#2ecc71",
                 );
               },
@@ -13490,6 +13542,37 @@ class GameScene extends Phaser.Scene {
         });
       },
     });
+  }
+
+  buildThiefPlayerSnapshot(playersSnapshot = [], thiefId, recipientIds = []) {
+    if (!Array.isArray(playersSnapshot) || playersSnapshot.length === 0) {
+      return { players: null, stolenCount: 0 };
+    }
+
+    const clones = playersSnapshot.map((p) => ({ ...p }));
+    const thief = clones.find((p) => p.id === thiefId);
+    let stolenCount = 0;
+    const handled = new Set();
+
+    recipientIds.forEach((id) => {
+      if (handled.has(id)) return;
+      handled.add(id);
+      const target = clones.find((p) => p.id === id);
+      if (!target || target.isEliminated) return;
+      const current = Math.max(0, Number(target.cards) || 0);
+      if (current <= 0) return;
+      target.cards = current - 1;
+      target.remainingCards = target.cards;
+      stolenCount += 1;
+    });
+
+    if (thief && stolenCount > 0) {
+      const base = Math.max(0, Number(thief.cards) || 0);
+      thief.cards = base + stolenCount;
+      thief.remainingCards = thief.cards;
+    }
+
+    return { players: clones, stolenCount };
   }
 
   showCustomAlert(message, onConfirm) {

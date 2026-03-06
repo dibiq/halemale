@@ -586,7 +586,8 @@ function getFruitTotals(players) {
   return totals;
 }
 
-function checkGameOver(room, io) {
+function checkGameOver(room, io, options = {}) {
+  const forceEliminateZeroDeck = options.forceEliminateZeroDeck === true;
   // 덱이 0장인 사람들을 판별
   // If there's an active bell-success window (5 or thunder on table),
   // players with 0 cards are given a temporary reprieve.
@@ -600,7 +601,8 @@ function checkGameOver(room, io) {
     const hasNoDeck = !p.myDeck || p.myDeck.length === 0;
     if (hasNoDeck) {
       // Only mark eliminated when there is no active success window
-      p.isEliminated = !isBellSuccessWindow;
+      // unless forced (e.g., thief steals all remaining cards)
+      p.isEliminated = forceEliminateZeroDeck ? true : !isBellSuccessWindow;
     } else {
       p.isEliminated = false;
     }
@@ -2117,6 +2119,9 @@ io.on("connection", (socket) => {
               shieldedGlobal && shieldedGlobal.length > 0 ? shieldedGlobal : [],
             message: broadcastMessage,
           });
+
+          // Special cards can change deck sizes; check game end after effects.
+          checkGameOver(room, io, { forceEliminateZeroDeck: cardId === 7 });
 
           // 콜백 응답
           if (typeof cb === "function")
