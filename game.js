@@ -5563,7 +5563,7 @@ class LobbyScene extends Phaser.Scene {
 
     const sendBtnImg = this.add
       .image(chatSendX, chatInputY * 1.03, "uibtn")
-      .setDisplaySize(chatSendW, chatInputH)
+      .setDisplaySize(chatSendW, chatInputH * 1.5)
       .setInteractive({ useHandCursor: true })
       .setTint(0x3498db)
       .setDepth(20);
@@ -6259,9 +6259,9 @@ class LobbyScene extends Phaser.Scene {
 
     // 팝업 배경 (popupbg 이미지)
     const popupWidth = width * 0.75;
-    const popupHeight = height * 0.35;
+    const popupHeight = height * 0.3;
     const popupBg = this.add
-      .image(centerX, centerY, "popupbg")
+      .image(centerX, centerY, "profilebg")
       .setDisplaySize(popupWidth, popupHeight)
       .setDepth(4001);
 
@@ -6295,7 +6295,7 @@ class LobbyScene extends Phaser.Scene {
     });
 
     // 타이틀
-    const titleText = this.add
+    /*const titleText = this.add
       .text(
         centerX,
         centerY - popupHeight / 2 + height * 0.04,
@@ -6308,17 +6308,19 @@ class LobbyScene extends Phaser.Scene {
         },
       )
       .setOrigin(0.5)
-      .setDepth(4002);
+      .setDepth(4002);*/
 
     // 초대 정보
+    //        `${inviteData.inviterNickname}님이 초대했어요\n${inviteData.roomName}`,
+
     const infoText = this.add
       .text(
         centerX,
         centerY - height * 0.02,
-        `${inviteData.inviterNickname}\n${inviteData.roomName}`,
+        `${inviteData.inviterNickname}님이 초대했어요`,
         {
           fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.04}px`,
+          fontSize: `${width * 0.055}px`,
           color: "#fff",
           align: "center",
         },
@@ -6326,7 +6328,7 @@ class LobbyScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(4002);
 
-    const playerCountText = this.add
+    /*const playerCountText = this.add
       .text(
         centerX,
         centerY + height * 0.08,
@@ -6338,66 +6340,47 @@ class LobbyScene extends Phaser.Scene {
         },
       )
       .setOrigin(0.5)
-      .setDepth(4002);
+      .setDepth(4002);*/
 
     // 수락 버튼 (uibtn 이미지)
     const acceptBtn = this.add
-      .image(
-        centerX - width * 0.15,
-        centerY + popupHeight / 2 - height * 0.05,
-        "uibtn",
-      )
+      .image(centerX - width * 0.15, centerY * 1.12, "uibtn")
       .setDisplaySize(width * 0.2, height * 0.06)
       .setTint(0x2ecc71)
       .setDepth(4001)
       .setInteractive({ useHandCursor: true });
 
     const acceptBtnText = this.add
-      .text(
-        centerX - width * 0.15,
-        centerY + popupHeight / 2 - height * 0.05,
-        "수락",
-        {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.035}px`,
-          color: "#fff",
-          fontWeight: "bold",
-        },
-      )
+      .text(centerX - width * 0.15, centerY * 1.12, "수락", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.035}px`,
+        color: "#fff",
+        fontWeight: "bold",
+      })
       .setOrigin(0.5)
       .setDepth(4002);
 
     // 거절 버튼 (uibtn 이미지)
     const declineBtn = this.add
-      .image(
-        centerX + width * 0.15,
-        centerY + popupHeight / 2 - height * 0.05,
-        "uibtn",
-      )
+      .image(centerX + width * 0.15, centerY * 1.12, "uibtn")
       .setDisplaySize(width * 0.2, height * 0.06)
       .setTint(0xe74c3c)
       .setDepth(4001)
       .setInteractive({ useHandCursor: true });
 
     const declineBtnText = this.add
-      .text(
-        centerX + width * 0.15,
-        centerY + popupHeight / 2 - height * 0.05,
-        "거절",
-        {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.035}px`,
-          color: "#fff",
-          fontWeight: "bold",
-        },
-      )
+      .text(centerX + width * 0.15, centerY * 1.12, "거절", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.035}px`,
+        color: "#fff",
+        fontWeight: "bold",
+      })
       .setOrigin(0.5)
       .setDepth(4002);
 
     allObjects.push(
-      titleText,
       infoText,
-      playerCountText,
+      // playerCountText,
       acceptBtn,
       acceptBtnText,
       declineBtn,
