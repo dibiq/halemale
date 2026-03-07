@@ -13,22 +13,6 @@ const pool = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL }) : null;
 const DAILY_LOGIN_REWARD_COINS = 20;
 const DAILY_LOGIN_TIMEZONE = "Asia/Seoul";
 
-function getAllowedOrigins() {
-  const envValue =
-    process.env.ALLOWED_ORIGINS ||
-    process.env.CORS_ORIGINS ||
-    process.env.CLIENT_ORIGIN ||
-    "";
-  const fromEnv = envValue
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
-  const renderUrl = process.env.RENDER_EXTERNAL_URL
-    ? [process.env.RENDER_EXTERNAL_URL.trim()].filter(Boolean)
-    : [];
-  return Array.from(new Set([...fromEnv, ...renderUrl]));
-}
-
 function getDateStringInTimeZone(date = new Date(), timeZone) {
   const formatter = new Intl.DateTimeFormat("en-CA", {
     timeZone,
@@ -37,6 +21,26 @@ function getDateStringInTimeZone(date = new Date(), timeZone) {
     day: "2-digit",
   });
   return formatter.format(date);
+}
+
+function normalizeDateString(value) {
+  if (!value) return null;
+  if (typeof value === "string") return value.slice(0, 10);
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return null;
+}
+
+function getAllowedOrigins() {
+  return [
+    "https://halemale.apps.tossmini.com",
+    "https://halemale.private-apps.tossmini.com",
+    "https://halemale-client.onrender.com",
+    "http://192.168.10.113:5173",
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://0.0.0.0:3000",
+  ];
 }
 
 function isAllowedOrigin(origin) {
@@ -990,7 +994,6 @@ function handleAiFlip(room, io, playerId) {
   p.openCard = card;
   p.openCardStack.push(card);
 
-  let expiredBlockEffectIds = [];
   try {
     if (Array.isArray(room.blockEffects) && room.blockEffects.length > 0) {
       room.blockEffects.forEach((eff) => {
@@ -1000,7 +1003,6 @@ function handleAiFlip(room, io, playerId) {
       const expired = room.blockEffects.filter((e) => e.remainingTurns <= 0);
       if (expired.length > 0) {
         const expiredIds = new Set(expired.map((e) => e.id));
-        expiredBlockEffectIds = Array.from(expiredIds);
         room.players.forEach((pl) => {
           if (!pl || !Array.isArray(pl.openCardStack)) return;
           pl.openCardStack = pl.openCardStack.filter(
@@ -1039,8 +1041,6 @@ function handleAiFlip(room, io, playerId) {
     nextTurnId: p.id,
     remainingCount: p.myDeck.length,
     isEliminated: p.isEliminated,
-    expiredBlockEffectIds:
-      expiredBlockEffectIds.length > 0 ? expiredBlockEffectIds : undefined,
   });
 
   scheduleAiBell(room, io);
@@ -4006,7 +4006,6 @@ io.on("connection", (socket) => {
     p.openCardStack.push(card);
 
     // 블록(먹물) 이펙트가 있는 경우: 어떤 플레이어가 제출하든 모든 effect의 남은 턴을 감소
-    let expiredBlockEffectIds = [];
     try {
       if (Array.isArray(room.blockEffects) && room.blockEffects.length > 0) {
         room.blockEffects.forEach((eff) => {
@@ -4016,7 +4015,6 @@ io.on("connection", (socket) => {
         const expired = room.blockEffects.filter((e) => e.remainingTurns <= 0);
         if (expired.length > 0) {
           const expiredIds = new Set(expired.map((e) => e.id));
-          expiredBlockEffectIds = Array.from(expiredIds);
           room.players.forEach((pl) => {
             if (!pl || !Array.isArray(pl.openCardStack)) return;
             pl.openCardStack = pl.openCardStack.filter(
@@ -4074,8 +4072,6 @@ io.on("connection", (socket) => {
       nextTurnId: p.id,
       remainingCount: p.myDeck.length,
       isEliminated: p.isEliminated, // 💡 이 값을 반드시 포함해서 보냅니다!
-      expiredBlockEffectIds:
-        expiredBlockEffectIds.length > 0 ? expiredBlockEffectIds : undefined,
     });
 
     scheduleAiBell(room, io);
