@@ -950,7 +950,14 @@ class LobbyScene extends Phaser.Scene {
       return `${hh}:${mm}:${ss}`;
     };
     this.updateDailyRewardCountdownText = () => {
-      if (!this.dailyRewardCountdownText) return;
+      if (
+        !this.dailyRewardCountdownText ||
+        !this.dailyRewardCountdownText.scene ||
+        !this.dailyRewardCountdownText.canvas ||
+        !this.dailyRewardCountdownText.context
+      ) {
+        return;
+      }
 
       if (this.dailyRewardAvailable) {
         this.dailyRewardCountdownText.setVisible(false);
@@ -1837,6 +1844,10 @@ class LobbyScene extends Phaser.Scene {
       if (this.dailyRewardPulseTween) {
         this.dailyRewardPulseTween.stop();
         this.dailyRewardPulseTween = null;
+      }
+      if (this.dailyRewardCountdownText) {
+        this.dailyRewardCountdownText.destroy();
+        this.dailyRewardCountdownText = null;
       }
     });
 
@@ -7762,42 +7773,31 @@ class GameScene extends Phaser.Scene {
 
       this.showSpecialCardToast(data?.card, data?.playerId);
 
-      // 카드 제출이 발생하면, 모든 활성 block effect의 남은 턴을 감소시킵니다.
-      // 먹물은 생존자 수 * 2번 카드가 제출되면 해제되어야 하므로,
-      // 발동자 여부에 관계없이 global count를 줄입니다.
+      // 서버가 알려준 만료된 블록 이펙트를 기준으로 클라이언트 상태를 정리합니다.
       try {
-        if (Array.isArray(this.blockEffects) && this.blockEffects.length > 0) {
-          // decrement every effect every submission
-          this.blockEffects.forEach((eff) => {
-            eff.remainingTurns = (eff.remainingTurns || 0) - 1;
+        const expiredIds = Array.isArray(data.expiredBlockEffectIds)
+          ? new Set(data.expiredBlockEffectIds)
+          : null;
+        if (expiredIds && expiredIds.size > 0) {
+          this.roundData.players.forEach((p) => {
+            if (!p || !Array.isArray(p.openStack)) return;
+            p.openStack = p.openStack.filter(
+              (c) =>
+                !(c && c.type === "blockcard" && expiredIds.has(c.effectId)),
+            );
           });
 
-          // 만료된 effect들을 찾고, 해당 effectId를 가진 blockcard들을 모두 제거
-          const expired = this.blockEffects.filter(
-            (e) => e.remainingTurns <= 0,
-          );
-          if (expired.length > 0) {
-            const expiredIds = new Set(expired.map((e) => e.id));
-            this.roundData.players.forEach((p) => {
-              if (!p || !Array.isArray(p.openStack)) return;
-              p.openStack = p.openStack.filter(
-                (c) =>
-                  !(c && c.type === "blockcard" && expiredIds.has(c.effectId)),
-              );
-            });
-
-            // 제거된 effect들을 blockEffects에서 삭제
+          if (Array.isArray(this.blockEffects)) {
             this.blockEffects = this.blockEffects.filter(
-              (e) => e.remainingTurns > 0,
+              (e) => !expiredIds.has(e.id),
             );
           }
 
-          // 블록 효과 존재 여부 업데이트
-          this.blockActive = this.blockEffects.length > 0;
-          this.blockBy =
-            this.blockEffects.length > 0
-              ? this.blockEffects[this.blockEffects.length - 1].issuer
-              : null;
+          this.blockActive =
+            Array.isArray(this.blockEffects) && this.blockEffects.length > 0;
+          this.blockBy = this.blockActive
+            ? this.blockEffects[this.blockEffects.length - 1].issuer
+            : null;
         }
       } catch (e) {}
 
