@@ -13,6 +13,22 @@ const pool = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL }) : null;
 const DAILY_LOGIN_REWARD_COINS = 20;
 const DAILY_LOGIN_TIMEZONE = "Asia/Seoul";
 
+function getAllowedOrigins() {
+  const envValue =
+    process.env.ALLOWED_ORIGINS ||
+    process.env.CORS_ORIGINS ||
+    process.env.CLIENT_ORIGIN ||
+    "";
+  const fromEnv = envValue
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const renderUrl = process.env.RENDER_EXTERNAL_URL
+    ? [process.env.RENDER_EXTERNAL_URL.trim()].filter(Boolean)
+    : [];
+  return Array.from(new Set([...fromEnv, ...renderUrl]));
+}
+
 function getDateStringInTimeZone(date = new Date(), timeZone) {
   const formatter = new Intl.DateTimeFormat("en-CA", {
     timeZone,
