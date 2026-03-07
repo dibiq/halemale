@@ -673,6 +673,8 @@ class LobbyScene extends Phaser.Scene {
 
     this.load.audio("bgm", `${ASSET_SERVER}/sounds/bg.mp3${VERSION}`);
     this.load.audio("pop", `${ASSET_SERVER}/sounds/pop.wav${VERSION}`);
+    this.load.audio("bell", `${ASSET_SERVER}/sounds/bell.mp3${VERSION}`);
+
     this.load.audio("btn", `${ASSET_SERVER}/sounds/btn.wav${VERSION}`);
     this.load.audio("spin", `${ASSET_SERVER}/sounds/spin.wav${VERSION}`);
     this.load.audio("readygo", `${ASSET_SERVER}/sounds/readygo.mp3${VERSION}`);
@@ -680,6 +682,15 @@ class LobbyScene extends Phaser.Scene {
     this.load.audio("yare", `${ASSET_SERVER}/sounds/yare.mp3${VERSION}`);
     this.load.audio("yosi", `${ASSET_SERVER}/sounds/yosi.mp3${VERSION}`);
     this.load.audio("pass", `${ASSET_SERVER}/sounds/pass.wav${VERSION}`);
+    this.load.audio(
+      "cardflip",
+      `${ASSET_SERVER}/sounds/cardflip.wav${VERSION}`,
+    );
+
+    this.load.audio(
+      "gameover",
+      `${ASSET_SERVER}/sounds/gameover.mp3${VERSION}`,
+    );
   }
 
   async create() {
@@ -708,6 +719,9 @@ class LobbyScene extends Phaser.Scene {
 
     // 특수카드 사용(턴당 1회) 추적 초기화
     this.specialUsedThisTurn = {}; // { playerId: true }
+
+    // Reset game-over sound guard per game session
+    this.resultGameoverPlayed = false;
     // ensure player2 frames exist for lobby avatars
     ensurePlayer2Frames(this);
 
@@ -7273,6 +7287,15 @@ class GameScene extends Phaser.Scene {
         this.myTurnTimer = null;
       }
 
+      const ringerId = data?.success ? data.winnerId : data?.penaltyId;
+      if (!this.isSingle && ringerId && ringerId !== socket.id) {
+        if (this.cache.audio.exists("bell")) {
+          this.sound.play("bell", { volume: 0.2 });
+        } else if (this.cache.audio.exists("pop")) {
+          this.sound.play("pop", { volume: 0.2 });
+        }
+      }
+
       this.playFeedback(data.success, data.message);
 
       // 💡 [수정] prevPlayers를 깊은 복사로 만들어 openStack이 유지되도록 함
@@ -8976,6 +8999,27 @@ class GameScene extends Phaser.Scene {
     const { width, height } = this.cameras.main;
     const cardKey = this.getCardKey(data.card);
 
+    const now = this.time?.now || Date.now();
+    const playerId = data.playerId || "";
+    const remaining =
+      data.remainingCount ?? data.remainingCards ?? data.remaining ?? "";
+    const flipSfxKey = `${playerId}|${data.card?.type || ""}|${remaining}`;
+    if (!this.lastFlipSfxByPlayer) this.lastFlipSfxByPlayer = {};
+    const lastPlayerFlipAt = this.lastFlipSfxByPlayer[playerId] || 0;
+    if (
+      !lastPlayerFlipAt ||
+      now - lastPlayerFlipAt > 200 ||
+      !this.lastFlipSfx ||
+      this.lastFlipSfx.key !== flipSfxKey ||
+      now - this.lastFlipSfx.at > 120
+    ) {
+      if (this.cache.audio.exists("cardflip")) {
+        this.sound.play("cardflip", { volume: 0.4 });
+      }
+      this.lastFlipSfx = { key: flipSfxKey, at: now };
+      this.lastFlipSfxByPlayer[playerId] = now;
+    }
+
     const player = this.roundData.players.find((p) => p.id === data.playerId);
     if (!player) return;
 
@@ -9958,6 +10002,12 @@ class GameScene extends Phaser.Scene {
       });
     }
 
+    if (this.cache.audio.exists("bell")) {
+      this.sound.play("bell", { volume: 0.2 });
+    } else if (this.cache.audio.exists("pop")) {
+      this.sound.play("pop", { volume: 0.2 });
+    }
+
     if (this.isSingle) {
       const totals = this.calculateTotalFruits();
       const isFive = Object.values(totals).some((count) => count === 5);
@@ -9977,18 +10027,6 @@ class GameScene extends Phaser.Scene {
       if (successWindow) {
         // 💥 성공 시 스펙타클한 이펙트 추가
         this.playSuccessEffect();
-        // 성공 사운드: 재생 중인 클립이 있다면 멈추고 새로 재생
-        // play via single shared instance if available
-        if (this.successSound) {
-          if (this.successSound.isPlaying) this.successSound.stop();
-          this.successSound.play();
-        } else {
-          // fallback
-          try {
-            this.sound.stopByKey("irassai");
-          } catch (e) {}
-          this.sound.play("irassai", { volume: 0.3 });
-        }
 
         this.processSingleBell(this.myId || "PLAYER_ME");
       } else {
@@ -11601,16 +11639,6 @@ class GameScene extends Phaser.Scene {
     // AI도 irassai가 겹치지 않도록 체크
     // AI도 기존 사운드를 중단하고 재생
     // AI: reuse shared sound if exists
-    if (this.successSound) {
-      if (this.successSound.isPlaying) this.successSound.stop();
-      this.successSound.play();
-    } else {
-      try {
-        this.sound.stopByKey("irassai");
-      } catch (e) {}
-      this.sound.play("irassai", { volume: 0.3 });
-    }
-
     // 3. 승리 처리
     this.processSingleBell(aiId);
   }
@@ -12858,6 +12886,60 @@ class GameScene extends Phaser.Scene {
 
     if (!players || players.length === 0) return;
 
+    if (!this.resultGameoverPlayed) {
+      this.resultGameoverPlayed = true;
+      const bgm = this.sound.get("bgm");
+      const originalBgmVolume =
+        bgm && typeof bgm.volume === "number" ? bgm.volume : null;
+      if (bgm && bgm.isPlaying && originalBgmVolume !== null) {
+        this.tweens.add({
+          targets: bgm,
+          volume: Math.max(0.01, originalBgmVolume * 0.25),
+          duration: 300,
+          ease: "Sine.easeOut",
+        });
+      }
+
+      const gameoverSound = this.sound.add("gameover", {
+        volume: 0,
+        loop: false,
+      });
+      gameoverSound.play();
+      this.tweens.add({
+        targets: gameoverSound,
+        volume: 1,
+        duration: 300,
+        ease: "Sine.easeOut",
+      });
+
+      const durationMs = Number(gameoverSound.duration || 0) * 1000;
+      if (durationMs > 600) {
+        this.time.delayedCall(durationMs - 400, () => {
+          if (!gameoverSound || !gameoverSound.isPlaying) return;
+          this.tweens.add({
+            targets: gameoverSound,
+            volume: 0,
+            duration: 300,
+            ease: "Sine.easeIn",
+          });
+        });
+      }
+
+      gameoverSound.once("complete", () => {
+        try {
+          gameoverSound.destroy();
+        } catch (e) {}
+        if (bgm && bgm.isPlaying && originalBgmVolume !== null) {
+          this.tweens.add({
+            targets: bgm,
+            volume: originalBgmVolume,
+            duration: 300,
+            ease: "Sine.easeOut",
+          });
+        }
+      });
+    }
+
     const { width, height } = this.cameras.main;
 
     if (this.resultAutoLeaveTimer) {
@@ -13275,8 +13357,6 @@ class GameScene extends Phaser.Scene {
         onComplete: () => rect.destroy(),
       });
 
-      this.sound.play("yosi", { volume: 0.2 });
-
       /*const feedbackText = this.add
         .text(centerX, centerY, "SUCCESS!", {
           fontFamily: GAME_FONTS.main,
@@ -13310,8 +13390,6 @@ class GameScene extends Phaser.Scene {
     } else {
       console.log("실패 연출 실행 시작"); // 디버깅용
       // 실패 피드백: 빨간색 화면 반짝임 + 화면 흔들림
-      this.sound.play("yare", { volume: 0.2 });
-
       const rect = this.add
         .rectangle(centerX, centerY, width, height, 0xef4444, 0.4)
         .setDepth(5000);
