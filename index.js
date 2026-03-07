@@ -3048,6 +3048,47 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("leaveRoom", (data, ack) => {
+    const payload = data && typeof data === "object" ? data : {};
+    const roomId = payload.roomId || socket.roomId;
+    const room = roomId ? rooms[roomId] : null;
+
+    if (!room) {
+      if (socket.roomId === roomId) socket.roomId = null;
+      if (typeof ack === "function") ack({ ok: false, reason: "NO_ROOM" });
+      return;
+    }
+
+    const targetId = socket.id;
+    const targetIndex = room.players.findIndex((p) => p.id === targetId);
+    const leftPlayerNickname =
+      targetIndex >= 0 && room.players[targetIndex]
+        ? room.players[targetIndex].nickname || socket.nickname || "누군가"
+        : socket.nickname || "누군가";
+
+    if (targetIndex >= 0) {
+      room.players.splice(targetIndex, 1);
+    }
+
+    socket.leave(roomId);
+    if (socket.roomId === roomId) socket.roomId = null;
+
+    if (room.players.length === 0) {
+      delete rooms[roomId];
+    } else {
+      if (room.host === targetId) room.host = room.players[0].id;
+      io.to(roomId).emit("playerLeft", {
+        playerId: targetId,
+        players: room.players,
+        hostId: room.host,
+        leftPlayerNickname,
+      });
+    }
+
+    broadcastPublicRooms();
+    if (typeof ack === "function") ack({ ok: true });
+  });
+
   socket.on("getOnlineUsers", () => {
     const room = rooms[socket.roomId];
     if (!room) return;

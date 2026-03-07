@@ -354,7 +354,11 @@ class LobbyScene extends Phaser.Scene {
   init(data = {}) {
     // 1. 필요한 상태를 미리 체크 (비동기)
     this.isOnline = false;
+    this.isLeavingRoom = false;
     this.pendingRoomData = data && data.fromGame ? data : null;
+    this.skipLobbyLoading = Boolean(
+      data && (data.fromGame || data.fromTutorial || data.skipLobbyLoading),
+    );
     this.suppressJoinToast = !!this.pendingRoomData;
     this.suppressJoinToastUntil = this.pendingRoomData
       ? Date.now() + 5000
@@ -372,43 +376,51 @@ class LobbyScene extends Phaser.Scene {
 
     const { width, height } = this.cameras.main;
 
-    // 1. 기존 loadingText 삭제 후 이 코드를 넣으세요
-    const loadingContainer = this.add.container(width / 2, height / 2);
-    const spinner = this.add.graphics();
-    spinner.lineStyle(4, 0xffffff, 0.3);
-    spinner.strokeCircle(0, 0, 40);
-    spinner.lineStyle(4, 0xffffff, 1);
-    spinner.beginPath();
-    spinner.arc(0, 0, 40, 0, Phaser.Math.DegToRad(90));
-    spinner.strokePath();
+    let loadingContainer = null;
+    let loadingText = null;
+    let onLoadProgress = null;
 
-    this.tweens.add({
-      targets: spinner,
-      angle: 360,
-      duration: 800,
-      repeat: -1,
-    });
+    if (!this.skipLobbyLoading) {
+      // 1. 기존 loadingText 삭제 후 이 코드를 넣으세요
+      loadingContainer = this.add.container(width / 2, height / 2);
+      const spinner = this.add.graphics();
+      spinner.lineStyle(4, 0xffffff, 0.3);
+      spinner.strokeCircle(0, 0, 40);
+      spinner.lineStyle(4, 0xffffff, 1);
+      spinner.beginPath();
+      spinner.arc(0, 0, 40, 0, Phaser.Math.DegToRad(90));
+      spinner.strokePath();
 
-    const loadingText = this.add
-      .text(0, 60, "데이터를 불러오는 중...", {
-        fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.04}px`,
-        fill: "#ffffff",
-      })
-      .setOrigin(0.5);
+      this.tweens.add({
+        targets: spinner,
+        angle: 360,
+        duration: 800,
+        repeat: -1,
+      });
 
-    loadingContainer.add([spinner, loadingText]);
+      loadingText = this.add
+        .text(0, 60, "데이터를 불러오는 중...", {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.04}px`,
+          fill: "#ffffff",
+        })
+        .setOrigin(0.5);
 
-    // 진행률 표시 (선택사항 - % 숫자가 올라감)
-    const onLoadProgress = (value) => {
-      if (!loadingText || !loadingText.active) return;
-      loadingText.setText(`로딩 중... ${Math.floor(value * 100)}%`);
-    };
-    this.load.on("progress", onLoadProgress);
+      loadingContainer.add([spinner, loadingText]);
+
+      // 진행률 표시 (선택사항 - % 숫자가 올라감)
+      onLoadProgress = (value) => {
+        if (!loadingText || !loadingText.active) return;
+        loadingText.setText(`로딩 중... ${Math.floor(value * 100)}%`);
+      };
+      this.load.on("progress", onLoadProgress);
+    }
 
     // 로드 완료 시 컨테이너 제거
     this.load.once("complete", () => {
-      this.load.off("progress", onLoadProgress);
+      if (onLoadProgress) {
+        this.load.off("progress", onLoadProgress);
+      }
       if (loadingContainer && loadingContainer.active) {
         loadingContainer.destroy();
       }
@@ -1247,7 +1259,7 @@ class LobbyScene extends Phaser.Scene {
         this.kickedPlayerId = data.kickedId;
         this.showToast("방에서 강퇴되었습니다!", "#e74c3c");
         this.time.delayedCall(1000, () => {
-          window.location.reload();
+          this.leaveCurrentRoom();
         });
       }
     });
@@ -1283,7 +1295,7 @@ class LobbyScene extends Phaser.Scene {
 
       if (this.isRoomOpen) {
         this.showCustomAlert("로비로 이동합니다!", () => {
-          window.location.reload();
+          this.leaveCurrentRoom();
         });
         this.lastBackPressedAt = 0;
         return;
@@ -1729,6 +1741,7 @@ class LobbyScene extends Phaser.Scene {
 
     // 3. 플레이어 퇴장 리스너
     socket.off("playerLeft").on("playerLeft", (data) => {
+      if (this.isLeavingRoom) return;
       // 강퇴당한 플레이어는 자신만의 토스트가 이미 표시되었으므로 여기서는 표시 안 함
       if (this.kickedPlayerId && data.playerId === this.kickedPlayerId) {
         this.kickedPlayerId = null;
@@ -1790,7 +1803,7 @@ class LobbyScene extends Phaser.Scene {
     document.addEventListener("visibilitychange", () => {
       if (!socket.connected) {
         console.log("연결이 끊겨있음 -> 초기 화면으로 이동");
-        window.location.reload();
+        this.scene.start("LobbyScene", { fromGame: true });
       }
 
       if (!bgm) return;
@@ -2619,6 +2632,49 @@ class LobbyScene extends Phaser.Scene {
       this.loadingContainer.destroy();
       this.loadingContainer = null;
     }
+  }
+
+  leaveCurrentRoom() {
+    const roomId =
+      this.currentRoomId || (socket && socket.roomId ? socket.roomId : null);
+
+    const finalize = () => {
+      this.hideLoading();
+      this.isRoomOpen = false;
+      this.currentRoomId = null;
+      this.currentPlayers = [];
+      this.currentMax = null;
+      this.hostId = null;
+      this.currentRoomName = null;
+      this.currentRoomNumber = null;
+      if (this.lobbyBlocker && this.lobbyBlocker.active) {
+        this.lobbyBlocker.destroy();
+      }
+      this.lobbyBlocker = null;
+      if (this.lobbyUIContainer) {
+        this.lobbyUIContainer.destroy();
+        this.lobbyUIContainer = null;
+      }
+      this.scene.restart({ skipLobbyLoading: true });
+    };
+
+    this.isLeavingRoom = true;
+
+    if (!roomId || !socket) {
+      finalize();
+      return;
+    }
+
+    this.showLoading("나가는 중...");
+
+    const timeoutId = setTimeout(() => {
+      finalize();
+    }, 1200);
+
+    socket.emit("leaveRoom", { roomId }, () => {
+      clearTimeout(timeoutId);
+      finalize();
+    });
   }
 
   showToast(message, color = "#ffffff") {
@@ -5858,7 +5914,7 @@ class LobbyScene extends Phaser.Scene {
         yoyo: true,
         ease: "Quad.easeInOut",
         onComplete: () => {
-          window.location.reload();
+          this.leaveCurrentRoom();
         },
       });
     });
@@ -7833,7 +7889,7 @@ class GameScene extends Phaser.Scene {
       }
 
       this.showCustomAlert("로비로 이동합니다!", () => {
-        window.location.reload();
+        this.returnToLobby();
       });
     };
 
@@ -7968,7 +8024,16 @@ class GameScene extends Phaser.Scene {
   }
 
   renderTable(players) {
-    if (!players || !this.playerTableGroup) return;
+    if (
+      !players ||
+      !this.playerTableGroup ||
+      !this.cameras ||
+      !this.cameras.main ||
+      !this.scene ||
+      !this.scene.isActive()
+    ) {
+      return;
+    }
     this.playerTableGroup.removeAll(true);
     const { width, height } = this.cameras.main;
 
@@ -9716,6 +9781,87 @@ class GameScene extends Phaser.Scene {
     });
   }
 
+  returnToLobby(options = {}) {
+    const rejoinRoom =
+      typeof options.rejoinRoom === "boolean"
+        ? options.rejoinRoom
+        : !this.isSingle;
+
+    if (
+      !rejoinRoom ||
+      !this.roundData ||
+      !this.roundData.roomId ||
+      !socket ||
+      !socket.connected
+    ) {
+      this.scene.start("LobbyScene");
+      return;
+    }
+
+    if (this.resultAutoLeaveTimer) {
+      this.resultAutoLeaveTimer.remove();
+      this.resultAutoLeaveTimer = null;
+    }
+    if (this.resultCountdownTimer) {
+      this.resultCountdownTimer.remove();
+      this.resultCountdownTimer = null;
+    }
+
+    const storedNickname = localStorage.getItem("nickname") || "요리사";
+
+    const timeoutId = setTimeout(() => {
+      console.log("⚠️ joinRoom 응답 타임아웃, 강제로 LobbyScene 이동");
+      this.scene.start("LobbyScene", {
+        fromGame: true,
+        roomId: this.roundData.roomId,
+        players: this.roundData.players,
+        hostId: this.roundData.hostId,
+        maxPlayers: this.roundData.maxPlayers || 4,
+        roomName: this.roundData.roomName || "대기실",
+      });
+    }, 3000);
+
+    const handlePlayerJoined = (data) => {
+      clearTimeout(timeoutId);
+      socket.off("playerJoined", handlePlayerJoined);
+      socket.off("joinRoomError", handleJoinError);
+
+      this.scene.start("LobbyScene", {
+        fromGame: true,
+        roomId: data.roomId,
+        players: data.players,
+        hostId: data.hostId,
+        maxPlayers: data.max || 4,
+        roomName: data.roomName || "대기실",
+      });
+    };
+
+    const handleJoinError = (error) => {
+      clearTimeout(timeoutId);
+      socket.off("playerJoined", handlePlayerJoined);
+      socket.off("joinRoomError", handleJoinError);
+
+      console.log("⚠️ joinRoom 에러:", error);
+      this.scene.start("LobbyScene", {
+        fromGame: true,
+        roomId: this.roundData.roomId,
+        players: this.roundData.players,
+        hostId: this.roundData.hostId,
+        maxPlayers: this.roundData.maxPlayers || 4,
+        roomName: this.roundData.roomName || "대기실",
+      });
+    };
+
+    socket.on("playerJoined", handlePlayerJoined);
+    socket.on("joinRoomError", handleJoinError);
+
+    socket.emit("joinRoom", {
+      roomId: this.roundData.roomId,
+      nickname: storedNickname,
+      avatarKey: this.avatarKey || "player_1",
+    });
+  }
+
   resetSingleGame() {
     // 1. UI 그룹 청소 (카드, 텍스트 등)
     if (this.playerTableGroup) {
@@ -9864,7 +10010,7 @@ class GameScene extends Phaser.Scene {
 
     exitBtn.on("pointerdown", () => {
       this.sound.play("btn", { volume: 0.1 });
-      window.location.reload(); // 로비로 돌아가는 가장 확실한 방법
+      this.returnToLobby({ rejoinRoom: false });
     });
 
     container.add([restartBtn, restartTxt, exitBtn, exitTxt]);
@@ -13197,72 +13343,7 @@ class GameScene extends Phaser.Scene {
     };
 
     const goToLobby = () => {
-      if (this.resultAutoLeaveTimer) {
-        this.resultAutoLeaveTimer.remove();
-        this.resultAutoLeaveTimer = null;
-      }
-      if (this.resultCountdownTimer) {
-        this.resultCountdownTimer.remove();
-        this.resultCountdownTimer = null;
-      }
-
-      // 게임에서 방으로 돌아갈 때 서버에 다시 joinRoom 요청하여 닉네임 중복 처리
-      const storedNickname = localStorage.getItem("nickname") || "요리사";
-
-      // 타임아웃 처리
-      const timeoutId = setTimeout(() => {
-        console.log("⚠️ joinRoom 응답 타임아웃, 강제로 LobbyScene 이동");
-        this.scene.start("LobbyScene", {
-          fromGame: true,
-          roomId: this.roundData.roomId,
-          players: this.roundData.players,
-          hostId: this.roundData.hostId,
-          maxPlayers: this.roundData.maxPlayers || 4,
-          roomName: this.roundData.roomName || "대기실",
-        });
-      }, 3000);
-
-      // joinRoom 응답(playerJoined)을 받으면 LobbyScene으로 전환
-      const handlePlayerJoined = (data) => {
-        clearTimeout(timeoutId);
-        socket.off("playerJoined", handlePlayerJoined);
-        socket.off("joinRoomError", handleJoinError);
-
-        this.scene.start("LobbyScene", {
-          fromGame: true,
-          roomId: data.roomId,
-          players: data.players,
-          hostId: data.hostId,
-          maxPlayers: data.max || 4,
-          roomName: data.roomName || "대기실",
-        });
-      };
-
-      const handleJoinError = (error) => {
-        clearTimeout(timeoutId);
-        socket.off("playerJoined", handlePlayerJoined);
-        socket.off("joinRoomError", handleJoinError);
-
-        console.log("⚠️ joinRoom 에러:", error);
-        // 에러 발생 시에도 강제로 LobbyScene 이동
-        this.scene.start("LobbyScene", {
-          fromGame: true,
-          roomId: this.roundData.roomId,
-          players: this.roundData.players,
-          hostId: this.roundData.hostId,
-          maxPlayers: this.roundData.maxPlayers || 4,
-          roomName: this.roundData.roomName || "대기실",
-        });
-      };
-
-      socket.on("playerJoined", handlePlayerJoined);
-      socket.on("joinRoomError", handleJoinError);
-
-      socket.emit("joinRoom", {
-        roomId: this.roundData.roomId,
-        nickname: storedNickname,
-        avatarKey: this.avatarKey || "player_1",
-      });
+      this.returnToLobby();
     };
 
     confirmBtn.on("pointerdown", () => {
