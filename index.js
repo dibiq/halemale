@@ -818,9 +818,11 @@ function processSkipTurn(room, io) {
 }
 
 const MULTI_AI_BASE_PROFILE = {
-  flipDelay: 750,
-  reactionTime: 1200,
+  flipDelay: 950,
+  reactionTime: 1400,
 };
+
+const MULTI_AI_SLOWDOWN_MS = 250;
 
 function clampNumber(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -849,20 +851,20 @@ function getHumanReactionBaseline(room) {
   const mid = Math.floor(sorted.length / 2);
   const median =
     sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
-  return clampNumber(Math.round(median), 600, 2600);
+  return clampNumber(Math.round(median), 800, 3000);
 }
 
 function buildMatchAiProfile(room) {
   // Use current players' reaction speed as a baseline.
-  const baseline = getHumanReactionBaseline(room);
-  const reactionFactor = randomTriangular(0.8, 1.3, 1.0);
-  const flipFactor = randomTriangular(0.6, 1.1, 0.8);
+  const baseline = getHumanReactionBaseline(room) + MULTI_AI_SLOWDOWN_MS;
+  const reactionFactor = randomTriangular(1.0, 1.5, 1.2);
+  const flipFactor = randomTriangular(0.9, 1.4, 1.1);
   const reactionTime = clampNumber(
     Math.round(baseline * reactionFactor),
-    400,
+    600,
     2400,
   );
-  const flipDelay = clampNumber(Math.round(baseline * flipFactor), 350, 2000);
+  const flipDelay = clampNumber(Math.round(baseline * flipFactor), 500, 2400);
 
   return {
     flipDelay,
@@ -960,7 +962,7 @@ function scheduleAiBell(room, io) {
 
   if (!isCorrectBell) return;
 
-  const baseline = getHumanReactionBaseline(room);
+  const baseline = getHumanReactionBaseline(room) + MULTI_AI_SLOWDOWN_MS;
   room.players.forEach((player) => {
     if (!isBotPlayer(player)) return;
     if (player.isEliminated) return;

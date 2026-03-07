@@ -352,7 +352,9 @@ function ensurePlayer1NewFrames(scene) {
 
     let best = null;
     const temp = document.createElement("canvas");
-    const tctx = temp.getContext("2d");
+    const tctx =
+      temp.getContext("2d", { willReadFrequently: true }) ||
+      temp.getContext("2d");
 
     candidates.forEach(({ cols, rows }) => {
       if (w % cols !== 0 || h % rows !== 0) return;
