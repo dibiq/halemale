@@ -238,28 +238,28 @@ socket.off("serverDebug").on("serverDebug", (payload) => {
   const event = payload?.event || "unknown";
   const roomId = payload?.roomId || "-";
   const ts = payload?.ts ? new Date(payload.ts).toLocaleTimeString() : "-";
-  console.log(`🛰️ [serverDebug][${ts}][room:${roomId}] ${event}`, payload);
+  //console.log(`🛰️ [serverDebug][${ts}][room:${roomId}] ${event}`, payload);
 });
 
 socket.off("connect").on("connect", () => {
-  console.log("🔌 socket connected", {
+  /*console.log("🔌 socket connected", {
     serverUrl: SERVER_URL,
     socketId: socket.id,
-  });
+  });*/
 });
 
 socket.off("disconnect").on("disconnect", (reason) => {
-  console.warn("🔌 socket disconnected", {
+  /*console.warn("🔌 socket disconnected", {
     serverUrl: SERVER_URL,
     reason,
-  });
+  });*/
 });
 
 socket.off("serverHello").on("serverHello", (payload) => {
-  console.log("🧭 serverHello", {
+  /*console.log("🧭 serverHello", {
     serverUrl: SERVER_URL,
     ...payload,
-  });
+  });*/
 });
 
 // -----------------------------------------------------------------------------
@@ -730,11 +730,6 @@ class LobbyScene extends Phaser.Scene {
 
     const savedNickname = localStorage.getItem("nickname");
 
-    // successSound 초기화 (로드 이후에만 호출되므로 안전)
-    if (this.cache && this.cache.audio && this.cache.audio.exists("irassai")) {
-      this.successSound = this.sound.add("irassai", { volume: 0.3 });
-    }
-
     // helper that gathers and emits the inventory payload directly
     const emitInventory = (reason = "initial", options = {}) => {
       try {
@@ -892,7 +887,7 @@ class LobbyScene extends Phaser.Scene {
     if (!this.sound.get("bgm") && bgmEnabled) {
       const tryPlayBgm = () => {
         try {
-          this.sound.play("bgm", { loop: true, volume: 0.05 });
+          this.sound.play("bgm", { loop: true, volume: 0.2 });
         } catch (e) {
           // 실패 시 무시
         }
@@ -936,7 +931,6 @@ class LobbyScene extends Phaser.Scene {
 
       if (data.message) {
         this.time.delayedCall(100, () => {
-          this.sound.play("irassai", { volume: 0.1 });
           this.showToast(data.message, "#f1c40f");
         });
       }
@@ -1495,7 +1489,7 @@ class LobbyScene extends Phaser.Scene {
     }
 
     avatarLeftBtn.on("pointerdown", () => {
-      this.sound.play("pop", { volume: 0.08 });
+      this.sound.play("btn", { volume: 0.08 });
       this.tweens.add({
         targets: [avatarLeftBtn, avatarLeftIcon],
         scale: "*=0.95",
@@ -1509,7 +1503,7 @@ class LobbyScene extends Phaser.Scene {
     });
 
     avatarRightBtn.on("pointerdown", () => {
-      this.sound.play("pop", { volume: 0.08 });
+      this.sound.play("btn", { volume: 0.08 });
       this.tweens.add({
         targets: [avatarRightBtn, avatarRightIcon],
         scale: "*=0.95",
@@ -1547,7 +1541,7 @@ class LobbyScene extends Phaser.Scene {
       this.checkConnection();
 
       // 효과음
-      this.sound.play("pop", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.1 });
 
       // 팅기는 연출
       this.tweens.add({
@@ -1587,7 +1581,7 @@ class LobbyScene extends Phaser.Scene {
     ]);
 
     singleBtnImg.on("pointerdown", () => {
-      this.sound.play("pop", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.1 });
       this.tweens.add({
         targets: [singleBtnImg, singleBtn.list[1]],
         scaleX: "*=0.95",
@@ -1623,7 +1617,7 @@ class LobbyScene extends Phaser.Scene {
     shopBtn.add([shopBtnImg, shopBtnText]);
 
     shopBtnImg.on("pointerdown", () => {
-      this.sound.play("pop", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.1 });
       this.tweens.add({
         targets: [shopBtnImg, shopBtnText],
         scaleX: "*=0.95",
@@ -1787,7 +1781,7 @@ class LobbyScene extends Phaser.Scene {
     // BGM 인스턴스 만들기 (한 번만)
     let bgm = this.sound.get("bgm");
     if (!bgm) {
-      bgm = this.sound.add("bgm", { loop: true, volume: 0.05 });
+      bgm = this.sound.add("bgm", { loop: true, volume: 0.2 });
     }
 
     // 사운드 전체 mute 상태 초기화
@@ -2181,7 +2175,7 @@ class LobbyScene extends Phaser.Scene {
     };
 
     startBtn.on("pointerdown", () => {
-      this.sound.play("pop", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.1 });
       this.tweens.add({
         targets: [startBtn, startBtnText],
         scaleX: "*=0.95",
@@ -2664,7 +2658,7 @@ class LobbyScene extends Phaser.Scene {
 
     // 효과음
     try {
-      this.sound.play("pop", { volume: 0.5 });
+      this.sound.play("pass", { volume: 0.5 });
     } catch (e) {}
 
     // 보여주기 애니메이션
@@ -2814,7 +2808,7 @@ class LobbyScene extends Phaser.Scene {
 
     cancelBtnImg.on("pointerdown", () => {
       // 1. 효과음 재생
-      this.sound.play("pop", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.1 });
 
       // 2. 햅틱 피드백 (기존 코드 유지)
       if (window.ReactNativeWebView) {
@@ -2840,7 +2834,7 @@ class LobbyScene extends Phaser.Scene {
       const code = el.value.trim();
 
       // 1. 클릭 효과음
-      this.sound.play("pop", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.1 });
 
       // 2. 클릭 연출 (이미지와 텍스트 동시 적용)
       this.tweens.add({
@@ -3021,7 +3015,7 @@ class LobbyScene extends Phaser.Scene {
       .setInteractive({ useHandCursor: true });
 
     closeBtn.on("pointerdown", () => {
-      this.sound.play("pop", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.1 });
       this.closeSingleDifficultyPopup();
     });
 
@@ -3048,7 +3042,7 @@ class LobbyScene extends Phaser.Scene {
         .setOrigin(0.5);
 
       btnImg.on("pointerdown", () => {
-        this.sound.play("pop", { volume: 0.1 });
+        this.sound.play("btn", { volume: 0.1 });
         this.tweens.add({
           targets: [btnImg, btnText],
           scaleX: "*=0.95",
@@ -3388,7 +3382,7 @@ class LobbyScene extends Phaser.Scene {
         .setOrigin(0.5);
 
       tabBg.on("pointerdown", () => {
-        this.sound.play("pop", { volume: 0.08 });
+        this.sound.play("btn", { volume: 0.08 });
         currentTab = tab.key;
         updateTabVisuals();
         renderShopContent();
@@ -3699,7 +3693,7 @@ class LobbyScene extends Phaser.Scene {
             ? characterItems.length
             : coinProducts.length;
 
-      this.sound.play("pop", { volume: 0.08 });
+      this.sound.play("btn", { volume: 0.08 });
       this.tweens.add({
         targets: leftBtn,
         scale: "*=0.95",
@@ -3720,7 +3714,7 @@ class LobbyScene extends Phaser.Scene {
             ? characterItems.length
             : coinProducts.length;
 
-      this.sound.play("pop", { volume: 0.08 });
+      this.sound.play("btn", { volume: 0.08 });
       this.tweens.add({
         targets: rightBtn,
         scale: "*=0.95",
@@ -3733,7 +3727,7 @@ class LobbyScene extends Phaser.Scene {
     });
 
     buyBtn.on("pointerdown", () => {
-      this.sound.play("pop", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.1 });
       this.tweens.add({
         targets: buyBtn,
         scale: "*=0.95",
@@ -3895,7 +3889,7 @@ class LobbyScene extends Phaser.Scene {
       .setInteractive({ useHandCursor: true });
 
     closeBtn.on("pointerdown", () => {
-      this.sound.play("pop", { volume: 0.08 });
+      this.sound.play("btn", { volume: 0.08 });
       this.tweens.add({
         targets: closeBtn,
         scale: "*=0.95",
@@ -4026,7 +4020,7 @@ class LobbyScene extends Phaser.Scene {
     this.coinShopElements.push(closeBtnIcon);
 
     closeBtn.on("pointerdown", () => {
-      this.sound.play("pop", { volume: 0.08 });
+      this.sound.play("btn", { volume: 0.08 });
       this.tweens.add({
         targets: closeBtn,
         scale: "*=0.95",
@@ -4075,7 +4069,7 @@ class LobbyScene extends Phaser.Scene {
       this.coinShopElements.push(productText);
 
       productBtn.on("pointerdown", () => {
-        this.sound.play("pop", { volume: 0.1 });
+        this.sound.play("btn", { volume: 0.1 });
         this.tweens.add({
           targets: [productBg, productText],
           scale: "*=0.95",
@@ -4228,7 +4222,7 @@ class LobbyScene extends Phaser.Scene {
 
           const onTabClick = () => {
             currentTab = tabName;
-            this.sound.play("pop", { volume: 0.1 });
+            this.sound.play("btn", { volume: 0.1 });
 
             // 모든 탭 색상 업데이트
             allTabs.forEach((tab) => {
@@ -4379,7 +4373,7 @@ class LobbyScene extends Phaser.Scene {
                 .setOrigin(0, 0.5);
 
               itemBg.on("pointerdown", () => {
-                this.sound.play("pop", { volume: 0.1 });
+                this.sound.play("btn", { volume: 0.1 });
 
                 if (window.ReactNativeWebView) {
                   generateHapticFeedback({ type: "impactLight" }).catch(
@@ -4509,7 +4503,7 @@ class LobbyScene extends Phaser.Scene {
             // 이전 버튼 클릭
             prevBtnText.on("pointerdown", () => {
               if (currentPage > 0) {
-                this.sound.play("pop", { volume: 0.1 });
+                this.sound.play("btn", { volume: 0.1 });
                 currentPage--;
                 displayRoomsPage();
                 updateButtonStates();
@@ -4519,7 +4513,7 @@ class LobbyScene extends Phaser.Scene {
             // 다음 버튼 클릭
             nextBtnText.on("pointerdown", () => {
               if (currentPage < totalPages - 1) {
-                this.sound.play("pop", { volume: 0.1 });
+                this.sound.play("btn", { volume: 0.1 });
                 currentPage++;
                 displayRoomsPage();
                 updateButtonStates();
@@ -4622,19 +4616,19 @@ class LobbyScene extends Phaser.Scene {
           };
 
           publicBtnImg.on("pointerdown", () => {
-            this.sound.play("pop", { volume: 0.1 });
+            this.sound.play("btn", { volume: 0.1 });
             updateToggle(true);
           });
           publicBtnText.on("pointerdown", () => {
-            this.sound.play("pop", { volume: 0.1 });
+            this.sound.play("btn", { volume: 0.1 });
             updateToggle(true);
           });
           privateBtnImg.on("pointerdown", () => {
-            this.sound.play("pop", { volume: 0.1 });
+            this.sound.play("btn", { volume: 0.1 });
             updateToggle(false);
           });
           privateBtnText.on("pointerdown", () => {
-            this.sound.play("pop", { volume: 0.1 });
+            this.sound.play("btn", { volume: 0.1 });
             updateToggle(false);
           });
 
@@ -4654,7 +4648,7 @@ class LobbyScene extends Phaser.Scene {
             .setOrigin(0.5);
 
           createBtnImg.on("pointerdown", () => {
-            this.sound.play("pop", { volume: 0.1 });
+            this.sound.play("btn", { volume: 0.1 });
             this.tweens.add({
               targets: [createBtnImg, createBtnText],
               scaleX: "*=0.95",
@@ -4744,7 +4738,7 @@ class LobbyScene extends Phaser.Scene {
             const code = el.value.trim();
 
             if (code) {
-              this.sound.play("pop", { volume: 0.1 });
+              this.sound.play("btn", { volume: 0.1 });
               this.tweens.add({
                 targets: [joinBtnImg, joinBtnText],
                 scaleX: "*=0.95",
@@ -4815,7 +4809,7 @@ class LobbyScene extends Phaser.Scene {
           tab.img.removeAllListeners("pointerdown");
           tab.text.removeAllListeners("pointerdown");
           const onTabClick = () => {
-            this.sound.play("pop", { volume: 0.1 });
+            this.sound.play("btn", { volume: 0.1 });
             allTabs.forEach((t) => {
               t.img.setTint(t.name === tab.name ? activeTabTint : 0x7f8c8d);
             });
@@ -4873,7 +4867,7 @@ class LobbyScene extends Phaser.Scene {
 
         // 나가기 버튼 클릭 이벤트
         cancelBtnImg.on("pointerdown", () => {
-          this.sound.play("pop", { volume: 0.1 });
+          this.sound.play("btn", { volume: 0.1 });
 
           if (window.ReactNativeWebView) {
             generateHapticFeedback({ type: "impactLight" }).catch(() => {});
@@ -5000,7 +4994,7 @@ class LobbyScene extends Phaser.Scene {
     this.currentJoinPopupCloseHandler = closePwPopup;
 
     cancelBtnImg.on("pointerdown", () => {
-      this.sound.play("pop", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.1 });
       closePwPopup();
     });
 
@@ -5010,7 +5004,7 @@ class LobbyScene extends Phaser.Scene {
         this.showToast("비밀번호 4자리를 입력해주세요!", "#e74c3c");
         return;
       }
-      this.sound.play("pop", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.1 });
       this.tweens.add({
         targets: [confirmBtnImg, confirmBtnText],
         scaleX: "*=0.95",
@@ -5378,7 +5372,7 @@ class LobbyScene extends Phaser.Scene {
         aiBtn.on("pointerdown", () => {
           if (this.aiAddPending) return;
           this.aiAddPending = true;
-          this.sound.play("pop", { volume: 0.1 });
+          this.sound.play("btn", { volume: 0.1 });
           this.tweens.add({
             targets: [aiBtn, aiBtnText],
             scaleX: "*=0.95",
@@ -5444,7 +5438,7 @@ class LobbyScene extends Phaser.Scene {
       if (isHost && !isThisPlayerHost) {
         profileImg.setInteractive({ useHandCursor: true });
         profileImg.on("pointerdown", () => {
-          this.sound.play("pop", { volume: 0.1 });
+          this.sound.play("btn", { volume: 0.1 });
           const kickBtnY = cardTop + cardH - height * 0.03;
           const kickBtn = this.add
             .rectangle(
@@ -5474,7 +5468,7 @@ class LobbyScene extends Phaser.Scene {
           this.lobbyUIContainer.add([kickBtn, kickBtnText]);
 
           kickBtn.on("pointerdown", () => {
-            this.sound.play("pop", { volume: 0.1 });
+            this.sound.play("btn", { volume: 0.1 });
             this.tweens.add({
               targets: [kickBtn, kickBtnText],
               scaleX: "*=0.95",
@@ -5631,7 +5625,7 @@ class LobbyScene extends Phaser.Scene {
     };
 
     sendBtnImg.on("pointerdown", () => {
-      this.sound.play("pop", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.1 });
       this.tweens.add({
         targets: [sendBtnImg, sendBtnText],
         scale: "*=0.95",
@@ -5680,7 +5674,7 @@ class LobbyScene extends Phaser.Scene {
       this.lobbyUIContainer.add([startBtnImg, startBtnText]);
 
       startBtnImg.on("pointerdown", () => {
-        this.sound.play("pop", { volume: 0.1 });
+        this.sound.play("btn", { volume: 0.1 });
         this.tweens.add({
           targets: [startBtnImg, startBtnText],
           scale: "*=0.95",
@@ -5760,7 +5754,7 @@ class LobbyScene extends Phaser.Scene {
       this.lobbyUIContainer.add([readyBtnImg, readyBtnText]);
 
       readyBtnImg.on("pointerdown", () => {
-        this.sound.play("pop", { volume: 0.1 });
+        this.sound.play("btn", { volume: 0.1 });
         this.tweens.add({
           targets: [readyBtnImg, readyBtnText],
           scale: "*=0.95",
@@ -5799,7 +5793,7 @@ class LobbyScene extends Phaser.Scene {
     this.lobbyUIContainer.add([shopBtnImg, shopBtnText]);
 
     shopBtnImg.on("pointerdown", () => {
-      this.sound.play("pop", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.1 });
       this.tweens.add({
         targets: [shopBtnImg, shopBtnText],
         scale: "*=0.95",
@@ -5831,7 +5825,7 @@ class LobbyScene extends Phaser.Scene {
     this.lobbyUIContainer.add([inviteBtnImg, inviteBtnText]);
 
     inviteBtnImg.on("pointerdown", () => {
-      this.sound.play("pop", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.1 });
       this.tweens.add({
         targets: [inviteBtnImg, inviteBtnText],
         scale: "*=0.95",
@@ -5866,7 +5860,7 @@ class LobbyScene extends Phaser.Scene {
     this.lobbyUIContainer.add([exitBtnImg, exitBtnText]);
 
     exitBtnImg.on("pointerdown", () => {
-      this.sound.play("pop", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.1 });
       this.tweens.add({
         targets: [exitBtnImg, exitBtnText],
         scale: "*=0.95",
@@ -6012,7 +6006,7 @@ class LobbyScene extends Phaser.Scene {
 
     cancelBtn.on("pointerdown", () => {
       // 1. 효과음 재생
-      this.sound.play("pop", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.1 });
 
       // 2. 햅틱 피드백 (기존 코드 유지)
       if (window.ReactNativeWebView) {
@@ -6053,7 +6047,7 @@ class LobbyScene extends Phaser.Scene {
 
     confirmBtn.on("pointerdown", () => {
       // 1. 효과음 재생
-      this.sound.play("pop", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.1 });
 
       // 2. 햅틱 피드백 (기본 코드 유지)
       if (window.ReactNativeWebView) {
@@ -6149,7 +6143,7 @@ class LobbyScene extends Phaser.Scene {
 
     overlay.setInteractive();
     overlay.on("pointerdown", () => {
-      this.sound.play("pop", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.1 });
       destroyPopup();
     });
 
@@ -6237,7 +6231,7 @@ class LobbyScene extends Phaser.Scene {
         .setDepth(4002);
 
       inviteBtn.on("pointerdown", () => {
-        this.sound.play("pop", { volume: 0.1 });
+        this.sound.play("btn", { volume: 0.1 });
         this.tweens.add({
           targets: [inviteBtn, inviteBtnText],
           scaleX: "*=0.9",
@@ -6269,7 +6263,7 @@ class LobbyScene extends Phaser.Scene {
     allObjects.push(closeBtn);
 
     closeBtn.on("pointerdown", () => {
-      this.sound.play("pop", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.1 });
       destroyPopup();
     });
   }
@@ -6320,7 +6314,7 @@ class LobbyScene extends Phaser.Scene {
 
     overlay.setInteractive();
     overlay.on("pointerdown", () => {
-      this.sound.play("pop", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.1 });
       destroyPopup();
     });
 
@@ -6434,7 +6428,7 @@ class LobbyScene extends Phaser.Scene {
         acceptBtn.setTint(0x999999);
       } catch (e) {}
 
-      this.sound.play("pop", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.1 });
       this.tweens.add({
         targets: [acceptBtn, acceptBtnText],
         scaleX: "*=0.9",
@@ -6452,7 +6446,7 @@ class LobbyScene extends Phaser.Scene {
     });
 
     declineBtn.on("pointerdown", () => {
-      this.sound.play("pop", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.1 });
       this.tweens.add({
         targets: [declineBtn, declineBtnText],
         scaleX: "*=0.9",
@@ -7011,7 +7005,7 @@ class GameScene extends Phaser.Scene {
 
     socket.off("hostChanged").on("hostChanged", (data) => {
       this.roundData.hostId = data.hostId;
-      this.sound.play("irassai", { volume: 0.1 });
+      this.sound.play("pass", { volume: 0.1 });
       this.showToast(data.message || "방장이 변경되었습니다.", "#f1c40f");
       if (this.resultContainer) this.showResultOverlay(data.players, true);
     });
@@ -7185,7 +7179,6 @@ class GameScene extends Phaser.Scene {
         // 💡 내 차례가 왔을 때 띵! 소리나 진동(모바일) 주기
         if (isMyTurnNow) {
           this.canClick = true;
-          this.sound.play("pop", { volume: 0.5 }); // 기존에 있는 pop 사운드 활용
 
           // 모바일이라면 진동 추가 (브라우저 지원 시)
           if (window.navigator.vibrate) {
@@ -7237,6 +7230,8 @@ class GameScene extends Phaser.Scene {
           player.isEliminated = data.isEliminated;
         }
       }
+
+      this.showSpecialCardToast(data?.card, data?.playerId);
 
       // 카드 제출이 발생하면, 모든 활성 block effect의 남은 턴을 감소시킵니다.
       // 먹물은 생존자 수 * 2번 카드가 제출되면 해제되어야 하므로,
@@ -7291,8 +7286,6 @@ class GameScene extends Phaser.Scene {
       if (!this.isSingle && ringerId && ringerId !== socket.id) {
         if (this.cache.audio.exists("bell")) {
           this.sound.play("bell", { volume: 0.2 });
-        } else if (this.cache.audio.exists("pop")) {
-          this.sound.play("pop", { volume: 0.2 });
         }
       }
 
@@ -8489,7 +8482,7 @@ class GameScene extends Phaser.Scene {
               this.specialUsedThisTurn[myIdForFlag] = true;
             } catch (e) {}
 
-            this.sound.play("pop", { volume: 0.1 });
+            this.sound.play("btn", { volume: 0.1 });
             this.tweens.add({
               targets: [cardBg, cardImg, countTxt],
               scale: "*=0.95",
@@ -8898,12 +8891,6 @@ class GameScene extends Phaser.Scene {
       // 콤보 사운드가 있으면 재생, 없으면 보조 사운드
       if (this.cache && this.cache.audio && this.cache.audio.exists("combo")) {
         this.sound.play("combo", { volume: 0.35 });
-      } else if (
-        this.cache &&
-        this.cache.audio &&
-        this.cache.audio.exists("irassai")
-      ) {
-        this.sound.play("irassai", { volume: 0.25 });
       }
     }
 
@@ -8966,6 +8953,11 @@ class GameScene extends Phaser.Scene {
             duration: 300,
             delay: delay,
             ease: "Cubic.out",
+            onStart: () => {
+              if (this.cache.audio.exists("pass")) {
+                this.sound.play("pass", { volume: 0.2 });
+              }
+            },
             onComplete: () => {
               flyCard.destroy();
               finishedFlys++;
@@ -8977,7 +8969,6 @@ class GameScene extends Phaser.Scene {
                   player.openStack = [];
                   player.isFlipping = false;
                 });
-                this.sound.play("pop", { volume: 0.3 });
                 cardAnimationDone = true;
                 checkAllAnimationsComplete();
               }
@@ -9645,9 +9636,7 @@ class GameScene extends Phaser.Scene {
           onComplete: () => c.destroy(),
         });
       }
-      if (this.cache && this.cache.audio && this.cache.audio.exists("pop")) {
-        this.sound.play("pop", { volume: 0.12 });
-      }
+
       // 바닥 카드 보존을 위해 openStack만 유지하면서 나머지 업데이트
       this.roundData.players.forEach((oldPlayer) => {
         const newPlayer = data.players.find((p) => p.id === oldPlayer.id);
@@ -9696,9 +9685,7 @@ class GameScene extends Phaser.Scene {
           duration: 250,
           delay: index * 25 + j * 10,
           ease: "Cubic.out",
-          onStart: () => {
-            this.sound.play("pop", { volume: 0.1, detune: 500 });
-          },
+          onStart: () => {},
           onComplete: () => {
             flyCard.destroy();
             finishedCount++;
@@ -10004,8 +9991,6 @@ class GameScene extends Phaser.Scene {
 
     if (this.cache.audio.exists("bell")) {
       this.sound.play("bell", { volume: 0.2 });
-    } else if (this.cache.audio.exists("pop")) {
-      this.sound.play("pop", { volume: 0.2 });
     }
 
     if (this.isSingle) {
@@ -11246,7 +11231,7 @@ class GameScene extends Phaser.Scene {
     ]);
 
     const finalizeTutorial = () => {
-      this.sound.play("pop", { volume: 0.12 });
+      this.sound.play("btn", { volume: 0.12 });
       this.hasCompletedTutorial = true;
       try {
         localStorage.setItem(TUTORIAL_STATE_KEY, "true");
@@ -11383,14 +11368,6 @@ class GameScene extends Phaser.Scene {
           });
 
           if (finished === total) {
-            // 사운드
-            if (
-              this.cache &&
-              this.cache.audio &&
-              this.cache.audio.exists("pop")
-            ) {
-              this.sound.play("pop", { volume: 0.3 });
-            }
             if (typeof onComplete === "function") onComplete();
           }
         },
@@ -11494,10 +11471,6 @@ class GameScene extends Phaser.Scene {
           onComplete: () => px.destroy(),
         });
 
-        if (this.cache && this.cache.audio && this.cache.audio.exists("pop")) {
-          this.sound.play("pop", { volume: 0.28 });
-        }
-
         if (typeof onComplete === "function") onComplete();
       },
     });
@@ -11561,6 +11534,8 @@ class GameScene extends Phaser.Scene {
 
     // 즉시 현재 보여지는 카드로 설정
     player.openCard = randomCard;
+
+    this.showSpecialCardToast(randomCard, playerId);
 
     // --- 핵심 수정: 싱글플레이에서는 로컬 openStack을 직접 누적 ---
     if (!player.openStack || !Array.isArray(player.openStack))
@@ -11633,10 +11608,7 @@ class GameScene extends Phaser.Scene {
     // 2. 사운드 재생 (캐시 확인 포함)
     if (this.cache.audio.exists("bell")) {
       this.sound.play("bell", { volume: 0.2 });
-    } else if (this.cache.audio.exists("pop")) {
-      this.sound.play("pop", { volume: 0.2 });
     }
-    // AI도 irassai가 겹치지 않도록 체크
     // AI도 기존 사운드를 중단하고 재생
     // AI: reuse shared sound if exists
     // 3. 승리 처리
@@ -12499,6 +12471,22 @@ class GameScene extends Phaser.Scene {
     return player ? player.nickname : "AI";
   }
 
+  showSpecialCardToast(card, playerId) {
+    const type = card?.type;
+    if (!type) return;
+    const labels = {
+      [BOMB_CARD_TYPE]: "폭탄",
+      [THUNDER_CARD_TYPE]: "번개",
+      [PLUS1_CARD_TYPE]: "+1",
+      [TON_CARD_TYPE]: "회오리",
+    };
+    const label = labels[type];
+    if (!label) return;
+    const nickname = playerId ? this.getNicknameById(playerId) : "";
+    const prefix = nickname ? `${nickname} ` : "";
+    this.showToast(`${prefix}${label} 카드 등장!`, "#f39c12");
+  }
+
   // 특수카드 사용 함수
   useSpecialCard(cardId, cardName, cooldown) {
     // 턴 검증: 자신의 턴에서만 사용 가능
@@ -12857,7 +12845,6 @@ class GameScene extends Phaser.Scene {
         this.time.delayedCall(500, () => {
           readyTxt.setText("GO!");
           readyTxt.setColor("#2ecc71");
-          this.sound.play("pop", { volume: 0.2 });
 
           this.tweens.add({
             targets: readyTxt,
@@ -13612,7 +13599,7 @@ class GameScene extends Phaser.Scene {
     toast.add([bg, txt]);
 
     // 효과음 재생 (이미 로드된 'pop'이나 'btn' 사운드 활용)
-    this.sound.play("pop", { volume: 0.2 });
+    this.sound.play("pass", { volume: 0.2 });
 
     // 애니메이션: 내려왔다가 잠시 머물고 다시 올라가기
     this.tweens.add({
@@ -13737,7 +13724,7 @@ class GameScene extends Phaser.Scene {
       .setDepth(4003);
 
     cancelBtn.on("pointerdown", () => {
-      this.sound.play("pop", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.1 });
       this.tweens.add({
         targets: [cancelBtn, cancelTxt],
         scaleX: "*=0.95",
@@ -13768,7 +13755,7 @@ class GameScene extends Phaser.Scene {
       .setDepth(4003);
 
     confirmBtn.on("pointerdown", () => {
-      this.sound.play("pop", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.1 });
       this.tweens.add({
         targets: [confirmBtn, confirmTxt],
         scaleX: "*=0.95",
@@ -13906,7 +13893,7 @@ class GameScene extends Phaser.Scene {
         .setDepth(302);
 
       inviteBtn.on("pointerdown", () => {
-        this.sound.play("pop", { volume: 0.1 });
+        this.sound.play("btn", { volume: 0.1 });
         this.tweens.add({
           targets: [inviteBtn, inviteBtnText],
           scaleX: "*=0.9",
@@ -13944,7 +13931,7 @@ class GameScene extends Phaser.Scene {
       .setInteractive({ useHandCursor: true });
 
     closeBtn.on("pointerdown", () => {
-      this.sound.play("pop", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.1 });
       popupBg.destroy();
       titleText.destroy();
       subText.destroy();
@@ -13956,7 +13943,7 @@ class GameScene extends Phaser.Scene {
 
     // 사용자가 클릭한 영역 외 팝업 배경 클릭 시 닫기
     popupBg.on("pointerdown", () => {
-      this.sound.play("pop", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.1 });
       popupBg.destroy();
       titleText.destroy();
       subText.destroy();
@@ -14102,7 +14089,7 @@ class GameScene extends Phaser.Scene {
     };
 
     acceptBtn.on("pointerdown", () => {
-      this.sound.play("pop", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.1 });
       this.tweens.add({
         targets: [acceptBtn, acceptBtnText],
         scaleX: "*=0.9",
@@ -14119,7 +14106,7 @@ class GameScene extends Phaser.Scene {
     });
 
     declineBtn.on("pointerdown", () => {
-      this.sound.play("pop", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.1 });
       this.tweens.add({
         targets: [declineBtn, declineBtnText],
         scaleX: "*=0.9",

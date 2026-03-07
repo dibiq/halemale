@@ -797,6 +797,15 @@ function clampNumber(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+function randomTriangular(min, max, mode) {
+  const u = Math.random();
+  const c = (mode - min) / (max - min);
+  if (u < c) {
+    return min + Math.sqrt(u * (max - min) * (mode - min));
+  }
+  return max - Math.sqrt((1 - u) * (max - min) * (max - mode));
+}
+
 function getHumanReactionBaseline(room) {
   const samples = [];
   if (room && room.reactionSamples) {
@@ -922,8 +931,9 @@ function scheduleAiBell(room, io) {
     if (player.isEliminated) return;
     if (!player.myDeck || player.myDeck.length <= 0) return;
 
-    const baseDelay = clampNumber(Math.round(baseline * 1.1), 500, 3200);
-    const delay = baseDelay + Math.floor(Math.random() * 120);
+    const variance = randomTriangular(0.85, 1.6, 1.2);
+    const baseDelay = clampNumber(Math.round(baseline * variance), 500, 3600);
+    const delay = baseDelay + Math.floor(Math.random() * 180);
     room.aiTimers.bells[player.id] = setTimeout(() => {
       handleAiBell(room, io, player.id);
     }, delay);
