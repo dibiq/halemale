@@ -610,6 +610,11 @@ function checkGameOver(room, io, options = {}) {
   });
 
   const survivors = room.players.filter((p) => !p.isEliminated);
+  const hasBots = room.players.some((p) => p && p.isBot);
+  const humans = room.players.filter((p) => p && !p.isBot);
+  const allHumansEliminated =
+    humans.length > 0 && humans.every((p) => p.isEliminated);
+  const forceEndForHumanElim = hasBots && allHumansEliminated;
 
   // 실시간으로 플레이어 상태 업데이트 (프론트에서 [탈락] 표시용)
   io.to(room.roomId).emit("updatePlayerStatus", {
@@ -621,9 +626,13 @@ function checkGameOver(room, io, options = {}) {
     })),
   });
 
-  if (survivors.length <= 1 && room.isGameStarted) {
+  if ((survivors.length <= 1 || forceEndForHumanElim) && room.isGameStarted) {
     room.isGameStarted = false;
-    const winner = survivors.length === 1 ? survivors[0] : room.players[0];
+    const winner = forceEndForHumanElim
+      ? survivors[0] || room.players[0]
+      : survivors.length === 1
+        ? survivors[0]
+        : room.players[0];
     const beforeStateById = new Map(
       room.players.map((p) => {
         const beforeExperience = Number(p.experience) || 0;
