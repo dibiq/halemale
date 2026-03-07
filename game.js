@@ -402,6 +402,42 @@ function ensurePlayer1NewFrames(scene) {
   }
 }
 
+function ensureMainbgFrames(scene) {
+  try {
+    if (!scene || !scene.textures) return;
+    if (!scene.textures.exists("mainbg")) return;
+
+    if (scene.textures.exists("mainbg_1")) return;
+
+    const tex = scene.textures.get("mainbg");
+    const img = tex.getSourceImage();
+    if (!img || !img.width || !img.height) return;
+
+    const w = img.width;
+    const h = img.height;
+    const cols = 10;
+    const rows = 3;
+    if (w % cols !== 0 || h % rows !== 0) return;
+    const frameW = Math.floor(w / cols) || w;
+    const frameH = Math.floor(h / rows) || h;
+
+    let idx = 1;
+    for (let r = 0; r < rows; r += 1) {
+      for (let c = 0; c < cols; c += 1) {
+        const key = `mainbg_${idx}`;
+        idx += 1;
+        if (scene.textures.exists(key)) continue;
+        const canvas = scene.textures.createCanvas(key, frameW, frameH);
+        const ctx = canvas.getContext();
+        ctx.drawImage(img, -c * frameW, -r * frameH);
+        canvas.refresh();
+      }
+    }
+  } catch (e) {
+    // console.error("[ensureMainbgFrames] error", e);
+  }
+}
+
 // --- 전역 설정 변수 추가 ---
 const GAME_FONTS = {
   main: "Jua", // HTML에서 로드한 폰트 이름
@@ -509,16 +545,8 @@ class LobbyScene extends Phaser.Scene {
 
     // 2. 서버 주소 설정 (오프라인일 경우 로컬 경로 'assets' 사용)
 
-    let ASSET_SERVER = "";
-    let VERSION = "";
-
-    if (this.isOnline) {
-      ASSET_SERVER = "https://cushi-assets.onrender.com";
-      VERSION = "?v=2";
-    } else {
-      ASSET_SERVER = "assets";
-      VERSION = "";
-    }
+    const ASSET_SERVER = "https://halemale.onrender.com/assets";
+    const VERSION = "?v=2";
 
     const PLAYER1_SPRITE_VERSION = VERSION
       ? `${VERSION}&p1=20260221_8`
@@ -526,47 +554,13 @@ class LobbyScene extends Phaser.Scene {
     const PLAYER2_SPRITE_VERSION = VERSION
       ? `${VERSION}&p2=20260227_1`
       : "?p2=20260227_1";
-    const MYBG_SPRITE_VERSION = VERSION
-      ? `${VERSION}&mbg=20260221_3`
-      : "?mbg=20260221_3";
 
     this.load.image(
       "popupclose",
       `${ASSET_SERVER}/images/popupclose.png${VERSION}`,
     );
 
-    this.load.spritesheet(
-      "mybg_sprite_a",
-      `${ASSET_SERVER}/images/mybg_sprite_a.png${MYBG_SPRITE_VERSION}`,
-      {
-        frameWidth: 416,
-        frameHeight: 752,
-      },
-    );
-    this.load.spritesheet(
-      "mybg_sprite_b",
-      `${ASSET_SERVER}/images/mybg_sprite_b.png${MYBG_SPRITE_VERSION}`,
-      {
-        frameWidth: 416,
-        frameHeight: 752,
-      },
-    );
-    this.load.spritesheet(
-      "mybg_sprite_c",
-      `${ASSET_SERVER}/images/mybg_sprite_c.png${MYBG_SPRITE_VERSION}`,
-      {
-        frameWidth: 416,
-        frameHeight: 752,
-      },
-    );
-    this.load.spritesheet(
-      "mybg_sprite_d",
-      `${ASSET_SERVER}/images/mybg_sprite_d.png${MYBG_SPRITE_VERSION}`,
-      {
-        frameWidth: 416,
-        frameHeight: 752,
-      },
-    );
+    this.load.image("mainbg", `${ASSET_SERVER}/images/bg_sprite.png${VERSION}`);
 
     this.load.image("gamebg", `${ASSET_SERVER}/images/gamebg.png${VERSION}`);
     this.load.image(
@@ -1089,14 +1083,16 @@ class LobbyScene extends Phaser.Scene {
     }
 
     const lobbyBg = this.add
-      .sprite(centerX, height / 2, "mybg")
+      .sprite(centerX, height / 2, "mainbg")
       .setDisplaySize(width, height * 1.1)
       .setDepth(0)
       .setAlpha(1);
 
     const mybgAnimKey = this.ensureMybgAnimation();
-    if (mybgAnimKey && this.canUseMybgSpriteSheets()) {
-      lobbyBg.setTexture("mybg_sprite_a", 0);
+    if (mybgAnimKey) {
+      if (this.textures.exists("mainbg_1")) {
+        lobbyBg.setTexture("mainbg_1");
+      }
       lobbyBg.play(mybgAnimKey, true);
       lobbyBg.setDisplaySize(width, height * 1.1);
     }
@@ -2609,43 +2605,7 @@ class LobbyScene extends Phaser.Scene {
   }
 
   getMybgAnimKey() {
-    return "mybg_anim";
-  }
-
-  getMybgSpriteSheets() {
-    return [
-      { key: "mybg_sprite_a", frameCount: 25 },
-      { key: "mybg_sprite_b", frameCount: 25 },
-      { key: "mybg_sprite_c", frameCount: 25 },
-      { key: "mybg_sprite_d", frameCount: 16 },
-    ];
-  }
-
-  canUseMybgSpriteSheets() {
-    const spriteSheetKeys = this.getMybgSpriteSheets().map((item) => item.key);
-    if (!spriteSheetKeys.every((key) => this.textures.exists(key))) {
-      return false;
-    }
-
-    const renderer = this.sys?.game?.renderer;
-    const maxTextureSize =
-      typeof renderer?.maxTextureSize === "number"
-        ? renderer.maxTextureSize
-        : 4096;
-
-    return spriteSheetKeys.every((key) => {
-      const texture = this.textures.get(key);
-      const source = texture?.getSourceImage();
-      const width = Number(source?.width) || 0;
-      const height = Number(source?.height) || 0;
-
-      return (
-        width > 0 &&
-        height > 0 &&
-        width <= maxTextureSize &&
-        height <= maxTextureSize
-      );
-    });
+    return "mainbg_anim";
   }
 
   ensureMybgAnimation() {
@@ -2654,26 +2614,22 @@ class LobbyScene extends Phaser.Scene {
       return animKey;
     }
 
-    if (!this.canUseMybgSpriteSheets()) {
+    if (!this.textures.exists("mainbg")) {
       return null;
     }
 
+    ensureMainbgFrames(this);
     const frames = [];
-    this.getMybgSpriteSheets().forEach(({ key: textureKey, frameCount }) => {
-      const texture = this.textures.get(textureKey);
-      const availableFrames = Math.max(0, (texture.frameTotal || 1) - 1);
-      const totalFrames = Math.min(frameCount, availableFrames);
-      if (totalFrames <= 0) {
-        return;
+    let idx = 1;
+    while (true) {
+      const textureKey = `mainbg_${idx}`;
+      if (this.textures.exists(textureKey)) {
+        frames.push({ key: textureKey });
+        idx += 1;
+        continue;
       }
-
-      frames.push(
-        ...this.anims.generateFrameNumbers(textureKey, {
-          start: 0,
-          end: totalFrames - 1,
-        }),
-      );
-    });
+      break;
+    }
 
     if (frames.length === 0) {
       return null;

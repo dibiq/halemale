@@ -47,5 +47,12 @@
       style="position: relative; width: 100vw; height: 100vh"
     ></div>
     <script type="module" src="game.js"></script>
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("/sw.js").catch(() => {});
+        });
+      }
+    </script>
   </body>
 </html>
