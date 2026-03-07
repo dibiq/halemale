@@ -13,7 +13,7 @@ const SINGLE_TON_CARD_COUNT = 1;
 const PEN_CARD_TYPE = "pen";
 const SINGLE_PEN_CARD_COUNT = 0;
 const PLUS1_CARD_TYPE = "plus1";
-const SINGLE_PLUS1_CARD_COUNT = 12;
+const SINGLE_PLUS1_CARD_COUNT = 1;
 const PLUS2_CARD_TYPE = "plus2";
 const SINGLE_PLUS2_CARD_COUNT = 0;
 const NOT5_CARD_TYPE = "not5";
@@ -8377,6 +8377,7 @@ class GameScene extends Phaser.Scene {
 
   drawSpecialCards(p, layout) {
     const { width, height } = this.cameras.main;
+    if (this.isSingle) return;
     const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
     const isMe = p.id === myId; // 내 카드인지 확인
 

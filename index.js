@@ -826,8 +826,14 @@ function getHumanReactionBaseline(room) {
 function buildMatchAiProfile(room) {
   // Use current players' reaction speed as a baseline.
   const baseline = getHumanReactionBaseline(room);
-  const reactionTime = clampNumber(Math.round(baseline * 1.1), 500, 3000);
-  const flipDelay = clampNumber(Math.round(baseline * 0.8), 450, 2400);
+  const reactionFactor = randomTriangular(0.9, 1.5, 1.15);
+  const flipFactor = randomTriangular(0.7, 1.3, 0.9);
+  const reactionTime = clampNumber(
+    Math.round(baseline * reactionFactor),
+    500,
+    3200,
+  );
+  const flipDelay = clampNumber(Math.round(baseline * flipFactor), 450, 2600);
 
   return {
     flipDelay,
