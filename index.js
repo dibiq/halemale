@@ -789,8 +789,8 @@ function processSkipTurn(room, io) {
 }
 
 const MULTI_AI_BASE_PROFILE = {
-  flipDelay: 1200,
-  reactionTime: 1700,
+  flipDelay: 750,
+  reactionTime: 1200,
 };
 
 function clampNumber(value, min, max) {
@@ -826,14 +826,14 @@ function getHumanReactionBaseline(room) {
 function buildMatchAiProfile(room) {
   // Use current players' reaction speed as a baseline.
   const baseline = getHumanReactionBaseline(room);
-  const reactionFactor = randomTriangular(0.9, 1.5, 1.15);
-  const flipFactor = randomTriangular(0.7, 1.3, 0.9);
+  const reactionFactor = randomTriangular(0.8, 1.3, 1.0);
+  const flipFactor = randomTriangular(0.6, 1.1, 0.8);
   const reactionTime = clampNumber(
     Math.round(baseline * reactionFactor),
-    500,
-    3200,
+    400,
+    2400,
   );
-  const flipDelay = clampNumber(Math.round(baseline * flipFactor), 450, 2600);
+  const flipDelay = clampNumber(Math.round(baseline * flipFactor), 350, 2000);
 
   return {
     flipDelay,
@@ -905,7 +905,7 @@ function scheduleAiTurn(room, io) {
   if (room.isFlipping) return;
 
   const delayBase = Number(current.aiProfile?.flipDelay || 1200);
-  const delay = delayBase + Math.floor(Math.random() * 250);
+  const delay = delayBase + Math.floor(Math.random() * 150);
 
   room.aiTimers.turn = setTimeout(() => {
     if (!room.isGameStarted) return;
@@ -937,9 +937,9 @@ function scheduleAiBell(room, io) {
     if (player.isEliminated) return;
     if (!player.myDeck || player.myDeck.length <= 0) return;
 
-    const variance = randomTriangular(0.85, 1.6, 1.2);
-    const baseDelay = clampNumber(Math.round(baseline * variance), 500, 3600);
-    const delay = baseDelay + Math.floor(Math.random() * 180);
+    const variance = randomTriangular(0.8, 1.4, 1.05);
+    const baseDelay = clampNumber(Math.round(baseline * variance), 400, 2500);
+    const delay = baseDelay + Math.floor(Math.random() * 120);
     room.aiTimers.bells[player.id] = setTimeout(() => {
       handleAiBell(room, io, player.id);
     }, delay);

@@ -449,7 +449,6 @@ class LobbyScene extends Phaser.Scene {
       `${ASSET_SERVER}/images/popupclose.png${VERSION}`,
     );
 
-    this.load.image("mybg", `${ASSET_SERVER}/images/mybg.png${VERSION}`);
     this.load.spritesheet(
       "mybg_sprite_a",
       `${ASSET_SERVER}/images/mybg_sprite_a.png${MYBG_SPRITE_VERSION}`,
@@ -502,7 +501,6 @@ class LobbyScene extends Phaser.Scene {
       `${ASSET_SERVER}/images/playerbg.png${VERSION}`,
     );
 
-    this.load.image("bar", `${ASSET_SERVER}/images/bar.png${VERSION}`);
     this.load.image("multbg", `${ASSET_SERVER}/images/multbg.png${VERSION}`);
 
     this.load.image(
@@ -578,7 +576,6 @@ class LobbyScene extends Phaser.Scene {
     );
 
     this.load.image("slide", `${ASSET_SERVER}/images/slide.png${VERSION}`);
-    this.load.image("chef", `${ASSET_SERVER}/images/chef.png${VERSION}`);
     this.load.image("storebg", `${ASSET_SERVER}/images/storebg.png${VERSION}`);
 
     this.load.spritesheet(
@@ -917,9 +914,6 @@ class LobbyScene extends Phaser.Scene {
     if (mybgAnimKey && this.canUseMybgSpriteSheets()) {
       lobbyBg.setTexture("mybg_sprite_a", 0);
       lobbyBg.play(mybgAnimKey, true);
-      lobbyBg.setDisplaySize(width, height * 1.1);
-    } else if (this.textures.exists("mybg")) {
-      lobbyBg.setTexture("mybg");
       lobbyBg.setDisplaySize(width, height * 1.1);
     }
 
@@ -1344,8 +1338,6 @@ class LobbyScene extends Phaser.Scene {
       currentAvatarTexture = `${currentKey}`;
     } else if (this.textures.exists("player_1_sprite_a")) {
       currentAvatarTexture = "player_1_sprite_a";
-    } else {
-      currentAvatarTexture = "chef"; // 안전한 기본 이미지
     }
     const currentIdx = this.profileAvatarKeys.indexOf(currentKey);
     this.profileAvatarIndex = currentIdx >= 0 ? currentIdx : 0;
@@ -3552,8 +3544,6 @@ class LobbyScene extends Phaser.Scene {
             avatarTexture = `${key}`;
           } else if (this.textures.exists("player_1_sprite_a")) {
             avatarTexture = "player_1_sprite_a";
-          } else {
-            avatarTexture = "chef";
           }
           avatarSprite = this.add
             .sprite(0, height * 0.0, avatarTexture)
