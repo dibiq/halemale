@@ -10,6 +10,26 @@ const server = http.createServer(app);
 const DATABASE_URL = process.env.DATABASE_URL;
 const pool = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL }) : null;
 
+const DAILY_LOGIN_REWARD_COINS = 20;
+const DAILY_LOGIN_TIMEZONE = "Asia/Seoul";
+
+function getDateStringInTimeZone(date = new Date(), timeZone) {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  return formatter.format(date);
+}
+
+function normalizeDateString(value) {
+  if (!value) return null;
+  if (typeof value === "string") return value.slice(0, 10);
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return null;
+}
+
 function getAllowedOrigins() {
   return [
     "https://halemale.apps.tossmini.com",
@@ -78,6 +98,7 @@ async function savePlayer(
   experience,
   ownedCharacters = null,
   currentCharacter = null,
+  lastCheckinDate = null,
 ) {
   if (!pool) return;
 
@@ -100,6 +121,7 @@ async function savePlayer(
       experience,
       owned_characters,
       current_character,
+      last_checkin_date,
       updated_at
     )
     VALUES (
@@ -110,6 +132,7 @@ async function savePlayer(
       $5,
       COALESCE($6::jsonb, '[]'::jsonb),
       COALESCE($7, 'player_1'),
+      $8,
       CURRENT_TIMESTAMP
     )
     ON CONFLICT (id) 
@@ -120,6 +143,7 @@ async function savePlayer(
       experience = EXCLUDED.experience,
       owned_characters = COALESCE($6::jsonb, players.owned_characters),
       current_character = COALESCE($7, players.current_character),
+      last_checkin_date = COALESCE($8, players.last_checkin_date),
       updated_at = CURRENT_TIMESTAMP;
   `;
   try {
@@ -133,6 +157,7 @@ async function savePlayer(
         ? JSON.stringify(normalizedOwnedCharacters)
         : null,
       normalizedCurrentCharacter,
+      lastCheckinDate,
     ]);
     console.log(
       `✅ ${id} 데이터 저장 성공 (coins=${coins}, owned=${JSON.stringify(normalizedOwnedCharacters)}, current=${normalizedCurrentCharacter}, rowCount=${result.rowCount})`,
@@ -160,6 +185,10 @@ async function ensurePlayersSchema() {
     await pool.query(`
       ALTER TABLE players
       ADD COLUMN IF NOT EXISTS current_character TEXT NOT NULL DEFAULT 'player_1';
+    `);
+    await pool.query(`
+      ALTER TABLE players
+      ADD COLUMN IF NOT EXISTS last_checkin_date DATE;
     `);
     console.log("✅ players.experience 컬럼 확인 완료");
   } catch (err) {
@@ -1223,6 +1252,23 @@ io.on("connection", (socket) => {
     socket.level =
       Number(socket.level) || getLevelFromExperience(socket.experience);
 
+    try {
+      const today = getDateStringInTimeZone(new Date(), DAILY_LOGIN_TIMEZONE);
+      const lastCheckin = normalizeDateString(
+        savedData ? savedData.last_checkin_date : null,
+      );
+      socket.lastCheckinDate = lastCheckin;
+
+      socket.emit("dailyRewardAvailable", {
+        available: Boolean(today && today !== lastCheckin),
+        amount: DAILY_LOGIN_REWARD_COINS,
+        date: today,
+        lastCheckinDate: lastCheckin,
+      });
+    } catch (err) {
+      console.warn("daily login availability check failed", err);
+    }
+
     console.log(`🎯 setNickname 최종 - ${socket.nickname}:`, {
       level: socket.level,
       coins: socket.coins,
@@ -1271,6 +1317,68 @@ io.on("connection", (socket) => {
           isRejoin: true,
         });
       }
+    }
+  });
+
+  socket.on("claimDailyReward", async () => {
+    const today = getDateStringInTimeZone(new Date(), DAILY_LOGIN_TIMEZONE);
+    const lastCheckin = normalizeDateString(socket.lastCheckinDate);
+
+    if (!today) {
+      socket.emit("dailyRewardError", "출석 보상 날짜를 확인할 수 없습니다.");
+      return;
+    }
+
+    if (today === lastCheckin) {
+      socket.emit("dailyRewardError", "이미 오늘의 출석 보상을 받았습니다.");
+      socket.emit("dailyRewardAvailable", {
+        available: false,
+        amount: DAILY_LOGIN_REWARD_COINS,
+        date: today,
+        lastCheckinDate: today,
+      });
+      return;
+    }
+
+    const rewardCoins = DAILY_LOGIN_REWARD_COINS;
+    const previousCoins = Number(socket.coins) || 0;
+    socket.coins = previousCoins + rewardCoins;
+    socket.lastCheckinDate = today;
+
+    const mergedItems = {
+      items: Array.isArray(socket.items) ? socket.items : [],
+      specialCards: socket.specialCards || {},
+    };
+
+    try {
+      await savePlayer(
+        socket.nickname,
+        socket.level,
+        socket.coins,
+        mergedItems,
+        socket.experience,
+        socket.ownedCharacters,
+        socket.currentCharacter,
+        today,
+      );
+
+      socket.emit("dailyReward", {
+        amount: rewardCoins,
+        totalCoins: socket.coins,
+        date: today,
+      });
+
+      socket.emit("dailyRewardAvailable", {
+        available: false,
+        amount: DAILY_LOGIN_REWARD_COINS,
+        date: today,
+        lastCheckinDate: today,
+      });
+    } catch (err) {
+      socket.coins = previousCoins;
+      socket.lastCheckinDate = lastCheckin;
+      console.warn("daily login reward claim failed", err);
+      socket.emit("dailyRewardError", "출석 보상 처리 중 오류가 발생했습니다.");
     }
   });
 

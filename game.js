@@ -865,6 +865,128 @@ class LobbyScene extends Phaser.Scene {
     };
     this.hasServerProfileSnapshot = false;
     this.hasReceivedProfileStats = false;
+    this.dailyRewardAvailable = false;
+    this.dailyRewardAmount = 0;
+    this.dailyRewardTodayDate = null;
+    this.dailyRewardLastCheckinDate = null;
+    this.isDailyRewardClaimPending = false;
+    this.dailyRewardBtn = null;
+    this.dailyRewardBtnBg = null;
+    this.dailyRewardBtnText = null;
+    this.isWeeklyRewardPopupOpen = false;
+    this.dailyRewardBadge = null;
+    this.dailyRewardBadgeText = null;
+    this.dailyRewardCountdownText = null;
+    this.dailyRewardCountdownTimer = null;
+    this.dailyRewardPulseTween = null;
+    this.dailyRewardBtnTint = 0x22c55e;
+    this.dailyRewardBtnDisabledTint = 0x64748b;
+    this.getKstNow = () =>
+      new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
+    this.formatDateYmd = (date) => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    };
+    this.getDailyRewardCountdownText = () => {
+      const kstNow = new Date(
+        new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" }),
+      );
+      const nextReset = new Date(kstNow);
+      nextReset.setHours(24, 0, 0, 0);
+      let diffMs = nextReset.getTime() - kstNow.getTime();
+      if (diffMs < 0) diffMs = 0;
+
+      const totalSeconds = Math.floor(diffMs / 1000);
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+
+      const hh = String(hours).padStart(2, "0");
+      const mm = String(minutes).padStart(2, "0");
+      const ss = String(seconds).padStart(2, "0");
+      return `${hh}:${mm}:${ss}`;
+    };
+    this.updateDailyRewardCountdownText = () => {
+      if (!this.dailyRewardCountdownText) return;
+
+      this.showWeeklyRewardPopup();
+      return;
+      const countdown = this.getDailyRewardCountdownText();
+      this.dailyRewardCountdownText.setText(`다음 보상까지 ${countdown}`);
+      this.dailyRewardCountdownText.setVisible(true);
+    };
+    this.updateDailyRewardButtonState = () => {
+      if (
+        !this.dailyRewardBtn ||
+        !this.dailyRewardBtnBg ||
+        !this.dailyRewardBtnText
+      ) {
+        return;
+      }
+
+      const amountText =
+        this.dailyRewardAmount > 0 ? ` +${this.dailyRewardAmount}` : "";
+      this.dailyRewardBtnText.setText(`출석 보상${amountText}`);
+
+      this.dailyRewardBtn.setVisible(true);
+      this.updateDailyRewardCountdownText();
+
+      if (this.isWeeklyRewardPopupOpen) {
+        this.dailyRewardBtnBg.disableInteractive();
+      }
+
+      const shouldPulse =
+        this.dailyRewardAvailable && !this.isDailyRewardClaimPending;
+      if (this.dailyRewardBadge) {
+        this.dailyRewardBadge.setVisible(this.dailyRewardAvailable);
+      }
+      if (this.dailyRewardBadgeText) {
+        this.dailyRewardBadgeText.setVisible(this.dailyRewardAvailable);
+      }
+
+      if (!this.dailyRewardAvailable) {
+        this.isDailyRewardClaimPending = false;
+        this.dailyRewardBtn.setAlpha(0.9);
+        this.dailyRewardBtnBg.setTint(this.dailyRewardBtnDisabledTint);
+        this.dailyRewardBtnBg.setInteractive({ useHandCursor: true });
+      } else {
+        this.dailyRewardBtnBg.setTint(this.dailyRewardBtnTint);
+      }
+
+      if (this.isDailyRewardClaimPending) {
+        this.dailyRewardBtn.setAlpha(0.7);
+        if (this.dailyRewardBtnBg.input) {
+          this.dailyRewardBtnBg.disableInteractive();
+        }
+      }
+
+      if (shouldPulse) {
+        if (!this.dailyRewardPulseTween) {
+          this.dailyRewardPulseTween = this.tweens.add({
+            targets: [this.dailyRewardBtnBg],
+            scaleX: 1.05,
+            scaleY: 1.05,
+            yoyo: true,
+            duration: 500,
+            repeat: -1,
+            ease: "Sine.easeInOut",
+          });
+        }
+      } else if (this.dailyRewardPulseTween) {
+        this.dailyRewardPulseTween.stop();
+        this.dailyRewardPulseTween = null;
+        this.dailyRewardBtnBg.setScale(1);
+      }
+
+      if (this.dailyRewardAvailable && !this.isDailyRewardClaimPending) {
+        this.dailyRewardBtn.setAlpha(1);
+        if (!this.isWeeklyRewardPopupOpen) {
+          this.dailyRewardBtnBg.setInteractive({ useHandCursor: true });
+        }
+      }
+    };
     // 🔧 preload avatar animations for all possible keys so that
     // ensureAvatarAnimation() cost is paid once during startup rather
     // than during the win animation. This also forces player2 frames
@@ -1150,6 +1272,62 @@ class LobbyScene extends Phaser.Scene {
       // 상점이 열려있다면 새로고침하여 최신 소유 정보 반영
       if (this.isShopOpen && typeof renderShopContent === "function") {
         renderShopContent();
+      }
+    });
+
+    socket.off("dailyRewardAvailable").on("dailyRewardAvailable", (payload) => {
+      this.dailyRewardAvailable = Boolean(payload && payload.available);
+      this.dailyRewardAmount = Number(payload && payload.amount) || 0;
+      this.dailyRewardTodayDate = payload && payload.date ? payload.date : null;
+      this.dailyRewardLastCheckinDate =
+        payload && payload.lastCheckinDate ? payload.lastCheckinDate : null;
+      this.isDailyRewardClaimPending = false;
+
+      if (typeof this.updateDailyRewardButtonState === "function") {
+        this.updateDailyRewardButtonState();
+      }
+    });
+
+    socket.off("dailyRewardError").on("dailyRewardError", (message) => {
+      this.isDailyRewardClaimPending = false;
+      if (typeof this.updateDailyRewardButtonState === "function") {
+        this.updateDailyRewardButtonState();
+      }
+      this.showToast(
+        message || "출석 보상 처리 중 오류가 발생했습니다.",
+        "#e74c3c",
+      );
+    });
+
+    socket.off("dailyReward").on("dailyReward", (payload) => {
+      const amount = Number(payload && payload.amount) || 0;
+      if (amount <= 0) return;
+
+      if (this.myProfile) {
+        this.myProfile.coins =
+          Number(payload.totalCoins) || Number(this.myProfile.coins) || 0;
+        this.updateMyProfileUI();
+      }
+
+      if (this.shopCoinText && this.myProfile) {
+        this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
+      }
+      if (this.coinShopCurrentCoinText && this.myProfile) {
+        this.coinShopCurrentCoinText.setText(
+          `현재 보유: 💰 ${this.myProfile.coins}`,
+        );
+      }
+
+      this.showToast(`오늘의 출석 보상 +${amount} 코인!`, "#22c55e");
+
+      this.dailyRewardAvailable = false;
+      this.dailyRewardLastCheckinDate =
+        payload && payload.date
+          ? payload.date
+          : this.dailyRewardLastCheckinDate;
+      this.isDailyRewardClaimPending = false;
+      if (typeof this.updateDailyRewardButtonState === "function") {
+        this.updateDailyRewardButtonState();
       }
     });
 
@@ -1524,6 +1702,104 @@ class LobbyScene extends Phaser.Scene {
     this.updateMyProfileUI();
     this.updateProfileAvatarUI();
 
+    const dailyRewardBtn = this.add.container(
+      centerX,
+      actionBtnY - actionBtnSpacing * 2,
+    );
+    const dailyRewardBtnBg = this.add
+      .image(0, 0, "uibtn")
+      .setDisplaySize(actionBtnW * 0.9, btnH * 1.05)
+      .setTint(this.dailyRewardBtnTint)
+      .setInteractive({ useHandCursor: true });
+    const dailyRewardBtnText = this.add
+      .text(0, 0, "출석 보상", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.038}px`,
+        color: "#ffffff",
+        fontWeight: "bold",
+      })
+      .setOrigin(0.5);
+    const badgeRadius = btnH * 0.18;
+    const dailyRewardBadge = this.add
+      .circle(actionBtnW * 0.35, -btnH * 0.4, badgeRadius, 0xffd54f, 1)
+      .setStrokeStyle(2, 0x1f2937, 0.9);
+    const dailyRewardBadgeText = this.add
+      .text(actionBtnW * 0.35, -btnH * 0.4, "NEW", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.022}px`,
+        color: "#1f2937",
+        fontWeight: "bold",
+      })
+      .setOrigin(0.5);
+    const dailyRewardCountdownText = this.add
+      .text(0, btnH * 0.85, "", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.026}px`,
+        color: "#ffffff",
+        fontWeight: "bold",
+        stroke: "#000000",
+        strokeThickness: 2,
+      })
+      .setOrigin(0.5);
+
+    dailyRewardBtn.add([
+      dailyRewardBtnBg,
+      dailyRewardBtnText,
+      dailyRewardBadge,
+      dailyRewardBadgeText,
+      dailyRewardCountdownText,
+    ]);
+
+    this.dailyRewardBtn = dailyRewardBtn;
+    this.dailyRewardBtnBg = dailyRewardBtnBg;
+    this.dailyRewardBtnText = dailyRewardBtnText;
+    this.dailyRewardBadge = dailyRewardBadge;
+    this.dailyRewardBadgeText = dailyRewardBadgeText;
+    this.dailyRewardCountdownText = dailyRewardCountdownText;
+
+    dailyRewardBtnBg.on("pointerdown", () => {
+      if (!this.dailyRewardAvailable) {
+        const countdown = this.getDailyRewardCountdownText();
+        this.showToast(`오늘은 이미 출석체크했어요`, "#f1c40f");
+        return;
+      }
+      if (this.isDailyRewardClaimPending) return;
+
+      this.sound.play("btn", { volume: 0.1 });
+      this.isDailyRewardClaimPending = true;
+      if (typeof this.updateDailyRewardButtonState === "function") {
+        this.updateDailyRewardButtonState();
+      }
+      socket.emit("claimDailyReward");
+    });
+
+    if (typeof this.updateDailyRewardButtonState === "function") {
+      this.updateDailyRewardButtonState();
+    }
+    if (this.dailyRewardCountdownTimer) {
+      this.dailyRewardCountdownTimer.remove(false);
+      this.dailyRewardCountdownTimer = null;
+    }
+    this.dailyRewardCountdownTimer = this.time.addEvent({
+      delay: 1000,
+      loop: true,
+      callback: () => {
+        if (typeof this.updateDailyRewardCountdownText === "function") {
+          this.updateDailyRewardCountdownText();
+        }
+      },
+    });
+    this.events.once("shutdown", () => {
+      if (this.dailyRewardCountdownTimer) {
+        this.dailyRewardCountdownTimer.remove(false);
+        this.dailyRewardCountdownTimer = null;
+      }
+      if (this.dailyRewardPulseTween) {
+        this.dailyRewardPulseTween.stop();
+        this.dailyRewardPulseTween = null;
+      }
+    });
+
     const multiBtnImg = this.add
       .image(0, 0, "uibtn")
       .setDisplaySize(actionBtnW, btnH * 1.2)
@@ -1836,7 +2112,7 @@ class LobbyScene extends Phaser.Scene {
       .setInteractive();
 
     // [핵심] 생성한 모든 객체를 메인 컨테이너에 추가
-    this.mainUIContainer.add([bgmBtn]);
+    this.mainUIContainer.add([bgmBtn, this.dailyRewardBtn]);
     this.mainUIContainer.setDepth(100);
 
     bgmBtn.on("pointerdown", () => {
@@ -5981,6 +6257,283 @@ class LobbyScene extends Phaser.Scene {
     if (hidden && typeof inputEl.blur === "function") {
       inputEl.blur();
     }
+  }
+
+  showDailyRewardInfoPopup(message) {
+    this.isJoinPopupOpen = true;
+
+    const { width, height } = this.cameras.main;
+    const centerX = width / 2;
+    const centerY = height / 2;
+
+    const overlay = this.add
+      .rectangle(centerX, centerY, width, height, 0x000000, 0.6)
+      .setDepth(4000)
+      .setInteractive();
+
+    const popupBg = this.add
+      .image(centerX, centerY, "profilebg")
+      .setDepth(4001)
+      .setDisplaySize(width * 0.78, height * 0.26);
+
+    const msgText = this.add
+      .text(centerX, centerY - 30, message, {
+        fontFamily:
+          typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
+        fontSize: `${width * 0.04}px`,
+        color: "#ffffff",
+        align: "center",
+        wordWrap: { width: width * 0.62 },
+      })
+      .setOrigin(0.5)
+      .setDepth(4002);
+
+    const closePopup = () => {
+      [overlay, popupBg, msgText, okBtn, okTxt].forEach((el) => {
+        if (el) el.destroy();
+      });
+      this.isJoinPopupOpen = false;
+      if (this.currentJoinPopupCloseHandler === closePopup) {
+        this.currentJoinPopupCloseHandler = null;
+      }
+    };
+
+    this.currentJoinPopupCloseHandler = closePopup;
+
+    const okBtn = this.add
+      .image(centerX, centerY + 55, "uibtn")
+      .setDisplaySize(width * 0.32, height * 0.06)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(4002)
+      .setTint(0x22c55e);
+
+    const okTxt = this.add
+      .text(centerX, centerY + 55, "확인", {
+        fontFamily:
+          typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
+        fontSize: `${width * 0.04}px`,
+        color: "#ffffff",
+        fontWeight: "bold",
+      })
+      .setOrigin(0.5)
+      .setDepth(4003);
+
+    okBtn.on("pointerdown", () => {
+      this.sound.play("btn", { volume: 0.08 });
+      closePopup();
+    });
+  }
+
+  showWeeklyRewardPopup() {
+    if (this.isWeeklyRewardPopupOpen) return;
+    if (this.currentJoinPopupCloseHandler) {
+      try {
+        this.currentJoinPopupCloseHandler();
+      } catch (e) {}
+    }
+
+    this.isWeeklyRewardPopupOpen = true;
+    this.isJoinPopupOpen = true;
+    if (this.dailyRewardBtnBg && this.dailyRewardBtnBg.input) {
+      this.dailyRewardBtnBg.disableInteractive();
+    }
+
+    const { width, height } = this.cameras.main;
+    const centerX = width / 2;
+    const centerY = height / 2;
+
+    const overlay = this.add
+      .rectangle(centerX, centerY, width, height, 0x000000, 0.6)
+      .setDepth(4000)
+      .setInteractive();
+
+    const popupBg = this.add
+      .image(centerX, centerY, "profilebg")
+      .setDepth(4001)
+      .setDisplaySize(width * 0.85, height * 0.75);
+
+    const titleText = this.add
+      .text(centerX, centerY - height * 0.3, "출석 보상", {
+        fontFamily:
+          typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
+        fontSize: `${width * 0.05}px`,
+        color: "#ffffff",
+        fontWeight: "bold",
+      })
+      .setOrigin(0.5)
+      .setDepth(4002);
+
+    const closeBtn = this.add
+      .image(centerX + width * 0.34, centerY - height * 0.31, "uibtn")
+      .setDisplaySize(width * 0.1, height * 0.05)
+      .setDepth(4002)
+      .setTint(0xffaaaa)
+      .setInteractive({ useHandCursor: true });
+
+    const closeTxt = this.add
+      .text(centerX + width * 0.34, centerY - height * 0.31, "닫기", {
+        fontFamily:
+          typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
+        fontSize: `${width * 0.03}px`,
+        color: "#ffffff",
+        fontWeight: "bold",
+      })
+      .setOrigin(0.5)
+      .setDepth(4003);
+
+    const kstNow = this.getKstNow();
+    const todayStr = this.dailyRewardTodayDate || this.formatDateYmd(kstNow);
+    const lastCheckin = this.dailyRewardLastCheckinDate;
+    const dayLabels = ["월", "화", "수", "목", "금", "토", "일"];
+
+    const dayOfWeek = kstNow.getDay();
+    const mondayOffset = (dayOfWeek + 6) % 7;
+    const weekStart = new Date(kstNow);
+    weekStart.setDate(kstNow.getDate() - mondayOffset);
+    weekStart.setHours(0, 0, 0, 0);
+
+    const rows = [];
+    const rowStartY = centerY - height * 0.22;
+    const rowGap = height * 0.07;
+
+    for (let i = 0; i < 7; i += 1) {
+      const rowDate = new Date(weekStart);
+      rowDate.setDate(weekStart.getDate() + i);
+      const rowDateStr = this.formatDateYmd(rowDate);
+      const isToday = rowDateStr === todayStr;
+      const isClaimed = lastCheckin && rowDateStr === lastCheckin;
+      const canClaim = isToday && this.dailyRewardAvailable;
+
+      const rowY = rowStartY + rowGap * i;
+      const rowBg = this.add
+        .rectangle(centerX, rowY, width * 0.72, height * 0.055, 0x0f172a, 0.7)
+        .setDepth(4002);
+
+      const dayText = this.add
+        .text(centerX - width * 0.28, rowY, dayLabels[i], {
+          fontFamily:
+            typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
+          fontSize: `${width * 0.04}px`,
+          color: isToday ? "#facc15" : "#ffffff",
+          fontWeight: "bold",
+        })
+        .setOrigin(0.5)
+        .setDepth(4003);
+
+      const amountText = this.add
+        .text(centerX - width * 0.05, rowY, `+${this.dailyRewardAmount}`, {
+          fontFamily:
+            typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
+          fontSize: `${width * 0.036}px`,
+          color: "#22c55e",
+          fontWeight: "bold",
+        })
+        .setOrigin(0.5)
+        .setDepth(4003);
+
+      let statusText = "미수령";
+      if (isClaimed) statusText = "받음";
+      if (isToday && this.dailyRewardAvailable) statusText = "받기";
+
+      const statusLabel = this.add
+        .text(centerX + width * 0.2, rowY, statusText, {
+          fontFamily:
+            typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
+          fontSize: `${width * 0.032}px`,
+          color: canClaim ? "#ffffff" : "#cbd5f5",
+          fontWeight: "bold",
+        })
+        .setOrigin(0.5)
+        .setDepth(4003);
+
+      let claimBtn = null;
+      let claimTxt = null;
+      if (canClaim) {
+        claimBtn = this.add
+          .image(centerX + width * 0.27, rowY, "uibtn")
+          .setDisplaySize(width * 0.18, height * 0.045)
+          .setDepth(4003)
+          .setTint(0x22c55e)
+          .setInteractive({ useHandCursor: true });
+
+        claimTxt = this.add
+          .text(centerX + width * 0.27, rowY, "받기", {
+            fontFamily:
+              typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
+            fontSize: `${width * 0.03}px`,
+            color: "#ffffff",
+            fontWeight: "bold",
+          })
+          .setOrigin(0.5)
+          .setDepth(4004);
+
+        claimBtn.on("pointerdown", () => {
+          if (this.isDailyRewardClaimPending) return;
+          this.sound.play("btn", { volume: 0.1 });
+          this.isDailyRewardClaimPending = true;
+          if (typeof this.updateDailyRewardButtonState === "function") {
+            this.updateDailyRewardButtonState();
+          }
+          socket.emit("claimDailyReward");
+          closePopup();
+        });
+      }
+
+      rows.push(rowBg, dayText, amountText, statusLabel);
+      if (claimBtn) rows.push(claimBtn);
+      if (claimTxt) rows.push(claimTxt);
+    }
+
+    const helperText = this.add
+      .text(centerX, centerY + height * 0.27, "매일 00:00 KST 갱신", {
+        fontFamily:
+          typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
+        fontSize: `${width * 0.028}px`,
+        color: "#e2e8f0",
+      })
+      .setOrigin(0.5)
+      .setDepth(4003);
+
+    const closePopup = () => {
+      [
+        overlay,
+        popupBg,
+        titleText,
+        closeBtn,
+        closeTxt,
+        helperText,
+        ...rows,
+      ].forEach((el) => {
+        if (el) el.destroy();
+      });
+
+      this.isWeeklyRewardPopupOpen = false;
+      this.isJoinPopupOpen = false;
+      if (this.currentJoinPopupCloseHandler === closePopup) {
+        this.currentJoinPopupCloseHandler = null;
+      }
+
+      if (typeof this.updateDailyRewardButtonState === "function") {
+        this.updateDailyRewardButtonState();
+      }
+    };
+
+    this.currentJoinPopupCloseHandler = closePopup;
+
+    overlay.on("pointerdown", () => {
+      closePopup();
+    });
+
+    closeBtn.on("pointerdown", () => {
+      this.sound.play("btn", { volume: 0.08 });
+      closePopup();
+    });
+
+    closeTxt.setInteractive({ useHandCursor: true });
+    closeTxt.on("pointerdown", () => {
+      this.sound.play("btn", { volume: 0.08 });
+      closePopup();
+    });
   }
 
   showCustomAlert(message, onConfirm) {
