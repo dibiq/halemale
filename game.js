@@ -930,6 +930,7 @@ class LobbyScene extends Phaser.Scene {
     }
 
     socket.off("hostChanged").on("hostChanged", (data) => {
+      if (this.isLeavingRoom) return;
       if (data.players) this.currentPlayers = data.players;
       this.hostId = data.hostId;
 
@@ -1688,6 +1689,7 @@ class LobbyScene extends Phaser.Scene {
     });
 
     socket.off("playerJoined").on("playerJoined", (data) => {
+      if (this.isLeavingRoom) return;
       this.createBlocker(); // 함수 호출
 
       this.hideLoading();
@@ -1754,6 +1756,7 @@ class LobbyScene extends Phaser.Scene {
     });
 
     socket.off("joinRoomSuccess").on("joinRoomSuccess", (data) => {
+      if (this.isLeavingRoom) return;
       if (typeof data?.roomNumber === "number") {
         this.currentRoomNumber = data.roomNumber;
       }
@@ -1775,6 +1778,7 @@ class LobbyScene extends Phaser.Scene {
     });
 
     socket.off("readyStatusUpdated").on("readyStatusUpdated", (data) => {
+      if (this.isLeavingRoom) return;
       this.refreshLobbyUI(data);
     });
 
@@ -2531,6 +2535,7 @@ class LobbyScene extends Phaser.Scene {
 
   // 1. 모든 소켓 이벤트를 처리할 공통 데이터 업데이트 함수
   refreshLobbyUI(data) {
+    if (this.isLeavingRoom) return;
     if (!this.scene.isActive()) return;
 
     // 서버가 주는 데이터가 있으면 갱신, 없으면 기존값 유지 (undefined 방지)
@@ -2654,6 +2659,9 @@ class LobbyScene extends Phaser.Scene {
       if (this.lobbyUIContainer) {
         this.lobbyUIContainer.destroy();
         this.lobbyUIContainer = null;
+      }
+      if (socket && socket.roomId === roomId) {
+        socket.roomId = null;
       }
       this.scene.restart({ skipLobbyLoading: true });
     };
