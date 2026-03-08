@@ -1687,7 +1687,14 @@ class LobbyScene extends Phaser.Scene {
         }
       }
 
-      this.showToast("케릭터 구매가 완료되었습니다!", "#2ecc71");
+      const now = Date.now();
+      if (
+        !this.lastCharacterPurchaseToastAt ||
+        now - this.lastCharacterPurchaseToastAt > 1500
+      ) {
+        this.lastCharacterPurchaseToastAt = now;
+        this.showToast("케릭터 구매가 완료되었습니다!", "#2ecc71");
+      }
 
       // 상점 새로고침으로 즉시 UI 반영
       if (this.isShopOpen && typeof renderShopContent === "function") {
@@ -4626,7 +4633,12 @@ class LobbyScene extends Phaser.Scene {
 
           socket.emit("buyCharacter", characterPayload);
 
-          // 서버 응답을 기다리므로 여기서는 아무것도 하지 않음
+          // Optimistically mark as owned/equipped for immediate UI feedback.
+          ownedCharacters[character.key] = true;
+          saveOwnedCharacters(ownedCharacters);
+          this.equipCharacter(character.key);
+          this.updateMyProfileUI();
+          renderShopContent();
           return;
         } else {
           // 싱글플레이어 모드에서만 로컬 처리
@@ -4637,6 +4649,7 @@ class LobbyScene extends Phaser.Scene {
           saveOwnedCharacters(ownedCharacters);
           this.equipCharacter(character.key);
           this.updateMyProfileUI();
+          this.lastCharacterPurchaseToastAt = Date.now();
           this.showToast(`${character.name} 구매 완료!`, "#2ecc71");
           renderShopContent();
         }

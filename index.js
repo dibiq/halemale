@@ -876,11 +876,11 @@ function processSkipTurn(room, io) {
 }
 
 const MULTI_AI_BASE_PROFILE = {
-  flipDelay: 950,
-  reactionTime: 1400,
+  flipDelay: 80,
+  reactionTime: 220,
 };
 
-const MULTI_AI_SLOWDOWN_MS = 250;
+const MULTI_AI_SLOWDOWN_MS = 0;
 
 function clampNumber(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -993,8 +993,8 @@ function scheduleAiTurn(room, io) {
   if (!current.myDeck || current.myDeck.length === 0) return;
   if (room.isFlipping) return;
 
-  const delayBase = Number(current.aiProfile?.flipDelay || 1200);
-  const delay = delayBase + Math.floor(Math.random() * 150);
+  const delayBase = Number(current.aiProfile?.flipDelay || 120);
+  const delay = Math.max(20, delayBase + Math.floor(Math.random() * 40));
 
   room.aiTimers.turn = setTimeout(() => {
     if (!room.isGameStarted) return;
@@ -1026,9 +1026,9 @@ function scheduleAiBell(room, io) {
     if (player.isEliminated) return;
     if (!player.myDeck || player.myDeck.length <= 0) return;
 
-    const variance = randomTriangular(0.8, 1.4, 1.05);
-    const baseDelay = clampNumber(Math.round(baseline * variance), 400, 2500);
-    const delay = baseDelay + Math.floor(Math.random() * 120);
+    const variance = randomTriangular(0.8, 1.1, 0.95);
+    const baseDelay = clampNumber(Math.round(baseline * variance), 80, 600);
+    const delay = baseDelay + Math.floor(Math.random() * 40);
     room.aiTimers.bells[player.id] = setTimeout(() => {
       handleAiBell(room, io, player.id);
     }, delay);
