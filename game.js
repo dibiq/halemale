@@ -421,10 +421,15 @@ function ensureMainbgFrames(scene) {
     const w = img.width;
     const h = img.height;
     const cols = 10;
-    const rows = 3;
+    const rows = 5;
     if (w % cols !== 0 || h % rows !== 0) return;
     const frameW = Math.floor(w / cols) || w;
     const frameH = Math.floor(h / rows) || h;
+
+    const temp = document.createElement("canvas");
+    temp.width = frameW;
+    temp.height = frameH;
+    const tctx = temp.getContext("2d", { willReadFrequently: true });
 
     let idx = 1;
     for (let r = 0; r < rows; r += 1) {
@@ -432,6 +437,19 @@ function ensureMainbgFrames(scene) {
         const key = `mainbg_${idx}`;
         idx += 1;
         if (scene.textures.exists(key)) continue;
+
+        tctx.clearRect(0, 0, frameW, frameH);
+        tctx.drawImage(img, -c * frameW, -r * frameH);
+        const data = tctx.getImageData(0, 0, frameW, frameH).data;
+        let nonEmpty = false;
+        for (let i = 3; i < data.length; i += 4) {
+          if (data[i] !== 0) {
+            nonEmpty = true;
+            break;
+          }
+        }
+        if (!nonEmpty) continue;
+
         const canvas = scene.textures.createCanvas(key, frameW, frameH);
         const ctx = canvas.getContext();
         ctx.drawImage(img, -c * frameW, -r * frameH);
@@ -565,7 +583,7 @@ class LobbyScene extends Phaser.Scene {
       `${ASSET_SERVER}/images/popupclose.png${VERSION}`,
     );
 
-    this.load.image("mainbg", `${ASSET_SERVER}/images/bg_sprite.png${VERSION}`);
+    this.load.image("mainbg", `assets/images/bg_sprite.png${VERSION}`);
 
     this.load.image("gamebg", `${ASSET_SERVER}/images/gamebg.png${VERSION}`);
     this.load.image(
@@ -996,7 +1014,10 @@ class LobbyScene extends Phaser.Scene {
       if (
         !this.dailyRewardBtn ||
         !this.dailyRewardBtnBg ||
-        !this.dailyRewardBtnText
+        !this.dailyRewardBtnText ||
+        !this.dailyRewardBtnText.scene ||
+        !this.dailyRewardBtnText.canvas ||
+        !this.dailyRewardBtnText.context
       ) {
         return;
       }
@@ -1574,27 +1595,50 @@ class LobbyScene extends Phaser.Scene {
    멀티 플레이 버튼 (단일 버튼, 4인 기준)
 ======================================================= */
     const x = centerX; // 화면 중앙
-    const y = height * 0.42;
+    const y = height * 0.48;
     const btnH = height * 0.07;
 
-    const actionBtnY = height * 0.8;
-    const actionBtnW = width * 0.28;
-    const actionBtnGap = width * 0.03;
-    const actionBtnOffset = actionBtnW + actionBtnGap;
-    const actionBtnSpacing = btnH * 1.4; // 세로 간격
+    const safePadding = Math.max(width * 0.06, 24);
+    const actionBtnGap = Math.max(width * 0.03, 16);
+    const availableWidth = width - safePadding * 2;
+    const topBtnW = Math.min(width * 0.32, (availableWidth - actionBtnGap) / 2);
+    const topRowWidth = topBtnW * 2 + actionBtnGap;
+    let topLeftEdge = centerX - topRowWidth / 2;
+    if (topLeftEdge < safePadding) {
+      topLeftEdge = safePadding;
+    }
+    if (topLeftEdge + topRowWidth > width - safePadding) {
+      topLeftEdge = width - safePadding - topRowWidth;
+    }
+    const topLeftX = topLeftEdge + topBtnW / 2;
+    const topRightX = topLeftX + topBtnW + actionBtnGap;
 
-    // vertical stack: 멀티 위, 싱글 중앙, 상점 아래
-    const multiBtn = this.add.container(centerX, actionBtnY - actionBtnSpacing);
+    const bottomBtnGap = Math.max(width * 0.02, 12);
+    const bottomBtnW = Math.min(
+      width * 0.22,
+      (availableWidth - bottomBtnGap * 3) / 4,
+    );
+    const bottomStartX = safePadding + bottomBtnW / 2;
+
+    const actionBtnTopY = height * 0.7;
+    const actionBtnBottomY = actionBtnTopY + btnH * 1.35;
+
+    const multiBtnX = topLeftX;
+    const singleBtnX = topRightX;
+    const dailyRewardBtnX = bottomStartX;
+    const adRewardBtnX = bottomStartX + (bottomBtnW + bottomBtnGap);
+    const questBtnX = bottomStartX + (bottomBtnW + bottomBtnGap) * 2;
+    const shopBtnX = bottomStartX + (bottomBtnW + bottomBtnGap) * 3;
+
+    // two rows: (멀티, 싱글) then (출석보상, 광고보상, 퀘스트, 상점)
+    const multiBtn = this.add.container(multiBtnX, actionBtnTopY);
 
     const profileCenterY = y;
     const profileSize = width * 0.2;
     const profileContainer = this.add.container(centerX, profileCenterY);
 
-    // 프로필 배경 이미지
-    const profileBg = this.add
-      .image(0, y * 0.1, "profilebg")
-      .setDisplaySize(profileSize * 2.3, profileSize * 2.5)
-      .setAlpha(1.0);
+    // 프로필 배경 이미지는 제거
+    const profileBg = null;
 
     // 프로필 이미지를 스프라이트로 생성하고 애니메이션 적용
     const currentKey = this.getSelectedAvatarKey();
@@ -1617,16 +1661,16 @@ class LobbyScene extends Phaser.Scene {
     // create sprite at container origin (0,0)
     this.profileImage = this.add
       .sprite(0, 0, currentAvatarTexture)
-      .setDisplaySize(profileSize, profileSize);
+      .setDisplaySize(profileSize * 1.6, profileSize * 1.6);
     this.applyAvatarAnimation(this.profileImage, currentKey);
 
     const avatarLeftBtn = this.add
-      .circle(-profileSize * 0.75, 0, profileSize * 0.14, 0x000000, 0.55)
+      .circle(-profileSize * 0.95, 0, profileSize * 0.14, 0x000000, 0.55)
       .setStrokeStyle(2, 0xffffff, 0.9)
       .setInteractive({ useHandCursor: true });
 
     const avatarLeftIcon = this.add
-      .text(-profileSize * 0.75, 0, "<", {
+      .text(-profileSize * 0.95, 0, "<", {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.05}px`,
         color: "#ffffff",
@@ -1635,12 +1679,12 @@ class LobbyScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     const avatarRightBtn = this.add
-      .circle(profileSize * 0.75, 0, profileSize * 0.14, 0x000000, 0.55)
+      .circle(profileSize * 0.95, 0, profileSize * 0.14, 0x000000, 0.55)
       .setStrokeStyle(2, 0xffffff, 0.9)
       .setInteractive({ useHandCursor: true });
 
     const avatarRightIcon = this.add
-      .text(profileSize * 0.75, 0, ">", {
+      .text(profileSize * 0.95, 0, ">", {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.05}px`,
         color: "#ffffff",
@@ -1652,7 +1696,7 @@ class LobbyScene extends Phaser.Scene {
     this.profileIdText = this.add
       .text(
         0,
-        profileSize * 0.72,
+        profileSize * 0.8,
         `LV.${this.myProfile.level} ${this.myProfile.nickname}`,
         {
           fontFamily: GAME_FONTS.main,
@@ -1667,7 +1711,7 @@ class LobbyScene extends Phaser.Scene {
       .setDepth(10000);
 
     // 코인 + 경험치 표시 영역 (한 줄)
-    const statY = profileSize * 1.06;
+    const statY = profileSize * 1.18;
     const coinBgX = -profileSize * 0.47;
     const expBarCenterX = profileSize * 0.4;
     const expBarWidth = profileSize * 0.9;
@@ -1732,7 +1776,6 @@ class LobbyScene extends Phaser.Scene {
       .setDepth(12);
 
     profileContainer.add([
-      profileBg,
       this.profileImage,
       avatarLeftBtn,
       avatarLeftIcon,
@@ -1750,7 +1793,7 @@ class LobbyScene extends Phaser.Scene {
       this.profileImage.setPosition(0, 0);
     }
     if (this.profileIdText) {
-      this.profileIdText.setPosition(0, profileSize * 0.72);
+      this.profileIdText.setPosition(0, profileSize * 0.9);
     }
 
     avatarLeftBtn.on("pointerdown", () => {
@@ -1785,30 +1828,30 @@ class LobbyScene extends Phaser.Scene {
     this.updateProfileAvatarUI();
 
     const dailyRewardBtn = this.add.container(
-      centerX,
-      actionBtnY - actionBtnSpacing * 2,
+      dailyRewardBtnX,
+      actionBtnBottomY,
     );
     const dailyRewardBtnBg = this.add
       .image(0, 0, "uibtn")
-      .setDisplaySize(actionBtnW * 0.9, btnH * 1.05)
+      .setDisplaySize(bottomBtnW * 0.9, btnH * 1.05)
       .setTint(this.dailyRewardBtnTint)
       .setInteractive({ useHandCursor: true });
     const dailyRewardBtnText = this.add
       .text(0, 0, "출석 보상", {
         fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.038}px`,
+        fontSize: `${width * 0.032}px`,
         color: "#ffffff",
         fontWeight: "bold",
       })
       .setOrigin(0.5);
     const badgeRadius = btnH * 0.18;
     const dailyRewardBadge = this.add
-      .circle(actionBtnW * 0.35, -btnH * 0.4, badgeRadius, 0xffd54f, 1)
+      .circle(bottomBtnW * 0.35, -btnH * 0.4, badgeRadius, 0xffd54f, 1)
       .setStrokeStyle(2, 0x1f2937, 0.9);
     const dailyRewardBadgeText = this.add
-      .text(actionBtnW * 0.35, -btnH * 0.4, "NEW", {
+      .text(bottomBtnW * 0.35, -btnH * 0.4, "NEW", {
         fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.022}px`,
+        fontSize: `${width * 0.02}px`,
         color: "#1f2937",
         fontWeight: "bold",
       })
@@ -1816,7 +1859,7 @@ class LobbyScene extends Phaser.Scene {
     const dailyRewardCountdownText = this.add
       .text(0, btnH * 0.85, "", {
         fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.026}px`,
+        fontSize: `${width * 0.022}px`,
         color: "#ffffff",
         fontWeight: "bold",
         stroke: "#000000",
@@ -1875,9 +1918,67 @@ class LobbyScene extends Phaser.Scene {
       }
     });
 
+    const adRewardBtn = this.add.container(adRewardBtnX, actionBtnBottomY);
+    const adRewardBtnImg = this.add
+      .image(0, 0, "uibtn")
+      .setDisplaySize(bottomBtnW * 0.9, btnH * 1.05)
+      .setInteractive()
+      .setTint(0x38bdf8);
+    const adRewardBtnText = this.add
+      .text(0, 0, "광고보상", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.03}px`,
+        color: "#ffffff",
+        fontWeight: "bold",
+      })
+      .setOrigin(0.5);
+    adRewardBtn.add([adRewardBtnImg, adRewardBtnText]);
+    adRewardBtnImg.on("pointerdown", () => {
+      this.sound.play("btn", { volume: 0.1 });
+      this.tweens.add({
+        targets: [adRewardBtnImg, adRewardBtnText],
+        scaleX: "*=0.95",
+        scaleY: "*=0.95",
+        duration: 50,
+        yoyo: true,
+        onComplete: () => {
+          this.showToast("광고 보상은 준비 중입니다!", "#38bdf8");
+        },
+      });
+    });
+
+    const questBtn = this.add.container(questBtnX, actionBtnBottomY);
+    const questBtnImg = this.add
+      .image(0, 0, "uibtn")
+      .setDisplaySize(bottomBtnW * 0.9, btnH * 1.05)
+      .setInteractive()
+      .setTint(0xf59e0b);
+    const questBtnText = this.add
+      .text(0, 0, "퀘스트", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.032}px`,
+        color: "#ffffff",
+        fontWeight: "bold",
+      })
+      .setOrigin(0.5);
+    questBtn.add([questBtnImg, questBtnText]);
+    questBtnImg.on("pointerdown", () => {
+      this.sound.play("btn", { volume: 0.1 });
+      this.tweens.add({
+        targets: [questBtnImg, questBtnText],
+        scaleX: "*=0.95",
+        scaleY: "*=0.95",
+        duration: 50,
+        yoyo: true,
+        onComplete: () => {
+          this.showToast("퀘스트는 준비 중입니다!", "#f59e0b");
+        },
+      });
+    });
+
     const multiBtnImg = this.add
       .image(0, 0, "uibtn")
-      .setDisplaySize(actionBtnW, btnH * 1.2)
+      .setDisplaySize(topBtnW * 0.9, btnH * 1.2)
       .setInteractive();
 
     // 2. 버튼 텍스트
@@ -1917,10 +2018,10 @@ class LobbyScene extends Phaser.Scene {
       });
     });
 
-    const singleBtn = this.add.container(centerX, actionBtnY);
+    const singleBtn = this.add.container(singleBtnX, actionBtnTopY);
     const singleBtnImg = this.add
       .image(0, 0, "uibtn")
-      .setDisplaySize(actionBtnW, btnH * 1.2)
+      .setDisplaySize(topBtnW * 0.9, btnH * 1.2)
       .setInteractive()
       .setTint(0xffd700); // 금색 포인트
 
@@ -1954,17 +2055,17 @@ class LobbyScene extends Phaser.Scene {
     /* =======================================================
    상점 버튼 추가
 ======================================================= */
-    const shopBtn = this.add.container(centerX, actionBtnY + actionBtnSpacing);
+    const shopBtn = this.add.container(shopBtnX, actionBtnBottomY);
     const shopBtnImg = this.add
       .image(0, 0, "uibtn")
-      .setDisplaySize(actionBtnW, btnH * 1.2)
+      .setDisplaySize(bottomBtnW * 0.9, btnH * 1.05)
       .setInteractive()
       .setTint(0xff69b4); // 핑크 포인트
 
     const shopBtnText = this.add
       .text(0, 0, "🎁 상점", {
         fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.042}px`,
+        fontSize: `${width * 0.032}px`,
         color: "#ffffff",
         fontWeight: "bold",
       })
@@ -2349,7 +2450,7 @@ class LobbyScene extends Phaser.Scene {
     const profileSize = width * 0.2;
     const expBarWidth = profileSize * 0.9;
     const expBarHeight = width * 0.032;
-    const statY = profileSize * 1.06;
+    const statY = profileSize * 1.18;
     const expBarCenterX = profileSize * 0.4;
 
     // 진행 막대 업데이트 (둥근 모서리)
