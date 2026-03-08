@@ -8517,6 +8517,7 @@ class GameScene extends Phaser.Scene {
 
       // 1. 데이터 갱신
       const player = this.roundData.players.find((p) => p.id === data.playerId);
+      const wasEliminated = Boolean(player && player.isEliminated);
       if (player) {
         if (data.openCardStack) {
           player.openStack = data.openCardStack;
@@ -8529,6 +8530,9 @@ class GameScene extends Phaser.Scene {
         // 💡 탈락 상태 업데이트
         if (typeof data.isEliminated === "boolean") {
           player.isEliminated = data.isEliminated;
+          if (player.isEliminated && !wasEliminated) {
+            this.maybePlayEliminationEffect(player.id);
+          }
         }
       }
 
@@ -8612,6 +8616,8 @@ class GameScene extends Phaser.Scene {
           openStack: [], // 서버에서 이미 비워졌으므로 빈 배열로 설정
         };
       });
+
+      this.triggerEliminationEffects(this.roundData.players, updatedPlayers);
 
       if (data.success) {
         const message = `${data.winnerNickname} ${data.collectedCount}장 획득(${data.reactionTime}초)`;
@@ -10001,6 +10007,15 @@ class GameScene extends Phaser.Scene {
       .setDepth(11000)
       .setInteractive();
 
+    if (this._winAvatarSprite && this._winAvatarSprite.active) {
+      if (this._winAvatarSprite.anims) {
+        this._winAvatarSprite.anims.stop();
+      }
+      this._winAvatarSprite.off("animationcomplete");
+      this._winAvatarSprite.setVisible(false);
+    }
+    this.avatarAnimInProgress = false;
+
     // 애니메이션 완료 추적 변수들을 함수 시작 부분에 선언
     let totalCardsToFly = 0;
     let finishedFlys = 0;
@@ -10107,10 +10122,15 @@ class GameScene extends Phaser.Scene {
             }
             const clearFlag = () => {
               this.avatarAnimInProgress = false;
+              if (tempSprite.anims) {
+                tempSprite.anims.stop();
+              }
+              tempSprite.off("animationcomplete");
               tempSprite.setVisible(false);
               characterAnimationDone = true;
               checkAllAnimationsComplete();
             };
+            tempSprite.off("animationcomplete");
             tempSprite.once("animationcomplete", () => {
               clearFlag();
             });
@@ -13315,6 +13335,83 @@ class GameScene extends Phaser.Scene {
     }
   }
 
+  playEliminationEffect(playerId) {
+    if (!this.isGameStarted) return;
+
+    const { width, height } = this.cameras.main;
+    const centerX = width / 2;
+    const centerY = height / 2;
+
+    const flash = this.add
+      .rectangle(centerX, centerY, width, height, 0x0f172a, 0.35)
+      .setDepth(10000);
+
+    this.tweens.add({
+      targets: flash,
+      alpha: 0,
+      duration: 500,
+      ease: "Power2",
+      onComplete: () => flash.destroy(),
+    });
+
+    this.cameras.main.shake(300, 0.012);
+
+    const text = this.add
+      .text(centerX, centerY, "탈락", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.14}px`,
+        color: "#f8fafc",
+        fontWeight: "bold",
+        stroke: "#1f2937",
+        strokeThickness: 10,
+      })
+      .setOrigin(0.5)
+      .setDepth(10001)
+      .setAlpha(0)
+      .setScale(0.6);
+
+    this.tweens.add({
+      targets: text,
+      alpha: 1,
+      scale: 1.1,
+      duration: 240,
+      ease: "Back.out",
+      onComplete: () => {
+        this.tweens.add({
+          targets: text,
+          y: centerY - height * 0.12,
+          alpha: 0,
+          scale: 0.9,
+          duration: 520,
+          delay: 260,
+          ease: "Sine.in",
+          onComplete: () => text.destroy(),
+        });
+      },
+    });
+  }
+
+  maybePlayEliminationEffect(playerId) {
+    if (!playerId) return;
+    if (!this.lastEliminationEffectAtByPlayer) {
+      this.lastEliminationEffectAtByPlayer = {};
+    }
+    if (this.lastEliminationEffectAtByPlayer[playerId]) return;
+    this.lastEliminationEffectAtByPlayer[playerId] = Date.now();
+    this.playEliminationEffect(playerId);
+  }
+
+  triggerEliminationEffects(prevPlayers, nextPlayers) {
+    if (!Array.isArray(prevPlayers) || !Array.isArray(nextPlayers)) return;
+    const prevMap = new Map(prevPlayers.map((p) => [p.id, p]));
+    nextPlayers.forEach((p) => {
+      if (!p || !p.isEliminated) return;
+      const prev = prevMap.get(p.id);
+      if (prev && prev.isEliminated) return;
+      this.maybePlayEliminationEffect(p.id);
+    });
+  }
+
   processPenaltySingle(failedPlayerId) {
     if (!this.isSingle || !this.isGameStarted) return;
 
@@ -13790,8 +13887,10 @@ class GameScene extends Phaser.Scene {
       hasThunder || (hasNot5 ? !isFiveExists : isFiveExists);
 
     this.roundData.players.forEach((p) => {
-      // 이미 탈락한 사람은 상태를 유지 (한번 죽으면 끝)
-      if (p.isEliminated) return;
+      if (!p) return;
+
+      const wasEliminated = Boolean(p.isEliminated);
+      if (wasEliminated) return;
 
       const hasDeck = (Number(p.cards) || 0) > 0;
 
@@ -13799,6 +13898,7 @@ class GameScene extends Phaser.Scene {
       //    단, 바닥에 bomb 카드가 있다면 5가 있더라도 즉시 탈락 처리
       if (!hasDeck && (!hasBellSuccessWindow || hasBomb)) {
         p.isEliminated = true;
+        this.maybePlayEliminationEffect(p.id);
       }
       // 2. 낼 카드가 생기면 (종을 쳐서 먹었을 때) -> 생존 유지
       else if (hasDeck) {
@@ -14668,31 +14768,26 @@ class GameScene extends Phaser.Scene {
 
     container.add([overlay, podiumBg]);
 
-    const resultAnimKey = "result_player_1_anim";
-    if (!this.anims.exists(resultAnimKey)) {
-      if (this.textures.exists("player_1_sprite_new")) {
-        ensurePlayer1NewFrames(this);
-        const frames = [];
-        let idx = 1;
-        while (true) {
-          const textureKey = `player_1_new_${idx}`;
-          if (this.textures.exists(textureKey)) {
-            frames.push({ key: textureKey });
-            idx += 1;
-            continue;
-          }
-          break;
-        }
-        if (frames.length > 0) {
-          this.anims.create({
-            key: resultAnimKey,
-            frames,
-            frameRate: 18,
-            repeat: -1,
-          });
-        }
+    const resolveAvatarKey = (player) => {
+      const directKey =
+        player?.avatarKey || player?.characterKey || player?.current_character;
+      if (typeof directKey === "string" && /^player_[1-4]$/.test(directKey)) {
+        return directKey;
       }
-    }
+
+      const roundPlayer = Array.isArray(this.roundData?.players)
+        ? this.roundData.players.find((p) => p.id === player?.id)
+        : null;
+      const roundKey =
+        roundPlayer?.avatarKey ||
+        roundPlayer?.characterKey ||
+        roundPlayer?.current_character;
+      if (typeof roundKey === "string" && /^player_[1-4]$/.test(roundKey)) {
+        return roundKey;
+      }
+
+      return "player_1";
+    };
 
     const rankedPlayers = Array.isArray(players) ? players.slice(0, 3) : [];
     const podiumPositions = [
@@ -14705,16 +14800,17 @@ class GameScene extends Phaser.Scene {
       const pos = podiumPositions[index];
       if (!pos) return;
 
+      const avatarBaseKey = resolveAvatarKey(player);
       const resultAvatarTexture =
-        this.getAvatarDisplayKey("player_1") || "player_1_sprite_new";
+        this.getAvatarDisplayKey(avatarBaseKey) ||
+        this.getAvatarDisplayKey("player_1") ||
+        "player_1_sprite_new";
       const avatar = this.add
         .sprite(pos.x, pos.y, resultAvatarTexture)
         .setDisplaySize(width * 0.23, width * 0.23)
         .setOrigin(0.5, 1);
 
-      if (this.anims.exists(resultAnimKey)) {
-        avatar.play(resultAnimKey, true);
-      }
+      this.applyAvatarAnimation(avatar, avatarBaseKey);
 
       const nameText = this.add
         .text(

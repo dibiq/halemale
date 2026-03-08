@@ -3304,6 +3304,14 @@ io.on("connection", (socket) => {
         hostId: room.host,
         leftPlayerNickname,
       });
+
+      if (room.isGameStarted) {
+        if (checkGameOver(room, io)) {
+          if (typeof ack === "function") ack({ ok: true });
+          return;
+        }
+        processSkipTurn(room, io);
+      }
     }
 
     broadcastPublicRooms();
