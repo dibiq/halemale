@@ -589,6 +589,21 @@ class LobbyScene extends Phaser.Scene {
     this.load.image("multbg", `${ASSET_SERVER}/images/multbg.png${VERSION}`);
 
     this.load.image(
+      "ton_img",
+      `${ASSET_SERVER}/images/cards/special/ton.png${VERSION}`,
+    );
+
+    this.load.image(
+      "thun_img",
+      `${ASSET_SERVER}/images/cards/special/thun.png${VERSION}`,
+    );
+
+    this.load.image(
+      "bomb_img",
+      `${ASSET_SERVER}/images/cards/special/bomb.png${VERSION}`,
+    );
+
+    this.load.image(
       "coincard",
       `${ASSET_SERVER}/images/cards/special/ongame_coin.png${VERSION}`,
     );
@@ -12355,7 +12370,6 @@ class GameScene extends Phaser.Scene {
       .setScale(0)
       .setAlpha(0);
 
-    // 텍스트 등장 애니메이션
     this.tweens.add({
       targets: perfectText,
       scale: 1.2,
@@ -13185,6 +13199,56 @@ class GameScene extends Phaser.Scene {
     return player ? player.nickname : "AI";
   }
 
+  playSpecialCardCenterReveal(imageKey) {
+    if (!imageKey || !this.textures.exists(imageKey)) return;
+
+    const { width, height } = this.cameras.main;
+    const centerX = width * 0.5;
+    const centerY = height * 0.45;
+
+    if (this.specialCardCenterContainer) {
+      this.specialCardCenterContainer.destroy();
+      this.specialCardCenterContainer = null;
+    }
+
+    const container = this.add.container(centerX, centerY).setDepth(9500);
+    const glow = this.add
+      .circle(0, 0, width * 0.12, 0xffffff, 0.18)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    const img = this.add
+      .image(0, 0, imageKey)
+      .setDisplaySize(width * 0.3, width * 0.3)
+      .setAlpha(0)
+      .setScale(0.6);
+
+    container.add([glow, img]);
+    this.specialCardCenterContainer = container;
+
+    this.tweens.add({
+      targets: img,
+      alpha: 1,
+      scale: 1,
+      duration: 220,
+      ease: "Back.out",
+      onComplete: () => {
+        this.tweens.add({
+          targets: [img, glow],
+          alpha: 0,
+          scale: 1.08,
+          duration: 420,
+          ease: "Sine.in",
+          delay: 260,
+          onComplete: () => {
+            if (container && container.active) container.destroy();
+            if (this.specialCardCenterContainer === container) {
+              this.specialCardCenterContainer = null;
+            }
+          },
+        });
+      },
+    });
+  }
+
   showSpecialCardToast(card, playerId) {
     const type = card?.type;
     if (!type) return;
@@ -13199,7 +13263,17 @@ class GameScene extends Phaser.Scene {
     if (!label) return;
     const nickname = playerId ? this.getNicknameById(playerId) : "";
     const prefix = nickname ? `${nickname} ` : "";
-    this.showToast(`${prefix}${label} 카드 등장!`, "#f39c12");
+    this.showToast(`${label} 카드 등장!`, "#f39c12");
+
+    const revealKeyMap = {
+      [BOMB_CARD_TYPE]: "bomb_img",
+      [TON_CARD_TYPE]: "ton_img",
+      [THUNDER_CARD_TYPE]: "thun_img",
+    };
+    const revealKey = revealKeyMap[type];
+    if (revealKey) {
+      this.playSpecialCardCenterReveal(revealKey);
+    }
   }
 
   getPlayerLayoutForId(playerId) {
