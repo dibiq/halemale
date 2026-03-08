@@ -391,10 +391,63 @@ function ensurePlayer2Frames(scene) {
 function ensurePlayer1NewFrames(scene) {
   try {
     if (!scene || !scene.textures) return;
-    if (!scene.textures.exists("player_1_sprite_new")) return;
-
     // avoid re-creating if frames already exist
     if (scene.textures.exists("player_1_new_1")) return;
+
+    const sheetKeys = [];
+    for (let i = 1; i <= 10; i += 1) {
+      const key = `player_1_sheet_${i}`;
+      if (scene.textures.exists(key)) {
+        sheetKeys.push(key);
+      }
+    }
+
+    if (sheetKeys.length > 0) {
+      let idx = 1;
+      const temp = document.createElement("canvas");
+      const tctx =
+        temp.getContext("2d", { willReadFrequently: true }) ||
+        temp.getContext("2d");
+      sheetKeys.forEach((sheetKey) => {
+        const tex = scene.textures.get(sheetKey);
+        const img = tex.getSourceImage();
+        if (!img || !img.width || !img.height) return;
+
+        const cols = 5;
+        const rows = 2;
+        const frameW = Math.floor(img.width / cols) || img.width;
+        const frameH = Math.floor(img.height / rows) || img.height;
+        temp.width = frameW;
+        temp.height = frameH;
+
+        for (let r = 0; r < rows; r += 1) {
+          for (let c = 0; c < cols; c += 1) {
+            tctx.clearRect(0, 0, frameW, frameH);
+            tctx.drawImage(img, -c * frameW, -r * frameH);
+            const data = tctx.getImageData(0, 0, frameW, frameH).data;
+            let nonEmpty = false;
+            for (let i = 3; i < data.length; i += 4) {
+              if (data[i] !== 0) {
+                nonEmpty = true;
+                break;
+              }
+            }
+            if (!nonEmpty) continue;
+
+            const key = `player_1_new_${idx}`;
+            idx += 1;
+            if (scene.textures.exists(key)) continue;
+            const canvas = scene.textures.createCanvas(key, frameW, frameH);
+            const ctx = canvas.getContext();
+            ctx.drawImage(img, -c * frameW, -r * frameH);
+            canvas.refresh();
+          }
+        }
+      });
+      return;
+    }
+
+    if (!scene.textures.exists("player_1_sprite_new")) return;
 
     const tex = scene.textures.get("player_1_sprite_new");
     const img = tex.getSourceImage();
@@ -467,52 +520,91 @@ function ensurePlayer1NewFrames(scene) {
 function ensureMainbgFrames(scene) {
   try {
     if (!scene || !scene.textures) return;
-    if (!scene.textures.exists("mainbg")) return;
 
-    if (scene.textures.exists("mainbg_1")) return;
+    const splitKeys = ["mainbg_q1", "mainbg_q2", "mainbg_q3", "mainbg_q4"];
+    const hasSplit = splitKeys.every((key) => scene.textures.exists(key));
 
-    const tex = scene.textures.get("mainbg");
-    const img = tex.getSourceImage();
-    if (!img || !img.width || !img.height) return;
+    const buildFramesFromSheet = ({ sheetKey, framePrefix, skipEmpty }) => {
+      if (scene.textures.exists(`${framePrefix}1`)) return;
+      const tex = scene.textures.get(sheetKey);
+      const img = tex.getSourceImage();
+      if (!img || !img.width || !img.height) return;
 
-    const w = img.width;
-    const h = img.height;
-    const cols = 10;
-    const rows = 5;
-    if (w % cols !== 0 || h % rows !== 0) return;
-    const frameW = Math.floor(w / cols) || w;
-    const frameH = Math.floor(h / rows) || h;
+      const w = img.width;
+      const h = img.height;
+      const cols = 10;
+      const rows = 5;
+      if (w % cols !== 0 || h % rows !== 0) return;
+      const frameW = Math.floor(w / cols) || w;
+      const frameH = Math.floor(h / rows) || h;
 
-    const temp = document.createElement("canvas");
-    temp.width = frameW;
-    temp.height = frameH;
-    const tctx = temp.getContext("2d", { willReadFrequently: true });
-
-    let idx = 1;
-    for (let r = 0; r < rows; r += 1) {
-      for (let c = 0; c < cols; c += 1) {
-        const key = `mainbg_${idx}`;
-        idx += 1;
-        if (scene.textures.exists(key)) continue;
-
-        tctx.clearRect(0, 0, frameW, frameH);
-        tctx.drawImage(img, -c * frameW, -r * frameH);
-        const data = tctx.getImageData(0, 0, frameW, frameH).data;
-        let nonEmpty = false;
-        for (let i = 3; i < data.length; i += 4) {
-          if (data[i] !== 0) {
-            nonEmpty = true;
-            break;
-          }
-        }
-        if (!nonEmpty) continue;
-
-        const canvas = scene.textures.createCanvas(key, frameW, frameH);
-        const ctx = canvas.getContext();
-        ctx.drawImage(img, -c * frameW, -r * frameH);
-        canvas.refresh();
+      let tctx = null;
+      if (skipEmpty) {
+        const temp = document.createElement("canvas");
+        temp.width = frameW;
+        temp.height = frameH;
+        tctx = temp.getContext("2d", { willReadFrequently: true });
       }
+
+      let idx = 1;
+      for (let r = 0; r < rows; r += 1) {
+        for (let c = 0; c < cols; c += 1) {
+          const key = `${framePrefix}${idx}`;
+          idx += 1;
+          if (scene.textures.exists(key)) continue;
+
+          if (tctx) {
+            tctx.clearRect(0, 0, frameW, frameH);
+            tctx.drawImage(img, -c * frameW, -r * frameH);
+            const data = tctx.getImageData(0, 0, frameW, frameH).data;
+            let nonEmpty = false;
+            for (let i = 3; i < data.length; i += 4) {
+              if (data[i] !== 0) {
+                nonEmpty = true;
+                break;
+              }
+            }
+            if (!nonEmpty) continue;
+          }
+
+          const canvas = scene.textures.createCanvas(key, frameW, frameH);
+          const ctx = canvas.getContext();
+          ctx.drawImage(img, -c * frameW, -r * frameH);
+          canvas.refresh();
+        }
+      }
+    };
+
+    if (hasSplit) {
+      buildFramesFromSheet({
+        sheetKey: "mainbg_q1",
+        framePrefix: "mainbg_q1_",
+        skipEmpty: false,
+      });
+      buildFramesFromSheet({
+        sheetKey: "mainbg_q2",
+        framePrefix: "mainbg_q2_",
+        skipEmpty: false,
+      });
+      buildFramesFromSheet({
+        sheetKey: "mainbg_q3",
+        framePrefix: "mainbg_q3_",
+        skipEmpty: false,
+      });
+      buildFramesFromSheet({
+        sheetKey: "mainbg_q4",
+        framePrefix: "mainbg_q4_",
+        skipEmpty: false,
+      });
+      return;
     }
+
+    if (!scene.textures.exists("mainbg")) return;
+    buildFramesFromSheet({
+      sheetKey: "mainbg",
+      framePrefix: "mainbg_",
+      skipEmpty: true,
+    });
   } catch (e) {
     // console.error("[ensureMainbgFrames] error", e);
   }
@@ -640,7 +732,12 @@ class LobbyScene extends Phaser.Scene {
       `${ASSET_SERVER}/images/popupclose.png${VERSION}`,
     );
 
-    this.load.image("mainbg", `assets/images/bg_sprite.png${VERSION}`);
+    for (let i = 1; i <= 47; i += 1) {
+      this.load.image(
+        `mainbg_frame_${i}`,
+        `assets/images/bg_sprite/${i}.png${VERSION}`,
+      );
+    }
 
     this.load.image("gamebg", `${ASSET_SERVER}/images/gamebg.png${VERSION}`);
     this.load.image(
@@ -757,16 +854,19 @@ class LobbyScene extends Phaser.Scene {
     this.load.image("slide", `${ASSET_SERVER}/images/slide.png${VERSION}`);
     this.load.image("storebg", `${ASSET_SERVER}/images/storebg.png${VERSION}`);
 
-    // player 2 single-sheet; will be split at runtime into 10 frames
-    this.load.image(
-      "player_1_sprite_new",
-      `assets/images/player_1_sprite_new.png${PLAYER1_SPRITE_VERSION}`,
-    );
+    for (let i = 1; i <= 91; i += 1) {
+      this.load.image(
+        `player_1_frame_${i}`,
+        `assets/images/player_1_sprite/${i}.png${PLAYER1_SPRITE_VERSION}`,
+      );
+    }
 
-    this.load.image(
-      "player_2_sprite",
-      `assets/images/player_2_sprite.png${PLAYER2_SPRITE_VERSION}`,
-    );
+    for (let i = 1; i <= 91; i += 1) {
+      this.load.image(
+        `player_2_frame_${i}`,
+        `assets/images/player_2_sprite/${i}.png${PLAYER2_SPRITE_VERSION}`,
+      );
+    }
 
     // 플레이어 애니메이션용 이미지
     this.load.image(`${ASSET_SERVER}/images/player_3_1.png${VERSION}`);
@@ -1191,19 +1291,61 @@ class LobbyScene extends Phaser.Scene {
       }
     }
 
-    const lobbyBg = this.add
-      .sprite(centerX, height / 2, "mainbg")
-      .setDisplaySize(width, height * 1.1)
-      .setDepth(0)
-      .setAlpha(1);
-
+    const totalBgW = width;
+    const totalBgH = height * 1.1;
     const mybgAnimKey = this.ensureMybgAnimation();
-    if (mybgAnimKey) {
-      if (this.textures.exists("mainbg_1")) {
-        lobbyBg.setTexture("mainbg_1");
+
+    if (Array.isArray(mybgAnimKey) && mybgAnimKey.length === 4) {
+      const bgContainer = this.add
+        .container(centerX, height / 2)
+        .setDepth(0)
+        .setAlpha(1);
+      const halfW = totalBgW / 2;
+      const halfH = totalBgH / 2;
+      const quadPositions = [
+        { x: -halfW / 2, y: -halfH / 2, key: "mainbg_q1_1" },
+        { x: halfW / 2, y: -halfH / 2, key: "mainbg_q2_1" },
+        { x: -halfW / 2, y: halfH / 2, key: "mainbg_q3_1" },
+        { x: halfW / 2, y: halfH / 2, key: "mainbg_q4_1" },
+      ];
+
+      const quadSprites = quadPositions.map((pos) => {
+        const textureKey = this.textures.exists(pos.key)
+          ? pos.key
+          : pos.key.replace("_1", "");
+        return this.add
+          .sprite(pos.x, pos.y, textureKey)
+          .setDisplaySize(halfW, halfH)
+          .setOrigin(0.5);
+      });
+
+      quadSprites.forEach((sprite, idx) => {
+        const animKey = mybgAnimKey[idx];
+        if (animKey) {
+          sprite.play(animKey, true);
+        }
+      });
+
+      bgContainer.add(quadSprites);
+    } else {
+      const fallbackTexture = this.textures.exists("mainbg_frame_1")
+        ? "mainbg_frame_1"
+        : "mainbg";
+      const lobbyBg = this.add
+        .sprite(centerX, height / 2, fallbackTexture)
+        .setDisplaySize(totalBgW, totalBgH)
+        .setDepth(0)
+        .setAlpha(1);
+
+      if (mybgAnimKey) {
+        if (this.textures.exists("mainbg_frame_1")) {
+          lobbyBg.setTexture("mainbg_frame_1");
+        } else if (this.textures.exists("mainbg_1")) {
+          lobbyBg.setTexture("mainbg_1");
+        }
+        lobbyBg.play(mybgAnimKey, true);
+        lobbyBg.setDisplaySize(totalBgW, totalBgH);
       }
-      lobbyBg.play(mybgAnimKey, true);
-      lobbyBg.setDisplaySize(width, height * 1.1);
     }
 
     socket.off("hostChanged").on("hostChanged", (data) => {
@@ -2858,6 +3000,63 @@ class LobbyScene extends Phaser.Scene {
   }
 
   ensureMybgAnimation() {
+    const frameKeys = [];
+    let frameIndex = 1;
+    while (true) {
+      const key = `mainbg_frame_${frameIndex}`;
+      if (!this.textures.exists(key)) break;
+      frameKeys.push(key);
+      frameIndex += 1;
+    }
+
+    if (frameKeys.length > 0) {
+      const animKey = this.getMybgAnimKey();
+      if (!this.anims.exists(animKey)) {
+        this.anims.create({
+          key: animKey,
+          frames: frameKeys.map((key) => ({ key })),
+          frameRate: 12,
+          skipMissedFrames: false,
+          repeat: -1,
+        });
+      }
+      return animKey;
+    }
+
+    const splitKeys = ["mainbg_q1", "mainbg_q2", "mainbg_q3", "mainbg_q4"];
+    const hasSplit = splitKeys.every((key) => this.textures.exists(key));
+
+    if (hasSplit) {
+      ensureMainbgFrames(this);
+      const animKeys = splitKeys.map((_, idx) => `mainbg_anim_q${idx + 1}`);
+
+      animKeys.forEach((key, idx) => {
+        if (this.anims.exists(key)) return;
+        const frames = [];
+        let frameIdx = 1;
+        while (true) {
+          const textureKey = `mainbg_q${idx + 1}_${frameIdx}`;
+          if (this.textures.exists(textureKey)) {
+            frames.push({ key: textureKey });
+            frameIdx += 1;
+            continue;
+          }
+          break;
+        }
+
+        if (frames.length === 0) return;
+        this.anims.create({
+          key,
+          frames,
+          frameRate: 12,
+          skipMissedFrames: false,
+          repeat: -1,
+        });
+      });
+
+      return animKeys;
+    }
+
     const animKey = this.getMybgAnimKey();
     if (this.anims.exists(animKey)) {
       return animKey;
@@ -2908,9 +3107,16 @@ class LobbyScene extends Phaser.Scene {
   getAvatarDisplayKey(baseKey) {
     if (this.textures.exists(`${baseKey}_1`)) return `${baseKey}_1`;
     if (baseKey === "player_1") {
+      if (this.textures.exists("player_1_frame_1")) return "player_1_frame_1";
       if (this.textures.exists("player_1_new_1")) return "player_1_new_1";
       if (this.textures.exists("player_1_sprite_new"))
         return "player_1_sprite_new";
+    }
+    if (baseKey === "player_2") {
+      if (this.textures.exists("player_2_frame_1")) return "player_2_frame_1";
+    }
+    if (baseKey === "player_2") {
+      if (this.textures.exists("player_2_frame_1")) return "player_2_frame_1";
     }
     // use first sheet if available
     const sheetKey = `${baseKey}_sprite_a`;
@@ -7582,6 +7788,7 @@ class GameScene extends Phaser.Scene {
   getAvatarDisplayKey(baseKey) {
     if (this.textures.exists(`${baseKey}_1`)) return `${baseKey}_1`;
     if (baseKey === "player_1") {
+      if (this.textures.exists("player_1_frame_1")) return "player_1_frame_1";
       if (this.textures.exists("player_1_new_1")) return "player_1_new_1";
       if (this.textures.exists("player_1_sprite_new"))
         return "player_1_sprite_new";
@@ -7648,37 +7855,86 @@ class GameScene extends Phaser.Scene {
     }
 
     try {
-      if (
-        baseKey === "player_1" &&
-        this.textures.exists("player_1_sprite_new")
-      ) {
-        ensurePlayer1NewFrames(this);
-        const frames = [];
-        let idx = 1;
-        while (true) {
-          const textureKey = `player_1_new_${idx}`;
-          if (this.textures.exists(textureKey)) {
-            frames.push({ key: textureKey });
-            idx += 1;
-            continue;
+      if (baseKey === "player_1") {
+        if (this.textures.exists("player_1_frame_1")) {
+          const frames = [];
+          let idx = 1;
+          while (true) {
+            const textureKey = `player_1_frame_${idx}`;
+            if (this.textures.exists(textureKey)) {
+              frames.push({ key: textureKey });
+              idx += 1;
+              continue;
+            }
+            break;
           }
-          break;
+
+          if (frames.length > 0) {
+            this.anims.create({
+              key: animKey,
+              frames,
+              frameRate: this.getAvatarAnimFrameRate(baseKey),
+              repeat: -1,
+            });
+            return animKey;
+          }
         }
 
-        if (frames.length > 0) {
-          this.anims.create({
-            key: animKey,
-            frames,
-            frameRate: this.getAvatarAnimFrameRate(baseKey),
-            repeat: -1,
-          });
-          return animKey;
+        if (
+          this.textures.exists("player_1_sprite_new") ||
+          this.textures.exists("player_1_new_1")
+        ) {
+          ensurePlayer1NewFrames(this);
+          const frames = [];
+          let idx = 1;
+          while (true) {
+            const textureKey = `player_1_new_${idx}`;
+            if (this.textures.exists(textureKey)) {
+              frames.push({ key: textureKey });
+              idx += 1;
+              continue;
+            }
+            break;
+          }
+
+          if (frames.length > 0) {
+            this.anims.create({
+              key: animKey,
+              frames,
+              frameRate: this.getAvatarAnimFrameRate(baseKey),
+              repeat: -1,
+            });
+            return animKey;
+          }
         }
       }
 
-      // dynamic handling for player_2 (grid split above)
       if (baseKey === "player_2") {
-        //console.log("[ensureAvatarAnimation] building player2 frames");
+        if (this.textures.exists("player_2_frame_1")) {
+          const frames = [];
+          let idx = 1;
+          while (true) {
+            const textureKey = `player_2_frame_${idx}`;
+            if (this.textures.exists(textureKey)) {
+              frames.push({ key: textureKey });
+              idx += 1;
+              continue;
+            }
+            break;
+          }
+
+          if (frames.length > 0) {
+            this.anims.create({
+              key: animKey,
+              frames,
+              frameRate: this.getAvatarAnimFrameRate(baseKey),
+              repeat: -1,
+            });
+            return animKey;
+          }
+        }
+
+        // fallback to legacy split sheet frames
         const frames = [];
         let idx = 1;
         while (true) {
@@ -7690,17 +7946,15 @@ class GameScene extends Phaser.Scene {
           }
           break;
         }
-        /*console.log(
-          "[ensureAvatarAnimation] player2 frames count",
-          frames.length,
-        );*/
-        this.anims.create({
-          key: animKey,
-          frames,
-          frameRate: this.getAvatarAnimFrameRate(baseKey),
-          repeat: -1,
-        });
-        return animKey;
+        if (frames.length > 0) {
+          this.anims.create({
+            key: animKey,
+            frames,
+            frameRate: this.getAvatarAnimFrameRate(baseKey),
+            repeat: -1,
+          });
+          return animKey;
+        }
       }
 
       const maxFrame = this.getAvatarAnimMaxFrame(baseKey);
