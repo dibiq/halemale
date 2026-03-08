@@ -1019,8 +1019,8 @@ class LobbyScene extends Phaser.Scene {
         if (!this.dailyRewardPulseTween) {
           this.dailyRewardPulseTween = this.tweens.add({
             targets: [this.dailyRewardBtnBg],
-            scaleX: 1.05,
-            scaleY: 1.05,
+            scaleX: "*=1.05",
+            scaleY: "*=1.05",
             yoyo: true,
             duration: 500,
             repeat: -1,
@@ -2948,12 +2948,19 @@ class LobbyScene extends Phaser.Scene {
 
     const { width, height } = this.cameras.main;
 
-    // 토스트 컨테이너 생성
-    const toast = this.add.container(width / 2, -50).setDepth(2000);
+    if (!this.toastLayer || !this.toastLayer.scene) {
+      this.toastLayer = this.add.container(0, 0).setDepth(1000000);
+      this.toastLayer.setScrollFactor(0);
+    }
+    this.toastLayer.setVisible(true);
+    this.toastLayer.setActive(true);
+    this.children.bringToTop(this.toastLayer);
 
-    const bg = this.add
-      .rectangle(0, 0, Math.floor(width * 0.6), 64, 0x000000, 0.75)
-      .setOrigin(0.5);
+    // 토스트 컨테이너 생성
+    const toast = this.add
+      .container(width / 2, height * 0.22)
+      .setDepth(1000001);
+    toast.setScrollFactor(0);
 
     const txt = this.add
       .text(0, 0, message, {
@@ -2964,9 +2971,24 @@ class LobbyScene extends Phaser.Scene {
         stroke: "#000000",
         strokeThickness: 4,
       })
+      .setOrigin(0.5)
+      .setShadow(0, 3, "#000000", 6, true, true);
+
+    const paddingX = Math.floor(width * 0.04);
+    const paddingY = Math.floor(width * 0.018);
+    const bg = this.add
+      .rectangle(
+        0,
+        0,
+        Math.min(width * 0.86, txt.width + paddingX * 2),
+        txt.height + paddingY * 2,
+        0x000000,
+        0.85,
+      )
       .setOrigin(0.5);
 
     toast.add([bg, txt]);
+    this.toastLayer.add(toast);
 
     // 효과음
     try {
@@ -2976,9 +2998,12 @@ class LobbyScene extends Phaser.Scene {
     // 보여주기 애니메이션
     this.tweens.add({
       targets: toast,
-      y: height * 0.15,
-      duration: 400,
-      ease: "Back.easeOut",
+      y: height * 0.22,
+      duration: 300,
+      ease: "Sine.easeOut",
+      onStart: () => {
+        toast.y = height * 0.19;
+      },
       onComplete: () => {
         this.time.delayedCall(1000, () => {
           if (toast.scene) {
@@ -3001,29 +3026,23 @@ class LobbyScene extends Phaser.Scene {
 
   showJoinCodePopup(callback) {
     this.isJoinPopupOpen = true;
-
     const { width, height } = this.cameras.main;
     const centerX = width / 2;
     const popupY = height * 0.4;
 
-    // 1. 전용 컨테이너 생성 (Scene에 변수로 저장하여 외부에서 접근 가능하게 함)
-    // 기존에 존재한다면 먼저 지우고 새로 생성 (중복 방지)
     if (this.joinPopupContainer) this.joinPopupContainer.destroy();
     this.joinPopupContainer = this.add.container(0, 0).setDepth(200);
 
-    // 2. 반투명 배경
     const overlay = this.add
       .rectangle(centerX, height * 0.5, width, height, 0x000000, 0.5)
       .setInteractive();
 
-    // 3. 팝업 배경 이미지
     const popupBg = this.add
       .image(centerX, popupY, "popupbg")
       .setDisplaySize(width * 0.7, height * 0.24);
 
-    // 4. 안내 텍스트
     const titleText = this.add
-      .text(centerX, popupY - 160, "방 코드를 입력하세요.", {
+      .text(centerX, popupY - 120, "방 코드 입력", {
         fontFamily: "Jua",
         fontSize: `${width * 0.05}px`,
         color: "#ffffff",
@@ -7748,6 +7767,15 @@ class GameScene extends Phaser.Scene {
 
       // (block removal happens after we update openStack below)
 
+      try {
+        const cardType = data?.card?.type;
+        const cardLabel = cardType
+          ? `type=${cardType}`
+          : data?.card && Number.isFinite(Number(data.card.fruit))
+            ? `fruit=${data.card.fruit} count=${data.card.count}`
+            : "unknown";
+      } catch (e) {}
+
       if (data?.card?.type === THUNDER_CARD_TYPE) {
         console.log("⚡ [client] THUNDER cardFlipped:", {
           playerId: data.playerId,
@@ -9228,14 +9256,10 @@ class GameScene extends Phaser.Scene {
       typeof data.skipAvatar === "boolean" ? data.skipAvatar : false;
 
     // inspect `this` context
-    console.log("[playWinAnimation] this=", this);
     // ensure animations are enabled when called
     this.skipWinAvatarAnim = skipAvatarAnim;
     // avoid overlapping avatar animations
     if (this.avatarAnimInProgress) {
-      console.log(
-        "[playWinAnimation] avatar anim already in progress, skipping",
-      );
       characterAnimationDone = true; // 애니메이션이 이미 진행 중이면 스킵되므로 완료 처리
       // still play other effects but skip creating new sprite
     }
@@ -9285,7 +9309,14 @@ class GameScene extends Phaser.Scene {
           "player_1";
 
         // use a reusable sprite instance to avoid allocation overhead
-        if (!this._winAvatarSprite) {
+        const needsNewSprite =
+          !this._winAvatarSprite ||
+          !this._winAvatarSprite.scene ||
+          !this._winAvatarSprite.active;
+        if (needsNewSprite) {
+          if (this._winAvatarSprite) {
+            this._winAvatarSprite.destroy();
+          }
           this._winAvatarSprite = this.add
             .sprite(centerX, centerY, avatarKey)
             .setDepth(10050)
@@ -9329,21 +9360,11 @@ class GameScene extends Phaser.Scene {
               clearFlag();
             });
           } catch (textureError) {
-            console.error(
-              "[playWinAnimation] texture setting error",
-              textureError,
-            );
             this.avatarAnimInProgress = false;
             characterAnimationDone = true;
             checkAllAnimationsComplete();
           }
         } else {
-          console.warn(
-            "[playWinAnimation] no valid texture for avatar",
-            avatarKey,
-            "baseTexture:",
-            baseTexture,
-          );
           this.avatarAnimInProgress = false;
           characterAnimationDone = true;
           checkAllAnimationsComplete();
@@ -9352,15 +9373,11 @@ class GameScene extends Phaser.Scene {
         combo =
           this.comboState && this.comboState.count ? this.comboState.count : 0;
       } catch (e) {
-        console.error("[playWinAnimation] avatar animation error", e);
         this.avatarAnimInProgress = false;
         characterAnimationDone = true; // 에러 발생 시에도 캐릭터 애니메이션 완료 처리
         checkAllAnimationsComplete();
       }
     } else {
-      console.log(
-        "[playWinAnimation] avatar animation disabled (static guard)",
-      );
       characterAnimationDone = true; // 캐릭터 애니메이션이 비활성화된 경우 즉시 완료 처리
       combo =
         this.comboState && this.comboState.count ? this.comboState.count : 0;
@@ -9633,7 +9650,7 @@ class GameScene extends Phaser.Scene {
         (e) => Array.isArray(e.shielded) && e.shielded.includes(data.playerId),
       );
 
-    console.log(
+    /*console.log(
       "[flip] viewerId=",
       viewerId,
       "viewerIsIssuer=",
@@ -9642,7 +9659,7 @@ class GameScene extends Phaser.Scene {
       submitterShielded,
       "blockEffects=",
       this.blockEffects,
-    );
+    );*/
     let revealLogged = false;
 
     this.tweens.add({
@@ -9662,23 +9679,23 @@ class GameScene extends Phaser.Scene {
           ) {
             // block active and viewer is NOT issuer -> keep back texture (do not reveal)
             if (!revealLogged) {
-              console.log(
+              /*console.log(
                 "[flip] reveal suppressed for viewer=",
                 viewerId,
                 "cardKey=",
                 cardKey,
-              );
+              );*/
               revealLogged = true;
             }
           } else {
             if (this.textures.exists(cardKey)) {
               if (!revealLogged) {
-                console.log(
+                /*console.log(
                   "[flip] revealing face for viewer=",
                   viewerId,
                   "cardKey=",
                   cardKey,
-                );
+                );*/
                 revealLogged = true;
               }
               tempCard.setTexture(cardKey);
@@ -14076,22 +14093,7 @@ class GameScene extends Phaser.Scene {
                   this.roundData?.players?.[this.turnIndex]?.id;
                 const serverNext = this.latestNextTurnId || null;
                 this.canClick = currentTurnId === myId || serverNext === myId;
-                console.log(
-                  "🎮 (ReadyGo) 카드를 제출할 수 있는지:",
-                  this.canClick,
-                  {
-                    myId,
-                    currentTurnId,
-                    serverNext,
-                    turnIndex: this.turnIndex,
-                  },
-                );
-              } catch (e) {
-                console.warn(
-                  "(ReadyGo) canClick 계산 실패",
-                  e && e.stack ? e.stack : e,
-                );
-              }
+              } catch (e) {}
             },
           });
         });
@@ -14100,14 +14102,42 @@ class GameScene extends Phaser.Scene {
   }
 
   showToast(message, color = "#ffffff") {
-    const { width } = this.cameras.main;
+    this.isToastOpen = true;
 
-    // 토스트 컨테이너
-    const toast = this.add.container(width / 2, -50).setDepth(10000);
+    if (!this.cameras || !this.cameras.main) {
+      console.log("[DEBUG] showToast: missing camera", {
+        scene: this.scene && this.scene.key,
+        message,
+      });
+      return;
+    }
 
-    const bg = this.add
-      .rectangle(0, 0, Math.floor(width * 0.85), 60, 0x000000, 0.75)
-      .setOrigin(0.5);
+    const { width, height } = this.cameras.main;
+
+    console.log("[DEBUG] showToast: begin", {
+      scene: this.scene && this.scene.key,
+      width,
+      height,
+      message,
+    });
+
+    if (!this.toastLayer || !this.toastLayer.scene) {
+      this.toastLayer = this.add.container(0, 0).setDepth(1000000);
+      this.toastLayer.setScrollFactor(0);
+    }
+    this.toastLayer.setVisible(true);
+    this.toastLayer.setActive(true);
+    this.children.bringToTop(this.toastLayer);
+
+    console.log("[DEBUG] showToast: layer", {
+      hasLayer: !!this.toastLayer,
+      layerActive: this.toastLayer && this.toastLayer.active,
+      layerVisible: this.toastLayer && this.toastLayer.visible,
+      layerDepth: this.toastLayer && this.toastLayer.depth,
+    });
+
+    const toast = this.add.container(width / 2, -80).setDepth(1000001);
+    toast.setScrollFactor(0);
 
     const txt = this.add
       .text(0, 0, message, {
@@ -14118,43 +14148,66 @@ class GameScene extends Phaser.Scene {
         stroke: "#000000",
         strokeThickness: 4,
       })
+      .setOrigin(0.5)
+      .setShadow(0, 3, "#000000", 6, true, true);
+
+    const paddingX = Math.floor(width * 0.04);
+    const paddingY = Math.floor(width * 0.018);
+    const bg = this.add
+      .rectangle(
+        0,
+        0,
+        Math.min(width * 0.86, txt.width + paddingX * 2),
+        txt.height + paddingY * 2,
+        0x000000,
+        0.85,
+      )
       .setOrigin(0.5);
 
-    // 배경 (반투명 검정 바)
-    /*const bg = this.add.rectangle(0, 0, width * 0.7, 40, 0x000000, 0.7);
-    bg.setStrokeStyle(2, 0xffffff, 0.5); // 테두리
-
-    // 텍스트
-    const txt = this.add
-      .text(0, 0, message, {
-        fontFamily: GAME_FONTS.main,
-        fontSize: "18px",
-        color: color,
-        fontWeight: "bold",
-      })
-      .setOrigin(0.5);*/
-
     toast.add([bg, txt]);
+    this.toastLayer.add(toast);
 
-    // 효과음 재생 (이미 로드된 'pop'이나 'btn' 사운드 활용)
-    this.sound.play("pass", { volume: 0.2 });
+    console.log("[DEBUG] showToast: added", {
+      toastActive: toast.active,
+      toastVisible: toast.visible,
+      toastDepth: toast.depth,
+      toastX: toast.x,
+      toastY: toast.y,
+    });
 
-    // 애니메이션: 내려왔다가 잠시 머물고 다시 올라가기
+    try {
+      this.sound.play("pass", { volume: 0.5 });
+    } catch (e) {}
+
     this.tweens.add({
       targets: toast,
-      y: 60, // 화면 상단에서 60px 지점까지 내려옴
-      duration: 500,
+      y: height * 0.22,
+      duration: 400,
       ease: "Back.easeOut",
+      onStart: () => {
+        console.log("[DEBUG] showToast: tween start", {
+          y: toast.y,
+          targetY: height * 0.22,
+        });
+      },
       onComplete: () => {
-        this.time.delayedCall(2000, () => {
-          // 2초 대기
-          this.tweens.add({
-            targets: toast,
-            y: -50,
-            duration: 500,
-            ease: "Power2.easeIn",
-            onComplete: () => toast.destroy(),
-          });
+        console.log("[DEBUG] showToast: tween complete", {
+          y: toast.y,
+        });
+        this.time.delayedCall(1000, () => {
+          if (toast.scene) {
+            this.tweens.add({
+              targets: toast,
+              y: -100,
+              duration: 300,
+              ease: "Power2.easeIn",
+              onComplete: () => {
+                toast.destroy();
+                this.activeToast = null;
+                this.isToastOpen = false;
+              },
+            });
+          }
         });
       },
     });
