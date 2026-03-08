@@ -11296,6 +11296,10 @@ class GameScene extends Phaser.Scene {
   handleFlipCard() {
     if (!this.roundData || !this.roundData.players) return;
 
+    if (this.isSpecialCardPauseActive && this.isSpecialCardPauseActive()) {
+      return;
+    }
+
     // 💡 1. 게임 시작 연출 중이면 무시
     if (this.canClick === false) {
       console.log("⏳ 아직 시작 연출 중입니다.", {
@@ -11360,6 +11364,10 @@ class GameScene extends Phaser.Scene {
   handleRingBell() {
     // 1. 게임 준비 상태 확인
     if (!this.isGameReady) return;
+
+    if (this.isSpecialCardPauseActive && this.isSpecialCardPauseActive()) {
+      return;
+    }
 
     if (this.isTutorialMode && this.tutorialState?.forbidBell) {
       this.showToast("폭탄 카드일 땐 종을 누를 수 없어요!", "#f97316");
@@ -12941,7 +12949,7 @@ class GameScene extends Phaser.Scene {
     // 즉시 현재 보여지는 카드로 설정
     player.openCard = randomCard;
 
-    this.showSpecialCardToast(randomCard, playerId);
+    const specialPauseMs = this.showSpecialCardToast(randomCard, playerId);
 
     // --- 핵심 수정: 싱글플레이에서는 로컬 openStack을 직접 누적 ---
     if (!player.openStack || !Array.isArray(player.openStack))
@@ -13013,8 +13021,16 @@ class GameScene extends Phaser.Scene {
     }
 
     // 6. 다음 턴으로 진행
-    this.nextTurn();
-    this.checkFruitCountForAI();
+    if (specialPauseMs > 0) {
+      this.time.delayedCall(specialPauseMs, () => {
+        if (!this.isGameStarted) return;
+        this.nextTurn();
+        this.checkFruitCountForAI();
+      });
+    } else {
+      this.nextTurn();
+      this.checkFruitCountForAI();
+    }
   }
   // AI가 종을 치는 로직
   handleAiRingBell(aiId) {
@@ -13912,6 +13928,43 @@ class GameScene extends Phaser.Scene {
     return player ? player.nickname : "AI";
   }
 
+  isSpecialCardPauseActive() {
+    return Date.now() < (this.specialCardPauseUntil || 0);
+  }
+
+  startSpecialCardPause(durationMs = 1400) {
+    const now = Date.now();
+    const until = now + durationMs;
+    this.specialCardPauseUntil = Math.max(
+      this.specialCardPauseUntil || 0,
+      until,
+    );
+    this.canClick = false;
+
+    if (typeof this.clearMyTurnTimer === "function") {
+      this.clearMyTurnTimer();
+    }
+
+    if (this.specialCardPauseTimer) {
+      this.specialCardPauseTimer.remove(false);
+      this.specialCardPauseTimer = null;
+    }
+
+    const remaining = this.specialCardPauseUntil - now;
+    this.specialCardPauseTimer = this.time.delayedCall(remaining, () => {
+      if (Date.now() < (this.specialCardPauseUntil || 0)) return;
+      this.specialCardPauseUntil = 0;
+      if (!this.isGameStarted) return;
+      if (this.isTutorialMode) return;
+
+      const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
+      const currentPlayer = this.roundData?.players?.[this.turnIndex];
+      this.canClick = Boolean(currentPlayer && currentPlayer.id === myId);
+    });
+
+    return durationMs;
+  }
+
   playSpecialCardCenterReveal(imageKey) {
     if (!imageKey || !this.textures.exists(imageKey)) return;
 
@@ -13980,7 +14033,7 @@ class GameScene extends Phaser.Scene {
 
   showSpecialCardToast(card, playerId) {
     const type = card?.type;
-    if (!type) return;
+    if (!type) return 0;
     const labels = {
       [BOMB_CARD_TYPE]: "폭탄",
       [THUNDER_CARD_TYPE]: "번개",
@@ -13989,7 +14042,7 @@ class GameScene extends Phaser.Scene {
       [COIN_CARD_TYPE]: "코인",
     };
     const label = labels[type];
-    if (!label) return;
+    if (!label) return 0;
     const nickname = playerId ? this.getNicknameById(playerId) : "";
     const prefix = nickname ? `${nickname} ` : "";
     this.showToast(`${label} 카드 등장!`, "#f39c12");
@@ -14001,8 +14054,12 @@ class GameScene extends Phaser.Scene {
     };
     const revealKey = revealKeyMap[type];
     if (revealKey) {
+      const pauseMs = this.startSpecialCardPause();
       this.playSpecialCardCenterReveal(revealKey);
+      return pauseMs;
     }
+
+    return 0;
   }
 
   getPlayerLayoutForId(playerId) {

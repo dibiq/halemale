@@ -881,6 +881,7 @@ const MULTI_AI_BASE_PROFILE = {
 };
 
 const MULTI_AI_SLOWDOWN_MS = 0;
+const SPECIAL_CARD_PAUSE_MS = 1400;
 
 function clampNumber(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -893,6 +894,17 @@ function randomTriangular(min, max, mode) {
     return min + Math.sqrt(u * (max - min) * (mode - min));
   }
   return max - Math.sqrt((1 - u) * (max - min) * (max - mode));
+}
+
+function getSpecialPauseRemaining(room) {
+  if (!room || !room.specialPauseUntil) return 0;
+  return Math.max(0, room.specialPauseUntil - Date.now());
+}
+
+function extendSpecialPause(room, durationMs = SPECIAL_CARD_PAUSE_MS) {
+  if (!room) return;
+  const until = Date.now() + durationMs;
+  room.specialPauseUntil = Math.max(room.specialPauseUntil || 0, until);
 }
 
 function getHumanReactionBaseline(room) {
@@ -919,7 +931,7 @@ function buildMatchAiProfile(room) {
   const flipFactor = randomTriangular(0.9, 1.4, 1.1);
   const reactionTime = clampNumber(
     Math.round(baseline * reactionFactor),
-    600,
+    1000,
     2400,
   );
   const flipDelay = clampNumber(Math.round(baseline * flipFactor), 500, 2400);
@@ -988,6 +1000,14 @@ function scheduleAiTurn(room, io) {
   ensureAiState(room);
   clearAiTurnTimer(room);
 
+  const pauseRemaining = getSpecialPauseRemaining(room);
+  if (pauseRemaining > 0) {
+    room.aiTimers.turn = setTimeout(() => {
+      scheduleAiTurn(room, io);
+    }, pauseRemaining + 20);
+    return;
+  }
+
   const current = room.players[room.turnIndex];
   if (!isBotPlayer(current)) return;
   if (!current.myDeck || current.myDeck.length === 0) return;
@@ -1010,6 +1030,14 @@ function scheduleAiBell(room, io) {
   ensureAiState(room);
   clearAiBellTimers(room);
 
+  const pauseRemaining = getSpecialPauseRemaining(room);
+  if (pauseRemaining > 0) {
+    room.aiTimers.bells._pause = setTimeout(() => {
+      scheduleAiBell(room, io);
+    }, pauseRemaining + 20);
+    return;
+  }
+
   const totals = getFruitTotals(room.players);
   const isFive = Object.values(totals).some((t) => t === 5);
   const hasThunder = hasThunderCardOnTable(room.players);
@@ -1020,15 +1048,12 @@ function scheduleAiBell(room, io) {
 
   if (!isCorrectBell) return;
 
-  const baseline = getHumanReactionBaseline(room) + MULTI_AI_SLOWDOWN_MS;
   room.players.forEach((player) => {
     if (!isBotPlayer(player)) return;
     if (player.isEliminated) return;
     if (!player.myDeck || player.myDeck.length <= 0) return;
 
-    const variance = randomTriangular(0.8, 1.1, 0.95);
-    const baseDelay = clampNumber(Math.round(baseline * variance), 80, 600);
-    const delay = baseDelay + Math.floor(Math.random() * 40);
+    const delay = 1300 + Math.floor(Math.random() * 701);
     room.aiTimers.bells[player.id] = setTimeout(() => {
       handleAiBell(room, io, player.id);
     }, delay);
@@ -1038,6 +1063,8 @@ function scheduleAiBell(room, io) {
 function handleAiFlip(room, io, playerId) {
   if (!room || !room.isGameStarted) return;
   if (room.isFlipping) return;
+
+  if (getSpecialPauseRemaining(room) > 0) return;
 
   const p = room.players.find((pl) => pl.id === playerId);
   if (!p || !p.myDeck || p.myDeck.length === 0) return;
@@ -1053,6 +1080,10 @@ function handleAiFlip(room, io, playerId) {
   const card = p.myDeck.pop();
   p.openCard = card;
   p.openCardStack.push(card);
+
+  if (isBombCard(card) || isThunderCard(card) || isTonCard(card)) {
+    extendSpecialPause(room);
+  }
 
   try {
     if (Array.isArray(room.blockEffects) && room.blockEffects.length > 0) {
@@ -1126,9 +1157,21 @@ function handleAiFlip(room, io, playerId) {
       return;
     }
 
-    // 다음 턴 진행 전에 뒤집기 잠금 해제
-    room.isFlipping = false;
+    const pauseRemaining = getSpecialPauseRemaining(room);
+    if (pauseRemaining > 0) {
+      setTimeout(() => {
+        if (!room || !room.isGameStarted) return;
+        room.isFlipping = false;
+        const dir =
+          typeof room.turnDirection === "number" ? room.turnDirection : 1;
+        room.turnIndex =
+          (room.turnIndex + dir + room.players.length) % room.players.length;
+        processSkipTurn(room, io);
+      }, pauseRemaining + 20);
+      return;
+    }
 
+    room.isFlipping = false;
     const dir = typeof room.turnDirection === "number" ? room.turnDirection : 1;
     room.turnIndex =
       (room.turnIndex + dir + room.players.length) % room.players.length;
@@ -4109,6 +4152,10 @@ io.on("connection", (socket) => {
     p.openCard = card;
     p.openCardStack.push(card);
 
+    if (isBombCard(card) || isThunderCard(card) || isTonCard(card)) {
+      extendSpecialPause(room);
+    }
+
     // 블록(먹물) 이펙트가 있는 경우: 어떤 플레이어가 제출하든 모든 effect의 남은 턴을 감소
     try {
       if (Array.isArray(room.blockEffects) && room.blockEffects.length > 0) {
@@ -4202,10 +4249,21 @@ io.on("connection", (socket) => {
         return;
       }
 
-      // 다음 턴 진행 전에 뒤집기 잠금 해제
-      room.isFlipping = false;
+      const pauseRemaining = getSpecialPauseRemaining(room);
+      if (pauseRemaining > 0) {
+        setTimeout(() => {
+          if (!room || !room.isGameStarted) return;
+          room.isFlipping = false;
+          const dir =
+            typeof room.turnDirection === "number" ? room.turnDirection : 1;
+          room.turnIndex =
+            (room.turnIndex + dir + room.players.length) % room.players.length;
+          processSkipTurn(room, io);
+        }, pauseRemaining + 20);
+        return;
+      }
 
-      // 다음 턴으로 넘김 (탈락자는 processSkipTurn에서 자동으로 건너뜀)
+      room.isFlipping = false;
       const dir =
         typeof room.turnDirection === "number" ? room.turnDirection : 1;
       room.turnIndex =
@@ -4218,6 +4276,7 @@ io.on("connection", (socket) => {
     const room = rooms[sock.roomId];
     if (!room || !room.isGameStarted) return;
     if (room.bellLocked) return;
+    if (getSpecialPauseRemaining(room) > 0) return;
 
     clearAiBellTimers(room);
 
