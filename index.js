@@ -682,9 +682,14 @@ function checkGameOver(room, io, options = {}) {
   room.players.forEach((p) => {
     const hasNoDeck = !p.myDeck || p.myDeck.length === 0;
     if (hasNoDeck) {
-      // Only mark eliminated when there is no active success window
-      // unless forced (e.g., thief steals all remaining cards)
-      p.isEliminated = forceEliminateZeroDeck ? true : !isBellSuccessWindow;
+      // Bots should not stall the match when they run out of cards.
+      if (p && p.isBot) {
+        p.isEliminated = true;
+      } else {
+        // Only mark eliminated when there is no active success window
+        // unless forced (e.g., thief steals all remaining cards)
+        p.isEliminated = forceEliminateZeroDeck ? true : !isBellSuccessWindow;
+      }
     } else {
       p.isEliminated = false;
     }
@@ -880,7 +885,7 @@ const MULTI_AI_BASE_PROFILE = {
   reactionTime: 220,
 };
 
-const MULTI_AI_SLOWDOWN_MS = 0;
+const MULTI_AI_SLOWDOWN_MS = 200;
 const SPECIAL_CARD_PAUSE_MS = 1400;
 
 function clampNumber(value, min, max) {
@@ -1013,8 +1018,8 @@ function scheduleAiTurn(room, io) {
   if (!current.myDeck || current.myDeck.length === 0) return;
   if (room.isFlipping) return;
 
-  const delayBase = Number(current.aiProfile?.flipDelay || 120);
-  const delay = Math.max(20, delayBase + Math.floor(Math.random() * 40));
+  const delayBase = Number(current.aiProfile?.flipDelay || 600);
+  const delay = Math.max(120, delayBase + 150 + Math.floor(Math.random() * 80));
 
   room.aiTimers.turn = setTimeout(() => {
     if (!room.isGameStarted) return;
@@ -1128,7 +1133,9 @@ function handleAiFlip(room, io, playerId) {
   const isBellSuccessWindow = isFive || hasThunder;
 
   if (p.myDeck.length === 0) {
-    if (!isBellSuccessWindow) {
+    if (isBotPlayer(p)) {
+      p.isEliminated = true;
+    } else if (!isBellSuccessWindow) {
       p.isEliminated = true;
     }
   }

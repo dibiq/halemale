@@ -388,135 +388,6 @@ function ensurePlayer2Frames(scene) {
   }
 }
 
-function ensurePlayer1NewFrames(scene) {
-  try {
-    if (!scene || !scene.textures) return;
-    // avoid re-creating if frames already exist
-    if (scene.textures.exists("player_1_new_1")) return;
-
-    const sheetKeys = [];
-    for (let i = 1; i <= 10; i += 1) {
-      const key = `player_1_sheet_${i}`;
-      if (scene.textures.exists(key)) {
-        sheetKeys.push(key);
-      }
-    }
-
-    if (sheetKeys.length > 0) {
-      let idx = 1;
-      const temp = document.createElement("canvas");
-      const tctx =
-        temp.getContext("2d", { willReadFrequently: true }) ||
-        temp.getContext("2d");
-      sheetKeys.forEach((sheetKey) => {
-        const tex = scene.textures.get(sheetKey);
-        const img = tex.getSourceImage();
-        if (!img || !img.width || !img.height) return;
-
-        const cols = 5;
-        const rows = 2;
-        const frameW = Math.floor(img.width / cols) || img.width;
-        const frameH = Math.floor(img.height / rows) || img.height;
-        temp.width = frameW;
-        temp.height = frameH;
-
-        for (let r = 0; r < rows; r += 1) {
-          for (let c = 0; c < cols; c += 1) {
-            tctx.clearRect(0, 0, frameW, frameH);
-            tctx.drawImage(img, -c * frameW, -r * frameH);
-            const data = tctx.getImageData(0, 0, frameW, frameH).data;
-            let nonEmpty = false;
-            for (let i = 3; i < data.length; i += 4) {
-              if (data[i] !== 0) {
-                nonEmpty = true;
-                break;
-              }
-            }
-            if (!nonEmpty) continue;
-
-            const key = `player_1_new_${idx}`;
-            idx += 1;
-            if (scene.textures.exists(key)) continue;
-            const canvas = scene.textures.createCanvas(key, frameW, frameH);
-            const ctx = canvas.getContext();
-            ctx.drawImage(img, -c * frameW, -r * frameH);
-            canvas.refresh();
-          }
-        }
-      });
-      return;
-    }
-
-    if (!scene.textures.exists("player_1_sprite_new")) return;
-
-    const tex = scene.textures.get("player_1_sprite_new");
-    const img = tex.getSourceImage();
-    if (!img || !img.width || !img.height) return;
-
-    const w = img.width;
-    const h = img.height;
-    const candidates = [
-      { cols: 10, rows: 10 },
-      { cols: 8, rows: 8 },
-      { cols: 6, rows: 6 },
-      { cols: 5, rows: 5 },
-      { cols: 4, rows: 4 },
-    ];
-
-    let best = null;
-    const temp = document.createElement("canvas");
-    const tctx =
-      temp.getContext("2d", { willReadFrequently: true }) ||
-      temp.getContext("2d");
-
-    candidates.forEach(({ cols, rows }) => {
-      if (w % cols !== 0 || h % rows !== 0) return;
-      const frameW = Math.floor(w / cols) || w;
-      const frameH = Math.floor(h / rows) || h;
-      temp.width = frameW;
-      temp.height = frameH;
-
-      const nonEmptyCells = [];
-      for (let r = 0; r < rows; r += 1) {
-        for (let c = 0; c < cols; c += 1) {
-          tctx.clearRect(0, 0, frameW, frameH);
-          tctx.drawImage(img, -c * frameW, -r * frameH);
-          const data = tctx.getImageData(0, 0, frameW, frameH).data;
-          let nonEmpty = false;
-          for (let i = 3; i < data.length; i += 4) {
-            if (data[i] !== 0) {
-              nonEmpty = true;
-              break;
-            }
-          }
-          if (nonEmpty) {
-            nonEmptyCells.push({ r, c });
-          }
-        }
-      }
-
-      if (!best || nonEmptyCells.length > best.nonEmptyCells.length) {
-        best = { cols, rows, frameW, frameH, nonEmptyCells };
-      }
-    });
-
-    if (!best || best.nonEmptyCells.length === 0) return;
-
-    let idx = 1;
-    best.nonEmptyCells.forEach(({ r, c }) => {
-      const key = `player_1_new_${idx}`;
-      idx += 1;
-      if (scene.textures.exists(key)) return;
-      const canvas = scene.textures.createCanvas(key, best.frameW, best.frameH);
-      const ctx = canvas.getContext();
-      ctx.drawImage(img, -c * best.frameW, -r * best.frameH);
-      canvas.refresh();
-    });
-  } catch (e) {
-    // console.error("[ensurePlayer1NewFrames] error", e);
-  }
-}
-
 function ensureMainbgFrames(scene) {
   try {
     if (!scene || !scene.textures) return;
@@ -1841,18 +1712,16 @@ class LobbyScene extends Phaser.Scene {
     // 프로필 이미지를 스프라이트로 생성하고 애니메이션 적용
     const currentKey = this.getSelectedAvatarKey();
     // 존재하는 텍스처를 우선 사용, 없으면 안전한 플레이스홀더로 폴백
-    let currentAvatarTexture = null;
-    if (this.textures.exists(`${currentKey}_1`)) {
+    let currentAvatarTexture = this.getAvatarDisplayKey(currentKey);
+    if (!currentAvatarTexture && this.textures.exists(`${currentKey}_1`)) {
       currentAvatarTexture = `${currentKey}_1`;
-    } else if (this.textures.exists(`${currentKey}`)) {
+    } else if (!currentAvatarTexture && this.textures.exists(`${currentKey}`)) {
       currentAvatarTexture = `${currentKey}`;
     } else if (
-      currentKey === "player_1" &&
-      this.textures.exists("player_1_sprite_new")
+      !currentAvatarTexture &&
+      this.textures.exists("player_1_frame_1")
     ) {
-      currentAvatarTexture = "player_1_sprite_new";
-    } else if (this.textures.exists("player_1_sprite_new")) {
-      currentAvatarTexture = "player_1_sprite_new";
+      currentAvatarTexture = "player_1_frame_1";
     }
     const currentIdx = this.profileAvatarKeys.indexOf(currentKey);
     this.profileAvatarIndex = currentIdx >= 0 ? currentIdx : 0;
@@ -3107,12 +2976,6 @@ class LobbyScene extends Phaser.Scene {
     if (this.textures.exists(`${baseKey}_1`)) return `${baseKey}_1`;
     if (baseKey === "player_1") {
       if (this.textures.exists("player_1_frame_1")) return "player_1_frame_1";
-      if (this.textures.exists("player_1_new_1")) return "player_1_new_1";
-      if (this.textures.exists("player_1_sprite_new"))
-        return "player_1_sprite_new";
-    }
-    if (baseKey === "player_2") {
-      if (this.textures.exists("player_2_frame_1")) return "player_2_frame_1";
     }
     if (baseKey === "player_2") {
       if (this.textures.exists("player_2_frame_1")) return "player_2_frame_1";
@@ -3145,6 +3008,19 @@ class LobbyScene extends Phaser.Scene {
     const selectedIndex = this.profileAvatarKeys.indexOf(baseKey);
     if (selectedIndex >= 0) {
       this.profileAvatarIndex = selectedIndex;
+    }
+
+    if (this.profileImage && typeof this.profileImage.setData === "function") {
+      this.profileImage.setPosition(0, 0);
+      this.profileImage.setData("avatarBaseY", 0);
+      this.profileImage.setData(
+        "avatarDisplayWidth",
+        this.profileImage.displayWidth,
+      );
+      this.profileImage.setData(
+        "avatarDisplayHeight",
+        this.profileImage.displayHeight,
+      );
     }
 
     this.applyAvatarAnimation(this.profileImage, baseKey);
@@ -4321,13 +4197,9 @@ class LobbyScene extends Phaser.Scene {
             avatarTexture = `${key}_1`;
           } else if (this.textures.exists(`${key}`)) {
             avatarTexture = `${key}`;
-          } else if (
-            key === "player_1" &&
-            this.textures.exists("player_1_sprite_new")
-          ) {
-            avatarTexture = "player_1_sprite_new";
-          } else if (this.textures.exists("player_1_sprite_new")) {
-            avatarTexture = "player_1_sprite_new";
+          }
+          if (!avatarTexture && this.textures.exists("player_1_frame_1")) {
+            avatarTexture = "player_1_frame_1";
           }
           avatarSprite = this.add
             .sprite(0, height * 0.0, avatarTexture)
@@ -6439,7 +6311,7 @@ class LobbyScene extends Phaser.Scene {
         : `player_${i + 1}`;
       const avatarTextureKey = this.textures.exists(`${baseAvatarKey}_1`)
         ? `${baseAvatarKey}_1`
-        : this.getAvatarDisplayKey(baseAvatarKey) || "player_1_sprite_new";
+        : this.getAvatarDisplayKey(baseAvatarKey) || "player_1_frame_1";
       const profileX = cardLeft + profileSize * 1.1;
 
       const profileImg = this.add
@@ -7487,7 +7359,7 @@ class LobbyScene extends Phaser.Scene {
           btnY,
           this.textures.exists(`${baseUserAvatar}_1`)
             ? `${baseUserAvatar}_1`
-            : this.getAvatarDisplayKey(baseUserAvatar) || "player_1_sprite_new",
+            : this.getAvatarDisplayKey(baseUserAvatar) || "player_1_frame_1",
         )
         .setDisplaySize(height * 0.045, height * 0.045)
         .setDepth(4002);
@@ -7785,9 +7657,6 @@ class GameScene extends Phaser.Scene {
     if (this.textures.exists(`${baseKey}_1`)) return `${baseKey}_1`;
     if (baseKey === "player_1") {
       if (this.textures.exists("player_1_frame_1")) return "player_1_frame_1";
-      if (this.textures.exists("player_1_new_1")) return "player_1_new_1";
-      if (this.textures.exists("player_1_sprite_new"))
-        return "player_1_sprite_new";
     }
     const sheetKey = `${baseKey}_sprite_a`;
     if (this.textures.exists(sheetKey)) return sheetKey;
@@ -7876,33 +7745,7 @@ class GameScene extends Phaser.Scene {
           }
         }
 
-        if (
-          this.textures.exists("player_1_sprite_new") ||
-          this.textures.exists("player_1_new_1")
-        ) {
-          ensurePlayer1NewFrames(this);
-          const frames = [];
-          let idx = 1;
-          while (true) {
-            const textureKey = `player_1_new_${idx}`;
-            if (this.textures.exists(textureKey)) {
-              frames.push({ key: textureKey });
-              idx += 1;
-              continue;
-            }
-            break;
-          }
-
-          if (frames.length > 0) {
-            this.anims.create({
-              key: animKey,
-              frames,
-              frameRate: this.getAvatarAnimFrameRate(baseKey),
-              repeat: -1,
-            });
-            return animKey;
-          }
-        }
+        // player_1 uses frame-based assets; no sprite sheet fallback
       }
 
       if (baseKey === "player_2") {
@@ -8035,27 +7878,19 @@ class GameScene extends Phaser.Scene {
     const animKey = this.ensureAvatarAnimation(baseKey);
 
     // treat player1 and player2 similarly: anchor bottom so varying frame heights
-    const canUsePlayer1New =
-      baseKey === "player_1" && this.textures.exists("player_1_sprite_new");
-
-    if (canUsePlayer1New || baseKey === "player_2") {
+    if (baseKey === "player_1" || baseKey === "player_2") {
       target.setOrigin(0.5, 1);
       if (avatarDisplayWidth > 0 && avatarDisplayHeight > 0) {
         target.setDisplaySize(avatarDisplayWidth, avatarDisplayHeight);
       }
       target.y = avatarBaseY + target.displayHeight * 0.5;
       // set initial texture for player1 or player2
-      if (baseKey === "player_1") {
-        if (this.textures.exists("player_1_new_1")) {
-          target.setTexture("player_1_new_1");
-        } else if (this.textures.exists("player_1_sprite_new")) {
-          target.setTexture("player_1_sprite_new");
-        }
-      } else {
-        const firstFrameKey = `${baseKey}_1`;
-        if (this.textures.exists(firstFrameKey)) {
-          target.setTexture(firstFrameKey);
-        }
+      const firstFrameKey =
+        baseKey === "player_1" && this.textures.exists("player_1_frame_1")
+          ? "player_1_frame_1"
+          : `${baseKey}_1`;
+      if (this.textures.exists(firstFrameKey)) {
+        target.setTexture(firstFrameKey);
       }
       if (avatarDisplayWidth > 0 && avatarDisplayHeight > 0) {
         target.setDisplaySize(avatarDisplayWidth, avatarDisplayHeight);
@@ -8544,7 +8379,6 @@ class GameScene extends Phaser.Scene {
             this.profileStats = this.profileStats || {};
             this.profileStats.coins = Number(data.coinTotal);
           }
-          this.showToast(`코인 +${reward}!`, "#f1c40f");
         }
       }
 
@@ -10097,6 +9931,15 @@ class GameScene extends Phaser.Scene {
         tempSprite.y = centerY;
         tempSprite.setVisible(true);
 
+        const hideWinAvatar = () => {
+          if (!tempSprite || !tempSprite.active) return;
+          if (tempSprite.anims) {
+            tempSprite.anims.stop();
+          }
+          tempSprite.off("animationcomplete");
+          tempSprite.setVisible(false);
+        };
+
         // mark in-progress to prevent duplicates
         this.avatarAnimInProgress = true;
 
@@ -10114,11 +9957,7 @@ class GameScene extends Phaser.Scene {
             }
             const clearFlag = () => {
               this.avatarAnimInProgress = false;
-              if (tempSprite.anims) {
-                tempSprite.anims.stop();
-              }
-              tempSprite.off("animationcomplete");
-              tempSprite.setVisible(false);
+              hideWinAvatar();
               characterAnimationDone = true;
               checkAllAnimationsComplete();
             };
@@ -10134,11 +9973,13 @@ class GameScene extends Phaser.Scene {
               clearFlag();
             });
           } catch (textureError) {
+            hideWinAvatar();
             this.avatarAnimInProgress = false;
             characterAnimationDone = true;
             checkAllAnimationsComplete();
           }
         } else {
+          hideWinAvatar();
           this.avatarAnimInProgress = false;
           characterAnimationDone = true;
           checkAllAnimationsComplete();
@@ -12987,7 +12828,6 @@ class GameScene extends Phaser.Scene {
         if (this.myProfile) {
           this.myProfile.coins = (Number(this.myProfile.coins) || 0) + reward;
         }
-        this.showToast(`코인 +${reward}!`, "#f1c40f");
         const nickname =
           localStorage.getItem("nickname") ||
           (this.myProfile && this.myProfile.nickname) ||
@@ -13380,6 +13220,21 @@ class GameScene extends Phaser.Scene {
 
     this.cameras.main.shake(300, 0.012);
 
+    const stampRadius = width * 0.18;
+    const stamp = this.add
+      .circle(centerX, centerY, stampRadius, 0xb91c1c, 0.22)
+      .setDepth(10000)
+      .setAlpha(0)
+      .setScale(0.2);
+    stamp.setStrokeStyle(10, 0xef4444, 0.65);
+
+    const stampRing = this.add
+      .circle(centerX, centerY, stampRadius * 0.72, 0x000000, 0)
+      .setDepth(10000)
+      .setAlpha(0)
+      .setScale(0.2);
+    stampRing.setStrokeStyle(6, 0xfca5a5, 0.75);
+
     const text = this.add
       .text(centerX, centerY, "탈락", {
         fontFamily: GAME_FONTS.main,
@@ -13402,14 +13257,14 @@ class GameScene extends Phaser.Scene {
     });
 
     this.tweens.add({
-      targets: text,
+      targets: [stamp, stampRing, text],
       alpha: 1,
-      scale: 1.25,
+      scale: (target) => (target === text ? 1.25 : 1.05),
       duration: 260,
       ease: "Back.out",
       onComplete: () => {
         this.tweens.add({
-          targets: text,
+          targets: [stamp, stampRing, text],
           angle: { from: -2.5, to: 2.5 },
           duration: 360,
           ease: "Sine.inOut",
@@ -13417,14 +13272,18 @@ class GameScene extends Phaser.Scene {
           repeat: 2,
         });
         this.tweens.add({
-          targets: text,
+          targets: [stamp, stampRing, text],
           y: centerY - height * 0.1,
           alpha: 0,
-          scale: 0.95,
+          scale: (target) => (target === text ? 0.95 : 0.9),
           duration: 900,
           delay: 700,
           ease: "Sine.in",
-          onComplete: () => text.destroy(),
+          onComplete: () => {
+            stamp.destroy();
+            stampRing.destroy();
+            text.destroy();
+          },
         });
       },
     });
@@ -13432,6 +13291,8 @@ class GameScene extends Phaser.Scene {
 
   maybePlayEliminationEffect(playerId) {
     if (!playerId) return;
+    const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
+    if (playerId !== myId) return;
     if (!this.lastEliminationEffectAtByPlayer) {
       this.lastEliminationEffectAtByPlayer = {};
     }
@@ -14295,7 +14156,7 @@ class GameScene extends Phaser.Scene {
     const startY = layout.y + Math.sin(rad) * dist;
     const targetX = layout.x;
     const targetY = layout.y;
-    const coinCount = 10;
+    const coinCount = 18;
     const lift = width * 0.1;
     const spread = width * 0.12;
     const coinSize = width * 0.05;
@@ -14317,17 +14178,17 @@ class GameScene extends Phaser.Scene {
         y: burstY,
         alpha: 1,
         scale: 1,
-        duration: 220,
-        delay: i * 25,
+        duration: 320,
+        delay: i * 30,
         ease: "Back.out",
         onComplete: () => {
           this.tweens.add({
             targets: coin,
             x: targetX,
             y: targetY,
-            alpha: 0.2,
-            scale: 0.4,
-            duration: 420,
+            alpha: 0.15,
+            scale: 0.35,
+            duration: 750,
             ease: "Cubic.in",
             onComplete: () => {
               coin.destroy();
@@ -14336,37 +14197,6 @@ class GameScene extends Phaser.Scene {
         },
       });
     }
-
-    const text = this.add
-      .text(targetX, targetY - width * 0.12, `+${amount}`, {
-        fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.038}px`,
-        color: "#ffd700",
-        fontWeight: "bold",
-        stroke: "#000000",
-        strokeThickness: 4,
-      })
-      .setOrigin(0.5)
-      .setDepth(1201)
-      .setAlpha(0);
-
-    this.tweens.add({
-      targets: text,
-      alpha: 1,
-      y: text.y - width * 0.04,
-      duration: 180,
-      ease: "Sine.out",
-      onComplete: () => {
-        this.tweens.add({
-          targets: text,
-          alpha: 0,
-          y: text.y - width * 0.05,
-          duration: 500,
-          ease: "Sine.in",
-          onComplete: () => text.destroy(),
-        });
-      },
-    });
   }
 
   // 특수카드 사용 함수
@@ -14877,7 +14707,7 @@ class GameScene extends Phaser.Scene {
       const resultAvatarTexture =
         this.getAvatarDisplayKey(avatarBaseKey) ||
         this.getAvatarDisplayKey("player_1") ||
-        "player_1_sprite_new";
+        "player_1_frame_1";
       const avatar = this.add
         .sprite(pos.x, pos.y, resultAvatarTexture)
         .setDisplaySize(width * 0.23, width * 0.23)
@@ -15650,7 +15480,7 @@ class GameScene extends Phaser.Scene {
           btnY,
           this.textures.exists(`${baseUserAvatar}_1`)
             ? `${baseUserAvatar}_1`
-            : this.getAvatarDisplayKey(baseUserAvatar) || "player_1_sprite_new",
+            : this.getAvatarDisplayKey(baseUserAvatar) || "player_1_frame_1",
         )
         .setDisplaySize(height * 0.045, height * 0.045)
         .setDepth(302);
