@@ -23,6 +23,7 @@ const NOT5_CARD_TYPE = "not5";
 const SINGLE_NOT5_CARD_COUNT = 0;
 const TUTORIAL_STATE_KEY = "tutorialCompleted";
 const QUEST_PROGRESS_STORAGE_KEY = "singleQuestProgress";
+const MULTI_QUEST_PROGRESS_STORAGE_KEY = "multiQuestProgress";
 const QUEST_CONFIGS = [
   {
     key: "bell_master",
@@ -88,6 +89,62 @@ const QUEST_CONFIGS = [
     initialTarget: 3,
     targetIncrement: 2,
     rewardCoins: 25,
+  },
+];
+const MULTI_QUEST_CONFIGS = [
+  {
+    key: "multi_play",
+    type: "count",
+    titleTemplate: "멀티플레이 {target}판 참여",
+    descriptionTemplate: "멀티플레이에 {target}번 참여해보세요.",
+    initialTarget: 3,
+    targetIncrement: 2,
+    rewardCoins: 30,
+  },
+  {
+    key: "multi_first",
+    type: "count",
+    titleTemplate: "멀티 1등 {target}회 달성",
+    descriptionTemplate: "멀티플레이에서 1등을 {target}번 달성하세요.",
+    initialTarget: 1,
+    targetIncrement: 1,
+    rewardCoins: 50,
+  },
+  {
+    key: "multi_room",
+    type: "count",
+    titleTemplate: "방 만들기 {target}회",
+    descriptionTemplate: "멀티플레이 방을 {target}번 만들어보세요.",
+    initialTarget: 3,
+    targetIncrement: 1,
+    rewardCoins: 25,
+  },
+  {
+    key: "multi_card_win",
+    type: "count",
+    titleTemplate: "멀티에서 카드 {target}장 획득",
+    descriptionTemplate: "멀티플레이에서 카드 {target}장을 획득하세요.",
+    initialTarget: 5,
+    targetIncrement: 5,
+    rewardCoins: 35,
+  },
+  {
+    key: "multi_penalty",
+    type: "count",
+    titleTemplate: "멀티 패널티 {target}회",
+    descriptionTemplate: "멀티플레이에서 패널티를 {target}번 받아보세요.",
+    initialTarget: 3,
+    targetIncrement: 2,
+    rewardCoins: 25,
+  },
+  {
+    key: "multi_ad_reward",
+    type: "count",
+    titleTemplate: "광고 보상 {target}회 받기",
+    descriptionTemplate: "광고 보상을 {target}번 받아보세요.",
+    initialTarget: 3,
+    targetIncrement: 1,
+    rewardCoins: 20,
   },
 ];
 const QUEST_CONFIG_MAP = QUEST_CONFIGS.reduce((acc, quest) => {
@@ -703,12 +760,12 @@ class LobbyScene extends Phaser.Scene {
     // player 2 single-sheet; will be split at runtime into 10 frames
     this.load.image(
       "player_1_sprite_new",
-      `${ASSET_SERVER}/images/player_1_sprite_new.png${PLAYER1_SPRITE_VERSION}`,
+      `assets/images/player_1_sprite_new.png${PLAYER1_SPRITE_VERSION}`,
     );
 
     this.load.image(
       "player_2_sprite",
-      `${ASSET_SERVER}/images/player_2_sprite.png${PLAYER2_SPRITE_VERSION}`,
+      `assets/images/player_2_sprite.png${PLAYER2_SPRITE_VERSION}`,
     );
 
     // 플레이어 애니메이션용 이미지
@@ -1961,6 +2018,20 @@ class LobbyScene extends Phaser.Scene {
         fontWeight: "bold",
       })
       .setOrigin(0.5);
+    const questBadgeRadius = btnH * 0.18;
+    const questBadge = this.add
+      .circle(bottomBtnW * 0.35, -btnH * 0.4, questBadgeRadius, 0xffd54f, 1)
+      .setStrokeStyle(2, 0x1f2937, 0.9)
+      .setVisible(false);
+    const questBadgeText = this.add
+      .text(bottomBtnW * 0.35, -btnH * 0.4, "NEW", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.02}px`,
+        color: "#1f2937",
+        fontWeight: "bold",
+      })
+      .setOrigin(0.5)
+      .setVisible(false);
     questBtn.add([questBtnImg, questBtnText]);
     questBtnImg.on("pointerdown", () => {
       this.sound.play("btn", { volume: 0.1 });
@@ -1971,10 +2042,52 @@ class LobbyScene extends Phaser.Scene {
         duration: 50,
         yoyo: true,
         onComplete: () => {
-          this.showToast("퀘스트는 준비 중입니다!", "#f59e0b");
+          this.showQuestPopup();
         },
       });
     });
+    questBtn.add([questBadge, questBadgeText]);
+
+    const hasQuestRewardReady = () => {
+      try {
+        const stored = JSON.parse(
+          localStorage.getItem(MULTI_QUEST_PROGRESS_STORAGE_KEY) || "{}",
+        );
+        return MULTI_QUEST_CONFIGS.some((quest) => {
+          const entry = stored[quest.key] || {};
+          return Boolean(entry.ready);
+        });
+      } catch (e) {
+        return false;
+      }
+    };
+
+    const updateQuestBadgeState = () => {
+      const shouldShow = hasQuestRewardReady();
+      questBadge.setVisible(shouldShow);
+      questBadgeText.setVisible(shouldShow);
+
+      if (shouldShow) {
+        if (!this.questBadgeTween) {
+          this.questBadgeTween = this.tweens.add({
+            targets: [questBadge, questBadgeText],
+            scaleX: "*=1.12",
+            scaleY: "*=1.12",
+            yoyo: true,
+            duration: 420,
+            repeat: -1,
+            ease: "Sine.easeInOut",
+          });
+        }
+      } else if (this.questBadgeTween) {
+        this.questBadgeTween.stop();
+        this.questBadgeTween = null;
+        questBadge.setScale(1);
+        questBadgeText.setScale(1);
+      }
+    };
+
+    updateQuestBadgeState();
 
     const multiBtnImg = this.add
       .image(0, 0, "uibtn")
@@ -4377,6 +4490,247 @@ class LobbyScene extends Phaser.Scene {
     this.currentShopPopupCloseHandler = () => {
       this.closeShopPopup();
     };
+  }
+
+  buildQuestPopupSnapshot() {
+    const safe = {};
+    let stored = {};
+    try {
+      stored = JSON.parse(
+        localStorage.getItem(MULTI_QUEST_PROGRESS_STORAGE_KEY) || "{}",
+      );
+    } catch (e) {
+      stored = {};
+    }
+
+    MULTI_QUEST_CONFIGS.forEach((quest) => {
+      const raw = stored[quest.key] || {};
+      let count = Math.max(0, Number(raw.count) || 0);
+      let stage = Math.max(0, Number(raw.stage) || 0);
+      const ready = Boolean(raw.ready);
+      let runtime = buildQuestRuntime(quest, { stage, count: 0 });
+      const loopGuard = 50;
+      let guard = 0;
+      while (!ready && count >= runtime.target && guard < loopGuard) {
+        count -= runtime.target;
+        stage += 1;
+        runtime = buildQuestRuntime(quest, { stage, count: 0 });
+        guard += 1;
+      }
+
+      safe[quest.key] = {
+        count,
+        stage,
+        ready: ready && runtime ? true : false,
+      };
+    });
+
+    return safe;
+  }
+
+  saveMultiQuestProgressSnapshot(snapshot) {
+    try {
+      const payload = {};
+      MULTI_QUEST_CONFIGS.forEach((quest) => {
+        const entry = snapshot?.[quest.key] || {};
+        payload[quest.key] = {
+          count: Number(entry.count) || 0,
+          stage: Number(entry.stage) || 0,
+          ready: Boolean(entry.ready),
+        };
+      });
+      localStorage.setItem(
+        MULTI_QUEST_PROGRESS_STORAGE_KEY,
+        JSON.stringify(payload),
+      );
+    } catch (e) {
+      console.warn("failed to save multi quest progress", e);
+    }
+  }
+
+  showQuestPopup() {
+    this.isJoinPopupOpen = true;
+    this.setLobbyChatInputHidden(true);
+
+    const { width, height } = this.cameras.main;
+    const centerX = width / 2;
+    const centerY = height * 0.5;
+
+    if (this.questPopupContainer) {
+      this.questPopupContainer.destroy();
+    }
+    this.questPopupContainer = this.add.container(0, 0).setDepth(210);
+
+    const overlay = this.add
+      .rectangle(centerX, height * 0.5, width, height, 0x000000, 0.7)
+      .setInteractive();
+    overlay.on("pointerdown", () => {
+      this.closeQuestPopup();
+    });
+
+    const panelW = width * 0.86;
+    const panelH = height * 0.7;
+    const panel = this.add
+      .rectangle(centerX, centerY, panelW, panelH, 0x0b1220, 0.95)
+      .setStrokeStyle(3, 0x38bdf8, 0.6);
+
+    const titleText = this.add
+      .text(centerX, centerY - panelH * 0.4, "멀티 퀘스트", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.055}px`,
+        color: "#f8fafc",
+        fontWeight: "bold",
+        stroke: "#000000",
+        strokeThickness: 5,
+      })
+      .setOrigin(0.5);
+
+    const closeBtn = this.add
+      .image(centerX + panelW * 0.42, centerY - panelH * 0.42, "popupclose")
+      .setDisplaySize(width * 0.1, width * 0.1)
+      .setInteractive({ useHandCursor: true });
+    closeBtn.on("pointerdown", () => {
+      this.sound.play("btn", { volume: 0.08 });
+      this.tweens.add({
+        targets: closeBtn,
+        scale: "*=0.95",
+        duration: 90,
+        yoyo: true,
+      });
+      this.closeQuestPopup();
+    });
+
+    this.questPopupContainer.add([overlay, panel]);
+
+    const snapshot = this.buildQuestPopupSnapshot();
+    const rowHeight = Math.max(height * 0.055, 40);
+    const rowGap = Math.max(height * 0.012, 10);
+    const listStartY = centerY - panelH * 0.28;
+    const rowWidth = panelW * 0.86;
+    const barHeight = Math.max(6, rowHeight * 0.2);
+
+    MULTI_QUEST_CONFIGS.forEach((quest, index) => {
+      const entry = snapshot[quest.key] || { count: 0, stage: 0, ready: false };
+      const runtime = buildQuestRuntime(quest, entry);
+      const rowY = listStartY + index * (rowHeight + rowGap);
+
+      const rowBg = this.add
+        .rectangle(centerX, rowY, rowWidth, rowHeight, 0x1f2937, 0.85)
+        .setStrokeStyle(1, 0x475569, 0.7);
+
+      const rewardText = quest.rewardCoins ? ` · +${quest.rewardCoins}💰` : "";
+      const rowText = this.add
+        .text(centerX - rowWidth * 0.44, rowY - rowHeight * 0.18, "", {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.03}px`,
+          color: "#e2e8f0",
+        })
+        .setOrigin(0, 0.5);
+      rowText.setText(`${runtime.title}${rewardText}`);
+
+      const barX = centerX - rowWidth * 0.44;
+      const barY = rowY + rowHeight * 0.22;
+      const barW = rowWidth * 0.7;
+      const track = this.add
+        .rectangle(barX, barY, barW, barHeight, 0x0f172a, 0.75)
+        .setOrigin(0, 0.5)
+        .setStrokeStyle(1, 0x1d4ed8, 0.55);
+      const ratio = Math.max(
+        0,
+        Math.min(1, entry.count / Math.max(1, runtime.target)),
+      );
+      const fill = this.add
+        .rectangle(barX, barY, barW, barHeight, 0x38bdf8, 0.95)
+        .setOrigin(0, 0.5)
+        .setScale(ratio, 1);
+
+      const progressLabel = this.add
+        .text(barX + barW, barY, `${entry.count}/${runtime.target}`, {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.026}px`,
+          color: "#cbd5f5",
+        })
+        .setOrigin(1, 0.5);
+
+      const claimX = centerX + rowWidth * 0.36;
+      const claimY = rowY;
+      const claimW = rowHeight * 1.3;
+      const claimH = rowHeight * 0.55;
+      const claimBg = this.add
+        .rectangle(
+          claimX,
+          claimY,
+          claimW,
+          claimH,
+          entry.ready ? 0x22c55e : 0x3b3f51,
+          entry.ready ? 0.95 : 0.65,
+        )
+        .setStrokeStyle(2, 0x15803d, 0.9);
+      const claimText = this.add
+        .text(claimX, claimY, "수령", {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.025}px`,
+          color: entry.ready ? "#f8fafc" : "#94a3b8",
+          fontWeight: "bold",
+        })
+        .setOrigin(0.5);
+
+      if (entry.ready) {
+        const handleClaim = () => {
+          this.sound.play("btn", { volume: 0.08 });
+          if (!entry.ready) {
+            this.showToast("아직 수령할 보상이 없어요!", "#f97316");
+            return;
+          }
+          if (quest.rewardCoins) {
+            this.rewardQuestCoins(quest.rewardCoins, runtime.title, quest.key);
+          } else {
+            this.showToast(`${runtime.title} 완료!`, "#22c55e");
+          }
+
+          entry.stage = (entry.stage || 0) + 1;
+          entry.count = 0;
+          entry.ready = false;
+          snapshot[quest.key] = entry;
+          this.saveMultiQuestProgressSnapshot(snapshot);
+
+          const nextRuntime = buildQuestRuntime(quest, entry);
+          if (nextRuntime?.title) {
+            this.showToast(`${nextRuntime.title} 시작!`, "#38bdf8");
+          }
+          this.closeQuestPopup();
+          this.showQuestPopup();
+        };
+        claimBg
+          .setInteractive({ useHandCursor: true })
+          .on("pointerdown", handleClaim);
+        claimText
+          .setInteractive({ useHandCursor: true })
+          .on("pointerdown", handleClaim);
+      }
+
+      this.questPopupContainer.add([
+        rowBg,
+        rowText,
+        track,
+        fill,
+        progressLabel,
+        claimBg,
+        claimText,
+      ]);
+    });
+
+    this.questPopupContainer.add([titleText, closeBtn]);
+    this.currentJoinPopupCloseHandler = () => this.closeQuestPopup();
+  }
+
+  closeQuestPopup() {
+    if (this.questPopupContainer) {
+      this.questPopupContainer.destroy();
+      this.questPopupContainer = null;
+    }
+    this.isJoinPopupOpen = false;
+    this.setLobbyChatInputHidden(false);
   }
 
   showCoinShopPopup() {
