@@ -922,13 +922,10 @@ class LobbyScene extends Phaser.Scene {
     this.load.audio("bgm", `${ASSET_SERVER}/sounds/bg.mp3${VERSION}`);
     this.load.audio("pop", `${ASSET_SERVER}/sounds/pop.wav${VERSION}`);
     this.load.audio("bell", `${ASSET_SERVER}/sounds/bell.mp3${VERSION}`);
+    this.load.audio("effect", `${ASSET_SERVER}/sounds/effect.mp3${VERSION}`);
 
     this.load.audio("btn", `${ASSET_SERVER}/sounds/btn.wav${VERSION}`);
-    this.load.audio("spin", `${ASSET_SERVER}/sounds/spin.wav${VERSION}`);
     this.load.audio("readygo", `${ASSET_SERVER}/sounds/readygo.mp3${VERSION}`);
-    this.load.audio("irassai", `${ASSET_SERVER}/sounds/irassai.mp3${VERSION}`);
-    this.load.audio("yare", `${ASSET_SERVER}/sounds/yare.mp3${VERSION}`);
-    this.load.audio("yosi", `${ASSET_SERVER}/sounds/yosi.mp3${VERSION}`);
     this.load.audio("pass", `${ASSET_SERVER}/sounds/pass.wav${VERSION}`);
     this.load.audio(
       "cardflip",
@@ -1240,7 +1237,6 @@ class LobbyScene extends Phaser.Scene {
         }
       }
     };
-    // 🔧 preload avatar animations for all possible keys so that
     // ensureAvatarAnimation() cost is paid once during startup rather
     // than during the win animation. This also forces player2 frames
     // to be generated early.
@@ -10097,7 +10093,6 @@ class GameScene extends Phaser.Scene {
         // mark in-progress to prevent duplicates
         this.avatarAnimInProgress = true;
 
-        // ensure avatar animation exists (should be preloaded above)
         const baseTexture =
           this.getAvatarDisplayKey(avatarKey) ||
           (this.textures.exists(avatarKey) ? avatarKey : null);
@@ -14034,6 +14029,16 @@ class GameScene extends Phaser.Scene {
   showSpecialCardToast(card, playerId) {
     const type = card?.type;
     if (!type) return 0;
+    const effectTypes = new Set([
+      BOMB_CARD_TYPE,
+      THUNDER_CARD_TYPE,
+      TON_CARD_TYPE,
+      PLUS1_CARD_TYPE,
+      COIN_CARD_TYPE,
+    ]);
+    if (effectTypes.has(type) && this.cache?.audio?.exists("effect")) {
+      this.sound.play("effect", { volume: 0.18 });
+    }
     const labels = {
       [BOMB_CARD_TYPE]: "폭탄",
       [THUNDER_CARD_TYPE]: "번개",
