@@ -8989,7 +8989,7 @@ class GameScene extends Phaser.Scene {
       }
 
       this.showCustomAlert("로비로 이동합니다!", () => {
-        this.returnToLobby();
+        this.returnToLobby({ rejoinRoom: false, leaveRoom: true });
       });
     };
 
@@ -10903,6 +10903,21 @@ class GameScene extends Phaser.Scene {
       typeof options.rejoinRoom === "boolean"
         ? options.rejoinRoom
         : !this.isSingle;
+    const shouldLeaveRoom = options.leaveRoom === true;
+
+    if (
+      shouldLeaveRoom &&
+      this.roundData &&
+      this.roundData.roomId &&
+      socket &&
+      socket.connected
+    ) {
+      const roomId = this.roundData.roomId;
+      socket.emit("leaveRoom", { roomId }, () => {
+        this.scene.start("LobbyScene");
+      });
+      return;
+    }
 
     if (
       !rejoinRoom ||
@@ -14694,9 +14709,9 @@ class GameScene extends Phaser.Scene {
 
     const rankedPlayers = Array.isArray(players) ? players.slice(0, 3) : [];
     const podiumPositions = [
-      { x: width * 0.5, y: height * 0.62 },
-      { x: width * 0.23, y: height * 0.68 },
-      { x: width * 0.79, y: height * 0.7 },
+      { x: width * 0.5, y: height * 0.57 },
+      { x: width * 0.23, y: height * 0.63 },
+      { x: width * 0.79, y: height * 0.65 },
     ];
 
     rankedPlayers.forEach((player, index) => {
@@ -14718,7 +14733,7 @@ class GameScene extends Phaser.Scene {
       const nameText = this.add
         .text(
           pos.x,
-          pos.y + width * 0,
+          pos.y + width * 0.07,
           player?.nickname || player?.id || "요리사",
           {
             fontFamily: GAME_FONTS.main,

@@ -885,7 +885,7 @@ const MULTI_AI_BASE_PROFILE = {
   reactionTime: 220,
 };
 
-const MULTI_AI_SLOWDOWN_MS = 200;
+const MULTI_AI_SLOWDOWN_MS = 520;
 const SPECIAL_CARD_PAUSE_MS = 1400;
 
 function clampNumber(value, min, max) {
@@ -1018,8 +1018,11 @@ function scheduleAiTurn(room, io) {
   if (!current.myDeck || current.myDeck.length === 0) return;
   if (room.isFlipping) return;
 
-  const delayBase = Number(current.aiProfile?.flipDelay || 600);
-  const delay = Math.max(120, delayBase + 150 + Math.floor(Math.random() * 80));
+  const delayBase = Number(current.aiProfile?.flipDelay || 700);
+  const delay = Math.max(
+    160,
+    delayBase + 220 + Math.floor(Math.random() * 120),
+  );
 
   room.aiTimers.turn = setTimeout(() => {
     if (!room.isGameStarted) return;
