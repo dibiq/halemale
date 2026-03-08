@@ -1700,8 +1700,6 @@ class LobbyScene extends Phaser.Scene {
 
     // 💡 코인 구매 완료 이벤트 핸들러 추가
     socket.off("coinPurchased").on("coinPurchased", (data) => {
-      console.log(`💰 [DEBUG] coinPurchased 이벤트 받음:`, data);
-
       if (data && data.message) {
         this.showToast(data.message, "#2ecc71");
       }
@@ -1719,8 +1717,6 @@ class LobbyScene extends Phaser.Scene {
             `현재 보유: 💰 ${this.myProfile.coins}`,
           );
         }
-
-        console.log(`💰 [DEBUG] 코인 업데이트 완료: ${data.newCoins}`);
       }
     });
 
@@ -8227,6 +8223,7 @@ class GameScene extends Phaser.Scene {
       this.myId = this.roundData.players[0].id;
       this.turnIndex = 0; // 내 차례부터 시작
       this.isGameStarted = true;
+      this.lastEliminationEffectAtByPlayer = {};
       this.initializeSingleDecks();
       this.initQuestSystem();
     } else {
@@ -8390,6 +8387,7 @@ class GameScene extends Phaser.Scene {
       this.isSingle = false; // 멀티플레이임을 명시
       this.isGameStarted = true;
       this.isGameReady = true;
+      this.lastEliminationEffectAtByPlayer = {};
       const initialTurnIndex = Array.isArray(data.players)
         ? data.players.findIndex((p) => p.id === data.nextTurnId)
         : -1;
@@ -8976,10 +8974,6 @@ class GameScene extends Phaser.Scene {
                       Array.isArray(data.shielded) &&
                       data.shielded.length > 0
                     ) {
-                      console.log(
-                        "[debug] specialUsed (king) shielded ids:",
-                        data.shielded,
-                      );
                       try {
                         this.showToast(
                           `방패 소모: ${data.shielded.join(",")}`,
@@ -9128,6 +9122,16 @@ class GameScene extends Phaser.Scene {
           (p) => p.id === serverPlayer.id,
         );
         if (localPlayer) {
+          if (
+            !localPlayer.isEliminated &&
+            typeof serverPlayer.isEliminated === "boolean" &&
+            serverPlayer.isEliminated
+          ) {
+            console.log("[updatePlayerStatus] eliminated", {
+              playerId: serverPlayer.id,
+              cards: serverPlayer.cards,
+            });
+          }
           localPlayer.isEliminated = serverPlayer.isEliminated;
           localPlayer.cards = serverPlayer.cards;
         }
@@ -9248,23 +9252,11 @@ class GameScene extends Phaser.Scene {
       .setDisplaySize(width * 0.22, width * 0.22)
       .setInteractive({ useHandCursor: true })
       .on("pointerdown", () => {
-        if (this.bellPressTween) {
-          this.bellPressTween.stop();
-          this.bellPressTween = null;
-        }
-        this.bellPressTween = this.tweens.add({
-          targets: this.bellImage,
-          scaleY: "*=0.68",
-          scaleX: "*=1.02",
-          duration: 100,
-          yoyo: true,
-          ease: "Quad.easeOut",
-          onComplete: () => {
-            this.bellPressTween = null;
-          },
-        });
         this.handleRingBell();
       });
+
+    this.bellImage.setData("bellBaseScaleX", this.bellImage.scaleX);
+    this.bellImage.setData("bellBaseScaleY", this.bellImage.scaleY);
   }
 
   getCardKey(card) {
@@ -11409,12 +11401,26 @@ class GameScene extends Phaser.Scene {
 
     // 2. 종 애니메이션 (반응 속도감을 위해 공통 실행)
     if (this.bellImage) {
-      this.tweens.add({
+      if (this.bellPressTween) {
+        this.bellPressTween.stop();
+        this.bellPressTween = null;
+      }
+      const baseScaleX =
+        this.bellImage.getData("bellBaseScaleX") ?? this.bellImage.scaleX;
+      const baseScaleY =
+        this.bellImage.getData("bellBaseScaleY") ?? this.bellImage.scaleY;
+      this.bellImage.setScale(baseScaleX, baseScaleY);
+      this.bellPressTween = this.tweens.add({
         targets: this.bellImage,
-        scale: "*=0.7", // 원래 스케일에 맞춰 조절 (기존 0.8 유지)
-        duration: 50,
+        scaleX: baseScaleX * 0.9,
+        scaleY: baseScaleY * 0.9,
+        duration: 60,
         yoyo: true,
         ease: "Quad.easeInOut",
+        onComplete: () => {
+          this.bellImage.setScale(baseScaleX, baseScaleY);
+          this.bellPressTween = null;
+        },
       });
     }
 
@@ -13336,7 +13342,25 @@ class GameScene extends Phaser.Scene {
   }
 
   playEliminationEffect(playerId) {
-    if (!this.isGameStarted) return;
+    const sceneActive =
+      this.scene && typeof this.scene.isActive === "function"
+        ? this.scene.isActive()
+        : true;
+    if (!sceneActive) {
+      console.log("[elimination] aborted (scene inactive)", {
+        playerId,
+        sceneKey: this.scene && this.scene.key,
+      });
+      return;
+    }
+
+    if (!this.cameras || !this.cameras.main) {
+      console.log("[elimination] aborted (no camera)", {
+        playerId,
+        sceneKey: this.scene && this.scene.key,
+      });
+      return;
+    }
 
     const { width, height } = this.cameras.main;
     const centerX = width / 2;
@@ -13359,31 +13383,46 @@ class GameScene extends Phaser.Scene {
     const text = this.add
       .text(centerX, centerY, "탈락", {
         fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.14}px`,
+        fontSize: `${width * 0.16}px`,
         color: "#f8fafc",
         fontWeight: "bold",
         stroke: "#1f2937",
-        strokeThickness: 10,
+        strokeThickness: 12,
       })
       .setOrigin(0.5)
       .setDepth(10001)
       .setAlpha(0)
-      .setScale(0.6);
+      .setScale(0.35);
+
+    console.log("[elimination] rendered", {
+      playerId,
+      depth: text.depth,
+      alpha: text.alpha,
+      scale: text.scaleX,
+    });
 
     this.tweens.add({
       targets: text,
       alpha: 1,
-      scale: 1.1,
-      duration: 240,
+      scale: 1.25,
+      duration: 260,
       ease: "Back.out",
       onComplete: () => {
         this.tweens.add({
           targets: text,
-          y: centerY - height * 0.12,
+          angle: { from: -2.5, to: 2.5 },
+          duration: 360,
+          ease: "Sine.inOut",
+          yoyo: true,
+          repeat: 2,
+        });
+        this.tweens.add({
+          targets: text,
+          y: centerY - height * 0.1,
           alpha: 0,
-          scale: 0.9,
-          duration: 520,
-          delay: 260,
+          scale: 0.95,
+          duration: 900,
+          delay: 700,
           ease: "Sine.in",
           onComplete: () => text.destroy(),
         });
@@ -13396,8 +13435,15 @@ class GameScene extends Phaser.Scene {
     if (!this.lastEliminationEffectAtByPlayer) {
       this.lastEliminationEffectAtByPlayer = {};
     }
-    if (this.lastEliminationEffectAtByPlayer[playerId]) return;
+    if (this.lastEliminationEffectAtByPlayer[playerId]) {
+      console.log("[elimination] skip duplicate", {
+        playerId,
+        lastAt: this.lastEliminationEffectAtByPlayer[playerId],
+      });
+      return;
+    }
     this.lastEliminationEffectAtByPlayer[playerId] = Date.now();
+    console.log("[elimination] play", { playerId });
     this.playEliminationEffect(playerId);
   }
 
@@ -13531,6 +13577,33 @@ class GameScene extends Phaser.Scene {
     loser.remainingCards = loser.cards;
     // 💡 [수정] 페널티 후 상태 갱신 및 렌더링
     this.updateEliminationStatus();
+    console.log("[penalty] after updateEliminationStatus", {
+      failedPlayerId,
+      cards: loser.cards,
+      isEliminated: loser.isEliminated,
+      hasBellSuccessWindow: (() => {
+        try {
+          const totals = this.calculateTotalFruits();
+          const isFiveExists = Object.values(totals).some((c) => c === 5);
+          const hasThunder = this.hasThunderOnTable();
+          const hasNot5 = this.hasNot5OnTable ? this.hasNot5OnTable() : false;
+          const hasBomb = this.hasBombOnTable();
+          return (
+            hasThunder || (hasNot5 ? !isFiveExists : isFiveExists) || hasBomb
+          );
+        } catch (e) {
+          return "error";
+        }
+      })(),
+    });
+    if ((Number(loser.cards) || 0) <= 0 && !loser.isEliminated) {
+      loser.isEliminated = true;
+      console.log("[penalty] force elimination", {
+        failedPlayerId,
+        cards: loser.cards,
+      });
+      this.maybePlayEliminationEffect(loser.id);
+    }
     this.renderTable(players);
 
     // 5. 내 카드가 0이 되었다면 패배 판정을 위해 턴 체크
@@ -15096,7 +15169,6 @@ class GameScene extends Phaser.Scene {
         },
       });*/
     } else {
-      console.log("실패 연출 실행 시작"); // 디버깅용
       // 실패 피드백: 빨간색 화면 반짝임 + 화면 흔들림
       const rect = this.add
         .rectangle(centerX, centerY, width, height, 0xef4444, 0.4)
@@ -15270,22 +15342,7 @@ class GameScene extends Phaser.Scene {
   showToast(message, color = "#ffffff") {
     this.isToastOpen = true;
 
-    if (!this.cameras || !this.cameras.main) {
-      console.log("[DEBUG] showToast: missing camera", {
-        scene: this.scene && this.scene.key,
-        message,
-      });
-      return;
-    }
-
     const { width, height } = this.cameras.main;
-
-    console.log("[DEBUG] showToast: begin", {
-      scene: this.scene && this.scene.key,
-      width,
-      height,
-      message,
-    });
 
     if (!this.toastLayer || !this.toastLayer.scene) {
       this.toastLayer = this.add.container(0, 0).setDepth(1000000);
@@ -15294,13 +15351,6 @@ class GameScene extends Phaser.Scene {
     this.toastLayer.setVisible(true);
     this.toastLayer.setActive(true);
     this.children.bringToTop(this.toastLayer);
-
-    console.log("[DEBUG] showToast: layer", {
-      hasLayer: !!this.toastLayer,
-      layerActive: this.toastLayer && this.toastLayer.active,
-      layerVisible: this.toastLayer && this.toastLayer.visible,
-      layerDepth: this.toastLayer && this.toastLayer.depth,
-    });
 
     const toast = this.add.container(width / 2, -80).setDepth(1000001);
     toast.setScrollFactor(0);
@@ -15333,14 +15383,6 @@ class GameScene extends Phaser.Scene {
     toast.add([bg, txt]);
     this.toastLayer.add(toast);
 
-    console.log("[DEBUG] showToast: added", {
-      toastActive: toast.active,
-      toastVisible: toast.visible,
-      toastDepth: toast.depth,
-      toastX: toast.x,
-      toastY: toast.y,
-    });
-
     try {
       this.sound.play("pass", { volume: 0.5 });
     } catch (e) {}
@@ -15350,16 +15392,8 @@ class GameScene extends Phaser.Scene {
       y: height * 0.22,
       duration: 400,
       ease: "Back.easeOut",
-      onStart: () => {
-        console.log("[DEBUG] showToast: tween start", {
-          y: toast.y,
-          targetY: height * 0.22,
-        });
-      },
+      onStart: () => {},
       onComplete: () => {
-        console.log("[DEBUG] showToast: tween complete", {
-          y: toast.y,
-        });
         this.time.delayedCall(1000, () => {
           if (toast.scene) {
             this.tweens.add({
