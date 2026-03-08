@@ -289,6 +289,9 @@ const PEN_CARD_TYPE = "pen";
 const PEN_CARD_COUNT = 0;
 const PLUS1_CARD_TYPE = "plus1";
 const PLUS1_CARD_COUNT = 1;
+const COIN_CARD_TYPE = "coin";
+const COIN_CARD_COUNT = 1;
+const COIN_CARD_REWARD = 30;
 const PLUS2_CARD_TYPE = "plus2";
 const PLUS2_CARD_COUNT = 0;
 const NOT5_CARD_TYPE = "not5";
@@ -319,6 +322,10 @@ function isPenCard(card) {
 
 function isPlus1Card(card) {
   return Boolean(card) && card.type === PLUS1_CARD_TYPE;
+}
+
+function isCoinCard(card) {
+  return Boolean(card) && card.type === COIN_CARD_TYPE;
 }
 
 function isPlus2Card(card) {
@@ -400,6 +407,57 @@ function hasNot5CardOnTable(players) {
     if (player.isEliminated && isBombCard(top)) return false;
     return isNot5Card(top);
   });
+}
+
+function applyCoinCardReward(room, player, io) {
+  if (!room || !player) return null;
+  const reward = Math.max(0, Number(COIN_CARD_REWARD) || 0);
+  if (reward <= 0) return null;
+
+  player.coins = (Number(player.coins) || 0) + reward;
+  let coinTotal = Number(player.coins) || 0;
+
+  const targetSocket =
+    io && io.sockets && io.sockets.sockets
+      ? io.sockets.sockets.get(player.id)
+      : null;
+
+  if (targetSocket) {
+    targetSocket.coins = (Number(targetSocket.coins) || 0) + reward;
+    coinTotal = Number(targetSocket.coins) || coinTotal;
+
+    const mergedItems = {
+      items: Array.isArray(targetSocket.items) ? targetSocket.items : [],
+      specialCards: targetSocket.specialCards || {},
+    };
+
+    savePlayer(
+      targetSocket.nickname,
+      targetSocket.level || 1,
+      targetSocket.coins,
+      mergedItems,
+      targetSocket.experience || 0,
+      targetSocket.ownedCharacters || ["player_1"],
+      targetSocket.currentCharacter || targetSocket.avatarKey || "player_1",
+    ).catch((err) => {
+      console.warn("coin reward save failed", err);
+    });
+
+    io.to(targetSocket.id).emit("myProfile", {
+      nickname: targetSocket.nickname,
+      level: Number(targetSocket.level) || 1,
+      coins: Number(targetSocket.coins) || 0,
+      items: mergedItems.items,
+      experience: Number(targetSocket.experience) || 0,
+      avatarKey:
+        targetSocket.currentCharacter || targetSocket.avatarKey || "player_1",
+      specialCards: targetSocket.specialCards || {},
+      owned_characters: targetSocket.ownedCharacters || ["player_1"],
+      current_character: targetSocket.currentCharacter || "player_1",
+    });
+  }
+
+  return { reward, coinTotal };
 }
 
 function injectThunderCardsToPlayers(players, thunderCount) {
@@ -1025,6 +1083,14 @@ function handleAiFlip(room, io, playerId) {
     room.turnDirection = room.turnDirection === -1 ? 1 : -1;
   }
 
+  let coinReward = null;
+  let coinTotal = null;
+  if (isCoinCard(card)) {
+    const rewardInfo = applyCoinCardReward(room, p, io);
+    coinReward = rewardInfo?.reward ?? COIN_CARD_REWARD;
+    coinTotal = rewardInfo?.coinTotal ?? null;
+  }
+
   const totals = getFruitTotals(room.players);
   const isFive = Object.values(totals).some((t) => t === 5);
   const hasThunder = hasThunderCardOnTable(room.players);
@@ -1043,6 +1109,8 @@ function handleAiFlip(room, io, playerId) {
     nextTurnId: p.id,
     remainingCount: p.myDeck.length,
     isEliminated: p.isEliminated,
+    coinReward,
+    coinTotal,
   });
 
   scheduleAiBell(room, io);
@@ -3682,6 +3750,31 @@ io.on("connection", (socket) => {
       }
     }
     injectPlus1CardsToPlayers(room.players, PLUS1_CARD_COUNT);
+    // Coin 카드 주입
+    function injectCoinCardsToPlayers(players, coinCount) {
+      if (!Array.isArray(players) || players.length === 0) return;
+
+      const drawablePlayers = players.filter(
+        (player) => Array.isArray(player.myDeck) && player.myDeck.length > 0,
+      );
+      if (drawablePlayers.length === 0) return;
+
+      const count = Math.max(0, Number(coinCount) || 0);
+      for (let i = 0; i < count; i += 1) {
+        const targetPlayer =
+          drawablePlayers[Math.floor(Math.random() * drawablePlayers.length)];
+        if (!targetPlayer || !Array.isArray(targetPlayer.myDeck)) continue;
+
+        const insertIndex = Math.floor(
+          Math.random() * targetPlayer.myDeck.length,
+        );
+        targetPlayer.myDeck[insertIndex] = { type: COIN_CARD_TYPE };
+        console.log(
+          `🪙 inject coin -> ${targetPlayer.nickname || targetPlayer.id} (deckIndex=${insertIndex})`,
+        );
+      }
+    }
+    injectCoinCardsToPlayers(room.players, COIN_CARD_COUNT);
     // Plus2 카드 주입
     function injectPlus2CardsToPlayers(players, plus2Count) {
       if (!Array.isArray(players) || players.length === 0) return;
@@ -3805,6 +3898,15 @@ io.on("connection", (socket) => {
       0,
     );
     emitServerDebug(room, "plus1.injected", { plus1Count });
+    const coinCount = room.players.reduce(
+      (sum, player) =>
+        sum +
+        (Array.isArray(player.myDeck)
+          ? player.myDeck.filter((c) => isCoinCard(c)).length
+          : 0),
+      0,
+    );
+    emitServerDebug(room, "coin.injected", { coinCount });
     const not5Count = room.players.reduce(
       (sum, player) =>
         sum +
@@ -4048,6 +4150,14 @@ io.on("connection", (socket) => {
       });
     }
 
+    let coinReward = null;
+    let coinTotal = null;
+    if (isCoinCard(card)) {
+      const rewardInfo = applyCoinCardReward(room, p, io);
+      coinReward = rewardInfo?.reward ?? COIN_CARD_REWARD;
+      coinTotal = rewardInfo?.coinTotal ?? null;
+    }
+
     // 💡 5 완성 여부 확인
     const totals = getFruitTotals(room.players);
     const isFive = Object.values(totals).some((t) => t === 5);
@@ -4074,6 +4184,8 @@ io.on("connection", (socket) => {
       nextTurnId: p.id,
       remainingCount: p.myDeck.length,
       isEliminated: p.isEliminated, // 💡 이 값을 반드시 포함해서 보냅니다!
+      coinReward,
+      coinTotal,
     });
 
     scheduleAiBell(room, io);

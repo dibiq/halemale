@@ -14,6 +14,9 @@ const PEN_CARD_TYPE = "pen";
 const SINGLE_PEN_CARD_COUNT = 0;
 const PLUS1_CARD_TYPE = "plus1";
 const SINGLE_PLUS1_CARD_COUNT = 1;
+const COIN_CARD_TYPE = "coin";
+const SINGLE_COIN_CARD_COUNT = 1;
+const COIN_CARD_REWARD = 30;
 const PLUS2_CARD_TYPE = "plus2";
 const SINGLE_PLUS2_CARD_COUNT = 0;
 const NOT5_CARD_TYPE = "not5";
@@ -7803,6 +7806,18 @@ class GameScene extends Phaser.Scene {
 
       this.showSpecialCardToast(data?.card, data?.playerId);
 
+      if (data?.card?.type === COIN_CARD_TYPE) {
+        const reward = Number(data.coinReward) || COIN_CARD_REWARD;
+        this.playCoinCardRewardAnimation(data.playerId, reward);
+        if (data.playerId === socket.id) {
+          if (Number.isFinite(Number(data.coinTotal))) {
+            this.profileStats = this.profileStats || {};
+            this.profileStats.coins = Number(data.coinTotal);
+          }
+          this.showToast(`코인 +${reward}!`, "#f1c40f");
+        }
+      }
+
       // 서버가 알려준 만료된 블록 이펙트를 기준으로 클라이언트 상태를 정리합니다.
       try {
         const expiredIds = Array.isArray(data.expiredBlockEffectIds)
@@ -8536,6 +8551,9 @@ class GameScene extends Phaser.Scene {
     }
     if (card && card.type === PLUS1_CARD_TYPE) {
       return "plus1";
+    }
+    if (card && card.type === COIN_CARD_TYPE) {
+      return "coin";
     }
     if (card && card.type === PLUS2_CARD_TYPE) {
       return "plus2";
@@ -12198,6 +12216,31 @@ class GameScene extends Phaser.Scene {
       player.openStack = [];
     player.openStack.push(randomCard); // 즉시 누적해서 기존 바닥 카드들이 유지되게 함
 
+    if (randomCard?.type === COIN_CARD_TYPE) {
+      const reward = COIN_CARD_REWARD;
+      this.playCoinCardRewardAnimation(playerId, reward);
+      if (playerId === myId) {
+        this.profileStats = this.profileStats || {};
+        this.profileStats.coins =
+          (Number(this.profileStats.coins) || 0) + reward;
+        if (this.myProfile) {
+          this.myProfile.coins = (Number(this.myProfile.coins) || 0) + reward;
+        }
+        this.showToast(`코인 +${reward}!`, "#f1c40f");
+        const nickname =
+          localStorage.getItem("nickname") ||
+          (this.myProfile && this.myProfile.nickname) ||
+          "요리사";
+        if (socket && socket.connected) {
+          socket.emit("updateProfile", {
+            nickname,
+            id: nickname,
+            coins: this.profileStats.coins,
+          });
+        }
+      }
+    }
+
     if (!this.isTutorialMode && playerId === myId) {
       if (randomCard?.type === BOMB_CARD_TYPE) {
         this.handleQuestEvent("bombOpened");
@@ -12958,6 +13001,17 @@ class GameScene extends Phaser.Scene {
       if (!Array.isArray(deck)) continue;
       deck[picked.slotIndex] = { type: PLUS1_CARD_TYPE };
     }
+    // Coin 카드 주입 (싱글)
+    const coinCount = Math.min(SINGLE_COIN_CARD_COUNT, deckSlots.length);
+    for (let index = 0; index < coinCount; index += 1) {
+      const pickIndex = Math.floor(Math.random() * deckSlots.length);
+      const picked = deckSlots.splice(pickIndex, 1)[0];
+      if (!picked) continue;
+
+      const deck = this.singleDeckByPlayer[picked.playerId];
+      if (!Array.isArray(deck)) continue;
+      deck[picked.slotIndex] = { type: COIN_CARD_TYPE };
+    }
     // Plus2 카드 주입 (싱글)
     const plus2Count = Math.min(SINGLE_PLUS2_CARD_COUNT, deckSlots.length);
     for (let index = 0; index < plus2Count; index += 1) {
@@ -13135,12 +13189,142 @@ class GameScene extends Phaser.Scene {
       [THUNDER_CARD_TYPE]: "번개",
       [PLUS1_CARD_TYPE]: "+1",
       [TON_CARD_TYPE]: "회오리",
+      [COIN_CARD_TYPE]: "코인",
     };
     const label = labels[type];
     if (!label) return;
     const nickname = playerId ? this.getNicknameById(playerId) : "";
     const prefix = nickname ? `${nickname} ` : "";
     this.showToast(`${prefix}${label} 카드 등장!`, "#f39c12");
+  }
+
+  getPlayerLayoutForId(playerId) {
+    if (this.playerLayouts && this.playerLayouts[playerId]) {
+      return this.playerLayouts[playerId];
+    }
+    if (!this.roundData || !Array.isArray(this.roundData.players)) return null;
+
+    const players = this.roundData.players;
+    const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
+    let myIndex = players.findIndex((p) => p.id === myId);
+    if (myIndex === -1) myIndex = 0;
+
+    const sortedPlayers = [
+      ...players.slice(myIndex),
+      ...players.slice(0, myIndex),
+    ];
+    const playerCount = sortedPlayers.length;
+    const { width, height } = this.cameras.main;
+    const pos =
+      playerCount === 2
+        ? [
+            { x: width * 0.5, y: height * 0.75, rotation: 0 },
+            { x: width * 0.5, y: height * 0.18, rotation: 180 },
+          ]
+        : playerCount === 3
+          ? [
+              { x: width * 0.5, y: height * 0.75, rotation: 0 },
+              { x: width * 0.11, y: height * 0.45, rotation: 90 },
+              { x: width * 0.89, y: height * 0.45, rotation: -90 },
+            ]
+          : [
+              { x: width * 0.5, y: height * 0.75, rotation: 0 },
+              { x: width * 0.11, y: height * 0.45, rotation: 90 },
+              { x: width * 0.5, y: height * 0.18, rotation: 180 },
+              { x: width * 0.89, y: height * 0.45, rotation: -90 },
+            ];
+
+    const targetIdx = sortedPlayers.findIndex((p) => p.id === playerId);
+    if (targetIdx === -1 || !pos[targetIdx]) return null;
+
+    return pos[targetIdx];
+  }
+
+  playCoinCardRewardAnimation(playerId, amount) {
+    if (!playerId || !Number.isFinite(Number(amount))) return;
+
+    const layout = this.getPlayerLayoutForId(playerId);
+    if (!layout) return;
+
+    const { width } = this.cameras.main;
+    const dist = width * 0.25;
+    const rad = Phaser.Math.DegToRad(layout.rotation - 90);
+    const startX = layout.x + Math.cos(rad) * dist * 0.7;
+    const startY = layout.y + Math.sin(rad) * dist;
+    const targetX = layout.x;
+    const targetY = layout.y;
+    const coinCount = 10;
+    const lift = width * 0.1;
+    const spread = width * 0.12;
+    const coinSize = width * 0.05;
+
+    for (let i = 0; i < coinCount; i += 1) {
+      const coin = this.add
+        .image(startX, startY, "coin")
+        .setDisplaySize(coinSize, coinSize)
+        .setDepth(1200)
+        .setAlpha(0)
+        .setScale(0.6);
+
+      const burstX = startX + (Math.random() - 0.5) * spread;
+      const burstY = startY - lift - Math.random() * lift * 0.3;
+
+      this.tweens.add({
+        targets: coin,
+        x: burstX,
+        y: burstY,
+        alpha: 1,
+        scale: 1,
+        duration: 220,
+        delay: i * 25,
+        ease: "Back.out",
+        onComplete: () => {
+          this.tweens.add({
+            targets: coin,
+            x: targetX,
+            y: targetY,
+            alpha: 0.2,
+            scale: 0.4,
+            duration: 420,
+            ease: "Cubic.in",
+            onComplete: () => {
+              coin.destroy();
+            },
+          });
+        },
+      });
+    }
+
+    const text = this.add
+      .text(targetX, targetY - width * 0.12, `+${amount}`, {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.038}px`,
+        color: "#ffd700",
+        fontWeight: "bold",
+        stroke: "#000000",
+        strokeThickness: 4,
+      })
+      .setOrigin(0.5)
+      .setDepth(1201)
+      .setAlpha(0);
+
+    this.tweens.add({
+      targets: text,
+      alpha: 1,
+      y: text.y - width * 0.04,
+      duration: 180,
+      ease: "Sine.out",
+      onComplete: () => {
+        this.tweens.add({
+          targets: text,
+          alpha: 0,
+          y: text.y - width * 0.05,
+          duration: 500,
+          ease: "Sine.in",
+          onComplete: () => text.destroy(),
+        });
+      },
+    });
   }
 
   // 특수카드 사용 함수
