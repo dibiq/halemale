@@ -891,7 +891,7 @@ class LobbyScene extends Phaser.Scene {
       "soundoff",
       `${ASSET_SERVER}/images/soundoff.png${VERSION}`,
     );
-    this.load.image("popupbg", `${ASSET_SERVER}/images/popupbg.png${VERSION}`);
+    //this.load.image("popupbg", `${ASSET_SERVER}/images/popupbg.png${VERSION}`);
     this.load.image("home", `${ASSET_SERVER}/images/home.png${VERSION}`);
 
     // ============================================
@@ -3473,7 +3473,7 @@ class LobbyScene extends Phaser.Scene {
     });
   }
 
-  showJoinCodePopup(callback) {
+  /*showJoinCodePopup(callback) {
     this.isJoinPopupOpen = true;
     const { width, height } = this.cameras.main;
     const centerX = width / 2;
@@ -3609,7 +3609,6 @@ class LobbyScene extends Phaser.Scene {
       });
     });
 
-    // showJoinCodePopup 내부 confirmBtnImg 로직
     confirmBtnImg.on("pointerdown", () => {
       const code = el.value.trim();
 
@@ -3646,7 +3645,7 @@ class LobbyScene extends Phaser.Scene {
         },
       });
     });
-  }
+  }*/
 
   startSingleGame(aiDifficulty) {
     // socket.id가 없으면 고정 ID 사용 (싱글플레이 전용)
@@ -4952,7 +4951,7 @@ class LobbyScene extends Phaser.Scene {
     this.setLobbyChatInputHidden(false);
   }
 
-  showCoinShopPopup() {
+  /*showCoinShopPopup() {
     this.isJoinPopupOpen = true;
     this.coinShopBackCloseHandler = () => this.closeCoinShopPopup();
     this.currentJoinPopupCloseHandler = this.coinShopBackCloseHandler;
@@ -5110,20 +5109,13 @@ class LobbyScene extends Phaser.Scene {
         this.buyCoin(product.amount);
       });
     });
-  }
+  }*/
 
   buyCoin(amount) {
-    console.log(
-      `💰 [DEBUG] buyCoin 호출: amount=${amount}, isSingle=${this.isSingle}, connected=${socket?.connected}`,
-    );
-
     // 🔹 멀티플레이인 경우: 서버에 전송하고 응답을 기다림
     if (!this.isSingle && socket?.connected) {
       const nickname =
         this.myProfile.nickname || localStorage.getItem("nickname") || "추추";
-      console.log(
-        `💰 [DEBUG] 서버에 코인 충전 요청 전송: nickname=${nickname}, amount=${amount}`,
-      );
 
       socket.emit("addCoins", {
         amount,
@@ -5138,7 +5130,6 @@ class LobbyScene extends Phaser.Scene {
     }
 
     // 🔹 싱글플레이인 경우: 즉시 로컬 업데이트
-    console.log(`💰 [DEBUG] 싱글플레이 모드 - 로컬 코인 업데이트`);
     this.myProfile.coins += amount;
 
     // 🔹 스토어의 코인 텍스트 업데이트 (상점 팝업이 뒤에 있을 때)
@@ -13949,17 +13940,33 @@ class GameScene extends Phaser.Scene {
     this.tweens.add({
       targets: img,
       alpha: 1,
-      scale: 1,
-      duration: 220,
+      scale: 1.08,
+      duration: 340,
       ease: "Back.out",
       onComplete: () => {
         this.tweens.add({
           targets: [img, glow],
+          scale: 1.12,
+          duration: 180,
+          yoyo: true,
+          repeat: 1,
+          ease: "Sine.inOut",
+        });
+        this.tweens.add({
+          targets: container,
+          angle: { from: -4, to: 4 },
+          duration: 80,
+          yoyo: true,
+          repeat: 5,
+          ease: "Sine.inOut",
+        });
+        this.tweens.add({
+          targets: [img, glow],
           alpha: 0,
-          scale: 1.08,
-          duration: 420,
+          scale: 1.15,
+          duration: 520,
           ease: "Sine.in",
-          delay: 260,
+          delay: 520,
           onComplete: () => {
             if (container && container.active) container.destroy();
             if (this.specialCardCenterContainer === container) {
