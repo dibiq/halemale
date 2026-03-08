@@ -1058,7 +1058,7 @@ class LobbyScene extends Phaser.Scene {
     handleGetUserKey();
 
     // 1. 먼저 컨테이너를 준비합니다.
-    if (!this.mainUIContainer) {
+    if (!this.mainUIContainer || !this.mainUIContainer.scene) {
       this.mainUIContainer = this.add.container(0, 0);
     }
 
@@ -8498,7 +8498,24 @@ class GameScene extends Phaser.Scene {
       .image(width / 2, height * 0.465, "bell") // bell 이미지가 있다고 가정
       .setDisplaySize(width * 0.22, width * 0.22)
       .setInteractive({ useHandCursor: true })
-      .on("pointerdown", () => this.handleRingBell());
+      .on("pointerdown", () => {
+        if (this.bellPressTween) {
+          this.bellPressTween.stop();
+          this.bellPressTween = null;
+        }
+        this.bellPressTween = this.tweens.add({
+          targets: this.bellImage,
+          scaleY: "*=0.68",
+          scaleX: "*=1.02",
+          duration: 100,
+          yoyo: true,
+          ease: "Quad.easeOut",
+          onComplete: () => {
+            this.bellPressTween = null;
+          },
+        });
+        this.handleRingBell();
+      });
   }
 
   getCardKey(card) {
