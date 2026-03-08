@@ -589,6 +589,10 @@ class LobbyScene extends Phaser.Scene {
     this.load.image("multbg", `${ASSET_SERVER}/images/multbg.png${VERSION}`);
 
     this.load.image(
+      "coincard",
+      `${ASSET_SERVER}/images/cards/special/ongame_coin.png${VERSION}`,
+    );
+    this.load.image(
       "thun",
       `${ASSET_SERVER}/images/cards/special/ongame_thun.png${VERSION}`,
     );
@@ -8553,7 +8557,7 @@ class GameScene extends Phaser.Scene {
       return "plus1";
     }
     if (card && card.type === COIN_CARD_TYPE) {
-      return "coin";
+      return "coincard";
     }
     if (card && card.type === PLUS2_CARD_TYPE) {
       return "plus2";
