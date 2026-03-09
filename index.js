@@ -976,6 +976,14 @@ function isBotPlayer(player) {
   return Boolean(player && player.isBot);
 }
 
+function pickNextHostId(room) {
+  if (!room || !Array.isArray(room.players) || room.players.length === 0) {
+    return null;
+  }
+  const human = room.players.find((p) => p && !p.isBot);
+  return (human || room.players[0]).id;
+}
+
 function buildAiPlayer(room) {
   ensureAiState(room);
   const aiNumber = room.aiCounter + 1;
@@ -3262,6 +3270,15 @@ io.on("connection", (socket) => {
     // 대상 플레이어 제거
     room.players.splice(targetPlayerIndex, 1);
 
+    const hasHumanPlayers = room.players.some((p) => p && !p.isBot);
+    if (!hasHumanPlayers) {
+      clearAiBellTimers(room);
+      clearAiTurnTimer(room);
+      delete rooms[roomId];
+      broadcastPublicRooms();
+      return;
+    }
+
     // 강퇴된 플레이어에게 알림
     io.to(targetId).emit("playerKicked", { kickedId: targetId });
 
@@ -3304,10 +3321,23 @@ io.on("connection", (socket) => {
     socket.leave(roomId);
     if (socket.roomId === roomId) socket.roomId = null;
 
+    const hasHumanPlayers = room.players.some((p) => p && !p.isBot);
+    if (!hasHumanPlayers) {
+      clearAiBellTimers(room);
+      clearAiTurnTimer(room);
+      delete rooms[roomId];
+      broadcastPublicRooms();
+      if (typeof ack === "function") ack({ ok: true });
+      return;
+    }
+
     if (room.players.length === 0) {
       delete rooms[roomId];
     } else {
-      if (room.host === targetId) room.host = room.players[0].id;
+      if (room.host === targetId) {
+        const nextHostId = pickNextHostId(room);
+        if (nextHostId) room.host = nextHostId;
+      }
       io.to(roomId).emit("playerLeft", {
         playerId: targetId,
         players: room.players,
@@ -4673,7 +4703,10 @@ io.on("connection", (socket) => {
         delete rooms[socket.roomId];
       } else if (wasInRoom) {
         // 호스트 위임 로직
-        if (room.host === socket.id) room.host = room.players[0].id;
+        if (room.host === socket.id) {
+          const nextHostId = pickNextHostId(room);
+          if (nextHostId) room.host = nextHostId;
+        }
 
         // 3. 💡 이벤트를 보낼 때 나간 사람의 닉네임을 명시적으로 포함!
         io.to(socket.roomId).emit("playerLeft", {

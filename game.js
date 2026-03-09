@@ -8004,8 +8004,8 @@ class GameScene extends Phaser.Scene {
 
     const difficultyMultipliers = {
       easy: 1.35,
-      normal: 1,
-      hard: 0.8,
+      normal: 0.9,
+      hard: 1.05,
     };
     const aiMultiplier =
       difficultyMultipliers[this.roundData.aiDifficulty] || 1;
@@ -8518,15 +8518,11 @@ class GameScene extends Phaser.Scene {
             const owned =
               JSON.parse(localStorage.getItem("specialCards")) || {};
             const lockCount = Number(owned[4] || 0);
-            console.log("[autoLockPenalty] local lock count", lockCount, owned);
             if (lockCount > 0) {
               // 멀티플레이: 서버에 사용 요청을 보낸 뒤 응답(또는 타임아웃)을 기다림
               if (!this.isSingle && socket && socket.connected) {
                 let handled = false;
                 const timeout = this.time.delayedCall(1200, () => {
-                  console.log(
-                    "[autoLockPenalty] timeout reached, applying penalty",
-                  );
                   if (handled) return;
                   handled = true;
                   // 타임아웃 시 패널티 처리 계속
@@ -8550,11 +8546,6 @@ class GameScene extends Phaser.Scene {
                     handled = true;
                     timeout.remove(false);
 
-                    // response received from lock request
-                    console.log("[autoLockPenalty] server response", res);
-
-                    // 서버 response
-                    console.log("[autoLockPenalty] server response", res);
                     // 서버가 사용을 허용한 경우
                     if (res && res.success) {
                       // 서버가 갱신한 보유 아이템 정보이 있으면 적용
@@ -8603,11 +8594,6 @@ class GameScene extends Phaser.Scene {
                       return;
                     }
 
-                    // 서버가 거부한 경우 패널티 적용
-                    console.log(
-                      "[autoLockPenalty] server denied or failed",
-                      res,
-                    );
                     this.playPenaltyAnimation({
                       penaltyId: data.penaltyId,
                       recipients: data.recipients,
@@ -9536,6 +9522,29 @@ class GameScene extends Phaser.Scene {
     }
 
     this.playerTableGroup.add([deck, countTxt]);
+
+    if (p.isEliminated) {
+      const stampRadius = width * 0.065;
+      const stamp = this.add
+        .circle(layout.x, layout.y, stampRadius, 0xb91c1c, 0.18)
+        .setStrokeStyle(4, 0xef4444, 0.85)
+        .setDepth(12)
+        .setAngle(-10);
+      const stampText = this.add
+        .text(layout.x, layout.y, "탈락", {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.04}px`,
+          color: "#ffffff",
+          fontWeight: "bold",
+          stroke: "#1f2937",
+          strokeThickness: 4,
+        })
+        .setOrigin(0.5)
+        .setDepth(13)
+        .setAngle(-10);
+
+      this.playerTableGroup.add([stamp, stampText]);
+    }
   }
 
   drawSpecialCards(p, layout) {
@@ -14104,7 +14113,6 @@ class GameScene extends Phaser.Scene {
     const revealKeyMap = {
       [BOMB_CARD_TYPE]: "bomb_img",
       [TON_CARD_TYPE]: "ton_img",
-      [THUNDER_CARD_TYPE]: "thun_img",
     };
     const revealKey = revealKeyMap[type];
     if (revealKey) {
