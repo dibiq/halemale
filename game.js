@@ -2655,12 +2655,15 @@ class LobbyScene extends Phaser.Scene {
   scheduleTutorialOverlay() {
     if (this.hasCompletedTutorial) return;
     if (this.tutorialOverlayScheduled || this.tutorialOverlayContainer) return;
+    if (this.isRoomOpen || this.currentRoomId) return;
 
     this.tutorialOverlayScheduled = true;
     this.time.delayedCall(400, () => {
       this.tutorialOverlayScheduled = false;
       if (
         !this.scene.isActive("LobbyScene") ||
+        this.isRoomOpen ||
+        this.currentRoomId ||
         this.hasCompletedTutorial ||
         this.tutorialOverlayContainer
       ) {
@@ -2672,6 +2675,9 @@ class LobbyScene extends Phaser.Scene {
 
   showTutorialOverlay() {
     if (this.hasCompletedTutorial || this.tutorialOverlayContainer) {
+      return;
+    }
+    if (this.isRoomOpen || this.currentRoomId) {
       return;
     }
 
@@ -8121,6 +8127,7 @@ class GameScene extends Phaser.Scene {
     this.questState = null;
     this.timeAttackText = null;
     this.timeAttackTimer = null;
+    this.timeAttackUrgentTween = null;
   }
 
   async create() {
@@ -8136,6 +8143,10 @@ class GameScene extends Phaser.Scene {
         if (this.timeAttackTimer) {
           this.timeAttackTimer.remove();
           this.timeAttackTimer = null;
+        }
+        if (this.timeAttackUrgentTween) {
+          this.timeAttackUrgentTween.stop();
+          this.timeAttackUrgentTween = null;
         }
         this.timeAttackText = null;
       });
@@ -9492,6 +9503,29 @@ class GameScene extends Phaser.Scene {
     } else {
       this.timeAttackText.setText(`타임어택 ${timeLabel}`);
       this.timeAttackText.setPosition(cx, cy + width * 0.035);
+    }
+
+    if (remainingSec <= 10) {
+      this.timeAttackText.setColor("#ff3b30");
+      if (!this.timeAttackUrgentTween) {
+        this.timeAttackUrgentTween = this.tweens.add({
+          targets: this.timeAttackText,
+          scale: 1.12,
+          alpha: 0.6,
+          duration: 250,
+          yoyo: true,
+          repeat: -1,
+          ease: "Sine.easeInOut",
+        });
+      }
+    } else {
+      this.timeAttackText.setColor("#ffd166");
+      if (this.timeAttackUrgentTween) {
+        this.timeAttackUrgentTween.stop();
+        this.timeAttackUrgentTween = null;
+      }
+      this.timeAttackText.setScale(1);
+      this.timeAttackText.setAlpha(1);
     }
   }
 
