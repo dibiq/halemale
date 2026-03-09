@@ -276,7 +276,8 @@ const io = new Server(server, {
 
 let rooms = {};
 const RANK_REWARD_COINS = [30, 20, 10];
-const WIN_REWARD_XP = 40;
+const RANK_REWARD_XP = [40, 20, 10];
+const WIN_REWARD_XP = RANK_REWARD_XP[0];
 const XP_PER_LEVEL = 100;
 const THUNDER_CARD_TYPE = "thunder";
 const THUNDER_CARD_COUNT = 1;
@@ -705,17 +706,18 @@ function finalizeGame(room, io, { winner, sorted, message }) {
     }),
   );
 
-  // 순위별 코인 보상(1등 30, 2등 20, 3등 10)
+  // 순위별 보상(1등 30, 2등 20, 3등 10)
   sorted.forEach((player, rankIndex) => {
     const coinReward = RANK_REWARD_COINS[rankIndex] || 0;
     if (coinReward > 0) {
       player.coins = (Number(player.coins) || 0) + coinReward;
     }
+    const expReward = RANK_REWARD_XP[rankIndex] || 0;
+    if (expReward > 0) {
+      player.experience = (Number(player.experience) || 0) + expReward;
+    }
+    player.level = getLevelFromExperience(player.experience);
   });
-
-  // 승자에게 경험치 보상을 지급하고 레벨을 갱신
-  winner.experience = (Number(winner.experience) || 0) + WIN_REWARD_XP;
-  winner.level = getLevelFromExperience(winner.experience);
 
   room.players.forEach((p) => {
     const currentExp = Number(p.experience) || 0;
@@ -753,7 +755,8 @@ function finalizeGame(room, io, { winner, sorted, message }) {
       const rankIndex = sorted.findIndex((sp) => sp.id === p.id);
       const earnedCoins =
         rankIndex >= 0 ? RANK_REWARD_COINS[rankIndex] || 0 : 0;
-      const earnedExperience = p.id === winner.id ? WIN_REWARD_XP : 0;
+      const earnedExperience =
+        rankIndex >= 0 ? RANK_REWARD_XP[rankIndex] || 0 : 0;
       const finalCoins = Number(p.coins) || 0;
       const finalExperience = Number(p.experience) || 0;
       const finalLevel =
@@ -784,7 +787,12 @@ function finalizeGame(room, io, { winner, sorted, message }) {
       3: RANK_REWARD_COINS[2] || 0,
     },
     winnerCoins: winner.coins,
-    rewardExperience: WIN_REWARD_XP,
+    rewardExperience: RANK_REWARD_XP[0] || 0,
+    rewardExperienceByRank: {
+      1: RANK_REWARD_XP[0] || 0,
+      2: RANK_REWARD_XP[1] || 0,
+      3: RANK_REWARD_XP[2] || 0,
+    },
     winnerExperience: winner.experience,
     winnerLevel: winner.level,
   });
@@ -3779,7 +3787,10 @@ io.on("connection", (socket) => {
     room.isFlipping = false;
     room.lastFlipTime = null;
     const total = room.players.length;
-    // 전체 덱을 사용해 균등 분배
+    // 균등 분배를 위해 나눠떨어지지 않는 카드 수는 제거
+    while (deck.length % total !== 0) {
+      deck.pop();
+    }
     const gameDeck = deck;
 
     const matchAiProfile = buildMatchAiProfile(room);

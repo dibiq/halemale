@@ -31,7 +31,7 @@ const QUEST_CONFIGS = [
     titleTemplate: "정답 {target}번 맞추기",
     descriptionTemplate: "싱글에서 종을 정확히 {target}번 눌러보세요.",
     initialTarget: 3,
-    targetIncrement: 2,
+    targetIncrement: 1,
     rewardCoins: 30,
   },
   {
@@ -40,9 +40,9 @@ const QUEST_CONFIGS = [
     titleTemplate: "정답 시 {threshold}장 획득",
     descriptionTemplate: "한 번의 정답으로 카드 {threshold}장을 가져가세요.",
     initialTarget: 1,
-    targetIncrement: 0,
+    targetIncrement: 1,
     initialThreshold: 5,
-    thresholdIncrement: 5,
+    thresholdIncrement: 1,
     rewardCoins: 40,
   },
   {
@@ -51,16 +51,16 @@ const QUEST_CONFIGS = [
     titleTemplate: "패널티 {target}회 체험",
     descriptionTemplate: "실수로 종을 쳐서 패널티를 {target}번 받아보세요.",
     initialTarget: 3,
-    targetIncrement: 2,
+    targetIncrement: 1,
     rewardCoins: 25,
   },
   {
     key: "bomb_flip",
     type: "count",
-    titleTemplate: "폭탄 카드 {target}회 오픈",
+    titleTemplate: "폭탄 {target}회 오픈",
     descriptionTemplate: "내 덱에서 폭탄 카드를 총 {target}번 뒤집어보세요.",
     initialTarget: 3,
-    targetIncrement: 2,
+    targetIncrement: 1,
     rewardCoins: 25,
   },
   {
@@ -73,21 +73,12 @@ const QUEST_CONFIGS = [
     rewardCoins: 35,
   },
   {
-    key: "final_victory",
-    type: "count",
-    titleTemplate: "싱글 최종 승리 {target}회",
-    descriptionTemplate: "싱글플레이에서 최종 승리를 {target}번 기록하세요.",
-    initialTarget: 1,
-    targetIncrement: 1,
-    rewardCoins: 50,
-  },
-  {
     key: "thunder_flip",
     type: "count",
-    titleTemplate: "번개 카드 {target}회 오픈",
+    titleTemplate: "번개 {target}회 오픈",
     descriptionTemplate: "내 덱에서 번개 카드를 총 {target}번 뒤집어보세요.",
     initialTarget: 3,
-    targetIncrement: 2,
+    targetIncrement: 1,
     rewardCoins: 25,
   },
 ];
@@ -4723,7 +4714,7 @@ class LobbyScene extends Phaser.Scene {
       const rowText = this.add
         .text(centerX - rowWidth * 0.44, rowY - rowHeight * 0.18, "", {
           fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.03}px`,
+          fontSize: `${width * 0.07}px`,
           color: "#e2e8f0",
         })
         .setOrigin(0, 0.5);
@@ -8691,6 +8682,15 @@ class GameScene extends Phaser.Scene {
 
         // 자동 사용: 패널티 대상이 로컬 플레이어이고 자물쇠(lock, id=4)를 보유한 경우
         const myIdCheck = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
+        // 싱글플레이에서는 패널티시 아이템 자동 사용 금지
+        if (this.isSingle) {
+          this.playPenaltyAnimation({
+            penaltyId: data.penaltyId,
+            recipients: data.recipients,
+            players: updatedPlayers,
+          });
+          return;
+        }
         if (data.penaltyId === myIdCheck) {
           try {
             const owned =
@@ -10868,6 +10868,14 @@ class GameScene extends Phaser.Scene {
 
   // 서버에 특수카드 사용 요청(낙관적 UI 업데이트 포함)
   requestUseSpecialWithOptimistic(cardId, cardName) {
+    // 싱글 모드에서는 아이템 사용 금지
+    if (this.isSingle) {
+      this.showToast(
+        "싱글 플레이에서는 아이템을 사용할 수 없습니다.",
+        "#e74c3c",
+      );
+      return;
+    }
     try {
       this.showToast(`${cardName} 카드를 사용 요청합니다...`, "#f39c12");
       let handled = false;
@@ -12073,53 +12081,52 @@ class GameScene extends Phaser.Scene {
     }
 
     const { width, height } = this.cameras.main;
-    const panelWidth = Math.min(width * 0.42, 420);
-    const rowHeight = Math.max(height * 0.045, 36);
+    const panelWidth = Math.min(width * 0.4, 400);
+    const rowHeight = Math.max(height * 0.05, 40);
     const padding = 16;
-    const headerHeight = rowHeight;
+    const extraPadding = Math.max(12, rowHeight * 0.35);
+    const headerHeight = 0;
     const panelHeight =
-      padding * 2 + headerHeight + QUEST_CONFIGS.length * (rowHeight + 6);
+      padding * 2 +
+      extraPadding * 2 +
+      headerHeight +
+      QUEST_CONFIGS.length * (rowHeight + 6);
 
     const container = this.add
-      .container(width * 0.03, height * 0.53)
+      .container(width * 0.03, height * 0.55)
       .setDepth(1600);
-    const bg = this.add
-      .rectangle(0, 0, panelWidth, panelHeight, 0x020617, 0.82)
-      .setOrigin(0, 0)
-      .setStrokeStyle(2, 0x38bdf8, 0.5);
-    const titleText = this.add
-      .text(padding, padding + headerHeight * 0.25, "싱글 퀘스트", {
-        fontFamily: GAME_FONTS.main,
-        fontSize: `${Math.max(18, width * 0.025)}px`,
-        color: "#f8fafc",
-        fontStyle: "bold",
-      })
-      .setOrigin(0, 0);
-    container.add([bg, titleText]);
+    container.add([]);
 
     this.questState.container = container;
     this.questState.rows = {};
 
     QUEST_CONFIGS.forEach((quest, index) => {
-      const rowY = padding + headerHeight + index * (rowHeight + 6);
+      const rowY =
+        padding + extraPadding + headerHeight + index * (rowHeight + 6);
       const rowWidth = panelWidth - padding * 2;
       const row = this.add.container(padding, rowY).setDepth(1601 + index * 2);
+      const rowBgPaddingX = Math.max(8, rowWidth * 0.06);
+      const rowBgPaddingY = Math.max(4, rowHeight * 0.18);
       const rowBg = this.add
-        .rectangle(0, 0, rowWidth, rowHeight, 0x1f2937, 0.8)
+        .image(-rowBgPaddingX, -rowBgPaddingY, "roombg")
         .setOrigin(0, 0)
-        .setStrokeStyle(1, 0x475569, 0.7);
+        .setDisplaySize(
+          rowWidth + rowBgPaddingX * 2,
+          rowHeight + rowBgPaddingY * 2,
+        );
       const rowText = this.add
         .text(12, rowHeight / 2, "", {
           fontFamily: GAME_FONTS.main,
-          fontSize: `${Math.max(14, width * 0.023)}px`,
-          color: "#e2e8f0",
+          fontSize: `${Math.max(14, width * 0.03)}px`,
+          color: "#f8fafc",
         })
         .setOrigin(0, 0.5);
-      rowText.y = rowHeight * 0.32;
+      rowText.setStroke("#0f172a", 3);
+      rowText.y = rowHeight * 0.38;
 
       const barWidth = rowWidth - 24;
       const barHeight = Math.max(6, rowHeight * 0.18);
-      const barY = rowHeight - barHeight * 0.8;
+      const barY = rowHeight - barHeight * 1.45;
       const progressTrack = this.add
         .rectangle(12, barY, barWidth, barHeight, 0x0f172a, 0.75)
         .setOrigin(0, 0.5)
@@ -12131,29 +12138,45 @@ class GameScene extends Phaser.Scene {
       const progressLabel = this.add
         .text(rowWidth - 12, barY, "0/0", {
           fontFamily: GAME_FONTS.main,
-          fontSize: `${Math.max(12, width * 0.018)}px`,
-          color: "#cbd5f5",
+          fontSize: `${Math.max(12, width * 0.025)}px`,
+          color: "#f8fafc",
         })
         .setOrigin(1, 0.5);
+      progressLabel.setStroke("#0f172a", 3);
 
-      const claimBtnWidth = Math.max(60, rowHeight * 1.6);
+      const claimBtnWidth = Math.max(80, rowHeight * 1.5);
       const claimBtnHeight = rowHeight * 0.55;
       const claimBtn = this.add
-        .container(rowWidth - claimBtnWidth * 0.55, rowHeight * 0.3)
+        .container(rowWidth - claimBtnWidth * 0.48, rowHeight * 0.38)
         .setDepth(2000 + index * 2);
       const claimBg = this.add
-        .rectangle(0, 0, claimBtnWidth, claimBtnHeight, 0x22c55e, 0.9)
+        .image(0, 0, "ui_btn")
         .setOrigin(0.5)
-        .setStrokeStyle(2, 0x15803d, 0.9);
+        .setDisplaySize(claimBtnWidth * 0.8, claimBtnHeight);
       const claimLabel = this.add
-        .text(0, 0, "수령", {
+        .text(0, 0, "", {
           fontFamily: GAME_FONTS.main,
-          fontSize: `${Math.max(12, width * 0.02)}px`,
+          fontSize: `${Math.max(14, width * 0.03)}px`,
           color: "#f8fafc",
           fontStyle: "bold",
         })
         .setOrigin(0.5);
+      claimLabel.setStroke("#0f172a", 3);
       claimBtn.add([claimBg, claimLabel]);
+
+      // press effect
+      const pressScale = 0.9;
+      [claimBg, claimLabel].forEach((obj) => {
+        obj.on("pointerdown", () => {
+          claimBtn.setScale(pressScale);
+        });
+        obj.on("pointerup", () => {
+          claimBtn.setScale(1);
+        });
+        obj.on("pointerout", () => {
+          claimBtn.setScale(1);
+        });
+      });
 
       const triggerClaim = () => this.handleQuestClaim(quest.key);
       claimBg
@@ -12194,14 +12217,8 @@ class GameScene extends Phaser.Scene {
     const state = this.getQuestRuntimeState(key);
     if (!row || !state) return;
 
-    const rewardText = state.quest.rewardCoins
-      ? ` · +${state.quest.rewardCoins}💰`
-      : "";
-    row.text.setText(`${state.title}${rewardText}`);
-    row.text.setColor("#e2e8f0");
-    if (row.bg) {
-      row.bg.setFillStyle(0x1f2937, 0.85);
-    }
+    row.text.setText(state.title);
+    row.text.setColor("#f8fafc");
     if (row.barLabel) {
       row.barLabel.setText(`${state.entry.count}/${state.target}`);
     }
@@ -12218,10 +12235,16 @@ class GameScene extends Phaser.Scene {
       row.claimBtn.setAlpha(ready ? 1 : 0.85);
 
       if (row.claimBg) {
-        row.claimBg.setFillStyle(
-          ready ? 0x22c55e : 0x3b3f51,
-          ready ? 0.95 : 0.65,
-        );
+        if (typeof row.claimBg.setFillStyle === "function") {
+          row.claimBg.setFillStyle(
+            ready ? 0x22c55e : 0x3b3f51,
+            ready ? 0.95 : 0.65,
+          );
+        } else {
+          // tint image button: yellow when ready, gray when not
+          row.claimBg.setTint(ready ? 0xfacc15 : 0x6b7280);
+          row.claimBg.setAlpha(ready ? 1 : 0.7);
+        }
         if (ready) {
           if (!row.claimBg.input || !row.claimBg.input.enabled) {
             row.claimBg.setInteractive({ useHandCursor: true });
@@ -12235,8 +12258,12 @@ class GameScene extends Phaser.Scene {
       }
 
       if (row.claimLabel) {
-        row.claimLabel.setAlpha(ready ? 1 : 0.45);
-        row.claimLabel.setColor(ready ? "#f8fafc" : "#94a3b8");
+        const rewardText = state.quest.rewardCoins
+          ? `💰${state.quest.rewardCoins}`
+          : "받기";
+        row.claimLabel.setText(rewardText);
+        row.claimLabel.setAlpha(ready ? 1 : 0.65);
+        row.claimLabel.setColor(ready ? "#f8fafc" : "#e2e8f0");
         if (ready) {
           if (!row.claimLabel.input || !row.claimLabel.input.enabled) {
             row.claimLabel.setInteractive({ useHandCursor: true });
@@ -14999,9 +15026,9 @@ class GameScene extends Phaser.Scene {
 
     const rankedPlayers = Array.isArray(players) ? players.slice(0, 3) : [];
     const podiumPositions = [
-      { x: width * 0.5, y: height * 0.57 },
-      { x: width * 0.23, y: height * 0.63 },
-      { x: width * 0.79, y: height * 0.65 },
+      { x: width * 0.5, y: height * 0.54 },
+      { x: width * 0.23, y: height * 0.6 },
+      { x: width * 0.79, y: height * 0.62 },
     ];
 
     rankedPlayers.forEach((player, index) => {
@@ -15023,7 +15050,7 @@ class GameScene extends Phaser.Scene {
       const nameText = this.add
         .text(
           pos.x,
-          pos.y + width * 0.07,
+          pos.y + width * 0.14,
           player?.nickname || player?.id || "요리사",
           {
             fontFamily: GAME_FONTS.main,
