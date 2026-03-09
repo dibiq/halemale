@@ -579,6 +579,7 @@ function getRoomListPayload() {
     maxPlayers: room.maxPlayers,
     isPublic: room.isPublic,
     isGameStarted: room.isGameStarted || false,
+    itemMode: room.itemMode !== false,
   }));
 }
 
@@ -2880,6 +2881,7 @@ io.on("connection", (socket) => {
 
     // 💡 [추가] isPublic 플래그 설정
     const isPublic = data.isPublic === true;
+    const itemMode = data.itemMode !== false;
     const roomName = data.roomName || `${socket.nickname}의 방`;
     const password = isPublic ? null : data.password || null;
 
@@ -2893,6 +2895,7 @@ io.on("connection", (socket) => {
       isPublic: isPublic,
       roomName: roomName,
       password: password, // 💡 비밀번호 저장 (비공개 방만)
+      itemMode: itemMode,
       blockEffects: [], // 현재 방에 적용된 블록(먹물) 이펙트 목록
       aiCounter: 0,
       aiTimers: { turn: null, bells: {} },
@@ -2928,6 +2931,7 @@ io.on("connection", (socket) => {
       max: rooms[roomId].maxPlayers,
       isPublic: isPublic,
       roomName: rooms[roomId].roomName,
+      itemMode: rooms[roomId].itemMode,
     });
 
     // 방 생성 시 목록 브로드캐스트 (공개/비공개 모두)
@@ -3047,6 +3051,7 @@ io.on("connection", (socket) => {
       hostId: room.host,
       max: room.maxPlayers,
       roomName: room.roomName,
+      itemMode: room.itemMode,
       newPlayerNickname: nickname,
       isRejoin,
     });
@@ -3172,6 +3177,7 @@ io.on("connection", (socket) => {
       hostId: room.host,
       max: room.maxPlayers,
       roomName: room.roomName,
+      itemMode: room.itemMode,
       newPlayerNickname: nickname,
       isRejoin,
     });
@@ -3184,6 +3190,7 @@ io.on("connection", (socket) => {
       maxPlayers: room.maxPlayers,
       roomName: room.roomName,
       isGameStarted: room.isGameStarted || false,
+      itemMode: room.itemMode,
     });
   });
 
@@ -3216,6 +3223,7 @@ io.on("connection", (socket) => {
       hostId: room.host,
       max: room.maxPlayers,
       roomName: room.roomName,
+      itemMode: room.itemMode,
       newPlayerNickname: aiPlayer.nickname,
       isRejoin: false,
     });
@@ -3490,6 +3498,7 @@ io.on("connection", (socket) => {
       newPlayerNickname: socket.nickname,
       hostId: room.host,
       roomName: room.roomName,
+      itemMode: room.itemMode,
     });
 
     socket.emit("joinRoomSuccess", {
@@ -3497,6 +3506,7 @@ io.on("connection", (socket) => {
       hostId: room.host,
       roomName: room.roomName,
       isGameStarted: room.isGameStarted,
+      itemMode: room.itemMode,
     });
   });
 
@@ -4079,6 +4089,7 @@ io.on("connection", (socket) => {
       roomName: room.roomName,
       maxPlayers: room.maxPlayers,
       nextTurnId: room.players[room.turnIndex].id,
+      itemMode: room.itemMode,
     });
 
     emitServerDebug(room, "gameStart.emitted", {

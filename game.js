@@ -2227,6 +2227,7 @@ class LobbyScene extends Phaser.Scene {
         hostId: socket.id,
         roomName: data.roomName,
         roomNumber: this.currentRoomNumber,
+        itemMode: data.itemMode,
       });
 
       if (typeof this.currentRoomNumber !== "number" && data?.roomId) {
@@ -2450,6 +2451,10 @@ class LobbyScene extends Phaser.Scene {
       // 로딩창이 혹시 떠 있다면 닫아줍니다.
       this.hideLoading();
 
+      if (typeof data?.itemMode !== "boolean") {
+        data.itemMode = this.currentItemMode !== false;
+      }
+
       this.scene.start("GameScene", data);
     });
 
@@ -2464,6 +2469,7 @@ class LobbyScene extends Phaser.Scene {
         max: data.maxPlayers || data.max || 4,
         hostId: data.hostId,
         roomName: data.roomName || "대기실",
+        itemMode: data.itemMode,
       });
     }
 
@@ -3117,6 +3123,9 @@ class LobbyScene extends Phaser.Scene {
     this.currentMax = data.max || this.currentMax;
     this.hostId = data.hostId || this.hostId;
     this.currentRoomName = data.roomName || this.currentRoomName || "대기실";
+    if (typeof data.itemMode === "boolean") {
+      this.currentItemMode = data.itemMode;
+    }
     if (typeof data.roomNumber === "number") {
       this.currentRoomNumber = data.roomNumber;
     }
@@ -5245,7 +5254,8 @@ class LobbyScene extends Phaser.Scene {
               const publicTag = room.isPublic === false ? "🔒" : "🌐";
               const playingTag = isPlaying ? " 🎮플레이중" : "";
               const roomTitle = room.roomName || `${room.hostNickname}의 방`;
-              const roomInfo = `${roomNo}. ${publicTag} ${roomTitle}${playingTag}  (${room.playerCount}/${room.maxPlayers})`;
+              const itemTag = room.itemMode === false ? "(노템) " : "(아이템) ";
+              const roomInfo = `${roomNo}. ${publicTag} ${itemTag}${roomTitle}${playingTag}  (${room.playerCount}/${room.maxPlayers})`;
               const roomText = this.add
                 .text(-listWidth * 0.4, itemY, roomInfo, {
                   fontFamily: "Jua",
@@ -5410,9 +5420,15 @@ class LobbyScene extends Phaser.Scene {
         };
 
         const showRoomCreateForm = (container) => {
+          const roomNameInputY = contentY * -0.32;
+          const passwordInputY = contentY * -0.18;
+          const publicToggleY = height * 0.035;
+          const itemToggleY = height * 0.095;
+          const createBtnY = height * 0.155;
+
           // 방 이름 입력창 (DOM 절대 좌표)
           const roomNameInput = this.add
-            .dom(centerX * -0.36, contentY * -0.25, "input")
+            .dom(centerX * -0.36, roomNameInputY, "input")
             .setDepth(1102);
           const nameEl = roomNameInput.node;
           nameEl.placeholder = "방 이름 입력 (선택, 최대10자)";
@@ -5435,16 +5451,16 @@ class LobbyScene extends Phaser.Scene {
 
           // 공개/비공개 각각 버튼
           let isPublic = true;
+          let isItemMode = true;
           const btnGapX = width * 0.13;
-          const toggleY = height * 0.01;
 
           const publicBtnImg = this.add
-            .image(-btnGapX, toggleY * 4, "uibtn")
+            .image(-btnGapX, publicToggleY, "uibtn")
             .setDisplaySize(width * 0.22, height * 0.05)
             .setTint(0x3498db) // 활성 상태 (파란색)
             .setInteractive({ useHandCursor: true });
           const publicBtnText = this.add
-            .text(-btnGapX, toggleY * 4, "🌐 공개", {
+            .text(-btnGapX, publicToggleY, "🌐 공개", {
               fontFamily: "Jua",
               fontSize: `${width * 0.033}px`,
               color: "#ffffff",
@@ -5453,12 +5469,12 @@ class LobbyScene extends Phaser.Scene {
             .setOrigin(0.5);
 
           const privateBtnImg = this.add
-            .image(btnGapX, toggleY * 4, "uibtn")
+            .image(btnGapX, publicToggleY, "uibtn")
             .setDisplaySize(width * 0.22, height * 0.05)
             .setTint(0x7f8c8d) // 비활성 상태 (회색)
             .setInteractive({ useHandCursor: true });
           const privateBtnText = this.add
-            .text(btnGapX, toggleY * 4, "🔒 비공개", {
+            .text(btnGapX, publicToggleY, "🔒 비공개", {
               fontFamily: "Jua",
               fontSize: `${width * 0.033}px`,
               color: "#ffffff",
@@ -5468,7 +5484,7 @@ class LobbyScene extends Phaser.Scene {
 
           // 비밀번호 입력창 (비공개 선택 시 표시)
           const pwInput = this.add
-            .dom(centerX * -0.35, contentY * -0.1, "input")
+            .dom(centerX * -0.35, passwordInputY, "input")
             .setDepth(1102);
           const pwEl = pwInput.node;
           pwEl.placeholder = "비밀번호 (숫자 4자리)";
@@ -5517,14 +5533,69 @@ class LobbyScene extends Phaser.Scene {
             updateToggle(false);
           });
 
+          const itemBtnImg = this.add
+            .image(-btnGapX, itemToggleY, "uibtn")
+            .setDisplaySize(width * 0.22, height * 0.05)
+            .setTint(0x2ecc71)
+            .setInteractive({ useHandCursor: true });
+          const itemBtnText = this.add
+            .text(-btnGapX, itemToggleY, "🎯 아이템전", {
+              fontFamily: "Jua",
+              fontSize: `${width * 0.03}px`,
+              color: "#ffffff",
+              fontWeight: "bold",
+            })
+            .setOrigin(0.5);
+
+          const noItemBtnImg = this.add
+            .image(btnGapX, itemToggleY, "uibtn")
+            .setDisplaySize(width * 0.22, height * 0.05)
+            .setTint(0x7f8c8d)
+            .setInteractive({ useHandCursor: true });
+          const noItemBtnText = this.add
+            .text(btnGapX, itemToggleY, "🚫 노템전", {
+              fontFamily: "Jua",
+              fontSize: `${width * 0.03}px`,
+              color: "#ffffff",
+              fontWeight: "bold",
+            })
+            .setOrigin(0.5);
+
+          const updateItemToggle = (useItemMode) => {
+            isItemMode = useItemMode;
+            itemBtnImg.setTint(useItemMode ? 0x2ecc71 : 0x7f8c8d);
+            noItemBtnImg.setTint(useItemMode ? 0x7f8c8d : 0xe74c3c);
+          };
+
+          itemBtnImg.on("pointerdown", () => {
+            this.sound.play("btn", { volume: 0.1 });
+            updateItemToggle(true);
+            this.showToast("게임에서 아이템을 사용할 수 있습니다", "#2ecc71");
+          });
+          itemBtnText.on("pointerdown", () => {
+            this.sound.play("btn", { volume: 0.1 });
+            updateItemToggle(true);
+            this.showToast("게임에서 아이템을 사용할 수 있습니다", "#2ecc71");
+          });
+          noItemBtnImg.on("pointerdown", () => {
+            this.sound.play("btn", { volume: 0.1 });
+            updateItemToggle(false);
+            this.showToast("게임에서 아이템을 사용할 수 없습니다", "#e74c3c");
+          });
+          noItemBtnText.on("pointerdown", () => {
+            this.sound.play("btn", { volume: 0.1 });
+            updateItemToggle(false);
+            this.showToast("게임에서 아이템을 사용할 수 없습니다", "#e74c3c");
+          });
+
           // 방 만들기 버튼
           const createBtnImg = this.add
-            .image(0, height * 0.13, "uibtn")
+            .image(0, createBtnY, "uibtn")
             .setDisplaySize(width * 0.25, height * 0.06)
             .setTint(0x2ecc71)
             .setInteractive({ useHandCursor: true });
           const createBtnText = this.add
-            .text(0, height * 0.13, "만들기", {
+            .text(0, createBtnY, "만들기", {
               fontFamily: "Jua",
               fontSize: `${width * 0.042}px`,
               color: "#ffffff",
@@ -5550,12 +5621,15 @@ class LobbyScene extends Phaser.Scene {
                   return;
                 }
 
+                this.currentItemMode = isItemMode;
+
                 this.showLoading("방 생성 중...");
                 socket.emit("createRoom", {
                   nickname: myNickname,
                   avatarKey: this.getSelectedAvatarKey(),
                   maxPlayers: 4,
                   isPublic: isPublic,
+                  itemMode: isItemMode,
                   roomName: roomName,
                   password: password,
                 });
@@ -5570,6 +5644,10 @@ class LobbyScene extends Phaser.Scene {
             publicBtnText,
             privateBtnImg,
             privateBtnText,
+            itemBtnImg,
+            itemBtnText,
+            noItemBtnImg,
+            noItemBtnText,
             pwInput,
             createBtnImg,
             createBtnText,
@@ -5733,43 +5811,30 @@ class LobbyScene extends Phaser.Scene {
           }
         }, 15000);
 
-        // 6. 나가기 버튼 (Home으로)
-        const cancelBtnImg = this.add
-          .image(centerX, popupY * 1.75, "uibtn")
-          .setDisplaySize(width * 0.3, height * 0.065)
-          .setInteractive({ useHandCursor: true })
-          .setTint(0xffaaaa);
-        const cancelBtnText = this.add
-          .text(centerX, popupY * 1.75, "나가기", {
-            fontFamily: "Jua",
-            fontSize: `${width * 0.055}px`,
-            color: "#ffffff",
-          })
-          .setOrigin(0.5);
+        // 닫기 버튼 (상점 팝업과 동일한 위치/스타일)
+        const closeBtn = this.add
+          .image(centerX + width * 0.3, popupY - height * 0.2, "popupclose")
+          .setDisplaySize(width * 0.11, width * 0.11)
+          .setInteractive({ useHandCursor: true });
 
-        // 나가기 버튼을 컨테이너에 추가
-        this.joinPopupContainer.add([cancelBtnImg, cancelBtnText]);
-
-        // 나가기 버튼 클릭 이벤트
-        cancelBtnImg.on("pointerdown", () => {
-          this.sound.play("btn", { volume: 0.1 });
-
+        closeBtn.on("pointerdown", () => {
+          this.sound.play("btn", { volume: 0.08 });
           if (window.ReactNativeWebView) {
             generateHapticFeedback({ type: "impactLight" }).catch(() => {});
           }
-
           this.tweens.add({
-            targets: [cancelBtnImg, cancelBtnText],
-            scaleX: "*=0.95",
-            scaleY: "*=0.95",
-            duration: 50,
+            targets: closeBtn,
+            scale: "*=0.95",
+            duration: 100,
             yoyo: true,
+            ease: "Quad.easeInOut",
             onComplete: () => {
               closePopupWithCleanup();
-              // 씬 재시작 없이 팝업만 닫음 (mainUIContainer 유지)
             },
           });
         });
+
+        this.joinPopupContainer.add([closeBtn]);
       })
       .catch((err) => {
         console.error("공개 방 목록 요청 실패:", err);
@@ -7942,6 +8007,7 @@ class GameScene extends Phaser.Scene {
       turnIndex: 0,
       isGameStarted: false,
       aiDifficulty: data.aiDifficulty || "normal",
+      itemMode: data.itemMode !== false,
     };
 
     this.isTutorialMode = !!data.isTutorialMode;
@@ -8254,6 +8320,9 @@ class GameScene extends Phaser.Scene {
       });
 
       this.roundData.hostId = data.hostId; // 방장 정보 동기화
+      if (typeof data.itemMode === "boolean") {
+        this.roundData.itemMode = data.itemMode;
+      }
       this.roundData.isGameStarted = true;
       this.isGameReady = true;
 
@@ -9550,6 +9619,7 @@ class GameScene extends Phaser.Scene {
   drawSpecialCards(p, layout) {
     const { width, height } = this.cameras.main;
     if (this.isSingle) return;
+    if (this.roundData && this.roundData.itemMode === false) return;
     const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
     const isMe = p.id === myId; // 내 카드인지 확인
 
