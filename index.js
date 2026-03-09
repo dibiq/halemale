@@ -669,6 +669,139 @@ function getFruitTotals(players) {
   return totals;
 }
 
+const TIME_ATTACK_DURATION_MS = 5 * 60 * 1000;
+
+function clearTimeAttackTimer(room) {
+  if (!room) return;
+  if (room.timeAttackTimer) {
+    clearTimeout(room.timeAttackTimer);
+  }
+  room.timeAttackTimer = null;
+  room.timeAttackEndsAt = null;
+}
+
+function finalizeGame(room, io, { winner, sorted, message }) {
+  if (!room || !io || !winner || !Array.isArray(sorted)) return;
+
+  clearTimeAttackTimer(room);
+  room.isGameStarted = false;
+
+  const beforeStateById = new Map(
+    room.players.map((p) => {
+      const beforeExperience = Number(p.experience) || 0;
+      const beforeLevel =
+        Number(p.level) || getLevelFromExperience(beforeExperience);
+      const beforeCoins = Number(p.coins) || 0;
+
+      return [
+        p.id,
+        {
+          beforeCoins,
+          beforeExperience,
+          beforeLevel,
+        },
+      ];
+    }),
+  );
+
+  // 순위별 코인 보상(1등 30, 2등 20, 3등 10)
+  sorted.forEach((player, rankIndex) => {
+    const coinReward = RANK_REWARD_COINS[rankIndex] || 0;
+    if (coinReward > 0) {
+      player.coins = (Number(player.coins) || 0) + coinReward;
+    }
+  });
+
+  // 승자에게 경험치 보상을 지급하고 레벨을 갱신
+  winner.experience = (Number(winner.experience) || 0) + WIN_REWARD_XP;
+  winner.level = getLevelFromExperience(winner.experience);
+
+  room.players.forEach((p) => {
+    const currentExp = Number(p.experience) || 0;
+    const currentLevel = Number(p.level) || getLevelFromExperience(currentExp);
+    const currentCoins = Number(p.coins) || 0;
+    const currentItems = Array.isArray(p.items) ? p.items : [];
+
+    savePlayer(
+      p.nickname,
+      currentLevel,
+      currentCoins,
+      currentItems,
+      currentExp,
+    );
+
+    io.to(p.id).emit("myProfile", {
+      nickname: p.nickname,
+      level: currentLevel,
+      coins: currentCoins,
+      items: currentItems,
+      experience: currentExp,
+      avatarKey: p.avatarKey || "player_1",
+    });
+  });
+
+  io.to(room.roomId).emit("gameEnded", {
+    message: message || `게임 종료! ${winner.nickname}님의 최종 승리!`,
+    ranking: sorted.map((p) => {
+      const before = beforeStateById.get(p.id) || {
+        beforeCoins: Number(p.coins) || 0,
+        beforeExperience: Number(p.experience) || 0,
+        beforeLevel: Number(p.level) || 1,
+      };
+
+      const rankIndex = sorted.findIndex((sp) => sp.id === p.id);
+      const earnedCoins =
+        rankIndex >= 0 ? RANK_REWARD_COINS[rankIndex] || 0 : 0;
+      const earnedExperience = p.id === winner.id ? WIN_REWARD_XP : 0;
+      const finalCoins = Number(p.coins) || 0;
+      const finalExperience = Number(p.experience) || 0;
+      const finalLevel =
+        Number(p.level) || getLevelFromExperience(finalExperience);
+      const leveledUp = finalLevel > (Number(before.beforeLevel) || 1);
+
+      return {
+        id: p.id,
+        nickname: p.nickname,
+        cards: p.myDeck?.length || 0,
+        currentCoins: before.beforeCoins,
+        earnedCoins,
+        finalCoins,
+        currentLevel: before.beforeLevel,
+        finalLevel,
+        currentExperience: before.beforeExperience,
+        earnedExperience,
+        finalExperience,
+        leveledUp,
+      };
+    }),
+    winner: winner.nickname,
+    winnerId: winner.id,
+    rewardCoins: RANK_REWARD_COINS[0],
+    rewardCoinsByRank: {
+      1: RANK_REWARD_COINS[0] || 0,
+      2: RANK_REWARD_COINS[1] || 0,
+      3: RANK_REWARD_COINS[2] || 0,
+    },
+    winnerCoins: winner.coins,
+    rewardExperience: WIN_REWARD_XP,
+    winnerExperience: winner.experience,
+    winnerLevel: winner.level,
+  });
+}
+
+function handleTimeAttackExpiry(room, io) {
+  if (!room || !room.isGameStarted) return;
+  const sorted = [...room.players].sort(
+    (a, b) => (b.myDeck?.length || 0) - (a.myDeck?.length || 0),
+  );
+  const winner = sorted[0] || room.players[0];
+  finalizeGame(room, io, {
+    winner,
+    sorted,
+    message: `시간 종료! ${winner.nickname}님의 최종 승리!`,
+  });
+}
+
 function checkGameOver(room, io, options = {}) {
   const forceEliminateZeroDeck = options.forceEliminateZeroDeck === true;
   // 덱이 0장인 사람들을 판별
@@ -714,117 +847,19 @@ function checkGameOver(room, io, options = {}) {
   });
 
   if ((survivors.length <= 1 || forceEndForHumanElim) && room.isGameStarted) {
-    room.isGameStarted = false;
     const winner = forceEndForHumanElim
       ? survivors[0] || room.players[0]
       : survivors.length === 1
         ? survivors[0]
         : room.players[0];
-    const beforeStateById = new Map(
-      room.players.map((p) => {
-        const beforeExperience = Number(p.experience) || 0;
-        const beforeLevel =
-          Number(p.level) || getLevelFromExperience(beforeExperience);
-        const beforeCoins = Number(p.coins) || 0;
-
-        return [
-          p.id,
-          {
-            beforeCoins,
-            beforeExperience,
-            beforeLevel,
-          },
-        ];
-      }),
-    );
-
     const sorted = [...room.players].sort(
       (a, b) => (b.myDeck?.length || 0) - (a.myDeck?.length || 0),
     );
 
-    // 순위별 코인 보상(1등 30, 2등 20, 3등 10)
-    sorted.forEach((player, rankIndex) => {
-      const coinReward = RANK_REWARD_COINS[rankIndex] || 0;
-      if (coinReward > 0) {
-        player.coins = (Number(player.coins) || 0) + coinReward;
-      }
-    });
-
-    // 승자에게 경험치 보상을 지급하고 레벨을 갱신
-    winner.experience = (Number(winner.experience) || 0) + WIN_REWARD_XP;
-    winner.level = getLevelFromExperience(winner.experience);
-
-    room.players.forEach((p) => {
-      const currentExp = Number(p.experience) || 0;
-      const currentLevel =
-        Number(p.level) || getLevelFromExperience(currentExp);
-      const currentCoins = Number(p.coins) || 0;
-      const currentItems = Array.isArray(p.items) ? p.items : [];
-
-      savePlayer(
-        p.nickname,
-        currentLevel,
-        currentCoins,
-        currentItems,
-        currentExp,
-      );
-
-      io.to(p.id).emit("myProfile", {
-        nickname: p.nickname,
-        level: currentLevel,
-        coins: currentCoins,
-        items: currentItems,
-        experience: currentExp,
-        avatarKey: p.avatarKey || "player_1",
-      });
-    });
-
-    io.to(room.roomId).emit("gameEnded", {
+    finalizeGame(room, io, {
+      winner,
+      sorted,
       message: `게임 종료! ${winner.nickname}님의 최종 승리!`,
-      ranking: sorted.map((p) => {
-        const before = beforeStateById.get(p.id) || {
-          beforeCoins: Number(p.coins) || 0,
-          beforeExperience: Number(p.experience) || 0,
-          beforeLevel: Number(p.level) || 1,
-        };
-
-        const rankIndex = sorted.findIndex((sp) => sp.id === p.id);
-        const earnedCoins =
-          rankIndex >= 0 ? RANK_REWARD_COINS[rankIndex] || 0 : 0;
-        const earnedExperience = p.id === winner.id ? WIN_REWARD_XP : 0;
-        const finalCoins = Number(p.coins) || 0;
-        const finalExperience = Number(p.experience) || 0;
-        const finalLevel =
-          Number(p.level) || getLevelFromExperience(finalExperience);
-        const leveledUp = finalLevel > (Number(before.beforeLevel) || 1);
-
-        return {
-          id: p.id,
-          nickname: p.nickname,
-          cards: p.myDeck?.length || 0,
-          currentCoins: before.beforeCoins,
-          earnedCoins,
-          finalCoins,
-          currentLevel: before.beforeLevel,
-          finalLevel,
-          currentExperience: before.beforeExperience,
-          earnedExperience,
-          finalExperience,
-          leveledUp,
-        };
-      }),
-      winner: winner.nickname,
-      winnerId: winner.id,
-      rewardCoins: RANK_REWARD_COINS[0],
-      rewardCoinsByRank: {
-        1: RANK_REWARD_COINS[0] || 0,
-        2: RANK_REWARD_COINS[1] || 0,
-        3: RANK_REWARD_COINS[2] || 0,
-      },
-      winnerCoins: winner.coins,
-      rewardExperience: WIN_REWARD_XP,
-      winnerExperience: winner.experience,
-      winnerLevel: winner.level,
     });
     return true;
   }
@@ -2882,6 +2917,7 @@ io.on("connection", (socket) => {
     // 💡 [추가] isPublic 플래그 설정
     const isPublic = data.isPublic === true;
     const itemMode = data.itemMode !== false;
+    const gameMode = data.gameMode === "timeattack" ? "timeattack" : "allin";
     const roomName = data.roomName || `${socket.nickname}의 방`;
     const password = isPublic ? null : data.password || null;
 
@@ -2896,6 +2932,10 @@ io.on("connection", (socket) => {
       roomName: roomName,
       password: password, // 💡 비밀번호 저장 (비공개 방만)
       itemMode: itemMode,
+      gameMode: gameMode,
+      timeAttackDurationMs: TIME_ATTACK_DURATION_MS,
+      timeAttackTimer: null,
+      timeAttackEndsAt: null,
       blockEffects: [], // 현재 방에 적용된 블록(먹물) 이펙트 목록
       aiCounter: 0,
       aiTimers: { turn: null, bells: {} },
@@ -2932,6 +2972,7 @@ io.on("connection", (socket) => {
       isPublic: isPublic,
       roomName: rooms[roomId].roomName,
       itemMode: rooms[roomId].itemMode,
+      gameMode: rooms[roomId].gameMode,
     });
 
     // 방 생성 시 목록 브로드캐스트 (공개/비공개 모두)
@@ -3714,6 +3755,7 @@ io.on("connection", (socket) => {
     deck.sort(() => Math.random() - 0.5);
 
     room.isGameStarted = true;
+    clearTimeAttackTimer(room);
     const hostIndex = room.players.findIndex((p) => p.id === room.host);
     room.turnIndex = hostIndex >= 0 ? hostIndex : 0;
     // 1 => forward, -1 => reverse
@@ -4082,6 +4124,13 @@ io.on("connection", (socket) => {
         level: p.level,
       })),
     );
+    if (room.gameMode === "timeattack") {
+      room.timeAttackEndsAt = Date.now() + room.timeAttackDurationMs;
+      room.timeAttackTimer = setTimeout(() => {
+        handleTimeAttackExpiry(room, io);
+      }, room.timeAttackDurationMs);
+    }
+
     io.to(room.roomId).emit("gameStart", {
       roomId: room.roomId,
       players: room.players,
@@ -4090,6 +4139,8 @@ io.on("connection", (socket) => {
       maxPlayers: room.maxPlayers,
       nextTurnId: room.players[room.turnIndex].id,
       itemMode: room.itemMode,
+      gameMode: room.gameMode,
+      timeAttackEndsAt: room.timeAttackEndsAt,
     });
 
     emitServerDebug(room, "gameStart.emitted", {

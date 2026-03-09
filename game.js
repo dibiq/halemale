@@ -5424,7 +5424,8 @@ class LobbyScene extends Phaser.Scene {
           const passwordInputY = contentY * -0.18;
           const publicToggleY = height * 0.035;
           const itemToggleY = height * 0.095;
-          const createBtnY = height * 0.155;
+          const modeToggleY = height * 0.145;
+          const createBtnY = height * 0.19;
 
           // 방 이름 입력창 (DOM 절대 좌표)
           const roomNameInput = this.add
@@ -5452,6 +5453,7 @@ class LobbyScene extends Phaser.Scene {
           // 공개/비공개 각각 버튼
           let isPublic = true;
           let isItemMode = true;
+          let isTimeAttack = false;
           const btnGapX = width * 0.13;
 
           const publicBtnImg = this.add
@@ -5588,6 +5590,57 @@ class LobbyScene extends Phaser.Scene {
             this.showToast("게임에서 아이템을 사용할 수 없습니다", "#e74c3c");
           });
 
+          const timeBtnImg = this.add
+            .image(-btnGapX, modeToggleY, "uibtn")
+            .setDisplaySize(width * 0.22, height * 0.05)
+            .setTint(0x7f8c8d)
+            .setInteractive({ useHandCursor: true });
+          const timeBtnText = this.add
+            .text(-btnGapX, modeToggleY, "⏱️ 타임어택", {
+              fontFamily: "Jua",
+              fontSize: `${width * 0.03}px`,
+              color: "#ffffff",
+              fontWeight: "bold",
+            })
+            .setOrigin(0.5);
+
+          const allInBtnImg = this.add
+            .image(btnGapX, modeToggleY, "uibtn")
+            .setDisplaySize(width * 0.22, height * 0.05)
+            .setTint(0x2ecc71)
+            .setInteractive({ useHandCursor: true });
+          const allInBtnText = this.add
+            .text(btnGapX, modeToggleY, "🎴 올인", {
+              fontFamily: "Jua",
+              fontSize: `${width * 0.03}px`,
+              color: "#ffffff",
+              fontWeight: "bold",
+            })
+            .setOrigin(0.5);
+
+          const updateModeToggle = (useTimeAttack) => {
+            isTimeAttack = useTimeAttack;
+            timeBtnImg.setTint(useTimeAttack ? 0x3498db : 0x7f8c8d);
+            allInBtnImg.setTint(useTimeAttack ? 0x7f8c8d : 0x2ecc71);
+          };
+
+          timeBtnImg.on("pointerdown", () => {
+            this.sound.play("btn", { volume: 0.1 });
+            updateModeToggle(true);
+          });
+          timeBtnText.on("pointerdown", () => {
+            this.sound.play("btn", { volume: 0.1 });
+            updateModeToggle(true);
+          });
+          allInBtnImg.on("pointerdown", () => {
+            this.sound.play("btn", { volume: 0.1 });
+            updateModeToggle(false);
+          });
+          allInBtnText.on("pointerdown", () => {
+            this.sound.play("btn", { volume: 0.1 });
+            updateModeToggle(false);
+          });
+
           // 방 만들기 버튼
           const createBtnImg = this.add
             .image(0, createBtnY, "uibtn")
@@ -5630,6 +5683,7 @@ class LobbyScene extends Phaser.Scene {
                   maxPlayers: 4,
                   isPublic: isPublic,
                   itemMode: isItemMode,
+                  gameMode: isTimeAttack ? "timeattack" : "allin",
                   roomName: roomName,
                   password: password,
                 });
@@ -5648,6 +5702,10 @@ class LobbyScene extends Phaser.Scene {
             itemBtnText,
             noItemBtnImg,
             noItemBtnText,
+            timeBtnImg,
+            timeBtnText,
+            allInBtnImg,
+            allInBtnText,
             pwInput,
             createBtnImg,
             createBtnText,
