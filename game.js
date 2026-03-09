@@ -8119,6 +8119,8 @@ class GameScene extends Phaser.Scene {
     this.blockEffects = []; // [{ id, issuer, remainingTurns }]
     this.tutorialState = null;
     this.questState = null;
+    this.timeAttackText = null;
+    this.timeAttackTimer = null;
   }
 
   async create() {
@@ -8131,6 +8133,11 @@ class GameScene extends Phaser.Scene {
     if (this.events && typeof this.events.once === "function") {
       this.events.once("shutdown", () => {
         this.teardownQuestUI();
+        if (this.timeAttackTimer) {
+          this.timeAttackTimer.remove();
+          this.timeAttackTimer = null;
+        }
+        this.timeAttackText = null;
       });
     }
 
@@ -8139,6 +8146,14 @@ class GameScene extends Phaser.Scene {
 
     // make sure player2 frames are prepared early
     ensurePlayer2Frames(this);
+
+    this.timeAttackTimer = this.time.addEvent({
+      delay: 500,
+      loop: true,
+      callback: () => {
+        this.updateTimeAttackDisplay();
+      },
+    });
 
     const difficultyMultipliers = {
       easy: 1.35,
@@ -9433,15 +9448,34 @@ class GameScene extends Phaser.Scene {
       }
     }
 
-    if (this.roundData && this.roundData.gameMode === "timeattack") {
-      const endsAt = Number(this.roundData.timeAttackEndsAt) || 0;
-      const remainingMs = Math.max(0, endsAt - Date.now());
-      const remainingSec = Math.floor(remainingMs / 1000);
-      const mins = Math.floor(remainingSec / 60);
-      const secs = remainingSec % 60;
-      const timeLabel = `${mins}:${String(secs).padStart(2, "0")}`;
+    this.updateTimeAttackDisplay(cx, cy, width);
+  }
 
-      const timeTxt = this.add
+  updateTimeAttackDisplay(cxOverride, cyOverride, widthOverride) {
+    if (!this.roundData || this.roundData.gameMode !== "timeattack") {
+      if (this.timeAttackText && this.timeAttackText.active) {
+        this.timeAttackText.destroy();
+        this.timeAttackText = null;
+      }
+      return;
+    }
+
+    const endsAt = Number(this.roundData.timeAttackEndsAt) || 0;
+    const remainingMs = Math.max(0, endsAt - Date.now());
+    const remainingSec = Math.floor(remainingMs / 1000);
+    const mins = Math.floor(remainingSec / 60);
+    const secs = remainingSec % 60;
+    const timeLabel = `${mins}:${String(secs).padStart(2, "0")}`;
+
+    const width = widthOverride || this.cameras.main.width;
+    const cx = typeof cxOverride === "number" ? cxOverride : width * 0.5;
+    const cy =
+      typeof cyOverride === "number"
+        ? cyOverride
+        : this.cameras.main.height * 0.465;
+
+    if (!this.timeAttackText || !this.timeAttackText.active) {
+      this.timeAttackText = this.add
         .text(cx, cy + width * 0.035, `타임어택 ${timeLabel}`, {
           fontFamily: "Jua",
           fontSize: `${width * 0.04}px`,
@@ -9452,7 +9486,12 @@ class GameScene extends Phaser.Scene {
         })
         .setOrigin(0.5)
         .setDepth(200);
-      this.playerTableGroup.add(timeTxt);
+      if (this.playerTableGroup) {
+        this.playerTableGroup.add(this.timeAttackText);
+      }
+    } else {
+      this.timeAttackText.setText(`타임어택 ${timeLabel}`);
+      this.timeAttackText.setPosition(cx, cy + width * 0.035);
     }
   }
 

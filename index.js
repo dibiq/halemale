@@ -670,7 +670,7 @@ function getFruitTotals(players) {
   return totals;
 }
 
-const TIME_ATTACK_DURATION_MS = 5 * 60 * 1000;
+const TIME_ATTACK_DURATION_MS = 1 * 60 * 1000;
 
 function clearTimeAttackTimer(room) {
   if (!room) return;
