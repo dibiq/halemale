@@ -8368,6 +8368,8 @@ class GameScene extends Phaser.Scene {
     socket.off("gameStart").on("gameStart", (data) => {
       console.log("Gamestart");
 
+      this.resultGameoverPlayed = false;
+
       // 1. 결과창이 떠 있다면 위로 치우며 제거
       if (this.resultContainer) {
         this.tweens.add({
@@ -8530,6 +8532,9 @@ class GameScene extends Phaser.Scene {
         } else {
           if (!player.openStack) player.openStack = [];
           // 애니메이션 전에는 아직 넣지 않습니다 (playCardFlipAnimation 내부에서 처리)
+        }
+        if (data?.card?.type === THUNDER_CARD_TYPE) {
+          player.openCard = data.card;
         }
         player.cards = data.remainingCount ?? player.cards;
 
@@ -11427,7 +11432,11 @@ class GameScene extends Phaser.Scene {
     if (!this.roundData || !this.roundData.players) return;
 
     if (this.isSpecialCardPauseActive && this.isSpecialCardPauseActive()) {
-      return;
+      const hasThunder =
+        typeof this.hasThunderOnTable === "function"
+          ? this.hasThunderOnTable()
+          : false;
+      if (!hasThunder) return;
     }
 
     // 💡 1. 게임 시작 연출 중이면 무시
@@ -14869,7 +14878,7 @@ class GameScene extends Phaser.Scene {
     });
   }
 
-  showResultOverlay(players, isUpdate = false) {
+  showResultOverlay(players, isUpdate = false, resultData = null) {
     // 기존 게임 로그 데이터 및 텍스트 객체 제거
     if (this.logTexts) {
       this.logTexts.forEach((txt) => txt.destroy());
@@ -15006,7 +15015,7 @@ class GameScene extends Phaser.Scene {
         "player_1_frame_1";
       const avatar = this.add
         .sprite(pos.x, pos.y, resultAvatarTexture)
-        .setDisplaySize(width * 0.23, width * 0.23)
+        .setDisplaySize(width * 0.345, width * 0.345)
         .setOrigin(0.5, 1);
 
       this.applyAvatarAnimation(avatar, avatarBaseKey);
@@ -15071,6 +15080,10 @@ class GameScene extends Phaser.Scene {
         if (!targetPos || coinCount <= 0) {
           return;
         }
+        const expReward =
+          Number(rankedPlayers[rankIndex]?.earnedExperience) ||
+          Number(players?.[rankIndex]?.earnedExperience) ||
+          0;
 
         const targetX = targetPos.x;
         const targetY = targetPos.y - width * 0.14;
@@ -15106,6 +15119,9 @@ class GameScene extends Phaser.Scene {
             didShowRewardText = true;
             this.time.delayedCall(flyDelay, () => {
               playRewardTextAnimation(rankIndex, coinCount);
+              if (expReward > 0) {
+                playExpTextAnimation(rankIndex, expReward);
+              }
             });
           }
 
@@ -15183,6 +15199,59 @@ class GameScene extends Phaser.Scene {
             onComplete: () => {
               if (rewardText && rewardText.active) {
                 rewardText.destroy();
+              }
+            },
+          });
+        },
+      });
+    };
+
+    const playExpTextAnimation = (rankIndex, rewardExp) => {
+      if (isUpdate || rewardExp <= 0) {
+        return;
+      }
+
+      const pos = podiumPositions[rankIndex];
+      if (!pos) {
+        return;
+      }
+
+      const expText = this.add
+        .text(pos.x, pos.y - width * 0.14, `EXP + ${rewardExp}`, {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.045}px`,
+          color: "#7dd3fc",
+          fontWeight: "bold",
+          stroke: "#0f172a",
+          strokeThickness: 5,
+        })
+        .setOrigin(0.5)
+        .setAlpha(0)
+        .setScale(0.6);
+
+      container.add(expText);
+
+      this.tweens.add({
+        targets: expText,
+        alpha: 1,
+        scale: 1,
+        duration: 220,
+        ease: "Back.easeOut",
+        onComplete: () => {
+          if (!expText || !expText.active) {
+            return;
+          }
+
+          this.tweens.add({
+            targets: expText,
+            y: expText.y - width * 0.07,
+            alpha: 0,
+            scale: 1.05,
+            duration: 720,
+            ease: "Sine.easeOut",
+            onComplete: () => {
+              if (expText && expText.active) {
+                expText.destroy();
               }
             },
           });

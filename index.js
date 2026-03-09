@@ -2003,6 +2003,12 @@ io.on("connection", (socket) => {
         return;
       }
 
+      if (room.itemMode === false) {
+        if (typeof cb === "function")
+          cb({ success: false, message: "item_mode_disabled" });
+        return;
+      }
+
       // 최신 specialCards를 소켓에서 다시 가져와서 방 스냅샷을 갱신합니다.
       refreshRoomSpecialCards(room);
       // ensure the current socket also has up-to-date counts (in case they changed elsewhere)
@@ -4505,108 +4511,113 @@ io.on("connection", (socket) => {
       );
 
       // 자동 자물쇠 처리: 패널티 적용 전에 해당 플레이어 소켓에 lock(id=4)이 있으면 소모하고 패널티를 건너뜁니다.
-      try {
-        // ensure our room snapshot has up-to-date specialCards values by
-        // refreshing from live sockets (same helper used elsewhere)
-        const refreshRoomSpecialCards = (room) => {
-          if (!room || !Array.isArray(room.players)) return;
-          room.players.forEach((p) => {
-            if (!p || !p.id) return;
-            const s = io.sockets.sockets.get(p.id);
-            const sockCards = s && s.specialCards ? s.specialCards : {};
-            // console.log(`[debug] refreshRoomSpecialCards player=${p.nickname} id=${p.id} socketCards=${JSON.stringify(sockCards)}`);
-            if (s && s.specialCards) {
-              p.specialCards = { ...s.specialCards };
-            }
-          });
-        };
-        refreshRoomSpecialCards(room);
-
-        const penalizedSocket = io.sockets.sockets.get(sock.id) || sock;
-        console.log(
-          "[auto-lock check] socketId=",
-          sock.id,
-          "specialCards=",
-          penalizedSocket.specialCards,
-        );
-        if (
-          penalizedSocket &&
-          penalizedSocket.specialCards &&
-          Number(penalizedSocket.specialCards[4] || 0) > 0
-        ) {
-          // 차감
-          penalizedSocket.specialCards[4] =
-            Number(penalizedSocket.specialCards[4] || 0) - 1;
-          if (penalizedSocket.specialCards[4] <= 0)
-            delete penalizedSocket.specialCards[4];
-
-          // DB 동기화 (비동기)
-          const mergedItems = {
-            items: Array.isArray(penalizedSocket.items)
-              ? penalizedSocket.items
-              : [],
-            specialCards: penalizedSocket.specialCards || {},
+      if (room.itemMode !== false) {
+        try {
+          // ensure our room snapshot has up-to-date specialCards values by
+          // refreshing from live sockets (same helper used elsewhere)
+          const refreshRoomSpecialCards = (room) => {
+            if (!room || !Array.isArray(room.players)) return;
+            room.players.forEach((p) => {
+              if (!p || !p.id) return;
+              const s = io.sockets.sockets.get(p.id);
+              const sockCards = s && s.specialCards ? s.specialCards : {};
+              // console.log(`[debug] refreshRoomSpecialCards player=${p.nickname} id=${p.id} socketCards=${JSON.stringify(sockCards)}`);
+              if (s && s.specialCards) {
+                p.specialCards = { ...s.specialCards };
+              }
+            });
           };
-          savePlayer(
-            penalizedSocket.nickname,
-            penalizedSocket.level || 1,
-            penalizedSocket.coins || 0,
-            mergedItems,
-            penalizedSocket.experience || 0,
-            penalizedSocket.ownedCharacters || ["player_1"],
-            penalizedSocket.currentCharacter ||
-              penalizedSocket.avatarKey ||
-              "player_1",
-          ).catch((e) => console.warn("savePlayer error on auto-lock", e));
+          refreshRoomSpecialCards(room);
 
-          // 해당 플레이어에게 프로필 업데이트 전송
-          try {
-            penalizedSocket.emit("myProfile", {
-              nickname: penalizedSocket.nickname,
-              level: Number(penalizedSocket.level) || 1,
-              coins: Number(penalizedSocket.coins) || 0,
+          const penalizedSocket = io.sockets.sockets.get(sock.id) || sock;
+          console.log(
+            "[auto-lock check] socketId=",
+            sock.id,
+            "specialCards=",
+            penalizedSocket.specialCards,
+          );
+          if (
+            penalizedSocket &&
+            penalizedSocket.specialCards &&
+            Number(penalizedSocket.specialCards[4] || 0) > 0
+          ) {
+            // 차감
+            penalizedSocket.specialCards[4] =
+              Number(penalizedSocket.specialCards[4] || 0) - 1;
+            if (penalizedSocket.specialCards[4] <= 0)
+              delete penalizedSocket.specialCards[4];
+
+            // DB 동기화 (비동기)
+            const mergedItems = {
               items: Array.isArray(penalizedSocket.items)
                 ? penalizedSocket.items
                 : [],
-              experience: Number(penalizedSocket.experience) || 0,
-              avatarKey:
-                penalizedSocket.currentCharacter ||
+              specialCards: penalizedSocket.specialCards || {},
+            };
+            savePlayer(
+              penalizedSocket.nickname,
+              penalizedSocket.level || 1,
+              penalizedSocket.coins || 0,
+              mergedItems,
+              penalizedSocket.experience || 0,
+              penalizedSocket.ownedCharacters || ["player_1"],
+              penalizedSocket.currentCharacter ||
                 penalizedSocket.avatarKey ||
                 "player_1",
-              specialCards: penalizedSocket.specialCards || {},
-              owned_characters: penalizedSocket.ownedCharacters || ["player_1"],
-              current_character: penalizedSocket.currentCharacter || "player_1",
+            ).catch((e) => console.warn("savePlayer error on auto-lock", e));
+
+            // 해당 플레이어에게 프로필 업데이트 전송
+            try {
+              penalizedSocket.emit("myProfile", {
+                nickname: penalizedSocket.nickname,
+                level: Number(penalizedSocket.level) || 1,
+                coins: Number(penalizedSocket.coins) || 0,
+                items: Array.isArray(penalizedSocket.items)
+                  ? penalizedSocket.items
+                  : [],
+                experience: Number(penalizedSocket.experience) || 0,
+                avatarKey:
+                  penalizedSocket.currentCharacter ||
+                  penalizedSocket.avatarKey ||
+                  "player_1",
+                specialCards: penalizedSocket.specialCards || {},
+                owned_characters: penalizedSocket.ownedCharacters || [
+                  "player_1",
+                ],
+                current_character:
+                  penalizedSocket.currentCharacter || "player_1",
+              });
+            } catch (e) {
+              console.warn("emit myProfile error on auto-lock", e);
+            }
+
+            // 룸에 패널티 면제 알림 전송 (recipients 빈 배열로 전달)
+            io.to(room.roomId).emit("bellResult", {
+              success: false,
+              penaltyId: null,
+              message: `${penalizedSocket.nickname}님이 자물쇠로 패널티를 면제했습니다.`,
+              players: room.players,
+              recipients: [],
+              penaltyPerRecipient: 0,
+              autoLockUsedBy: penalizedSocket.id,
             });
-          } catch (e) {
-            console.warn("emit myProfile error on auto-lock", e);
+
+            // also broadcast a specialUsed event so clients can show lock effect
+            io.to(room.roomId).emit("specialUsed", {
+              cardId: 4,
+              by: penalizedSocket.id,
+              players: room.players,
+              recipients: [],
+              shielded: [],
+              message: `${penalizedSocket.nickname}님이 자물쇠를 사용했습니다!`,
+            });
+
+            processSkipTurn(room, io);
+            return;
           }
-
-          // 룸에 패널티 면제 알림 전송 (recipients 빈 배열로 전달)
-          io.to(room.roomId).emit("bellResult", {
-            success: false,
-            penaltyId: null,
-            message: `${penalizedSocket.nickname}님이 자물쇠로 패널티를 면제했습니다.`,
-            players: room.players,
-            recipients: [],
-            penaltyPerRecipient: 0,
-            autoLockUsedBy: penalizedSocket.id,
-          });
-
-          // also broadcast a specialUsed event so clients can show lock effect
-          io.to(room.roomId).emit("specialUsed", {
-            cardId: 4,
-            by: penalizedSocket.id,
-            players: room.players,
-            recipients: [],
-            shielded: [],
-            message: `${penalizedSocket.nickname}님이 자물쇠를 사용했습니다!`,
-          });
-
-          processSkipTurn(room, io);
-          return;
+        } catch (e) {
+          console.warn("auto-lock check error", e);
         }
-      } catch (e) {
-        console.warn("auto-lock check error", e);
       }
 
       const recipients = []; // 💡 카드를 실제 받은 사람 ID를 담을 배열
