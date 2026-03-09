@@ -9728,9 +9728,24 @@ class GameScene extends Phaser.Scene {
       (p) => p.openStack === openStack,
     );
 
+    const activeBlockIds = Array.isArray(this.blockEffects)
+      ? new Set(this.blockEffects.map((e) => e.id))
+      : new Set();
+    const shouldStripBlockcards =
+      (player && player.isEliminated) || activeBlockIds.size === 0;
+    const cleanedStack = openStack.filter((card) => {
+      if (!(card && card.type === "blockcard")) return true;
+      if (shouldStripBlockcards) return false;
+      return card.effectId && activeBlockIds.has(card.effectId);
+    });
+    if (player && cleanedStack.length !== openStack.length) {
+      player.openStack = cleanedStack;
+    }
+    const stackToDraw = player ? player.openStack : cleanedStack;
+
     // 애니메이션 중에는 최상단(현재 제출 중인) 일반 카드는 표시하지 않되,
     // 항상 blockcard는 표시하도록 처리합니다.
-    const fullStack = openStack;
+    const fullStack = stackToDraw;
     const cardsToDraw =
       player && player.isFlipping ? fullStack.slice(0, -1) : fullStack;
 
@@ -13242,22 +13257,29 @@ class GameScene extends Phaser.Scene {
       onComplete: () => flash.destroy(),
     });
 
-    this.cameras.main.shake(300, 0.012);
+    this.cameras.main.shake(420, 0.018);
 
-    const stampRadius = width * 0.18;
+    const stampRadius = width * 0.2;
     const stamp = this.add
       .circle(centerX, centerY, stampRadius, 0xb91c1c, 0.22)
       .setDepth(10000)
       .setAlpha(0)
-      .setScale(0.2);
-    stamp.setStrokeStyle(10, 0xef4444, 0.65);
+      .setScale(0.12);
+    stamp.setStrokeStyle(12, 0xef4444, 0.7);
 
     const stampRing = this.add
       .circle(centerX, centerY, stampRadius * 0.72, 0x000000, 0)
       .setDepth(10000)
       .setAlpha(0)
-      .setScale(0.2);
-    stampRing.setStrokeStyle(6, 0xfca5a5, 0.75);
+      .setScale(0.12);
+    stampRing.setStrokeStyle(7, 0xfca5a5, 0.8);
+
+    const shockwave = this.add
+      .circle(centerX, centerY, stampRadius * 0.4, 0xffffff, 0)
+      .setDepth(9999)
+      .setAlpha(0.6)
+      .setScale(0.6);
+    shockwave.setStrokeStyle(6, 0xfbbf24, 0.9);
 
     const text = this.add
       .text(centerX, centerY, "탈락", {
@@ -13283,14 +13305,22 @@ class GameScene extends Phaser.Scene {
     this.tweens.add({
       targets: [stamp, stampRing, text],
       alpha: 1,
-      scale: (target) => (target === text ? 1.25 : 1.05),
-      duration: 260,
+      scale: (target) => (target === text ? 1.45 : 1.12),
+      duration: 220,
       ease: "Back.out",
       onComplete: () => {
         this.tweens.add({
+          targets: shockwave,
+          alpha: 0,
+          scale: 2.1,
+          duration: 260,
+          ease: "Sine.out",
+          onComplete: () => shockwave.destroy(),
+        });
+        this.tweens.add({
           targets: [stamp, stampRing, text],
-          angle: { from: -2.5, to: 2.5 },
-          duration: 360,
+          angle: { from: -3.5, to: 3.5 },
+          duration: 420,
           ease: "Sine.inOut",
           yoyo: true,
           repeat: 2,
@@ -13300,8 +13330,8 @@ class GameScene extends Phaser.Scene {
           y: centerY - height * 0.1,
           alpha: 0,
           scale: (target) => (target === text ? 0.95 : 0.9),
-          duration: 900,
-          delay: 700,
+          duration: 1000,
+          delay: 760,
           ease: "Sine.in",
           onComplete: () => {
             stamp.destroy();
