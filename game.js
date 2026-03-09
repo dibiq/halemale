@@ -2228,6 +2228,7 @@ class LobbyScene extends Phaser.Scene {
         roomName: data.roomName,
         roomNumber: this.currentRoomNumber,
         itemMode: data.itemMode,
+        gameMode: data.gameMode,
       });
 
       if (typeof this.currentRoomNumber !== "number" && data?.roomId) {
@@ -3125,6 +3126,9 @@ class LobbyScene extends Phaser.Scene {
     this.currentRoomName = data.roomName || this.currentRoomName || "대기실";
     if (typeof data.itemMode === "boolean") {
       this.currentItemMode = data.itemMode;
+    }
+    if (typeof data.gameMode === "string") {
+      this.currentGameMode = data.gameMode;
     }
     if (typeof data.roomNumber === "number") {
       this.currentRoomNumber = data.roomNumber;
@@ -6281,14 +6285,21 @@ class LobbyScene extends Phaser.Scene {
       .setDepth(0);
     this.lobbyUIContainer.add(bg);
 
+    const itemLabel = this.currentItemMode === false ? "노템전" : "아이템전";
+    const modeLabel =
+      this.currentGameMode === "timeattack" ? "타임어택" : "올인";
+    const modePrefix = `(${itemLabel}) (${modeLabel}) `;
+    const roomDisplayName = `${modePrefix}${roomName}`;
     const roomHeaderText =
-      typeof roomNumber === "number" ? `${roomNumber}.${roomName}` : roomName;
+      typeof roomNumber === "number"
+        ? `${roomNumber}.${roomDisplayName}`
+        : roomDisplayName;
 
     // 입장 코드 (방 제목 표시)
     const codeText = this.add
       .text(centerX, height * 0.075, roomHeaderText, {
         fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.065}px`,
+        fontSize: `${width * 0.045}px`,
         fill: "#ffff00",
         fontWeight: "bold",
         stroke: "#000000",
@@ -8067,6 +8078,8 @@ class GameScene extends Phaser.Scene {
       isGameStarted: false,
       aiDifficulty: data.aiDifficulty || "normal",
       itemMode: data.itemMode !== false,
+      gameMode: data.gameMode || "allin",
+      timeAttackEndsAt: data.timeAttackEndsAt || null,
     };
 
     this.isTutorialMode = !!data.isTutorialMode;
@@ -8381,6 +8394,12 @@ class GameScene extends Phaser.Scene {
       this.roundData.hostId = data.hostId; // 방장 정보 동기화
       if (typeof data.itemMode === "boolean") {
         this.roundData.itemMode = data.itemMode;
+      }
+      if (typeof data.gameMode === "string") {
+        this.roundData.gameMode = data.gameMode;
+      }
+      if (typeof data.timeAttackEndsAt === "number") {
+        this.roundData.timeAttackEndsAt = data.timeAttackEndsAt;
       }
       this.roundData.isGameStarted = true;
       this.isGameReady = true;
@@ -9322,10 +9341,10 @@ class GameScene extends Phaser.Scene {
       return sum + (p.openStack ? p.openStack.length : 0);
     }, 0);
 
-    if (totalStackCount > 0) {
-      const cx = width * 0.5;
-      const cy = height * 0.465;
+    const cx = width * 0.5;
+    const cy = height * 0.465;
 
+    if (totalStackCount > 0) {
       // 긴장감 단계: 10장 이상 → 주황, 20장 이상 → 빨강
       const tension = totalStackCount >= 20 ? 2 : totalStackCount >= 10 ? 1 : 0;
       const textColor =
@@ -9412,6 +9431,28 @@ class GameScene extends Phaser.Scene {
           ease: "Sine.easeInOut",
         });
       }
+    }
+
+    if (this.roundData && this.roundData.gameMode === "timeattack") {
+      const endsAt = Number(this.roundData.timeAttackEndsAt) || 0;
+      const remainingMs = Math.max(0, endsAt - Date.now());
+      const remainingSec = Math.floor(remainingMs / 1000);
+      const mins = Math.floor(remainingSec / 60);
+      const secs = remainingSec % 60;
+      const timeLabel = `${mins}:${String(secs).padStart(2, "0")}`;
+
+      const timeTxt = this.add
+        .text(cx, cy + width * 0.035, `타임어택 ${timeLabel}`, {
+          fontFamily: "Jua",
+          fontSize: `${width * 0.04}px`,
+          color: "#ffd166",
+          fontWeight: "bold",
+          stroke: "#000000",
+          strokeThickness: 4,
+        })
+        .setOrigin(0.5)
+        .setDepth(200);
+      this.playerTableGroup.add(timeTxt);
     }
   }
 

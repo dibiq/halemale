@@ -1481,6 +1481,8 @@ io.on("connection", (socket) => {
           hostId: room.host,
           max: room.maxPlayers,
           roomName: room.roomName,
+          itemMode: room.itemMode,
+          gameMode: room.gameMode,
           newPlayerNickname: player.nickname,
           isRejoin: true,
         });
@@ -3094,6 +3096,7 @@ io.on("connection", (socket) => {
       max: room.maxPlayers,
       roomName: room.roomName,
       itemMode: room.itemMode,
+      gameMode: room.gameMode,
       newPlayerNickname: nickname,
       isRejoin,
     });
@@ -3220,6 +3223,7 @@ io.on("connection", (socket) => {
       max: room.maxPlayers,
       roomName: room.roomName,
       itemMode: room.itemMode,
+      gameMode: room.gameMode,
       newPlayerNickname: nickname,
       isRejoin,
     });
@@ -3233,6 +3237,7 @@ io.on("connection", (socket) => {
       roomName: room.roomName,
       isGameStarted: room.isGameStarted || false,
       itemMode: room.itemMode,
+      gameMode: room.gameMode,
     });
   });
 
@@ -3266,6 +3271,7 @@ io.on("connection", (socket) => {
       max: room.maxPlayers,
       roomName: room.roomName,
       itemMode: room.itemMode,
+      gameMode: room.gameMode,
       newPlayerNickname: aiPlayer.nickname,
       isRejoin: false,
     });
@@ -3541,6 +3547,7 @@ io.on("connection", (socket) => {
       hostId: room.host,
       roomName: room.roomName,
       itemMode: room.itemMode,
+      gameMode: room.gameMode,
     });
 
     socket.emit("joinRoomSuccess", {
@@ -3549,6 +3556,7 @@ io.on("connection", (socket) => {
       roomName: room.roomName,
       isGameStarted: room.isGameStarted,
       itemMode: room.itemMode,
+      gameMode: room.gameMode,
     });
   });
 
