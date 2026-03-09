@@ -5252,10 +5252,11 @@ class LobbyScene extends Phaser.Scene {
 
               const roomNo = i + 1;
               const publicTag = room.isPublic === false ? "🔒" : "🌐";
+              const modeTag = room.gameMode === "timeattack" ? "⏱️" : "🎴";
               const playingTag = isPlaying ? " 🎮플레이중" : "";
               const roomTitle = room.roomName || `${room.hostNickname}의 방`;
               const itemTag = room.itemMode === false ? "(노템) " : "(아이템) ";
-              const roomInfo = `${roomNo}. ${publicTag} ${itemTag}${roomTitle}${playingTag}  (${room.playerCount}/${room.maxPlayers})`;
+              const roomInfo = `${roomNo}. ${publicTag} ${modeTag} ${itemTag}${roomTitle}${playingTag}  (${room.playerCount}/${room.maxPlayers})`;
               const roomText = this.add
                 .text(-listWidth * 0.4, itemY, roomInfo, {
                   fontFamily: "Jua",
@@ -5420,12 +5421,12 @@ class LobbyScene extends Phaser.Scene {
         };
 
         const showRoomCreateForm = (container) => {
-          const roomNameInputY = contentY * -0.32;
-          const passwordInputY = contentY * -0.18;
-          const publicToggleY = height * 0.035;
-          const itemToggleY = height * 0.095;
-          const modeToggleY = height * 0.145;
-          const createBtnY = height * 0.19;
+          const roomNameInputY = contentY * -0.36;
+          const passwordInputY = contentY * -0.22;
+          const publicToggleY = height * 0.02;
+          const itemToggleY = height * 0.07;
+          const modeToggleY = height * 0.115;
+          const createBtnY = height * 0.155;
 
           // 방 이름 입력창 (DOM 절대 좌표)
           const roomNameInput = this.add

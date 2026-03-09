@@ -580,6 +580,7 @@ function getRoomListPayload() {
     isPublic: room.isPublic,
     isGameStarted: room.isGameStarted || false,
     itemMode: room.itemMode !== false,
+    gameMode: room.gameMode || "allin",
   }));
 }
 
