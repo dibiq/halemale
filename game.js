@@ -1041,7 +1041,7 @@ class LobbyScene extends Phaser.Scene {
 
       const amountText =
         this.dailyRewardAmount > 0 ? ` +${this.dailyRewardAmount}` : "";
-      this.dailyRewardBtnText.setText(`출석 보상${amountText}`);
+      this.dailyRewardBtnText.setText(`출석체크`);
 
       this.dailyRewardBtn.setVisible(true);
       this.updateDailyRewardCountdownText();
@@ -1050,8 +1050,7 @@ class LobbyScene extends Phaser.Scene {
         this.dailyRewardBtnBg.disableInteractive();
       }
 
-      const shouldPulse =
-        this.dailyRewardAvailable && !this.isDailyRewardClaimPending;
+      // disable any pulsing animation entirely
       if (this.dailyRewardBadge) {
         this.dailyRewardBadge.setVisible(this.dailyRewardAvailable);
       }
@@ -1075,19 +1074,8 @@ class LobbyScene extends Phaser.Scene {
         }
       }
 
-      if (shouldPulse) {
-        if (!this.dailyRewardPulseTween) {
-          this.dailyRewardPulseTween = this.tweens.add({
-            targets: [this.dailyRewardBtnBg],
-            scaleX: "*=1.05",
-            scaleY: "*=1.05",
-            yoyo: true,
-            duration: 500,
-            repeat: -1,
-            ease: "Sine.easeInOut",
-          });
-        }
-      } else if (this.dailyRewardPulseTween) {
+      // always stop pulse tween and reset scale to avoid growth
+      if (this.dailyRewardPulseTween) {
         this.dailyRewardPulseTween.stop();
         this.dailyRewardPulseTween = null;
         this.dailyRewardBtnBg.setScale(1);
@@ -1899,7 +1887,7 @@ class LobbyScene extends Phaser.Scene {
       .setTint(this.dailyRewardBtnTint)
       .setInteractive({ useHandCursor: true });
     const dailyRewardBtnText = this.add
-      .text(0, 0, "출석 보상", {
+      .text(0, 0, "출석체크", {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.032}px`,
         color: "#ffffff",
@@ -7229,6 +7217,7 @@ class LobbyScene extends Phaser.Scene {
     const weekStart = new Date(kstNow);
     weekStart.setDate(weekStart.getDate() - mondayOffset);
     weekStart.setHours(0, 0, 0, 0);
+    if (!this.claimedDailyDates) this.claimedDailyDates = new Set();
 
     const rows = [];
     const rowGap = height * 0.07;
@@ -7254,12 +7243,16 @@ class LobbyScene extends Phaser.Scene {
       let isToday = false;
       let isClaimed = false;
       let canClaim = false;
+      let rowDateStr = null;
       if (!isVideo) {
         const rowDate = new Date(weekStart);
         rowDate.setDate(weekStart.getDate() + i);
-        const rowDateStr = this.formatDateYmd(rowDate);
+        rowDateStr = this.formatDateYmd(rowDate);
         isToday = rowDateStr === todayStr;
-        isClaimed = lastCheckin && rowDateStr === lastCheckin;
+        // previously we only had lastCheckin; now track set
+        isClaimed =
+          this.claimedDailyDates.has(rowDateStr) ||
+          (lastCheckin && rowDateStr === lastCheckin);
         canClaim = isToday && this.dailyRewardAvailable;
       }
 
@@ -7351,7 +7344,6 @@ class LobbyScene extends Phaser.Scene {
           if (isVideo) {
             this.sound.play("btn", { volume: 0.1 });
             this.showToast("광고 보상은 준비 중입니다!", "#38bdf8");
-            closePopup();
             return;
           }
           if (this.isDailyRewardClaimPending) return;
@@ -7361,7 +7353,24 @@ class LobbyScene extends Phaser.Scene {
             this.updateDailyRewardButtonState();
           }
           socket.emit("claimDailyReward");
-          closePopup();
+          // immediately mark this day claimed and add stamp
+          if (rowDateStr) {
+            this.claimedDailyDates.add(rowDateStr);
+            const stamp = this.add
+              .text(rowX, rowY, "획득", {
+                fontFamily:
+                  typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
+                fontSize: `${width * 0.055}px`,
+                color: "#ffffff",
+                fontWeight: "bold",
+                stroke: "#000000",
+                strokeThickness: 4,
+              })
+              .setOrigin(0.5)
+              .setDepth(4004);
+            stamp.setRotation(-0.3);
+            rows.push(stamp);
+          }
         });
       }
 
