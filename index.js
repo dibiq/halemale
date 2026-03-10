@@ -1915,6 +1915,13 @@ io.on("connection", (socket) => {
       });
 
       console.log(`✅ ${resolvedNickname} 케릭터 착용 완료: ${characterKey}`);
+
+      // inform other players in the room about the change as well
+      if (socket.roomId && rooms[socket.roomId]) {
+        io.to(socket.roomId).emit("playerUpdated", {
+          players: rooms[socket.roomId].players,
+        });
+      }
     } catch (e) {
       console.error(`❌ ${resolvedNickname} 케릭터 착용 DB 저장 실패:`, e);
       socket.emit("equipCharacterError", "착용 처리 중 오류가 발생했습니다.");
@@ -2793,6 +2800,13 @@ io.on("connection", (socket) => {
       ownedCharacters,
       socket.currentCharacter,
     );
+
+    // notify everyone in the same room that one player's profile changed
+    if (socket.roomId && rooms[socket.roomId]) {
+      io.to(socket.roomId).emit("playerUpdated", {
+        players: rooms[socket.roomId].players,
+      });
+    }
   });
 
   const handleSyncPlayerInventory = async (data) => {

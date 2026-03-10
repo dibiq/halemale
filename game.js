@@ -2323,6 +2323,13 @@ class LobbyScene extends Phaser.Scene {
       this.showToast(`${nickname}님이 나갔습니다.`, "#e74c3c");
     });
 
+    // 새로운 이벤트: 플레이어 데이터가 변경되었을 때 (캐릭터 교체 등)
+    socket.off("playerUpdated").on("playerUpdated", (data) => {
+      if (this.isLeavingRoom) return;
+      // data should include at least `players` array similar to playerJoined
+      this.refreshLobbyUI(data);
+    });
+
     socket.off("joinRoomSuccess").on("joinRoomSuccess", (data) => {
       if (this.isLeavingRoom) return;
       if (typeof data?.roomNumber === "number") {
@@ -3732,6 +3739,7 @@ class LobbyScene extends Phaser.Scene {
   equipCharacter(avatarKey) {
     const idx = this.profileAvatarKeys.indexOf(avatarKey);
     if (idx >= 0) {
+      // update local avatar selection UI
       this.profileAvatarIndex = idx;
       this.updateProfileAvatarUI(avatarKey);
 
@@ -3744,6 +3752,28 @@ class LobbyScene extends Phaser.Scene {
         if (!this.myProfile.owned_characters.includes(avatarKey)) {
           this.myProfile.owned_characters.push(avatarKey);
         }
+      }
+
+      // if we're currently sitting in a room, update our local player record and
+      // re-render the waiting screen so the lobby avatar reflects the change
+      if (Array.isArray(this.currentPlayers)) {
+        const me = this.currentPlayers.find((p) => p.id === socket.id);
+        if (me) {
+          me.avatarKey = avatarKey;
+          me.currentCharacter = avatarKey;
+        }
+      }
+      if (this.scene.isActive("LobbyScene")) {
+        this.refreshLobbyUI({
+          roomId: this.currentRoomId,
+          players: this.currentPlayers,
+          max: this.currentMax,
+          hostId: this.hostId,
+          roomName: this.currentRoomName,
+          roomNumber: this.currentRoomNumber,
+          itemMode: this.currentItemMode,
+          gameMode: this.currentGameMode,
+        });
       }
 
       if (!this.isSingle && socket.connected) {
@@ -8028,7 +8058,33 @@ class GameScene extends Phaser.Scene {
         target.setDisplaySize(avatarDisplayWidth, avatarDisplayHeight);
       }
       if (animKey) {
-        target.play(animKey, true);
+        // start the looping animation and keep a reference so we can
+        // restart it if Phaser accidentally pauses it (scene sleep,
+        // visibility change, external stop call, etc).  this addresses
+        // intermittent freezes reported by players.
+        const playAnim = () => {
+          if (target && target.anims && animKey) {
+            target.play(animKey, true);
+          }
+        };
+        playAnim();
+
+        // when animation is paused for any reason, immediately resume
+        target.on("animationpause", () => {
+          // only restart if sprite still active
+          if (target && target.active) {
+            playAnim();
+          }
+        });
+        // if the scene is suspended/woken (e.g. visibility change), replay
+        if (scene && scene.events && typeof scene.events.on === "function") {
+          scene.events.on("resume", () => {
+            if (target && target.active) {
+              playAnim();
+            }
+          });
+        }
+
         const fixedBottomY = avatarBaseY + avatarDisplayHeight * 0.5;
         target.on("animationupdate", () => {
           if (avatarDisplayWidth > 0 && avatarDisplayHeight > 0) {
@@ -11513,7 +11569,14 @@ class GameScene extends Phaser.Scene {
     if (!this.isGameReady) return;
 
     if (this.isSpecialCardPauseActive && this.isSpecialCardPauseActive()) {
-      return;
+      // thunder card should override the pause and allow bell presses
+      const hasThunder =
+        typeof this.hasThunderOnTable === "function"
+          ? this.hasThunderOnTable()
+          : false;
+      if (!hasThunder) {
+        return;
+      }
     }
 
     if (this.isTutorialMode && this.tutorialState?.forbidBell) {
@@ -14917,58 +14980,77 @@ class GameScene extends Phaser.Scene {
 
     if (!players || players.length === 0) return;
 
-    if (!this.resultGameoverPlayed) {
-      this.resultGameoverPlayed = true;
-      const bgm = this.sound.get("bgm");
-      const originalBgmVolume =
-        bgm && typeof bgm.volume === "number" ? bgm.volume : null;
-      if (bgm && bgm.isPlaying && originalBgmVolume !== null) {
-        this.tweens.add({
-          targets: bgm,
-          volume: Math.max(0.01, originalBgmVolume * 0.25),
-          duration: 300,
-          ease: "Sine.easeOut",
-        });
-      }
+    // only play the gameover effect when showing final results, not on
+    // minor UI updates (ready/host changes).  a prior update call could flip
+    // the guard, preventing the real end‑of‑game sound from firing — making it
+    // appear to "skip" occasionally.
+    if (!isUpdate) {
+      if (!this.resultGameoverPlayed) {
+        this.resultGameoverPlayed = true;
 
-      const gameoverSound = this.sound.add("gameover", {
-        volume: 0,
-        loop: false,
-      });
-      gameoverSound.play();
-      this.tweens.add({
-        targets: gameoverSound,
-        volume: 1,
-        duration: 300,
-        ease: "Sine.easeOut",
-      });
-
-      const durationMs = Number(gameoverSound.duration || 0) * 1000;
-      if (durationMs > 600) {
-        this.time.delayedCall(durationMs - 400, () => {
-          if (!gameoverSound || !gameoverSound.isPlaying) return;
-          this.tweens.add({
-            targets: gameoverSound,
-            volume: 0,
-            duration: 300,
-            ease: "Sine.easeIn",
-          });
-        });
-      }
-
-      gameoverSound.once("complete", () => {
-        try {
-          gameoverSound.destroy();
-        } catch (e) {}
+        const bgm = this.sound.get("bgm");
+        const originalBgmVolume =
+          bgm && typeof bgm.volume === "number" ? bgm.volume : null;
         if (bgm && bgm.isPlaying && originalBgmVolume !== null) {
           this.tweens.add({
             targets: bgm,
-            volume: originalBgmVolume,
+            volume: Math.max(0.01, originalBgmVolume * 0.25),
             duration: 300,
             ease: "Sine.easeOut",
           });
         }
-      });
+
+        const gameoverSound = this.sound.add("gameover", {
+          volume: 0,
+          loop: false,
+        });
+
+        // debug logging for intermittent failures
+        console.log("[sound] playing gameover", gameoverSound);
+        gameoverSound.play().catch((err) => {
+          console.warn("gameover sound play failed", err);
+        });
+
+        this.tweens.add({
+          targets: gameoverSound,
+          volume: 1,
+          duration: 300,
+          ease: "Sine.easeOut",
+        });
+
+        const durationMs = Number(gameoverSound.duration || 0) * 1000;
+        if (durationMs > 600) {
+          this.time.delayedCall(durationMs - 400, () => {
+            if (!gameoverSound || !gameoverSound.isPlaying) return;
+            this.tweens.add({
+              targets: gameoverSound,
+              volume: 0,
+              duration: 300,
+              ease: "Sine.easeIn",
+            });
+          });
+        }
+
+        gameoverSound.once("complete", () => {
+          try {
+            gameoverSound.destroy();
+          } catch (e) {}
+          if (bgm && bgm.isPlaying && originalBgmVolume !== null) {
+            this.tweens.add({
+              targets: bgm,
+              volume: originalBgmVolume,
+              duration: 300,
+              ease: "Sine.easeOut",
+            });
+          }
+        });
+      } else {
+        // already played earlier in this result display
+        console.log("[sound] gameover skipped because already played", {
+          players,
+          isUpdate,
+        });
+      }
     }
 
     const { width, height } = this.cameras.main;
