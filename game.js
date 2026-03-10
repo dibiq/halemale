@@ -37,7 +37,7 @@ const QUEST_CONFIGS = [
   {
     key: "big_haul",
     type: "threshold",
-    titleTemplate: "정답 시 {threshold}장 획득",
+    titleTemplate: "카드 {threshold}장 획득하기",
     descriptionTemplate: "한 번의 정답으로 카드 {threshold}장을 가져가세요.",
     initialTarget: 1,
     targetIncrement: 1,
@@ -48,7 +48,7 @@ const QUEST_CONFIGS = [
   {
     key: "penalty_runner",
     type: "count",
-    titleTemplate: "패널티 {target}회 체험",
+    titleTemplate: "패널티 {target}회 받기",
     descriptionTemplate: "실수로 종을 쳐서 패널티를 {target}번 받아보세요.",
     initialTarget: 3,
     targetIncrement: 1,
@@ -785,6 +785,7 @@ class LobbyScene extends Phaser.Scene {
     this.load.audio("pop", `${ASSET_SERVER}/sounds/pop.wav${VERSION}`);
     this.load.audio("bell", `${ASSET_SERVER}/sounds/bell.mp3${VERSION}`);
     this.load.audio("effect", `${ASSET_SERVER}/sounds/effect.mp3${VERSION}`);
+    this.load.audio("bubble", `${ASSET_SERVER}/sounds/bubble.mp3${VERSION}`);
 
     this.load.audio("btn", `${ASSET_SERVER}/sounds/btn.wav${VERSION}`);
     this.load.audio("readygo", `${ASSET_SERVER}/sounds/readygo.mp3${VERSION}`);
@@ -1129,6 +1130,9 @@ class LobbyScene extends Phaser.Scene {
     if (!this.sound.get("bgm") && bgmEnabled) {
       const tryPlayBgm = () => {
         try {
+          // guard against multiple instances – if bgm already playing, bail out
+          const existing = this.sound.get("bgm");
+          if (existing && existing.isPlaying) return;
           this.sound.play("bgm", { loop: true, volume: 0.2 });
         } catch (e) {
           // 실패 시 무시
@@ -1473,7 +1477,7 @@ class LobbyScene extends Phaser.Scene {
         );
       }
 
-      this.showToast(`오늘의 출석 보상 +${amount} 코인!`, "#22c55e");
+      // no toast needed; reward is shown on panel itself
 
       this.dailyRewardAvailable = false;
       this.dailyRewardLastCheckinDate =
@@ -3282,6 +3286,15 @@ class LobbyScene extends Phaser.Scene {
 
     const { width, height } = this.cameras.main;
 
+    // if a previous toast is still hanging around, remove it immediately
+    if (
+      this.toastLayer &&
+      this.toastLayer.list &&
+      this.toastLayer.list.length
+    ) {
+      this.toastLayer.removeAll(true);
+    }
+
     if (!this.toastLayer || !this.toastLayer.scene) {
       this.toastLayer = this.add.container(0, 0).setDepth(1000000);
       this.toastLayer.setScrollFactor(0);
@@ -3340,6 +3353,7 @@ class LobbyScene extends Phaser.Scene {
       },
       onComplete: () => {
         this.time.delayedCall(1000, () => {
+          // always clean up the toast even if the scene was paused
           if (toast.scene) {
             this.tweens.add({
               targets: toast,
@@ -3352,6 +3366,98 @@ class LobbyScene extends Phaser.Scene {
                 this.isToastOpen = false;
               },
             });
+          } else {
+            try {
+              toast.destroy();
+            } catch (e) {}
+            this.activeToast = null;
+            this.isToastOpen = false;
+          }
+        });
+      },
+    });
+  }
+
+  // specialized toast for coin rewards (uses image + number)
+  showCoinToast(amount) {
+    if (!this.cameras || !this.cameras.main) return;
+    const { width, height } = this.cameras.main;
+
+    if (!this.toastLayer || !this.toastLayer.scene) {
+      this.toastLayer = this.add.container(0, 0).setDepth(1000000);
+      this.toastLayer.setScrollFactor(0);
+    }
+    this.toastLayer.setVisible(true);
+    this.toastLayer.setActive(true);
+    this.children.bringToTop(this.toastLayer);
+
+    const toast = this.add
+      .container(width / 2, height * 0.22)
+      .setDepth(1000001);
+    toast.setScrollFactor(0);
+
+    const coinSize = width * 0.06;
+    const coinImg = this.add
+      .image(0, -coinSize * 0.3, "coin")
+      .setDisplaySize(coinSize, coinSize)
+      .setDepth(1000002);
+
+    const txt = this.add
+      .text(0, coinSize * 0.4, `${amount}`, {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${Math.floor(width * 0.05)}px`,
+        color: "#ffffff",
+        fontWeight: "bold",
+        stroke: "#000000",
+        strokeThickness: 4,
+      })
+      .setOrigin(0.5)
+      .setDepth(1000002);
+
+    const paddingX = Math.floor(width * 0.04);
+    const paddingY = Math.floor(width * 0.018);
+    const bgW = Math.max(coinSize, txt.width) + paddingX * 2;
+    const bgH = coinSize + txt.height + paddingY * 2;
+    const bg = this.add
+      .rectangle(0, 0, bgW, bgH, 0x000000, 0.85)
+      .setOrigin(0.5)
+      .setDepth(1000001);
+
+    toast.add([bg, coinImg, txt]);
+    this.toastLayer.add(toast);
+
+    try {
+      this.sound.play("pass", { volume: 0.5 });
+    } catch (e) {}
+
+    this.tweens.add({
+      targets: toast,
+      y: height * 0.22,
+      duration: 300,
+      ease: "Sine.easeOut",
+      onStart: () => {
+        toast.y = height * 0.19;
+      },
+      onComplete: () => {
+        this.time.delayedCall(1000, () => {
+          if (toast.scene) {
+            this.tweens.add({
+              targets: toast,
+              y: -100,
+              duration: 300,
+              ease: "Power2.easeIn",
+              onComplete: () => {
+                toast.destroy();
+                this.activeToast = null;
+                this.isToastOpen = false;
+              },
+            });
+          } else {
+            try {
+              toast.destroy();
+            } catch (e) {}
+            this.activeToast = null;
+            this.isToastOpen = false;
           }
         });
       },
@@ -3650,9 +3756,9 @@ class LobbyScene extends Phaser.Scene {
     const overlay = this.add
       .rectangle(centerX, height * 0.5, width, height, 0x000000, 0.5)
       .setInteractive();
-    overlay.on("pointerdown", () => {
-      this.closeSingleDifficultyPopup();
-    });
+    // overlay.on("pointerdown", () => {
+    //   this.closeSingleDifficultyPopup();
+    // });
 
     const popupBg = this.add
       .image(centerX, popupY, "invitebg")
@@ -3999,9 +4105,10 @@ class LobbyScene extends Phaser.Scene {
     const overlay = this.add
       .rectangle(centerX, height * 0.5, width, height, 0x000000, 0.8)
       .setInteractive();
-    overlay.on("pointerdown", () => {
-      this.closeShopPopup();
-    });
+    // overlay click no longer closes the shop; user must use close button
+    // overlay.on("pointerdown", () => {
+    //   this.closeShopPopup();
+    // });
 
     const popupBg = this.add
       .image(centerX, popupY, "storebg")
@@ -4686,26 +4793,18 @@ class LobbyScene extends Phaser.Scene {
     const overlay = this.add
       .rectangle(centerX, height * 0.5, width, height, 0x000000, 0.7)
       .setInteractive();
-    overlay.on("pointerdown", () => {
-      this.closeQuestPopup();
-    });
+    // do not close quest popup when clicking outside; use close button instead
+    // overlay.on("pointerdown", () => {
+    //   this.closeQuestPopup();
+    // });
 
     const panelW = width * 0.86;
     const panelH = height * 0.7;
-    const panel = this.add
-      .rectangle(centerX, centerY, panelW, panelH, 0x0b1220, 0.95)
-      .setStrokeStyle(3, 0x38bdf8, 0.6);
 
-    const titleText = this.add
-      .text(centerX, centerY - panelH * 0.4, "멀티 퀘스트", {
-        fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.055}px`,
-        color: "#f8fafc",
-        fontWeight: "bold",
-        stroke: "#000000",
-        strokeThickness: 5,
-      })
-      .setOrigin(0.5);
+    // background image like public rooms popup
+    const popupBg = this.add
+      .image(centerX, centerY, "invitebg")
+      .setDisplaySize(panelW, panelH);
 
     const closeBtn = this.add
       .image(centerX + panelW * 0.42, centerY - panelH * 0.42, "popupclose")
@@ -4722,11 +4821,12 @@ class LobbyScene extends Phaser.Scene {
       this.closeQuestPopup();
     });
 
-    this.questPopupContainer.add([overlay, panel]);
+    this.questPopupContainer.add([overlay, popupBg]);
 
     const snapshot = this.buildQuestPopupSnapshot();
     const rowHeight = Math.max(height * 0.055, 40);
-    const rowGap = Math.max(height * 0.012, 10);
+    // more vertical breathing room between quest rows
+    const rowGap = Math.max(height * 0.023, 12);
     const listStartY = centerY - panelH * 0.28;
     const rowWidth = panelW * 0.86;
     const barHeight = Math.max(6, rowHeight * 0.2);
@@ -4736,23 +4836,34 @@ class LobbyScene extends Phaser.Scene {
       const runtime = buildQuestRuntime(quest, entry);
       const rowY = listStartY + index * (rowHeight + rowGap);
 
-      const rowBg = this.add
-        .rectangle(centerX, rowY, rowWidth, rowHeight, 0x1f2937, 0.85)
-        .setStrokeStyle(1, 0x475569, 0.7);
+      // use the same room background used by other popups for visual consistency
+      let rowBg;
+      if (this.textures.exists("roombg")) {
+        rowBg = this.add
+          .image(centerX, rowY, "roombg")
+          // shrink width a bit and increase height for padding
+          .setDisplaySize(rowWidth * 0.92, rowHeight * 1.3);
+      } else {
+        rowBg = this.add
+          .rectangle(centerX, rowY, rowWidth, rowHeight, 0x1f2937, 0.85)
+          .setStrokeStyle(1, 0x475569, 0.7);
+      }
 
       const rewardText = quest.rewardCoins ? ` · +${quest.rewardCoins}💰` : "";
       const rowText = this.add
-        .text(centerX - rowWidth * 0.44, rowY - rowHeight * 0.18, "", {
+        .text(centerX - rowWidth * 0.38, rowY - rowHeight * 0.12, "", {
           fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.07}px`,
+          fontSize: `${width * 0.035}px`, // even smaller for extra padding
           color: "#e2e8f0",
+          stroke: "#000000",
+          strokeThickness: 3,
         })
         .setOrigin(0, 0.5);
       rowText.setText(`${runtime.title}${rewardText}`);
 
-      const barX = centerX - rowWidth * 0.44;
+      const barX = centerX - rowWidth * 0.38;
       const barY = rowY + rowHeight * 0.22;
-      const barW = rowWidth * 0.7;
+      const barW = rowWidth * 0.62;
       const track = this.add
         .rectangle(barX, barY, barW, barHeight, 0x0f172a, 0.75)
         .setOrigin(0, 0.5)
@@ -4774,24 +4885,34 @@ class LobbyScene extends Phaser.Scene {
         })
         .setOrigin(1, 0.5);
 
-      const claimX = centerX + rowWidth * 0.36;
+      const claimX = centerX + rowWidth * 0.33;
       const claimY = rowY;
-      const claimW = rowHeight * 1.3;
+      const claimW = rowHeight * 1.0;
       const claimH = rowHeight * 0.55;
-      const claimBg = this.add
-        .rectangle(
-          claimX,
-          claimY,
-          claimW,
-          claimH,
-          entry.ready ? 0x22c55e : 0x3b3f51,
-          entry.ready ? 0.95 : 0.65,
-        )
-        .setStrokeStyle(2, 0x15803d, 0.9);
+
+      let claimBg;
+      if (this.textures.exists("ui_btn")) {
+        claimBg = this.add
+          .image(claimX, claimY, "ui_btn")
+          .setDisplaySize(claimW * 1.05, claimH * 1.3)
+          .setTint(entry.ready ? 0x22c55e : 0x3b3f51)
+          .setAlpha(entry.ready ? 0.95 : 0.65);
+      } else {
+        claimBg = this.add
+          .rectangle(
+            claimX,
+            claimY,
+            claimW * 1.05,
+            claimH * 1.3,
+            entry.ready ? 0x22c55e : 0x3b3f51,
+            entry.ready ? 0.95 : 0.65,
+          )
+          .setStrokeStyle(2, 0x15803d, 0.9);
+      }
       const claimText = this.add
-        .text(claimX, claimY, "수령", {
+        .text(claimX, claimY, "받기", {
           fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.025}px`,
+          fontSize: `${width * 0.035}px`,
           color: entry.ready ? "#f8fafc" : "#94a3b8",
           fontWeight: "bold",
         })
@@ -4805,9 +4926,18 @@ class LobbyScene extends Phaser.Scene {
             return;
           }
           if (quest.rewardCoins) {
+            // play sound + burst animation from button location in single mode
+            if (this.isSingle) {
+              try {
+                this.sound.play("pop", { volume: 0.3 });
+              } catch (e) {}
+              this.playQuestCoinBurst(claimX, claimY, quest.rewardCoins);
+            }
             this.rewardQuestCoins(quest.rewardCoins, runtime.title, quest.key);
           } else {
-            this.showToast(`${runtime.title} 완료!`, "#22c55e");
+            if (!this.isSingle) {
+              this.showToast(`${runtime.title} 완료!`, "#22c55e");
+            }
           }
 
           entry.stage = (entry.stage || 0) + 1;
@@ -4842,7 +4972,7 @@ class LobbyScene extends Phaser.Scene {
       ]);
     });
 
-    this.questPopupContainer.add([titleText, closeBtn]);
+    this.questPopupContainer.add([closeBtn]);
     this.currentJoinPopupCloseHandler = () => this.closeQuestPopup();
   }
 
@@ -7059,132 +7189,171 @@ class LobbyScene extends Phaser.Scene {
     const centerX = width / 2;
     const centerY = height / 2;
 
+    // overlay does not dismiss on click (close button only)
     const overlay = this.add
-      .rectangle(centerX, centerY, width, height, 0x000000, 0.6)
+      .rectangle(centerX, centerY, width, height, 0x000000, 0.7)
       .setDepth(4000)
       .setInteractive();
 
+    // use the same background as quest popup
+    const panelW = width * 0.86;
+    const panelH = height * 0.7;
     const popupBg = this.add
-      .image(centerX, centerY, "profilebg")
+      .image(centerX, centerY, "invitebg")
       .setDepth(4001)
-      .setDisplaySize(width * 0.85, height * 0.75);
+      .setDisplaySize(panelW * 1.1, panelH * 0.6);
 
-    const titleText = this.add
-      .text(centerX, centerY - height * 0.3, "출석 보상", {
-        fontFamily:
-          typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
-        fontSize: `${width * 0.05}px`,
-        color: "#ffffff",
-        fontWeight: "bold",
-      })
-      .setOrigin(0.5)
-      .setDepth(4002);
-
+    // close button like quest popup
     const closeBtn = this.add
-      .image(centerX + width * 0.34, centerY - height * 0.31, "uibtn")
-      .setDisplaySize(width * 0.1, height * 0.05)
+      .image(centerX + panelW * 0.45, centerY - panelH * 0.25, "popupclose")
+      .setDisplaySize(width * 0.1, width * 0.1)
       .setDepth(4002)
-      .setTint(0xffaaaa)
       .setInteractive({ useHandCursor: true });
-
-    const closeTxt = this.add
-      .text(centerX + width * 0.34, centerY - height * 0.31, "닫기", {
-        fontFamily:
-          typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
-        fontSize: `${width * 0.03}px`,
-        color: "#ffffff",
-        fontWeight: "bold",
-      })
-      .setOrigin(0.5)
-      .setDepth(4003);
 
     const kstNow = this.getKstNow();
     const todayStr = this.dailyRewardTodayDate || this.formatDateYmd(kstNow);
     const lastCheckin = this.dailyRewardLastCheckinDate;
-    const dayLabels = ["월", "화", "수", "목", "금", "토", "일"];
+    const dayLabels = [
+      "월요일",
+      "화요일",
+      "수요일",
+      "목요일",
+      "금요일",
+      "토요일",
+      "일요일",
+      "영상",
+    ];
 
     const dayOfWeek = kstNow.getDay();
     const mondayOffset = (dayOfWeek + 6) % 7;
     const weekStart = new Date(kstNow);
-    weekStart.setDate(kstNow.getDate() - mondayOffset);
+    weekStart.setDate(weekStart.getDate() - mondayOffset);
     weekStart.setHours(0, 0, 0, 0);
 
     const rows = [];
-    const rowStartY = centerY - height * 0.22;
     const rowGap = height * 0.07;
+    const rowWidth = rowGap * 1.3; // enlarge panels
+    const rowHeight = rowWidth * 0.8; // maintain aspect
+    const cols = 4;
+    const hGap = rowGap * 0.12; // horizontal space between columns
+    const vGap = rowGap * 0.7; // increased vertical spacing
+    const totalWidth = rowWidth * cols + (cols - 1) * hGap;
+    const totalHeight = rowHeight * 2 + vGap;
+    const startX = centerX - totalWidth / 2 + rowWidth / 2;
+    const startY = centerY - totalHeight / 2 + rowHeight / 2;
+    const gapX = hGap;
+    const gapY = vGap;
 
-    for (let i = 0; i < 7; i += 1) {
-      const rowDate = new Date(weekStart);
-      rowDate.setDate(weekStart.getDate() + i);
-      const rowDateStr = this.formatDateYmd(rowDate);
-      const isToday = rowDateStr === todayStr;
-      const isClaimed = lastCheckin && rowDateStr === lastCheckin;
-      const canClaim = isToday && this.dailyRewardAvailable;
+    for (let i = 0; i < dayLabels.length; i += 1) {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const rowX = startX + col * (rowWidth + gapX);
+      const rowY = startY + row * (rowHeight + gapY);
+      const isVideo = i === dayLabels.length - 1;
 
-      const rowY = rowStartY + rowGap * i;
-      const rowBg = this.add
-        .rectangle(centerX, rowY, width * 0.72, height * 0.055, 0x0f172a, 0.7)
-        .setDepth(4002);
+      let isToday = false;
+      let isClaimed = false;
+      let canClaim = false;
+      if (!isVideo) {
+        const rowDate = new Date(weekStart);
+        rowDate.setDate(weekStart.getDate() + i);
+        const rowDateStr = this.formatDateYmd(rowDate);
+        isToday = rowDateStr === todayStr;
+        isClaimed = lastCheckin && rowDateStr === lastCheckin;
+        canClaim = isToday && this.dailyRewardAvailable;
+      }
+
+      let rowBg;
+      if (this.textures.exists("playerbg")) {
+        rowBg = this.add
+          .image(rowX, rowY, "playerbg")
+          .setDepth(4002)
+          .setDisplaySize(rowWidth, rowHeight * 1.4);
+      } else {
+        rowBg = this.add
+          .rectangle(rowX, rowY, rowWidth, rowHeight * 1.4, 0x0f172a, 0.7)
+          .setDepth(4002)
+          .setStrokeStyle(1, 0x475569, 0.7);
+      }
 
       const dayText = this.add
-        .text(centerX - width * 0.28, rowY, dayLabels[i], {
+        .text(rowX, rowY - rowHeight * 0.35, dayLabels[i], {
           fontFamily:
             typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
           fontSize: `${width * 0.04}px`,
           color: isToday ? "#facc15" : "#ffffff",
           fontWeight: "bold",
+          stroke: "#000000",
+          strokeThickness: 3,
         })
         .setOrigin(0.5)
         .setDepth(4003);
 
-      const amountText = this.add
-        .text(centerX - width * 0.05, rowY, `+${this.dailyRewardAmount}`, {
-          fontFamily:
-            typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
-          fontSize: `${width * 0.036}px`,
-          color: "#22c55e",
-          fontWeight: "bold",
-        })
-        .setOrigin(0.5)
-        .setDepth(4003);
-
-      let statusText = "미수령";
-      if (isClaimed) statusText = "받음";
-      if (isToday && this.dailyRewardAvailable) statusText = "받기";
-
-      const statusLabel = this.add
-        .text(centerX + width * 0.2, rowY, statusText, {
-          fontFamily:
-            typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
-          fontSize: `${width * 0.032}px`,
-          color: canClaim ? "#ffffff" : "#cbd5f5",
-          fontWeight: "bold",
-        })
-        .setOrigin(0.5)
-        .setDepth(4003);
-
-      let claimBtn = null;
-      let claimTxt = null;
-      if (canClaim) {
-        claimBtn = this.add
-          .image(centerX + width * 0.27, rowY, "uibtn")
-          .setDisplaySize(width * 0.18, height * 0.045)
-          .setDepth(4003)
-          .setTint(0x22c55e)
-          .setInteractive({ useHandCursor: true });
-
-        claimTxt = this.add
-          .text(centerX + width * 0.27, rowY, "받기", {
+      /*const amountText = this.add
+        .text(
+          rowX,
+          rowY - rowHeight * 0.05,
+          isVideo ? "" : `+${this.dailyRewardAmount}`,
+          {
             fontFamily:
               typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
-            fontSize: `${width * 0.03}px`,
+            fontSize: `${width * 0.036}px`,
+            color: "#22c55e",
+            fontWeight: "bold",
+          },
+        )
+        .setOrigin(0.5)
+        .setDepth(4003);*/
+
+      // coin icon + number instead of text
+      let coinImg = null;
+      let coinNum = null;
+      if (!isVideo) {
+        coinImg = this.add
+          .image(rowX, rowY + rowHeight * 0.1, "coin")
+          .setDisplaySize(rowWidth * 0.5, rowWidth * 0.5)
+          .setDepth(4003);
+        coinNum = this.add
+          .text(rowX, rowY + rowHeight * 0.45, `${this.dailyRewardAmount}`, {
+            fontFamily:
+              typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
+            fontSize: `${width * 0.04}px`,
             color: "#ffffff",
             fontWeight: "bold",
+            stroke: "#000000",
+            strokeThickness: 3,
+          })
+          .setOrigin(0.5)
+          .setDepth(4003);
+      }
+      // status labels removed (받기/미수령 etc.)
+      let statusLabel = null;
+
+      // if already claimed (not video), show a red stamp
+      if (isClaimed && !isVideo) {
+        statusLabel = this.add
+          .text(rowX, rowY, "획득", {
+            fontFamily:
+              typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
+            fontSize: `${width * 0.055}px`,
+            color: "#ffffff",
+            fontWeight: "bold",
+            stroke: "#000000",
+            strokeThickness: 4,
           })
           .setOrigin(0.5)
           .setDepth(4004);
+        statusLabel.setRotation(-0.3);
+      }
 
-        claimBtn.on("pointerdown", () => {
+      if (canClaim || isVideo) {
+        rowBg.setInteractive({ useHandCursor: true }).on("pointerdown", () => {
+          if (isVideo) {
+            this.sound.play("btn", { volume: 0.1 });
+            this.showToast("광고 보상은 준비 중입니다!", "#38bdf8");
+            closePopup();
+            return;
+          }
           if (this.isDailyRewardClaimPending) return;
           this.sound.play("btn", { volume: 0.1 });
           this.isDailyRewardClaimPending = true;
@@ -7196,9 +7365,13 @@ class LobbyScene extends Phaser.Scene {
         });
       }
 
-      rows.push(rowBg, dayText, amountText, statusLabel);
-      if (claimBtn) rows.push(claimBtn);
-      if (claimTxt) rows.push(claimTxt);
+      if (statusLabel) {
+        if (coinImg) rows.push(rowBg, dayText, coinImg, coinNum, statusLabel);
+        else rows.push(rowBg, dayText, statusLabel);
+      } else {
+        if (coinImg) rows.push(rowBg, dayText, coinImg, coinNum);
+        else rows.push(rowBg, dayText);
+      }
     }
 
     const helperText = this.add
@@ -7212,15 +7385,7 @@ class LobbyScene extends Phaser.Scene {
       .setDepth(4003);
 
     const closePopup = () => {
-      [
-        overlay,
-        popupBg,
-        titleText,
-        closeBtn,
-        closeTxt,
-        helperText,
-        ...rows,
-      ].forEach((el) => {
+      [overlay, popupBg, closeBtn, helperText, ...rows].forEach((el) => {
         if (el) el.destroy();
       });
 
@@ -7238,17 +7403,11 @@ class LobbyScene extends Phaser.Scene {
 
     this.currentJoinPopupCloseHandler = closePopup;
 
-    overlay.on("pointerdown", () => {
-      closePopup();
-    });
+    // overlay.on("pointerdown", () => {
+    //   closePopup();
+    // });
 
     closeBtn.on("pointerdown", () => {
-      this.sound.play("btn", { volume: 0.08 });
-      closePopup();
-    });
-
-    closeTxt.setInteractive({ useHandCursor: true });
-    closeTxt.on("pointerdown", () => {
       this.sound.play("btn", { volume: 0.08 });
       closePopup();
     });
@@ -7467,10 +7626,10 @@ class LobbyScene extends Phaser.Scene {
     this.currentJoinPopupCloseHandler = destroyPopup;
 
     overlay.setInteractive();
-    overlay.on("pointerdown", () => {
-      this.sound.play("btn", { volume: 0.1 });
-      destroyPopup();
-    });
+    // overlay.on("pointerdown", () => {
+    //   this.sound.play("btn", { volume: 0.1 });
+    //   destroyPopup();
+    // });
 
     // 유저 리스트 컨테이너
     const listContainerY = centerY;
@@ -7607,6 +7766,13 @@ class LobbyScene extends Phaser.Scene {
       .setInteractive();
 
     // 팝업 배경 (popupbg 이미지)
+
+    // remove outside click closing for invite receive
+    // overlay.setInteractive();
+    // overlay.on("pointerdown", () => {
+    //   this.sound.play("btn", { volume: 0.1 });
+    //   destroyPopup();
+    // });
     const popupWidth = width * 0.75;
     const popupHeight = height * 0.3;
     const popupBg = this.add
@@ -12388,6 +12554,8 @@ class GameScene extends Phaser.Scene {
   }
 
   onQuestReady(state) {
+    // single-play quests should not spam toast notifications
+    if (this.isSingle) return;
     this.showToast(
       `${state.title} 완료! 수령 버튼을 눌러 보상을 받아요.`,
       "#22c55e",
@@ -12395,19 +12563,73 @@ class GameScene extends Phaser.Scene {
   }
 
   handleQuestClaim(key) {
+    // helper for coin burst from claim buttons
+    if (typeof this.playQuestCoinBurst !== "function") {
+      this.playQuestCoinBurst = (x, y, amount = 12) => {
+        if (!this.textures.exists("coin")) return;
+        const { width, height } = this.cameras.main;
+        const coinSize = width * 0.04;
+        for (let i = 0; i < amount; i += 1) {
+          const coin = this.add
+            .image(x, y, "coin")
+            .setDisplaySize(coinSize, coinSize)
+            .setDepth(2000)
+            .setAlpha(1);
+          const dx = (Math.random() - 0.5) * width * 0.1;
+          const dy = -Math.random() * height * 0.2;
+          this.tweens.add({
+            targets: coin,
+            x: x + dx,
+            y: y + dy,
+            alpha: 0,
+            scale: 0.5,
+            duration: 500,
+            delay: i * 30,
+            ease: "Cubic.easeOut",
+            onComplete: () => {
+              if (coin && coin.active) coin.destroy();
+            },
+          });
+        }
+      };
+    }
     if (!this.questState) return;
     const state = this.getQuestRuntimeState(key);
     if (!state || !state.entry.ready) {
-      this.showToast("아직 수령할 보상이 없어요!", "#f97316");
+      if (!this.isSingle) {
+        this.showToast("아직 수령할 보상이 없어요!", "#f97316");
+      }
       return;
     }
 
     const { quest, entry, title } = state;
     const questKey = quest.key;
     if (quest.rewardCoins) {
+      // single-play reward feedback: pop sound + coin burst at button
+      if (this.isSingle) {
+        try {
+          this.sound.play("buble", { volume: 0.3 });
+        } catch (e) {}
+        // determine burst coordinates from the claim button if available
+        let burstX = this.cameras.main.centerX;
+        let burstY = this.cameras.main.centerY;
+        if (this.questState && this.questState.rows) {
+          const row = this.questState.rows[questKey];
+          if (row && row.claimBtn) {
+            const pt = row.claimBtn
+              .getWorldTransformMatrix()
+              .transformPoint(0, 0);
+            burstX = pt.x;
+            burstY = pt.y;
+          }
+        }
+        this.playQuestCoinBurst(burstX, burstY, quest.rewardCoins);
+      }
       this.rewardQuestCoins(quest.rewardCoins, title, questKey);
     } else {
-      this.showToast(`${title} 완료!`, "#22c55e");
+      if (!this.isSingle) {
+        this.showToast(`${title} 완료!`, "#22c55e");
+      }
     }
 
     entry.stage = (entry.stage || 0) + 1;
@@ -12418,7 +12640,7 @@ class GameScene extends Phaser.Scene {
     this.refreshQuestRow(questKey);
 
     const nextState = this.getQuestRuntimeState(questKey);
-    if (nextState) {
+    if (nextState && !this.isSingle) {
       this.showToast(`${nextState.title} 시작!`, "#38bdf8");
     }
   }
@@ -12460,7 +12682,9 @@ class GameScene extends Phaser.Scene {
       this.updateMyProfileUI();
     }
 
-    this.showToast(`퀘스트 보상 ${amount}💰 (${reason})`, "#22c55e");
+    if (!this.isSingle) {
+      this.showToast(`퀘스트 보상 ${amount}💰 (${reason})`, "#22c55e");
+    }
     try {
       this.safeSyncInventory("questReward", {
         coins: amount,
@@ -14481,6 +14705,18 @@ class GameScene extends Phaser.Scene {
     const nickname = playerId ? this.getNicknameById(playerId) : "";
     const prefix = nickname ? `${nickname} ` : "";
     this.showToast(`${label} 카드 등장!`, "#f39c12");
+
+    // plus1 in single occasionally linger due to timing; force clear after 1s
+    if (type === PLUS1_CARD_TYPE && this.isSingle) {
+      this.time.delayedCall(1100, () => {
+        try {
+          if (this.toastLayer) {
+            this.toastLayer.removeAll(true);
+          }
+        } catch (e) {}
+        this.isToastOpen = false;
+      });
+    }
 
     const revealKeyMap = {
       [BOMB_CARD_TYPE]: "bomb_img",
