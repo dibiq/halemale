@@ -1074,57 +1074,24 @@ function scheduleAiTurn(room, io) {
   ensureAiState(room);
   clearAiTurnTimer(room);
 
-  // always give bots a chance to ring if bell condition is met
+  // keep bell scheduling unchanged
   scheduleAiBell(room, io);
 
-  // if a bell has just gone off we should wait until it's been
-  // cleared by an actual card submission; otherwise a bot might be
-  // queued and fire immediately, racing the human player.
-  if (room.bellLocked) {
-    // retry shortly
-    room.aiTimers.turn = setTimeout(() => {
-      scheduleAiTurn(room, io);
-    }, 50);
-    return;
-  }
-
-  const pauseRemaining = getSpecialPauseRemaining(room);
-  if (pauseRemaining > 0) {
-    room.aiTimers.turn = setTimeout(() => {
-      scheduleAiTurn(room, io);
-    }, pauseRemaining + 20);
-    return;
-  }
-
-  // if a bell condition exists we don’t flip; a bell will
-  // be handled separately by scheduleAiBell after a fixed delay.
-  if (computeBellSuccessCondition(room)) {
-    // however, if it’s currently a bot’s turn we should retry later
-    // in case the bell window clears without anyone ringing. previously
-    // this returned immediately, which could leave the bot stuck.
-    const current = room.players[room.turnIndex];
-    if (isBotPlayer(current)) {
-      room.aiTimers.turn = setTimeout(() => {
-        scheduleAiTurn(room, io);
-      }, 200);
-    }
-    return;
-  }
-
+  // identify current player early; bail out if it's not a bot with cards
   const current = room.players[room.turnIndex];
-  if (!isBotPlayer(current)) return;
-  if (!current.myDeck || current.myDeck.length === 0) return;
-  if (room.isFlipping) return;
+  if (!isBotPlayer(current) || !current.myDeck || current.myDeck.length === 0)
+    return;
 
-  // fixed 2‑second submission delay for all bots
-  const delay = 2000;
-
+  // always schedule a flip exactly 2s after being invoked. we deliberately
+  // ignore bellLock/pause/condition checks so that the bot never “stops”
+  // waiting indefinitely; if the turn changes before the timer fires we
+  // guard against it in the timeout callback.
   room.aiTimers.turn = setTimeout(() => {
     if (!room.isGameStarted) return;
     const active = room.players[room.turnIndex];
     if (!active || active.id !== current.id) return;
     handleAiFlip(room, io, current.id);
-  }, delay);
+  }, 2000);
 }
 
 function scheduleAiBell(room, io) {
@@ -1156,8 +1123,8 @@ function scheduleAiBell(room, io) {
     if (player.isEliminated) return;
     if (!player.myDeck || player.myDeck.length <= 0) return;
 
-    // uniform 2‑second reaction for every bot
-    const delay = 2000;
+    // uniform 1.7‑second reaction for every bot
+    const delay = 1700;
     room.aiTimers.bells[player.id] = setTimeout(() => {
       handleAiBell(room, io, player.id);
     }, delay);
