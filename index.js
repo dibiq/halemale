@@ -888,8 +888,11 @@ function getSafeNextIndex(room) {
 function processSkipTurn(room, io) {
   if (!room.isGameStarted) return;
 
-  let loopCount = 0;
-  room.turnIndex = getSafeNextIndex(room);
+  // clear any bell lock when advancing the turn; this covers cases where
+  // processSkipTurn is called from elsewhere as well.
+  if (room.bellLocked) room.bellLocked = false;
+
+  let loopCount = 0; // make sure we reset counter each time
 
   // 단순히 덱이 있는 다음 플레이어를 찾습니다.
   const dir = typeof room.turnDirection === "number" ? room.turnDirection : 1;
@@ -4579,6 +4582,14 @@ io.on("connection", (socket) => {
         collectedCount: collected.length,
         reactionTime: reactionTimeSec, // 💡 추가: 반응 속도(초)
       });
+
+      // unlock immediately so next player may flip
+      room.bellLocked = false;
+
+      // unlocking now allows the next player (possibly AI) to flip right
+      // away; the lock only exists to stop races during the earlier bell
+      // evaluation.
+      room.bellLocked = false;
 
       processSkipTurn(room, io);
     } else {
