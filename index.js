@@ -931,7 +931,7 @@ function processSkipTurn(room, io) {
 
 const MULTI_AI_BASE_PROFILE = {
   flipDelay: 1000,
-  reactionTime: 1000,
+  reactionTime: 5000,
 };
 
 const MULTI_AI_SLOWDOWN_MS = 520;
@@ -1206,9 +1206,9 @@ function handleAiFlip(room, io, playerId) {
   // bell instead of ringing immediately. this ensures the reaction speed
   // is in the 1.5‑2s range rather than instant.
   if (computeBellSuccessCondition(room)) {
-    // bell reaction in multiplayer should mirror human reaction (800‑1200ms)
-    const bellBase = Number(player.aiProfile?.reactionTime || 900);
-    const bellDelay = bellBase + Math.floor(Math.random() * 301);
+    // bell reaction after a self flip should be slower (≈8‑8.5s)
+    const bellBase = Number(player.aiProfile?.reactionTime || 8000);
+    const bellDelay = bellBase + Math.floor(Math.random() * 501);
     room.aiTimers.bells[playerId] = setTimeout(() => {
       // only ring if the turn is still theirs
       if (
