@@ -4312,6 +4312,7 @@ io.on("connection", (socket) => {
 
     // 💡 [추가] 카드가 뒤집히는 시점의 시간을 기록 (반응 속도 측정 시작)
     room.lastFlipTime = Date.now();
+    const flipStartTime = room.lastFlipTime;
 
     // 카드 한 장을 뒤집음
     const card = p.myDeck.pop();
@@ -4426,9 +4427,19 @@ io.on("connection", (socket) => {
         return;
       }
 
-      // if a correct bell happened while we were waiting, the ring handler
-      // has already rearranged turnIndex/collected cards and locked future
-      // flips; the delayed flip should not advance the turn again.
+      // if a bell occurred after this flip started we should ignore the
+      // timer entirely to avoid overwriting the winner's turn.  lastBellTime
+      // is set when handleRingForSocket successfully processes a bell.
+      if (
+        room.lastBellTime &&
+        flipStartTime &&
+        room.lastBellTime >= flipStartTime
+      ) {
+        room.isFlipping = false;
+        return;
+      }
+
+      // if a correct bell is still locked, skip advancing as before
       if (room.bellLocked) {
         room.isFlipping = false;
         return;
@@ -4525,6 +4536,8 @@ io.on("connection", (socket) => {
     }
 
     if (isCorrectBell) {
+      // record bell timestamp for flip-timer comparisons
+      room.lastBellTime = Date.now();
       // lock as soon as we know the bell was right (it may already have
       // been cleared above but doing it again keeps the meaning clear)
       room.bellLocked = true;
