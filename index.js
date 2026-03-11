@@ -4418,6 +4418,14 @@ io.on("connection", (socket) => {
         return;
       }
 
+      // if a correct bell happened while we were waiting, the ring handler
+      // has already rearranged turnIndex/collected cards and locked future
+      // flips; the delayed flip should not advance the turn again.
+      if (room.bellLocked) {
+        room.isFlipping = false;
+        return;
+      }
+
       const pauseRemaining = getSpecialPauseRemaining(room);
       if (pauseRemaining > 0) {
         setTimeout(() => {
