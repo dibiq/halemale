@@ -14837,8 +14837,12 @@ class GameScene extends Phaser.Scene {
     const prefix = nickname ? `${nickname} ` : "";
     this.showToast(`${label} 카드 등장!`, "#f39c12");
 
-    // plus1 in single occasionally linger due to timing; force clear after 1s
-    if (type === PLUS1_CARD_TYPE && this.isSingle) {
+    // special toasts (plus1 or thunder) can sometimes persist when single-
+    // player timing is tight; clear them after a brief interval.
+    if (
+      this.isSingle &&
+      (type === PLUS1_CARD_TYPE || type === THUNDER_CARD_TYPE)
+    ) {
       this.time.delayedCall(1100, () => {
         try {
           if (this.toastLayer) {
