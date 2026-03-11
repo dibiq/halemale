@@ -10289,9 +10289,7 @@ class GameScene extends Phaser.Scene {
     // blockcard는 fullStack에서 항상 가져와 그려야 하므로 분리하여 처리합니다.
     const normalCards = (
       player && player.isFlipping ? fullStack.slice(0, -1) : fullStack
-    )
-      .filter((c) => !(c && c.type === "blockcard"))
-      .filter((c) => !(c && c.type === PLUS1_CARD_TYPE)); // plus1 is shown via other UI, not as a card
+    ).filter((c) => !(c && c.type === "blockcard"));
     const blockCards = fullStack.filter((c) => c && c.type === "blockcard");
 
     // 일반 카드 먼저 그리기
@@ -14678,7 +14676,6 @@ class GameScene extends Phaser.Scene {
 
     return this.roundData.players.some((player) => {
       if (!player) return false;
-      if (player.hasPlus1) return true;
       const top =
         Array.isArray(player?.openStack) && player.openStack.length > 0
           ? player.openStack[player.openStack.length - 1]
