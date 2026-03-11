@@ -1062,47 +1062,53 @@ function scheduleAiTurn(room, io) {
   ensureAiState(room);
   clearAiTurnTimer(room);
 
-  // if a bell has just gone off we should wait until it's been
-  // cleared by an actual card submission; otherwise a bot might be
-  // queued and fire immediately, racing the human player.
-  if (room.bellLocked) {
-    // retry shortly
-    room.aiTimers.turn = setTimeout(() => {
-      scheduleAiTurn(room, io);
-    }, 50);
-    return;
-  }
-
-  const pauseRemaining = getSpecialPauseRemaining(room);
-  if (pauseRemaining > 0) {
-    room.aiTimers.turn = setTimeout(() => {
-      scheduleAiTurn(room, io);
-    }, pauseRemaining + 20);
-    return;
-  }
+  // keep bell scheduling unchanged
+  scheduleAiBell(room, io);
 
   const current = room.players[room.turnIndex];
-  if (!isBotPlayer(current)) return;
-  if (!current.myDeck || current.myDeck.length === 0) return;
-  if (room.isFlipping) return;
+  function scheduleRetry(ms = 500) {
+    room.aiTimers.turn = setTimeout(() => {
+      scheduleAiTurn(room, io);
+    }, ms);
+  }
 
-  const delayBase = Number(current.aiProfile?.flipDelay || 700);
-  const delay = Math.max(
-    160,
-    delayBase + 220 + Math.floor(Math.random() * 120),
-  );
+  // if a bell is being processed, wait a bit before deciding again
+  if (room.bellPending) {
+    scheduleRetry();
+    return;
+  }
+
+  // if the table already qualifies for a correct bell, don't even queue a
+  // flip; let scheduleAiBell handle the ring. retry so we check again later.
+  if (computeBellSuccessCondition(room)) {
+    scheduleRetry(200);
+    return;
+  }
+
+  if (!isBotPlayer(current) || !current.myDeck || current.myDeck.length === 0) {
+    scheduleRetry();
+    return;
+  }
 
   room.aiTimers.turn = setTimeout(() => {
-    if (!room.isGameStarted) return;
-    const active = room.players[room.turnIndex];
-    if (!active || active.id !== current.id) return;
-    handleAiFlip(room, io, current.id);
-  }, delay);
+    if (room.isGameStarted) {
+      const active = room.players[room.turnIndex];
+      if (
+        active &&
+        active.id === current.id &&
+        !room.bellPending &&
+        !computeBellSuccessCondition(room)
+      ) {
+        handleAiFlip(room, io, current.id);
+      }
+    }
+    scheduleAiTurn(room, io);
+  }, 2200); // slight bump so ring (1.7s) wins
 }
 
 function scheduleAiBell(room, io) {
   if (!room || !room.isGameStarted) return;
-  if (room.bellLocked) return;
+  if (room.bellLocked || room.bellPending) return;
   ensureAiState(room);
   clearAiBellTimers(room);
 
@@ -1129,15 +1135,33 @@ function scheduleAiBell(room, io) {
     if (player.isEliminated) return;
     if (!player.myDeck || player.myDeck.length <= 0) return;
 
-    const delay = 1300 + Math.floor(Math.random() * 701);
+    // uniform 1.7‑second reaction for every bot
+    const delay = 1700;
     room.aiTimers.bells[player.id] = setTimeout(() => {
       handleAiBell(room, io, player.id);
     }, delay);
   });
+
+  // retry if the bell condition somehow persists but nobody rang
+  room.aiTimers.bells._retry = setTimeout(() => {
+    if (!room || !room.isGameStarted) return;
+    if (
+      !room.bellLocked &&
+      !room.bellPending &&
+      computeBellSuccessCondition(room)
+    ) {
+      scheduleAiBell(room, io);
+    }
+  }, 2200);
 }
 
 function handleAiFlip(room, io, playerId) {
   if (!room || !room.isGameStarted) return;
+  // if a human ring is under evaluation, skip entirely
+  if (room.bellPending) return;
+  // also avoid flipping if the board already satisfies bell condition –
+  // the bot should ring instead of adding another card.
+  if (computeBellSuccessCondition(room)) return;
   // don't let bots act while a bell is being processed – the lock
   // indicates someone has just rang and we should wait for the
   // next real flip (human or bot) to clear the lock.
@@ -1161,9 +1185,33 @@ function handleAiFlip(room, io, playerId) {
   room.isFlipping = true;
   room.lastFlipTime = Date.now();
 
+  // if a bell has already occurred after we scheduled this flip, cancel
+  // the action to prevent the temporary card‑on‑table glitch.
+  if (room.lastBellTime && room.lastBellTime >= room.lastFlipTime) {
+    room.isFlipping = false;
+    return;
+  }
+
   const card = p.myDeck.pop();
+  // second check: if a bell fired between starting the flip and now,
+  // return the card to the deck and bail out.
+  if (room.lastBellTime && room.lastBellTime >= room.lastFlipTime) {
+    p.myDeck.push(card);
+    room.isFlipping = false;
+    return;
+  }
   p.openCard = card;
   p.openCardStack.push(card);
+
+  // third check: maybe a ring just occurred after we pushed? undo again
+  if (room.lastBellTime && room.lastBellTime >= room.lastFlipTime) {
+    // return card and avoid emitting event
+    p.openCard = null;
+    p.openCardStack.pop();
+    p.myDeck.push(card);
+    room.isFlipping = false;
+    return;
+  }
 
   // only bombs and ton cards trigger the special pause; thunder is
   // handled immediately as a correct bell and should not introduce any
@@ -4471,6 +4519,8 @@ io.on("connection", (socket) => {
   function handleRingForSocket(sock) {
     const room = rooms[sock.roomId];
     if (!room || !room.isGameStarted) return;
+    // prevent AI actions while we evaluate this ring
+    room.bellPending = true;
 
     // immediately cancel any pending AI flip; see earlier comment in
     // the file for reasoning.
@@ -4835,6 +4885,12 @@ io.on("connection", (socket) => {
 
       processSkipTurn(room, io);
     }
+    // ring handling done, allow AI again after a brief grace period
+    // this prevents flips that would otherwise fire within a few dozen
+    // milliseconds of the result being emitted.
+    setTimeout(() => {
+      if (room) room.bellPending = false;
+    }, 500);
   }
 
   socket.on("ringBell", () => handleRingForSocket(socket));

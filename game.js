@@ -2193,6 +2193,10 @@ class LobbyScene extends Phaser.Scene {
     });
 
     socket.off("roomCreated").on("roomCreated", (data) => {
+      // if we were in the middle of leaving when the server responds,
+      // clear the flag so the lobby UI will actually update.
+      this.isLeavingRoom = false;
+
       this.currentRoomNumber =
         typeof data?.roomNumber === "number" ? data.roomNumber : null;
       this.isRoomOpen = true;
@@ -2322,7 +2326,8 @@ class LobbyScene extends Phaser.Scene {
     });
 
     socket.off("joinRoomSuccess").on("joinRoomSuccess", (data) => {
-      if (this.isLeavingRoom) return;
+      // joining a new room should also clear any previous-leave state
+      this.isLeavingRoom = false;
       if (typeof data?.roomNumber === "number") {
         this.currentRoomNumber = data.roomNumber;
       }
