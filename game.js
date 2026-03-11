@@ -262,10 +262,6 @@ function isPrivateHost(host) {
   );
 }
 
-// private LAN addresses should also behave like production (the remote
-// render server is preferred over whatever service might be running on
-// the local machine).  covers 10.x, 127.x, 169.254.x, 172.16-31.x, and
-// 192.168.x ranges.
 const isProductionBrowser =
   PRODUCTION_HOSTS.has(browserHost) || isPrivateHost(browserHost);
 const envServerUrl =

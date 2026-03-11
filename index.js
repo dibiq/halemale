@@ -930,9 +930,8 @@ function processSkipTurn(room, io) {
 }
 
 const MULTI_AI_BASE_PROFILE = {
-  // defaults used when no human samples available; keep bots a bit slower
-  flipDelay: 1500,
-  reactionTime: 6000,
+  flipDelay: 80,
+  reactionTime: 220,
 };
 
 const MULTI_AI_SLOWDOWN_MS = 520;
@@ -986,10 +985,10 @@ function buildMatchAiProfile(room) {
   const flipFactor = randomTriangular(0.9, 1.4, 1.1);
   const reactionTime = clampNumber(
     Math.round(baseline * reactionFactor),
-    1500, // ensure at least 1.5 s reaction baseline
-    3000,
+    1000,
+    2400,
   );
-  const flipDelay = clampNumber(Math.round(baseline * flipFactor), 1200, 3000); // flips should take ≥1.2 s
+  const flipDelay = clampNumber(Math.round(baseline * flipFactor), 500, 2400);
 
   return {
     flipDelay,
@@ -1058,52 +1057,47 @@ function buildAiPlayer(room) {
   };
 }
 
-// helper used by both human ring and AI logic
-function computeBellSuccessCondition(room) {
-  if (!room || !Array.isArray(room.players)) return false;
-  const totals = getFruitTotals(room.players);
-  const isFive = Object.values(totals).some((t) => t === 5);
-  const hasThunder = hasThunderCardOnTable(room.players);
-  const hasBomb = hasBombCardOnTable(room.players);
-  const hasNot5 = hasNot5CardOnTable(room.players);
-  return !hasBomb && (hasThunder || (hasNot5 ? !isFive : isFive));
-}
-
 function scheduleAiTurn(room, io) {
   if (!room || !room.isGameStarted) return;
   ensureAiState(room);
   clearAiTurnTimer(room);
 
-  // keep bell scheduling unchanged
-  scheduleAiBell(room, io);
-
-  const current = room.players[room.turnIndex];
-  // helper that sets a short retry when there is no available bot to act
-  function scheduleRetry(ms = 500) {
+  // if a bell has just gone off we should wait until it's been
+  // cleared by an actual card submission; otherwise a bot might be
+  // queued and fire immediately, racing the human player.
+  if (room.bellLocked) {
+    // retry shortly
     room.aiTimers.turn = setTimeout(() => {
       scheduleAiTurn(room, io);
-    }, ms);
-  }
-
-  if (!isBotPlayer(current) || !current.myDeck || current.myDeck.length === 0) {
-    // no bot turn right now – poll again later in case the turn changes
-    scheduleRetry();
+    }, 50);
     return;
   }
 
-  // at this point we have a live bot with cards; always queue a flip after
-  // the fixed delay, then reschedule the scheduler itself afterwards so the
-  // loop never stops even if something aborts the flip.
+  const pauseRemaining = getSpecialPauseRemaining(room);
+  if (pauseRemaining > 0) {
+    room.aiTimers.turn = setTimeout(() => {
+      scheduleAiTurn(room, io);
+    }, pauseRemaining + 20);
+    return;
+  }
+
+  const current = room.players[room.turnIndex];
+  if (!isBotPlayer(current)) return;
+  if (!current.myDeck || current.myDeck.length === 0) return;
+  if (room.isFlipping) return;
+
+  const delayBase = Number(current.aiProfile?.flipDelay || 700);
+  const delay = Math.max(
+    160,
+    delayBase + 220 + Math.floor(Math.random() * 120),
+  );
+
   room.aiTimers.turn = setTimeout(() => {
-    if (room.isGameStarted) {
-      const active = room.players[room.turnIndex];
-      if (active && active.id === current.id) {
-        handleAiFlip(room, io, current.id);
-      }
-    }
-    // regardless of what happened, keep the AI loop alive
-    scheduleAiTurn(room, io);
-  }, 2000);
+    if (!room.isGameStarted) return;
+    const active = room.players[room.turnIndex];
+    if (!active || active.id !== current.id) return;
+    handleAiFlip(room, io, current.id);
+  }, delay);
 }
 
 function scheduleAiBell(room, io) {
@@ -1135,21 +1129,11 @@ function scheduleAiBell(room, io) {
     if (player.isEliminated) return;
     if (!player.myDeck || player.myDeck.length <= 0) return;
 
-    // uniform 1.7‑second reaction for every bot
-    const delay = 1700;
+    const delay = 1300 + Math.floor(Math.random() * 701);
     room.aiTimers.bells[player.id] = setTimeout(() => {
       handleAiBell(room, io, player.id);
     }, delay);
   });
-  // if for some reason all scheduled bell attempts were aborted (e.g.
-  // condition flipped) and the window remains open, retry once after
-  // the max reaction time to avoid stalling.
-  room.aiTimers.bells._retry = setTimeout(() => {
-    if (!room || !room.isGameStarted) return;
-    if (computeBellSuccessCondition(room) && !room.bellLocked) {
-      scheduleAiBell(room, io);
-    }
-  }, 2200);
 }
 
 function handleAiFlip(room, io, playerId) {
@@ -1180,12 +1164,6 @@ function handleAiFlip(room, io, playerId) {
   const card = p.myDeck.pop();
   p.openCard = card;
   p.openCardStack.push(card);
-
-  // remove self‑ring scheduling altogether (handled by scheduleAiBell)
-  if (computeBellSuccessCondition(room)) {
-    room.isFlipping = false;
-    return;
-  }
 
   // only bombs and ton cards trigger the special pause; thunder is
   // handled immediately as a correct bell and should not introduce any
@@ -3868,11 +3846,11 @@ io.on("connection", (socket) => {
         const variance = 0.95 + Math.random() * 0.1;
         p.aiProfile = {
           flipDelay: Math.max(
-            1200, // no bot flips faster than 1.2 s
+            450,
             Math.round(matchAiProfile.flipDelay * variance),
           ),
           reactionTime: Math.max(
-            1500, // no bot rings faster than 1.5 s
+            500,
             Math.round(matchAiProfile.reactionTime * variance),
           ),
           baseline: matchAiProfile.baseline,
