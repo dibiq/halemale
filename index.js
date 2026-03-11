@@ -1096,18 +1096,9 @@ function scheduleAiTurn(room, io) {
     return;
   }
 
-  // do not schedule a flip if the table currently qualifies for a
-  // correct bell; an AI ring has already been scheduled above
+  // if a bell condition exists we don’t flip; a bell will
+  // be handled separately by scheduleAiBell after a fixed delay.
   if (computeBellSuccessCondition(room)) {
-    const current = room.players[room.turnIndex];
-    // if it's this bot's turn, ring immediately rather than waiting
-    if (isBotPlayer(current)) {
-      handleAiBell(room, io, current.id);
-      return;
-    }
-    room.aiTimers.turn = setTimeout(() => {
-      scheduleAiTurn(room, io);
-    }, 100);
     return;
   }
 
@@ -1116,12 +1107,8 @@ function scheduleAiTurn(room, io) {
   if (!current.myDeck || current.myDeck.length === 0) return;
   if (room.isFlipping) return;
 
-  // use slower defaults and add generous jitter so bots feel human
-  const delayBase = Number(current.aiProfile?.flipDelay || 1500);
-  const delay = Math.max(
-    800,
-    delayBase + 400 + Math.floor(Math.random() * 800),
-  );
+  // fixed 2‑second submission delay for all bots
+  const delay = 2000;
 
   room.aiTimers.turn = setTimeout(() => {
     if (!room.isGameStarted) return;
@@ -1160,9 +1147,8 @@ function scheduleAiBell(room, io) {
     if (player.isEliminated) return;
     if (!player.myDeck || player.myDeck.length <= 0) return;
 
-    // human‑like response when another player flips – slower than a robot
-    const delayBase = Number(player.aiProfile?.flipDelay || 1500);
-    const delay = Math.max(800, delayBase + Math.floor(Math.random() * 1001));
+    // uniform 2‑second reaction for every bot
+    const delay = 2000;
     room.aiTimers.bells[player.id] = setTimeout(() => {
       handleAiBell(room, io, player.id);
     }, delay);
@@ -1175,12 +1161,6 @@ function handleAiFlip(room, io, playerId) {
   // indicates someone has just rang and we should wait for the
   // next real flip (human or bot) to clear the lock.
   if (room.bellLocked) return;
-
-  // if table currently satisfies bell-success condition, try ringing
-  if (computeBellSuccessCondition(room)) {
-    handleAiBell(room, io, playerId);
-    return;
-  }
 
   if (room.isFlipping) return;
 
@@ -1204,23 +1184,8 @@ function handleAiFlip(room, io, playerId) {
   p.openCard = card;
   p.openCardStack.push(card);
 
-  // if the flip itself created a correct bell window, queue a delayed
-  // bell rather than ring instantly. that delay should feel human‑scale.
+  // remove self‑ring scheduling altogether (handled by scheduleAiBell)
   if (computeBellSuccessCondition(room)) {
-    const bellBase = Math.max(
-      2000, // at least two seconds before self‑ring
-      Number(player.aiProfile?.reactionTime ?? 2000),
-    );
-    const bellDelay = bellBase + Math.floor(Math.random() * 1001);
-    room.aiTimers.bells[playerId] = setTimeout(() => {
-      // only ring if the turn is still theirs
-      if (
-        room.players[room.turnIndex] &&
-        room.players[room.turnIndex].id === playerId
-      ) {
-        handleAiBell(room, io, playerId);
-      }
-    }, bellDelay);
     room.isFlipping = false;
     return;
   }
