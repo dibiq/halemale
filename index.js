@@ -1073,6 +1073,9 @@ function scheduleAiTurn(room, io) {
   ensureAiState(room);
   clearAiTurnTimer(room);
 
+  // always give bots a chance to ring if bell condition is met
+  scheduleAiBell(room, io);
+
   // if a bell has just gone off we should wait until it's been
   // cleared by an actual card submission; otherwise a bot might be
   // queued and fire immediately, racing the human player.
@@ -1093,7 +1096,7 @@ function scheduleAiTurn(room, io) {
   }
 
   // do not schedule a flip if the table currently qualifies for a
-  // correct bell; the AI should ring instead of blindly flipping.
+  // correct bell; an AI ring has already been scheduled above
   if (computeBellSuccessCondition(room)) {
     room.aiTimers.turn = setTimeout(() => {
       scheduleAiTurn(room, io);
