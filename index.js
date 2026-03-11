@@ -1201,11 +1201,20 @@ function handleAiFlip(room, io, playerId) {
   p.openCard = card;
   p.openCardStack.push(card);
 
-  // if the flip itself created a correct bell window, the bot should ring
-  // instead of letting the turn cycle around again. handleAiBell will take
-  // care of collecting cards and advancing the turn.
+  // if the flip itself created a correct bell window, queue a delayed
+  // bell instead of ringing immediately. this ensures the reaction speed
+  // is in the 1.5‑2s range rather than instant.
   if (computeBellSuccessCondition(room)) {
-    handleAiBell(room, io, playerId);
+    const bellDelay = 1500 + Math.floor(Math.random() * 501);
+    room.aiTimers.bells[playerId] = setTimeout(() => {
+      // only ring if the turn is still theirs
+      if (
+        room.players[room.turnIndex] &&
+        room.players[room.turnIndex].id === playerId
+      ) {
+        handleAiBell(room, io, playerId);
+      }
+    }, bellDelay);
     room.isFlipping = false;
     return;
   }
