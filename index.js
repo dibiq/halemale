@@ -1098,6 +1098,12 @@ function scheduleAiTurn(room, io) {
   // do not schedule a flip if the table currently qualifies for a
   // correct bell; an AI ring has already been scheduled above
   if (computeBellSuccessCondition(room)) {
+    const current = room.players[room.turnIndex];
+    // if it's this bot's turn, ring immediately rather than waiting
+    if (isBotPlayer(current)) {
+      handleAiBell(room, io, current.id);
+      return;
+    }
     room.aiTimers.turn = setTimeout(() => {
       scheduleAiTurn(room, io);
     }, 100);
