@@ -1099,6 +1099,15 @@ function scheduleAiTurn(room, io) {
   // if a bell condition exists we don’t flip; a bell will
   // be handled separately by scheduleAiBell after a fixed delay.
   if (computeBellSuccessCondition(room)) {
+    // however, if it’s currently a bot’s turn we should retry later
+    // in case the bell window clears without anyone ringing. previously
+    // this returned immediately, which could leave the bot stuck.
+    const current = room.players[room.turnIndex];
+    if (isBotPlayer(current)) {
+      room.aiTimers.turn = setTimeout(() => {
+        scheduleAiTurn(room, io);
+      }, 200);
+    }
     return;
   }
 
@@ -1153,6 +1162,15 @@ function scheduleAiBell(room, io) {
       handleAiBell(room, io, player.id);
     }, delay);
   });
+  // if for some reason all scheduled bell attempts were aborted (e.g.
+  // condition flipped) and the window remains open, retry once after
+  // the max reaction time to avoid stalling.
+  room.aiTimers.bells._retry = setTimeout(() => {
+    if (!room || !room.isGameStarted) return;
+    if (computeBellSuccessCondition(room) && !room.bellLocked) {
+      scheduleAiBell(room, io);
+    }
+  }, 2200);
 }
 
 function handleAiFlip(room, io, playerId) {
