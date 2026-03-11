@@ -889,10 +889,11 @@ function processSkipTurn(room, io) {
   if (!room.isGameStarted) return;
 
   // clear any bell lock when advancing the turn; this covers cases where
-  // processSkipTurn is called from elsewhere as well.
+  // processSkipTurn is called from elsewhere as well, including right after
+  // a bell result has been emitted.
   if (room.bellLocked) room.bellLocked = false;
 
-  let loopCount = 0; // make sure we reset counter each time
+  let loopCount = 0; // reset counter for this call
 
   // 단순히 덱이 있는 다음 플레이어를 찾습니다.
   const dir = typeof room.turnDirection === "number" ? room.turnDirection : 1;
@@ -4327,51 +4328,17 @@ io.on("connection", (socket) => {
     p.openCard = card;
     p.openCardStack.push(card);
 
-    // immediately award cards if thunder was drawn
+    // debug logging for thunder only – bell handling occurs later
     if (isThunderCard(card)) {
-      // treat as if the winner rang the bell correctly
-      // compute reaction time just like handleRingForSocket does
-      const reactionTimeMs = room.lastFlipTime
-        ? Date.now() - room.lastFlipTime
-        : 0;
-      const reactionTimeSec = (reactionTimeMs / 1000).toFixed(2);
-
-      // collect open stacks for everybody
-      let collected = [];
-      room.players.forEach((pp) => {
-        collected = [...collected, ...(pp.openCardStack || [])];
-        pp.openCardStack = [];
-        pp.openCard = null;
+      console.log(
+        `⚡ THUNDER DRAWN by ${p.nickname}(${p.id}) remaining=${p.myDeck.length} turnIndex=${room.turnIndex}`,
+      );
+      emitServerDebug(room, "thunder.drawn", {
+        playerId: p.id,
+        nickname: p.nickname,
+        remaining: p.myDeck.length,
+        turnIndex: room.turnIndex,
       });
-
-      const winnerIdx = room.players.findIndex((pp) => pp.id === socket.id);
-      const winner = room.players[winnerIdx] || {};
-      winner.myDeck = [...collected, ...(winner.myDeck || [])];
-      room.turnIndex = winnerIdx;
-
-      room.players.forEach((pp) => {
-        pp.cards = pp.myDeck.length;
-        if (pp.cards === 0) pp.isEliminated = true;
-        else pp.isEliminated = false;
-      });
-
-      if (!checkGameOver(room, io)) {
-        io.to(room.roomId).emit("bellResult", {
-          success: true,
-          winnerId: socket.id,
-          winnerNickname: winner.nickname,
-          players: room.players,
-          nextTurnId: winner.id,
-          collectedCount: collected.length,
-          reactionTime: reactionTimeSec,
-        });
-        // unlock and advance
-        room.bellLocked = false;
-        processSkipTurn(room, io);
-      }
-      // skip the normal continuation since we've already handled everything
-      room.isFlipping = false;
-      return;
     }
 
     if (isBombCard(card) || isTonCard(card)) {
@@ -4633,14 +4600,9 @@ io.on("connection", (socket) => {
         reactionTime: reactionTimeSec, // 💡 추가: 반응 속도(초)
       });
 
-      // unlock immediately so next player may flip
-      room.bellLocked = false;
-
-      // unlocking now allows the next player (possibly AI) to flip right
-      // away; the lock only exists to stop races during the earlier bell
-      // evaluation.
-      room.bellLocked = false;
-
+      // leave bellLocked true until processSkipTurn clears it; that way
+      // any AI flip arriving between result emission and turn advancement
+      // will be ignored.
       processSkipTurn(room, io);
     } else {
       const p = room.players.find((pl) => pl.id === sock.id);
