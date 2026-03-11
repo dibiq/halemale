@@ -4444,6 +4444,13 @@ io.on("connection", (socket) => {
   function handleRingForSocket(sock) {
     const room = rooms[sock.roomId];
     if (!room || !room.isGameStarted) return;
+
+    // immediately cancel any pending AI flip to avoid races where a
+    // timer callback fires in the tiny gap between the client sending a
+    // ringBell event and the server running the handler.  without this
+    // the bot could submit a card "right after" the player wins.
+    clearAiTurnTimer(room);
+
     if (room.bellLocked) return;
     if (getSpecialPauseRemaining(room) > 0) return;
 
@@ -4493,8 +4500,10 @@ io.on("connection", (socket) => {
     }
 
     if (isCorrectBell) {
+      // lock as soon as we know the bell was right (it may already have
+      // been cleared above but doing it again keeps the meaning clear)
       room.bellLocked = true;
-      // cancel any scheduled AI flip for the winner to prevent immediate double flip
+      // ensure no stray timer survives
       clearAiTurnTimer(room);
 
       // 만약 시작하자마자 종을 누르는 경우를 대비해 기본값 0 설정

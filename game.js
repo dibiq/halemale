@@ -10706,11 +10706,17 @@ class GameScene extends Phaser.Scene {
     const { width, height } = this.cameras.main;
     const cardKey = this.getCardKey(data.card);
     if (data?.card?.type === THUNDER_CARD_TYPE) {
-      // allow bell press immediately when animation begins
+      // thunder is special: enable bell interaction and also start the
+      // same pause we use for bombs/ton so that the player cannot flip
+      // again until the server advances the turn.
       this.allowBellBecauseThunder = true;
       this.time.delayedCall(500, () => {
         this.allowBellBecauseThunder = false;
       });
+
+      // pause prevents additional flips, and will automatically re‑enable
+      // when the timeout elapses (see isSpecialCardPauseActive/startSpecialCardPause).
+      this.startSpecialCardPause();
     }
 
     const now = this.time?.now || Date.now();
@@ -11717,12 +11723,15 @@ class GameScene extends Phaser.Scene {
   handleFlipCard() {
     if (!this.roundData || !this.roundData.players) return;
 
+    // block all flips while a special‑card pause is active. previously we
+    // allowed flips when a thunder card was present (to let players keep
+    // going during the pause), but that created a window where the client
+    // would unlock after 1s while the server still hadn't advanced the
+    // turn. the result was two submissions in a row. simply denying
+    // flips until the pause expires prevents the problem and matches the
+    // server's behaviour.
     if (this.isSpecialCardPauseActive && this.isSpecialCardPauseActive()) {
-      const hasThunder =
-        typeof this.hasThunderOnTable === "function"
-          ? this.hasThunderOnTable()
-          : false;
-      if (!hasThunder) return;
+      return;
     }
 
     // 💡 1. 게임 시작 연출 중이면 무시
