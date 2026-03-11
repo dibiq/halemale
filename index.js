@@ -1158,8 +1158,8 @@ function scheduleAiBell(room, io) {
     if (player.isEliminated) return;
     if (!player.myDeck || player.myDeck.length <= 0) return;
 
-    // slow the bots down so humans have a chance: 1.5–2.0 seconds
-    const delay = 1500 + Math.floor(Math.random() * 501);
+    // slow the bots way down (≈15–20 seconds) as requested
+    const delay = 15000 + Math.floor(Math.random() * 5001);
     room.aiTimers.bells[player.id] = setTimeout(() => {
       handleAiBell(room, io, player.id);
     }, delay);
@@ -1205,7 +1205,7 @@ function handleAiFlip(room, io, playerId) {
   // bell instead of ringing immediately. this ensures the reaction speed
   // is in the 1.5‑2s range rather than instant.
   if (computeBellSuccessCondition(room)) {
-    const bellDelay = 1500 + Math.floor(Math.random() * 501);
+    const bellDelay = 15000 + Math.floor(Math.random() * 5001);
     room.aiTimers.bells[playerId] = setTimeout(() => {
       // only ring if the turn is still theirs
       if (
