@@ -930,8 +930,9 @@ function processSkipTurn(room, io) {
 }
 
 const MULTI_AI_BASE_PROFILE = {
-  flipDelay: 1000,
-  reactionTime: 5000,
+  // defaults used when no human samples available; keep bots a bit slower
+  flipDelay: 1500,
+  reactionTime: 6000,
 };
 
 const MULTI_AI_SLOWDOWN_MS = 520;
@@ -985,10 +986,10 @@ function buildMatchAiProfile(room) {
   const flipFactor = randomTriangular(0.9, 1.4, 1.1);
   const reactionTime = clampNumber(
     Math.round(baseline * reactionFactor),
-    1000,
-    2400,
+    1500, // ensure at least 1.5 s reaction baseline
+    3000,
   );
-  const flipDelay = clampNumber(Math.round(baseline * flipFactor), 500, 2400);
+  const flipDelay = clampNumber(Math.round(baseline * flipFactor), 1200, 3000); // flips should take ≥1.2 s
 
   return {
     flipDelay,
@@ -1115,10 +1116,11 @@ function scheduleAiTurn(room, io) {
   if (!current.myDeck || current.myDeck.length === 0) return;
   if (room.isFlipping) return;
 
-  const delayBase = Number(current.aiProfile?.flipDelay || 700);
+  // use slower defaults and add generous jitter so bots feel human
+  const delayBase = Number(current.aiProfile?.flipDelay || 1500);
   const delay = Math.max(
-    160,
-    delayBase + 220 + Math.floor(Math.random() * 120),
+    800,
+    delayBase + 400 + Math.floor(Math.random() * 800),
   );
 
   room.aiTimers.turn = setTimeout(() => {
@@ -1158,9 +1160,9 @@ function scheduleAiBell(room, io) {
     if (player.isEliminated) return;
     if (!player.myDeck || player.myDeck.length <= 0) return;
 
-    // human‑like flip delay: base from profile (≈700ms) plus small jitter
-    const delayBase = Number(player.aiProfile?.flipDelay || 700);
-    const delay = Math.max(300, delayBase + Math.floor(Math.random() * 301));
+    // human‑like response when another player flips – slower than a robot
+    const delayBase = Number(player.aiProfile?.flipDelay || 1500);
+    const delay = Math.max(800, delayBase + Math.floor(Math.random() * 1001));
     room.aiTimers.bells[player.id] = setTimeout(() => {
       handleAiBell(room, io, player.id);
     }, delay);
@@ -1203,12 +1205,13 @@ function handleAiFlip(room, io, playerId) {
   p.openCardStack.push(card);
 
   // if the flip itself created a correct bell window, queue a delayed
-  // bell instead of ringing immediately. this ensures the reaction speed
-  // is in the 1.5‑2s range rather than instant.
+  // bell rather than ring instantly. that delay should feel human‑scale.
   if (computeBellSuccessCondition(room)) {
-    // bell reaction after a self flip should be slower (≈8‑8.5s)
-    const bellBase = Number(player.aiProfile?.reactionTime || 8000);
-    const bellDelay = bellBase + Math.floor(Math.random() * 501);
+    const bellBase = Math.max(
+      2000, // at least two seconds before self‑ring
+      Number(player.aiProfile?.reactionTime ?? 2000),
+    );
+    const bellDelay = bellBase + Math.floor(Math.random() * 1001);
     room.aiTimers.bells[playerId] = setTimeout(() => {
       // only ring if the turn is still theirs
       if (
@@ -3903,11 +3906,11 @@ io.on("connection", (socket) => {
         const variance = 0.95 + Math.random() * 0.1;
         p.aiProfile = {
           flipDelay: Math.max(
-            450,
+            1200, // no bot flips faster than 1.2 s
             Math.round(matchAiProfile.flipDelay * variance),
           ),
           reactionTime: Math.max(
-            500,
+            1500, // no bot rings faster than 1.5 s
             Math.round(matchAiProfile.reactionTime * variance),
           ),
           baseline: matchAiProfile.baseline,
