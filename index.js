@@ -1158,7 +1158,8 @@ function scheduleAiBell(room, io) {
     if (player.isEliminated) return;
     if (!player.myDeck || player.myDeck.length <= 0) return;
 
-    const delay = 1300 + Math.floor(Math.random() * 701);
+    // slow the bots down so humans have a chance: 1.5–2.0 seconds
+    const delay = 1500 + Math.floor(Math.random() * 501);
     room.aiTimers.bells[player.id] = setTimeout(() => {
       handleAiBell(room, io, player.id);
     }, delay);
