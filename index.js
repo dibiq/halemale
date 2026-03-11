@@ -1164,7 +1164,10 @@ function handleAiFlip(room, io, playerId) {
   p.openCard = card;
   p.openCardStack.push(card);
 
-  if (isBombCard(card) || isThunderCard(card) || isTonCard(card)) {
+  // only bombs and ton cards trigger the special pause; thunder is
+  // handled immediately as a correct bell and should not introduce any
+  // delay.
+  if (isBombCard(card) || isTonCard(card)) {
     extendSpecialPause(room);
   }
 
@@ -4324,7 +4327,54 @@ io.on("connection", (socket) => {
     p.openCard = card;
     p.openCardStack.push(card);
 
-    if (isBombCard(card) || isThunderCard(card) || isTonCard(card)) {
+    // immediately award cards if thunder was drawn
+    if (isThunderCard(card)) {
+      // treat as if the winner rang the bell correctly
+      // compute reaction time just like handleRingForSocket does
+      const reactionTimeMs = room.lastFlipTime
+        ? Date.now() - room.lastFlipTime
+        : 0;
+      const reactionTimeSec = (reactionTimeMs / 1000).toFixed(2);
+
+      // collect open stacks for everybody
+      let collected = [];
+      room.players.forEach((pp) => {
+        collected = [...collected, ...(pp.openCardStack || [])];
+        pp.openCardStack = [];
+        pp.openCard = null;
+      });
+
+      const winnerIdx = room.players.findIndex((pp) => pp.id === socket.id);
+      const winner = room.players[winnerIdx] || {};
+      winner.myDeck = [...collected, ...(winner.myDeck || [])];
+      room.turnIndex = winnerIdx;
+
+      room.players.forEach((pp) => {
+        pp.cards = pp.myDeck.length;
+        if (pp.cards === 0) pp.isEliminated = true;
+        else pp.isEliminated = false;
+      });
+
+      if (!checkGameOver(room, io)) {
+        io.to(room.roomId).emit("bellResult", {
+          success: true,
+          winnerId: socket.id,
+          winnerNickname: winner.nickname,
+          players: room.players,
+          nextTurnId: winner.id,
+          collectedCount: collected.length,
+          reactionTime: reactionTimeSec,
+        });
+        // unlock and advance
+        room.bellLocked = false;
+        processSkipTurn(room, io);
+      }
+      // skip the normal continuation since we've already handled everything
+      room.isFlipping = false;
+      return;
+    }
+
+    if (isBombCard(card) || isTonCard(card)) {
       extendSpecialPause(room);
     }
 

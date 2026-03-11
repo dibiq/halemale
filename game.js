@@ -10729,17 +10729,14 @@ class GameScene extends Phaser.Scene {
     const { width, height } = this.cameras.main;
     const cardKey = this.getCardKey(data.card);
     if (data?.card?.type === THUNDER_CARD_TYPE) {
-      // thunder is special: enable bell interaction and also start the
-      // same pause we use for bombs/ton so that the player cannot flip
-      // again until the server advances the turn.
+      // thunder is special: enable bell interaction in case the player
+      // tries to tap the bell manually. the server will also process the
+      // win automatically, so we do not apply the normal special-card
+      // pause here (it would only delay the next flip).
       this.allowBellBecauseThunder = true;
       this.time.delayedCall(500, () => {
         this.allowBellBecauseThunder = false;
       });
-
-      // pause prevents additional flips, and will automatically re‑enable
-      // when the timeout elapses (see isSpecialCardPauseActive/startSpecialCardPause).
-      this.startSpecialCardPause();
     }
 
     const now = this.time?.now || Date.now();
@@ -11833,10 +11830,6 @@ class GameScene extends Phaser.Scene {
     // 1. 게임 준비 상태 확인
     if (!this.isGameReady) return;
 
-    // prevent rapid re-clicks; we’ll re-enable when a new turn begins
-    if (this.canClick === false) return;
-    this.canClick = false;
-
     if (this.isSpecialCardPauseActive && this.isSpecialCardPauseActive()) {
       // thunder card should override the pause and allow bell presses
       const hasThunder =
@@ -11844,26 +11837,12 @@ class GameScene extends Phaser.Scene {
           ? this.hasThunderOnTable()
           : false;
       if (!hasThunder && !this.allowBellBecauseThunder) {
-        return;
+        return; // do not lock canClick yet
       }
     }
 
     if (this.isTutorialMode && this.tutorialState?.forbidBell) {
       this.showToast("폭탄 카드일 땐 종을 누를 수 없어요!", "#f97316");
-      return;
-    }
-
-    const hasOpenCards = Array.isArray(this.roundData?.players)
-      ? this.roundData.players.some((player) => {
-          const hasOpenStack =
-            Array.isArray(player?.openStack) && player.openStack.length > 0;
-          const hasOpenCard = Boolean(player?.openCard);
-          return hasOpenStack || hasOpenCard;
-        })
-      : false;
-
-    // if thunder flip just happened we may not have updated open cards yet
-    if (!hasOpenCards && !this.allowBellBecauseThunder) {
       return;
     }
 
