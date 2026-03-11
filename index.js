@@ -930,8 +930,8 @@ function processSkipTurn(room, io) {
 }
 
 const MULTI_AI_BASE_PROFILE = {
-  flipDelay: 2000,
-  reactionTime: 2000,
+  flipDelay: 1000,
+  reactionTime: 1000,
 };
 
 const MULTI_AI_SLOWDOWN_MS = 520;

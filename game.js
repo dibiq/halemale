@@ -262,8 +262,13 @@ function isPrivateHost(host) {
   );
 }
 
-const isProductionBrowser =
-  PRODUCTION_HOSTS.has(browserHost) || isPrivateHost(browserHost);
+// When running on a development machine we want to connect to the
+// local backend, not the deployed render server.  Previously we treated
+// *any* private LAN address as production which meant that opening the
+// page on 192.168.x.x caused the client to try to speak to
+// https://halemale.onrender.com and fail.  Drop that behavior so only
+// explicit hostnames in PRODUCTION_HOSTS count as production.
+const isProductionBrowser = PRODUCTION_HOSTS.has(browserHost);
 const envServerUrl =
   typeof import.meta !== "undefined" && import.meta.env
     ? import.meta.env.VITE_SERVER_URL
