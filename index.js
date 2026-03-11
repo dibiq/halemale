@@ -1058,6 +1058,17 @@ function scheduleAiTurn(room, io) {
   ensureAiState(room);
   clearAiTurnTimer(room);
 
+  // if a bell has just gone off we should wait until it's been
+  // cleared by an actual card submission; otherwise a bot might be
+  // queued and fire immediately, racing the human player.
+  if (room.bellLocked) {
+    // retry shortly
+    room.aiTimers.turn = setTimeout(() => {
+      scheduleAiTurn(room, io);
+    }, 50);
+    return;
+  }
+
   const pauseRemaining = getSpecialPauseRemaining(room);
   if (pauseRemaining > 0) {
     room.aiTimers.turn = setTimeout(() => {
@@ -1123,17 +1134,25 @@ function scheduleAiBell(room, io) {
 
 function handleAiFlip(room, io, playerId) {
   if (!room || !room.isGameStarted) return;
+  // don't let bots act while a bell is being processed – the lock
+  // indicates someone has just rang and we should wait for the
+  // next real flip (human or bot) to clear the lock.
+  if (room.bellLocked) return;
+
   if (room.isFlipping) return;
 
   if (getSpecialPauseRemaining(room) > 0) return;
+
+  // cancel any pending turn timer for this room; the bot is about
+  // to act so there is no need for the scheduled callback anymore.
+  clearAiTurnTimer(room);
 
   const p = room.players.find((pl) => pl.id === playerId);
   if (!p || !p.myDeck || p.myDeck.length === 0) return;
   if (room.players[room.turnIndex]?.id !== playerId) return;
 
-  if (room.bellLocked) {
-    room.bellLocked = false;
-  }
+  // clearing the lock happens when a valid card is played; the check
+  // above prevented us from running while it was still locked.
 
   room.isFlipping = true;
   room.lastFlipTime = Date.now();
@@ -4475,6 +4494,8 @@ io.on("connection", (socket) => {
 
     if (isCorrectBell) {
       room.bellLocked = true;
+      // cancel any scheduled AI flip for the winner to prevent immediate double flip
+      clearAiTurnTimer(room);
 
       // 만약 시작하자마자 종을 누르는 경우를 대비해 기본값 0 설정
       const reactionTimeMs = room.lastFlipTime

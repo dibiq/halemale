@@ -8857,10 +8857,17 @@ class GameScene extends Phaser.Scene {
       this.triggerEliminationEffects(this.roundData.players, updatedPlayers);
 
       if (data.success) {
+        // if we already showed optimistic success for this bell, skip animation
+        if (data.winnerId === socket.id && this.optimisticBellHandled) {
+          // just update state and return
+          this.roundData.players = updatedPlayers;
+          return;
+        }
+
         const message = `${data.winnerNickname} ${data.collectedCount}장 획득(${data.reactionTime}초)`;
         this.addGameLog(`${message}`, "#f1c40f");
 
-        // 💡 [추가] 승리 애니메이션 호출 (renderTable은 애니메이션 끝난 후 함수 내부에서 실행됨)
+        // 💡 [수정] 승리 애니메이션 호출 (renderTable은 애니메이션 끝난 후 함수 내부에서 실행됨)
         this.playWinAnimation({
           winnerId: data.winnerId, // 서버에서 승자 ID를 보내준다고 가정
           players: updatedPlayers,
@@ -10010,27 +10017,51 @@ class GameScene extends Phaser.Scene {
 
     this.playerTableGroup.add([deck, countTxt]);
 
-    if (p.isEliminated) {
-      const stampRadius = width * 0.065;
-      const stamp = this.add
-        .circle(layout.x, layout.y, stampRadius, 0xb91c1c, 0.18)
-        .setStrokeStyle(4, 0xef4444, 0.85)
-        .setDepth(12)
-        .setAngle(-10);
-      const stampText = this.add
-        .text(layout.x, layout.y, "탈락", {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.04}px`,
-          color: "#ffffff",
-          fontWeight: "bold",
-          stroke: "#1f2937",
-          strokeThickness: 4,
-        })
-        .setOrigin(0.5)
-        .setDepth(13)
-        .setAngle(-10);
+    // draw stamp if player has been eliminated at any point
+    if (p.isEliminated || p._eliminatedStamp) {
+      // mark the flag so future draws know player was eliminated
+      p._eliminatedStamp = true;
+      // only animate once per deck sprite creation
+      if (!deck.getData("elimStamped")) {
+        deck.setData("elimStamped", true);
+        const stampRadius = width * 0.065;
+        const stamp = this.add
+          .circle(layout.x, layout.y, stampRadius, 0xb91c1c, 0.18)
+          .setStrokeStyle(4, 0xef4444, 0.85)
+          .setDepth(12)
+          .setAngle(-10)
+          .setScale(0);
+        const stampText = this.add
+          .text(layout.x, layout.y, "탈락", {
+            fontFamily: GAME_FONTS.main,
+            fontSize: `${width * 0.04}px`,
+            color: "#dc2626",
+            fontWeight: "bold",
+            stroke: "#ffffff",
+            strokeThickness: 4,
+          })
+          .setOrigin(0.5)
+          .setDepth(13)
+          .setAngle(-10)
+          .setScale(0);
 
-      this.playerTableGroup.add([stamp, stampText]);
+        this.playerTableGroup.add([stamp, stampText]);
+
+        this.tweens.add({
+          targets: [stamp, stampText],
+          scale: { from: 0, to: 1.1 },
+          duration: 200,
+          ease: "Back.easeOut",
+          yoyo: true,
+          onStart: () => {
+            try {
+              if (this.cache.audio.exists("effect")) {
+                this.sound.play("effect", { volume: 0.3 });
+              }
+            } catch (e) {}
+          },
+        });
+      }
     }
   }
 
@@ -11882,6 +11913,52 @@ class GameScene extends Phaser.Scene {
         if (successWindow) {
           // 플레이어가 정답일 가능성이 높으므로 즉시 성공 이펙트만 재생
           this.playSuccessEffect();
+
+          // optimistic card pickup animation for lightning/five
+          try {
+            const prevPlayers = this.roundData.players.map((p) => ({
+              ...p,
+              openStack: p.openStack ? [...p.openStack] : [],
+            }));
+            let updatedPlayers = prevPlayers.map((p) => ({ ...p }));
+            const me = updatedPlayers.find((p) => p.id === socket.id);
+            if (me) {
+              // collect cards from all other players and clear their stacks
+              updatedPlayers.forEach((p) => {
+                if (p.id === socket.id) return;
+                if (Array.isArray(p.openStack) && p.openStack.length) {
+                  p.openStack.forEach((c) => {
+                    if (c) me.myDeck.unshift(c);
+                  });
+                }
+              });
+              // clear everyone's floor state (including winner)
+              updatedPlayers.forEach((p) => {
+                p.openStack = [];
+                p.openCard = null;
+              });
+              me.cards = me.myDeck.length;
+            } else {
+              // still clear floor for all if somehow no me found
+              updatedPlayers.forEach((p) => {
+                p.openStack = [];
+                p.openCard = null;
+              });
+            }
+            this.playWinAnimation({
+              winnerId: socket.id,
+              players: updatedPlayers,
+              prevPlayers,
+            });
+            this.roundData.players = updatedPlayers;
+            // mark that we already displayed the win animation
+            this.optimisticBellHandled = true;
+            setTimeout(() => {
+              this.optimisticBellHandled = false;
+            }, 1200);
+          } catch (e) {
+            console.warn("optimistic win animation failed", e);
+          }
         } else {
           this.playFailureEffect();
         }
@@ -13236,60 +13313,70 @@ class GameScene extends Phaser.Scene {
       .map((id) => players.findIndex((p) => p.id === id))
       .filter((idx) => idx !== -1);
 
-    let total = giverIndices.length;
+    // count duplicates to know how many cards per giver
+    const counts = giverIndices.reduce((acc, idx) => {
+      acc[idx] = (acc[idx] || 0) + 1;
+      return acc;
+    }, {});
+    let total = Object.values(counts).reduce((a, b) => a + b, 0);
     if (total === 0) {
       if (typeof onComplete === "function") onComplete();
       return;
     }
 
     let finished = 0;
-    giverIndices.forEach((gIdx, i) => {
-      const relIdx = (gIdx - myIndex + players.length) % players.length;
-      const rotations =
-        playerCount === 2
-          ? [0, 180]
-          : playerCount === 3
-            ? [0, 90, -90]
-            : [0, 90, 180, -90];
-      const rotation = rotations[relIdx];
-      // thief는 각 플레이어의 덱에서 카드를 가져오므로 시작 위치를 덱(layout) 위치로 설정
-      const startX = pos[relIdx].x + (Math.random() - 0.5) * 12;
-      const startY = pos[relIdx].y + (Math.random() - 0.5) * 12;
+    // iterate over each giver index and animate its count sequentially
+    let animIndex = 0;
+    Object.keys(counts).forEach((gIdxStr) => {
+      const gIdx = Number(gIdxStr);
+      const numCards = counts[gIdx];
+      for (let j = 0; j < numCards; j += 1) {
+        const i = animIndex++;
+        const relIdx = (gIdx - myIndex + players.length) % players.length;
+        const rotations =
+          playerCount === 2
+            ? [0, 180]
+            : playerCount === 3
+              ? [0, 90, -90]
+              : [0, 90, 180, -90];
+        const rotation = rotations[relIdx];
+        const startX = pos[relIdx].x + (Math.random() - 0.5) * 12;
+        const startY = pos[relIdx].y + (Math.random() - 0.5) * 12;
 
-      const flyCard = this.add
-        .image(startX, startY, "card_back")
-        .setDisplaySize(width * 0.14, width * 0.2)
-        .setDepth(3000 + i);
+        const flyCard = this.add
+          .image(startX, startY, "card_back")
+          .setDisplaySize(width * 0.14, width * 0.2)
+          .setDepth(3000 + i);
 
-      const delay = i * 120;
-      this.tweens.add({
-        targets: flyCard,
-        x: targetPos.x + (Math.random() - 0.5) * 20,
-        y: targetPos.y + (Math.random() - 0.5) * 20,
-        duration: 420,
-        delay,
-        ease: "Cubic.out",
-        onComplete: () => {
-          flyCard.destroy();
-          finished++;
-          // 작은 파티클
-          const px = this.add
-            .circle(targetPos.x, targetPos.y, width * 0.01, 0xfff1c2, 1)
-            .setDepth(4000);
-          this.tweens.add({
-            targets: px,
-            alpha: 0,
-            scale: 0,
-            duration: 300,
-            ease: "Power2.easeOut",
-            onComplete: () => px.destroy(),
-          });
+        const delay = i * 120;
+        this.tweens.add({
+          targets: flyCard,
+          x: targetPos.x + (Math.random() - 0.5) * 20,
+          y: targetPos.y + (Math.random() - 0.5) * 20,
+          duration: 420,
+          delay,
+          ease: "Cubic.out",
+          onComplete: () => {
+            flyCard.destroy();
+            finished++;
+            const px = this.add
+              .circle(targetPos.x, targetPos.y, width * 0.01, 0xfff1c2, 1)
+              .setDepth(4000);
+            this.tweens.add({
+              targets: px,
+              alpha: 0,
+              scale: 0,
+              duration: 300,
+              ease: "Power2.easeOut",
+              onComplete: () => px.destroy(),
+            });
 
-          if (finished === total) {
-            if (typeof onComplete === "function") onComplete();
-          }
-        },
-      });
+            if (finished === total) {
+              if (typeof onComplete === "function") onComplete();
+            }
+          },
+        });
+      }
     });
   }
 
@@ -14489,6 +14576,7 @@ class GameScene extends Phaser.Scene {
       //    단, 바닥에 bomb 카드가 있다면 5가 있더라도 즉시 탈락 처리
       if (!hasDeck && (!hasBellSuccessWindow || hasBomb)) {
         p.isEliminated = true;
+        p._eliminatedStamp = true; // remember forever
         this.maybePlayEliminationEffect(p.id);
       }
       // 2. 낼 카드가 생기면 (종을 쳐서 먹었을 때) -> 생존 유지
