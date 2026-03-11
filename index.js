@@ -1077,20 +1077,32 @@ function scheduleAiTurn(room, io) {
   // keep bell scheduling unchanged
   scheduleAiBell(room, io);
 
-  // identify current player early; bail out if it's not a bot with cards
   const current = room.players[room.turnIndex];
-  if (!isBotPlayer(current) || !current.myDeck || current.myDeck.length === 0)
-    return;
+  // helper that sets a short retry when there is no available bot to act
+  function scheduleRetry(ms = 500) {
+    room.aiTimers.turn = setTimeout(() => {
+      scheduleAiTurn(room, io);
+    }, ms);
+  }
 
-  // always schedule a flip exactly 2s after being invoked. we deliberately
-  // ignore bellLock/pause/condition checks so that the bot never “stops”
-  // waiting indefinitely; if the turn changes before the timer fires we
-  // guard against it in the timeout callback.
+  if (!isBotPlayer(current) || !current.myDeck || current.myDeck.length === 0) {
+    // no bot turn right now – poll again later in case the turn changes
+    scheduleRetry();
+    return;
+  }
+
+  // at this point we have a live bot with cards; always queue a flip after
+  // the fixed delay, then reschedule the scheduler itself afterwards so the
+  // loop never stops even if something aborts the flip.
   room.aiTimers.turn = setTimeout(() => {
-    if (!room.isGameStarted) return;
-    const active = room.players[room.turnIndex];
-    if (!active || active.id !== current.id) return;
-    handleAiFlip(room, io, current.id);
+    if (room.isGameStarted) {
+      const active = room.players[room.turnIndex];
+      if (active && active.id === current.id) {
+        handleAiFlip(room, io, current.id);
+      }
+    }
+    // regardless of what happened, keep the AI loop alive
+    scheduleAiTurn(room, io);
   }, 2000);
 }
 
