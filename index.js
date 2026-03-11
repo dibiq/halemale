@@ -4430,10 +4430,15 @@ io.on("connection", (socket) => {
 
     clearAiBellTimers(room);
 
-    // If a flip is currently being processed, wait briefly and re-evaluate
+    // If a flip is currently being processed, normally wait and retry
     if (room.isFlipping) {
-      setTimeout(() => handleRingForSocket(sock), 50);
-      return;
+      // but if a thunder card is already on the table we can still process
+      const thunderNow = hasThunderCardOnTable(room.players);
+      if (!thunderNow) {
+        setTimeout(() => handleRingForSocket(sock), 50);
+        return;
+      }
+      // otherwise fall through and evaluate normally (optimistic success)
     }
 
     const hasOpenCards = room.players.some((player) => {

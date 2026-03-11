@@ -785,7 +785,6 @@ class LobbyScene extends Phaser.Scene {
     this.load.audio("pop", `${ASSET_SERVER}/sounds/pop.wav${VERSION}`);
     this.load.audio("bell", `${ASSET_SERVER}/sounds/bell.mp3${VERSION}`);
     this.load.audio("effect", `${ASSET_SERVER}/sounds/effect.mp3${VERSION}`);
-    this.load.audio("bubble", `${ASSET_SERVER}/sounds/bubble.mp3${VERSION}`);
 
     this.load.audio("btn", `${ASSET_SERVER}/sounds/btn.wav${VERSION}`);
     this.load.audio("readygo", `${ASSET_SERVER}/sounds/readygo.mp3${VERSION}`);
@@ -8743,6 +8742,12 @@ class GameScene extends Phaser.Scene {
           nextTurnId: data.nextTurnId,
           remainingCount: data.remainingCount,
         });
+        // allow immediate bell presses even if pause still active
+        this.allowBellBecauseThunder = true;
+        // clear after short delay (give time for server state update)
+        this.time.delayedCall(300, () => {
+          this.allowBellBecauseThunder = false;
+        });
       }
 
       // 1. 데이터 갱신
@@ -9964,6 +9969,10 @@ class GameScene extends Phaser.Scene {
     const deck = this.add
       .image(layout.x, layout.y, "card_back")
       .setDisplaySize(width * 0.15, width * 0.22);
+    if (isMe) {
+      // keep reference for later animation
+      this.myDeckSprite = deck;
+    }
 
     // 내 카드 덱인 경우에만 클릭 이벤트 부여
     if (isMe && cardCount > 0) {
@@ -10665,6 +10674,13 @@ class GameScene extends Phaser.Scene {
     if (!data || !this.roundData.players) return;
     const { width, height } = this.cameras.main;
     const cardKey = this.getCardKey(data.card);
+    if (data?.card?.type === THUNDER_CARD_TYPE) {
+      // allow bell press immediately when animation begins
+      this.allowBellBecauseThunder = true;
+      this.time.delayedCall(500, () => {
+        this.allowBellBecauseThunder = false;
+      });
+    }
 
     const now = this.time?.now || Date.now();
     const playerId = data.playerId || "";
@@ -11722,6 +11738,17 @@ class GameScene extends Phaser.Scene {
 
     // 내 차례 검증이 끝난 뒤에만 입력 잠금
     this.canClick = false;
+    // animate deck when submitting
+    if (this.myDeckSprite) {
+      const origY = this.myDeckSprite.y;
+      this.tweens.add({
+        targets: this.myDeckSprite,
+        y: origY - 10,
+        duration: 80,
+        yoyo: true,
+        ease: "Quad.easeOut",
+      });
+    }
 
     // --- 클라이언트 잠금 ---
     this.isFlipping = true;
@@ -11749,7 +11776,7 @@ class GameScene extends Phaser.Scene {
         typeof this.hasThunderOnTable === "function"
           ? this.hasThunderOnTable()
           : false;
-      if (!hasThunder) {
+      if (!hasThunder && !this.allowBellBecauseThunder) {
         return;
       }
     }
@@ -11768,7 +11795,8 @@ class GameScene extends Phaser.Scene {
         })
       : false;
 
-    if (!hasOpenCards) {
+    // if thunder flip just happened we may not have updated open cards yet
+    if (!hasOpenCards && !this.allowBellBecauseThunder) {
       return;
     }
 
@@ -15252,9 +15280,12 @@ class GameScene extends Phaser.Scene {
 
         // debug logging for intermittent failures
         console.log("[sound] playing gameover", gameoverSound);
-        gameoverSound.play().catch((err) => {
+        // Phaser Audio.play does not return a promise, just call directly
+        try {
+          gameoverSound.play();
+        } catch (err) {
           console.warn("gameover sound play failed", err);
-        });
+        }
 
         this.tweens.add({
           targets: gameoverSound,
