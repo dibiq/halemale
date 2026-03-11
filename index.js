@@ -4529,6 +4529,8 @@ io.on("connection", (socket) => {
       room.bellLocked = true;
       // ensure no stray timer survives
       clearAiTurnTimer(room);
+      // also clear any flip lock so AI scheduling isn’t blocked
+      room.isFlipping = false;
 
       // 만약 시작하자마자 종을 누르는 경우를 대비해 기본값 0 설정
       const reactionTimeMs = room.lastFlipTime
