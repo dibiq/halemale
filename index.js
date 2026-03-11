@@ -1166,8 +1166,11 @@ function handleAiFlip(room, io, playerId) {
   // next real flip (human or bot) to clear the lock.
   if (room.bellLocked) return;
 
-  // if table currently satisfies bell-success condition, skip flip
-  if (computeBellSuccessCondition(room)) return;
+  // if table currently satisfies bell-success condition, try ringing
+  if (computeBellSuccessCondition(room)) {
+    handleAiBell(room, io, playerId);
+    return;
+  }
 
   if (room.isFlipping) return;
 
