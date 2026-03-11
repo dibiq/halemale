@@ -377,6 +377,8 @@ function hasPenCardOnTable(players) {
 function hasPlus1CardOnTable(players) {
   return players.some((player) => {
     if (!player) return false;
+    // pending flag takes precedence
+    if (player.hasPlus1) return true;
     const top =
       Array.isArray(player.openCardStack) && player.openCardStack.length > 0
         ? player.openCardStack[player.openCardStack.length - 1]
@@ -4314,31 +4316,33 @@ io.on("connection", (socket) => {
 
     // 카드 한 장을 뒤집음
     const card = p.myDeck.pop();
-    if (isThunderCard(card)) {
-      console.log(
-        `⚡ THUNDER DRAWN by ${p.nickname}(${p.id}) remaining=${p.myDeck.length} turnIndex=${room.turnIndex}`,
-      );
-      emitServerDebug(room, "thunder.drawn", {
-        playerId: p.id,
-        nickname: p.nickname,
-        remaining: p.myDeck.length,
-        turnIndex: room.turnIndex,
-      });
-    }
-    p.openCard = card;
-    p.openCardStack.push(card);
 
-    // debug logging for thunder only – bell handling occurs later
-    if (isThunderCard(card)) {
+    // PLUS1 카드 처리: 스택에 그대로 두지 않고 플래그로 표시
+    if (isPlus1Card(card)) {
+      p.hasPlus1 = true;
       console.log(
-        `⚡ THUNDER DRAWN by ${p.nickname}(${p.id}) remaining=${p.myDeck.length} turnIndex=${room.turnIndex}`,
+        `➕ PLUS1 DRAWN by ${p.nickname}(${p.id}) remaining=${p.myDeck.length} turnIndex=${room.turnIndex}`,
       );
-      emitServerDebug(room, "thunder.drawn", {
+      emitServerDebug(room, "plus1.drawn", {
         playerId: p.id,
         nickname: p.nickname,
         remaining: p.myDeck.length,
         turnIndex: room.turnIndex,
       });
+    } else {
+      if (isThunderCard(card)) {
+        console.log(
+          `⚡ THUNDER DRAWN by ${p.nickname}(${p.id}) remaining=${p.myDeck.length} turnIndex=${room.turnIndex}`,
+        );
+        emitServerDebug(room, "thunder.drawn", {
+          playerId: p.id,
+          nickname: p.nickname,
+          remaining: p.myDeck.length,
+          turnIndex: room.turnIndex,
+        });
+      }
+      p.openCard = card;
+      p.openCardStack.push(card);
     }
 
     if (isBombCard(card) || isTonCard(card)) {
@@ -4566,6 +4570,7 @@ io.on("connection", (socket) => {
         collected = [...collected, ...p.openCardStack];
         p.openCardStack = [];
         p.openCard = null;
+        p.hasPlus1 = false; // clear pending plus1 when table is cleared
       });
 
       const winnerIdx = room.players.findIndex((p) => p.id === socket.id);

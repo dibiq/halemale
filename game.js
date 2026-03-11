@@ -10044,7 +10044,7 @@ class GameScene extends Phaser.Scene {
     if (p.isEliminated || p._eliminatedStamp) {
       // mark the flag so future draws know player was eliminated
       p._eliminatedStamp = true;
-      // only animate once per deck sprite creation
+      // only draw once per deck sprite creation
       if (!deck.getData("elimStamped")) {
         deck.setData("elimStamped", true);
         const stampRadius = width * 0.065;
@@ -10053,7 +10053,7 @@ class GameScene extends Phaser.Scene {
           .setStrokeStyle(4, 0xef4444, 0.85)
           .setDepth(12)
           .setAngle(-10)
-          .setScale(0);
+          .setScale(1); // immediately visible
         const stampText = this.add
           .text(layout.x, layout.y, "탈락", {
             fontFamily: GAME_FONTS.main,
@@ -10066,24 +10066,10 @@ class GameScene extends Phaser.Scene {
           .setOrigin(0.5)
           .setDepth(13)
           .setAngle(-10)
-          .setScale(0);
+          .setScale(1);
 
         this.playerTableGroup.add([stamp, stampText]);
-
-        this.tweens.add({
-          targets: [stamp, stampText],
-          scale: { from: 0, to: 1.1 },
-          duration: 200,
-          ease: "Back.easeOut",
-          yoyo: true,
-          onStart: () => {
-            try {
-              if (this.cache.audio.exists("effect")) {
-                this.sound.play("effect", { volume: 0.3 });
-              }
-            } catch (e) {}
-          },
-        });
+        // no animation, just static label
       }
     }
   }
@@ -10303,7 +10289,9 @@ class GameScene extends Phaser.Scene {
     // blockcard는 fullStack에서 항상 가져와 그려야 하므로 분리하여 처리합니다.
     const normalCards = (
       player && player.isFlipping ? fullStack.slice(0, -1) : fullStack
-    ).filter((c) => !(c && c.type === "blockcard"));
+    )
+      .filter((c) => !(c && c.type === "blockcard"))
+      .filter((c) => !(c && c.type === PLUS1_CARD_TYPE)); // plus1 is shown via other UI, not as a card
     const blockCards = fullStack.filter((c) => c && c.type === "blockcard");
 
     // 일반 카드 먼저 그리기
@@ -14690,6 +14678,7 @@ class GameScene extends Phaser.Scene {
 
     return this.roundData.players.some((player) => {
       if (!player) return false;
+      if (player.hasPlus1) return true;
       const top =
         Array.isArray(player?.openStack) && player.openStack.length > 0
           ? player.openStack[player.openStack.length - 1]
