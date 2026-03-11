@@ -1057,6 +1057,17 @@ function buildAiPlayer(room) {
   };
 }
 
+// helper used by both human ring and AI logic
+function computeBellSuccessCondition(room) {
+  if (!room || !Array.isArray(room.players)) return false;
+  const totals = getFruitTotals(room.players);
+  const isFive = Object.values(totals).some((t) => t === 5);
+  const hasThunder = hasThunderCardOnTable(room.players);
+  const hasBomb = hasBombCardOnTable(room.players);
+  const hasNot5 = hasNot5CardOnTable(room.players);
+  return !hasBomb && (hasThunder || (hasNot5 ? !isFive : isFive));
+}
+
 function scheduleAiTurn(room, io) {
   if (!room || !room.isGameStarted) return;
   ensureAiState(room);
@@ -1078,6 +1089,15 @@ function scheduleAiTurn(room, io) {
     room.aiTimers.turn = setTimeout(() => {
       scheduleAiTurn(room, io);
     }, pauseRemaining + 20);
+    return;
+  }
+
+  // do not schedule a flip if the table currently qualifies for a
+  // correct bell; the AI should ring instead of blindly flipping.
+  if (computeBellSuccessCondition(room)) {
+    room.aiTimers.turn = setTimeout(() => {
+      scheduleAiTurn(room, io);
+    }, 100);
     return;
   }
 
@@ -1142,6 +1162,9 @@ function handleAiFlip(room, io, playerId) {
   // indicates someone has just rang and we should wait for the
   // next real flip (human or bot) to clear the lock.
   if (room.bellLocked) return;
+
+  // if table currently satisfies bell-success condition, skip flip
+  if (computeBellSuccessCondition(room)) return;
 
   if (room.isFlipping) return;
 
