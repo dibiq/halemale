@@ -930,8 +930,8 @@ function processSkipTurn(room, io) {
 }
 
 const MULTI_AI_BASE_PROFILE = {
-  flipDelay: 80,
-  reactionTime: 220,
+  flipDelay: 2000,
+  reactionTime: 2000,
 };
 
 const MULTI_AI_SLOWDOWN_MS = 520;
@@ -1158,8 +1158,9 @@ function scheduleAiBell(room, io) {
     if (player.isEliminated) return;
     if (!player.myDeck || player.myDeck.length <= 0) return;
 
-    // slow the bots way down (≈15–20 seconds) as requested
-    const delay = 15000 + Math.floor(Math.random() * 5001);
+    // human‑like flip delay: base from profile (≈700ms) plus small jitter
+    const delayBase = Number(player.aiProfile?.flipDelay || 700);
+    const delay = Math.max(300, delayBase + Math.floor(Math.random() * 301));
     room.aiTimers.bells[player.id] = setTimeout(() => {
       handleAiBell(room, io, player.id);
     }, delay);
@@ -1205,7 +1206,9 @@ function handleAiFlip(room, io, playerId) {
   // bell instead of ringing immediately. this ensures the reaction speed
   // is in the 1.5‑2s range rather than instant.
   if (computeBellSuccessCondition(room)) {
-    const bellDelay = 15000 + Math.floor(Math.random() * 5001);
+    // bell reaction in multiplayer should mirror human reaction (800‑1200ms)
+    const bellBase = Number(player.aiProfile?.reactionTime || 900);
+    const bellDelay = bellBase + Math.floor(Math.random() * 301);
     room.aiTimers.bells[playerId] = setTimeout(() => {
       // only ring if the turn is still theirs
       if (
