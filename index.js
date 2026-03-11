@@ -1200,6 +1200,15 @@ function handleAiFlip(room, io, playerId) {
   p.openCard = card;
   p.openCardStack.push(card);
 
+  // if the flip itself created a correct bell window, the bot should ring
+  // instead of letting the turn cycle around again. handleAiBell will take
+  // care of collecting cards and advancing the turn.
+  if (computeBellSuccessCondition(room)) {
+    handleAiBell(room, io, playerId);
+    room.isFlipping = false;
+    return;
+  }
+
   // only bombs and ton cards trigger the special pause; thunder is
   // handled immediately as a correct bell and should not introduce any
   // delay.
