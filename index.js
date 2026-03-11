@@ -4281,8 +4281,9 @@ io.on("connection", (socket) => {
     if (!room.isGameStarted || room.isFlipping) return;
 
     if (room.bellLocked) {
-      room.bellLocked = false;
-      console.log("🔓 bell 잠금 해제: 다음 카드 제출 감지");
+      // a bell just fired and has not yet advanced the turn – ignore any
+      // attempted flips until the lock is cleared by processSkipTurn.
+      return;
     }
 
     room.turnIndex = getSafeNextIndex(room);
