@@ -4453,15 +4453,24 @@ io.on("connection", (socket) => {
     const room = rooms[sock.roomId];
     if (!room || !room.isGameStarted) return;
 
-    // immediately cancel any pending AI flip to avoid races where a
-    // timer callback fires in the tiny gap between the client sending a
-    // ringBell event and the server running the handler.  without this
-    // the bot could submit a card "right after" the player wins.
+    // immediately cancel any pending AI flip; see earlier comment in
+    // the file for reasoning.
     clearAiTurnTimer(room);
 
     if (room.bellLocked) return;
-    if (getSpecialPauseRemaining(room) > 0) return;
 
+    // during any special-card pause we normally ignore bell presses, but
+    // a lightning card on the table should override the pause and allow
+    // an immediate ring.  compute the thunder state early so we can make
+    // that decision before returning.
+    const pauseRemaining = getSpecialPauseRemaining(room);
+    const thunderNow = hasThunderCardOnTable(room.players);
+    if (pauseRemaining > 0 && !thunderNow) return;
+
+    // clear pending AI bell timers once we are actually going to evaluate
+    // the ring.  doing it earlier (prior to the pause check) could clear
+    // timers even when the ring is ignored, allowing bots to still fire
+    // during the pause window.
     clearAiBellTimers(room);
 
     // If a flip is currently being processed, normally wait and retry

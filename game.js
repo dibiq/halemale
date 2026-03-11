@@ -8820,6 +8820,29 @@ class GameScene extends Phaser.Scene {
     });
 
     socket.off("bellResult").on("bellResult", (data) => {
+      // suppress duplicate results that arrive shortly after one another
+      // (server or network may accidentally send a second copy).
+      const now = Date.now();
+      if (
+        this.lastBellResultAt &&
+        now - this.lastBellResultAt < 1500 &&
+        data.success &&
+        this.lastBellResultWinner === data.winnerId
+      ) {
+        // still update players in case they were changed, but skip
+        // animations/logging below
+        if (Array.isArray(data.players)) {
+          this.roundData.players = data.players.map((p) => ({
+            ...p,
+            cards: p.cards ?? (p.myDeck ? p.myDeck.length : 0),
+            openStack: [],
+          }));
+        }
+        return;
+      }
+      this.lastBellResultAt = now;
+      this.lastBellResultWinner = data.success ? data.winnerId : null;
+
       if (this.myTurnTimer) {
         this.myTurnTimer.remove();
         this.myTurnTimer = null;
@@ -11809,6 +11832,10 @@ class GameScene extends Phaser.Scene {
   handleRingBell() {
     // 1. 게임 준비 상태 확인
     if (!this.isGameReady) return;
+
+    // prevent rapid re-clicks; we’ll re-enable when a new turn begins
+    if (this.canClick === false) return;
+    this.canClick = false;
 
     if (this.isSpecialCardPauseActive && this.isSpecialCardPauseActive()) {
       // thunder card should override the pause and allow bell presses
