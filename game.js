@@ -9935,6 +9935,10 @@ class GameScene extends Phaser.Scene {
     });
 
     socket.off("gameEnded").on("gameEnded", (data) => {
+      console.log("[CLIENT] gameEnded event", data);
+      if (data && data.avetimeById) {
+        console.log("[CLIENT] avetimeById:", data.avetimeById);
+      }
       // sync final average reaction time when match ends
       if (typeof emitInventory === 'function') {
         // reason 'final' merely for debugging; no payload change

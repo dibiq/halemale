@@ -179,6 +179,10 @@ async function savePlayer(
       lastCheckinDate,
       avetime,
     ]);
+    // debug whether this was an insert or update
+    if (result && result.command) {
+      console.log(`[savePlayer] db ${result.command} rows=${result.rowCount}`);
+    }
     console.log(
       `✅ ${id} 데이터 저장 성공 (coins=${coins}, owned=${JSON.stringify(normalizedOwnedCharacters)}, current=${normalizedCurrentCharacter}, rowCount=${result.rowCount})`,
     );
@@ -715,7 +719,15 @@ function clearTimeAttackTimer(room) {
 }
 
 function finalizeGame(room, io, { winner, sorted, message }) {
-  if (!room || !io || !winner || !Array.isArray(sorted)) return;
+  console.log("[DEBUG] finalizeGame called", {
+    roomId: room && room.roomId,
+    winner: winner && winner.nickname,
+    sortedCount: Array.isArray(sorted) ? sorted.length : null,
+  });
+  if (!room || !io || !winner || !Array.isArray(sorted)) {
+    console.log("[DEBUG] finalizeGame aborted due to invalid args");
+    return;
+  }
 
   clearTimeAttackTimer(room);
   room.isGameStarted = false;
@@ -811,6 +823,11 @@ function finalizeGame(room, io, { winner, sorted, message }) {
 
   io.to(room.roomId).emit("gameEnded", {
     message: message || `게임 종료! ${winner.nickname}님의 최종 승리!`,
+    // include average times by player id for debugging on client
+    avetimeById: room.players.reduce((m, p) => {
+      m[p.id] = p.avetime || 0;
+      return m;
+    }, {}),
     ranking: sorted.map((p) => {
       const before = beforeStateById.get(p.id) || {
         beforeCoins: Number(p.coins) || 0,
@@ -925,6 +942,10 @@ function checkGameOver(room, io, options = {}) {
   });
 
   if ((survivors.length <= 1 || forceEndForHumanElim) && room.isGameStarted) {
+    console.log("[DEBUG] checkGameOver triggering finalize", {
+      survivors: survivors.map((p) => p.nickname),
+      forceEndForHumanElim,
+    });
     const winner = forceEndForHumanElim
       ? survivors[0] || room.players[0]
       : survivors.length === 1
@@ -4913,6 +4934,15 @@ io.on("connection", (socket) => {
         if (room.reactionSamples[winnerId].length > 5) {
           room.reactionSamples[winnerId].shift();
         }
+        console.log("[DEBUG] recorded reaction sample", {
+          player: sock.nickname || sock.id,
+          ms: reactionTimeMs,
+          samples: room.reactionSamples[winnerId].slice(),
+        });
+      } else {
+        console.log("[DEBUG] reactionTimeMs was 0, not recorded", {
+          player: sock.nickname || sock.id,
+        });
       }
 
       // --- [성공 시나리오] ---
