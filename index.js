@@ -282,8 +282,6 @@ const XP_PER_LEVEL = 100;
 const THUNDER_CARD_TYPE = "thunder";
 const THUNDER_CARD_COUNT = 1;
 
-// startup debug
-console.log("[SERVER] index.js loaded, build=", SERVER_BUILD);
 const BOMB_CARD_TYPE = "bomb";
 // Multiplayer default counts
 const BOMB_CARD_COUNT = 1;
@@ -303,6 +301,9 @@ const NOT5_CARD_COUNT = 0;
 // 아이템 ID constants (client와 매칭)
 const SHIELD_CARD_ID = 5;
 const SERVER_BUILD = "2026-02-24-thunder-insert-v1";
+
+// startup debug
+console.log("[SERVER] index.js loaded, build=", SERVER_BUILD);
 
 function getLevelFromExperience(experience) {
   return Math.floor((Number(experience) || 0) / XP_PER_LEVEL) + 1;
@@ -802,7 +803,10 @@ function finalizeGame(room, io, { winner, sorted, message }) {
 }
 
 function handleTimeAttackExpiry(room, io) {
-  if (!room || !room.isGameStarted) return;
+  if (!room || !room.isGameStarted) {
+    console.log("[AI] scheduleAiTurn: room 없음 또는 게임 미시작");
+    return;
+  }
   const sorted = [...room.players].sort(
     (a, b) => (b.myDeck?.length || 0) - (a.myDeck?.length || 0),
   );
@@ -1079,7 +1083,7 @@ function scheduleAiTurn(room, io) {
 
   if (room.bellPending || room.bellLocked) {
     console.log(
-      `[AI] delaying turn due to bellPending=${!!room.bellPending} locked=${!!room.bellLocked}`,
+      `[AI] 턴 지연: bellPending=${!!room.bellPending}, bellLocked=${!!room.bellLocked}`,
     );
     room.aiTimers.turn = setTimeout(() => scheduleAiTurn(room, io), 50);
     return;
@@ -1087,7 +1091,7 @@ function scheduleAiTurn(room, io) {
 
   const pauseRemaining = getSpecialPauseRemaining(room);
   if (pauseRemaining > 0) {
-    console.log(`[AI] delaying turn for pauseRemaining=${pauseRemaining}`);
+    console.log(`[AI] 턴 지연: pauseRemaining=${pauseRemaining}`);
     room.aiTimers.turn = setTimeout(
       () => scheduleAiTurn(room, io),
       pauseRemaining + 20,
@@ -1097,11 +1101,13 @@ function scheduleAiTurn(room, io) {
 
   const current = room.players[room.turnIndex];
   if (!isBotPlayer(current)) {
-    console.log(`[AI] not a bot's turn (id=${current && current.id})`);
+    console.log(
+      `[AI] 현재 턴 플레이어가 봇이 아님 (id=${current && current.id})`,
+    );
     return;
   }
   if (!current.myDeck || current.myDeck.length === 0) {
-    console.log(`[AI] bot has no cards, skip`);
+    console.log(`[AI] 봇 덱 없음, skip (id=${current && current.id})`);
     return;
   }
   if (room.isFlipping) {
@@ -1110,19 +1116,18 @@ function scheduleAiTurn(room, io) {
   }
 
   if (computeBellSuccessCondition(room)) {
-    console.log(`[AI] bell condition true, ringing instead of flipping`);
+    console.log(`[AI] bell 조건 true, 벨 시도 (id=${current.id})`);
     handleAiBell(room, io, current.id);
     return;
   }
 
-  console.log(`[AI] scheduling flip for bot ${current.id} in 2200ms`);
-  emitServerDebug(room, "ai.schedulingFlip", { botId: current.id });
-  emitServerDebug(room, "ai.schedulingFlip", { botId: current.id });
+  console.log(`[AI] 봇 ${current.id} 카드 제출 예약 (2200ms 후)`);
   room.aiTimers.turn = setTimeout(() => {
     console.log(`[AI] flip timeout fired for room=${debugRoom}`);
-    emitServerDebug(room, "ai.timeoutFired", {});
-    emitServerDebug(room, "ai.timeoutFired", {});
-    if (!room.isGameStarted) return;
+    if (!room.isGameStarted) {
+      console.log("[AI] flip timeout: 게임 종료됨");
+      return;
+    }
     const active = room.players[room.turnIndex];
     if (
       active &&
@@ -1130,11 +1135,11 @@ function scheduleAiTurn(room, io) {
       !room.bellPending &&
       !computeBellSuccessCondition(room)
     ) {
-      console.log(`[AI] executing handleAiFlip for ${current.id}`);
+      console.log(`[AI] handleAiFlip 실행: ${current.id}`);
       handleAiFlip(room, io, current.id);
     } else {
       console.log(
-        `[AI] flip aborted (active=${active && active.id}, bellPending=${!!room.bellPending})`,
+        `[AI] flip aborted: active=${active && active.id}, bellPending=${!!room.bellPending}, bellCondition=${computeBellSuccessCondition(room)}`,
       );
     }
   }, 2200);
