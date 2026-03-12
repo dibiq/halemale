@@ -8270,6 +8270,14 @@ class GameScene extends Phaser.Scene {
       this.hasReceivedProfileStats = true;
     }
 
+    // seed reaction sample from server snapshot if we don't have any local data yet
+    if (
+      typeof this.myProfile.avetime === 'number' &&
+      (!Array.isArray(this.reactionTimes) || this.reactionTimes.length === 0)
+    ) {
+      this.reactionTimes = [this.myProfile.avetime];
+    }
+
     // update any game-screen text refs
     if (this.profileNameTxt) {
       this.profileNameTxt.setText(this.myProfile.nickname || "");
@@ -8279,6 +8287,12 @@ class GameScene extends Phaser.Scene {
     }
     if (this.profileCoinsTxt) {
       this.profileCoinsTxt.setText(`Coins: ${this.myProfile.coins}`);
+    }
+
+    // make sure the react-time display stays in sync as well
+    if (this.profileReactTxt) {
+      const avgVal = this.computeAvgReaction().toFixed(2);
+      this.profileReactTxt.setText(`Avg: ${avgVal}s`);
     }
 
     // combine with lobby-style text if present (rare inside GameScene but safe)
@@ -12168,6 +12182,11 @@ class GameScene extends Phaser.Scene {
   showSingleResultOverlay(players, result) {
     const { width, height } = this.cameras.main;
 
+    // hide profile card while single-game result is showing
+    if (this.profileCard) {
+      this.profileCard.setVisible(false);
+    }
+
     // 기존 결과창이 있다면 제거
     if (this.resultContainer) this.resultContainer.destroy();
 
@@ -12255,6 +12274,10 @@ class GameScene extends Phaser.Scene {
       if (this.resultContainer) {
         this.resultContainer.destroy();
         this.resultContainer = null;
+      }
+      // reveal profile card again once the overlay is dismissed
+      if (this.profileCard) {
+        this.profileCard.setVisible(true);
       }
 
       // 4. 게임 다시 시작 연출부터 진행
@@ -15999,6 +16022,11 @@ class GameScene extends Phaser.Scene {
     if (this.resultCountdownTimer) {
       this.resultCountdownTimer.remove();
       this.resultCountdownTimer = null;
+    }
+
+    // hide profile card while the result overlay is visible
+    if (this.profileCard) {
+      this.profileCard.setVisible(false);
     }
 
     if (this.resultContainer) {

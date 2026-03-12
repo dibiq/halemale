@@ -1768,6 +1768,7 @@ io.on("connection", (socket) => {
         socket.ownedCharacters,
         socket.currentCharacter,
         today,
+        socket.avetime || 0,
       );
 
       socket.emit("dailyReward", {
@@ -2324,6 +2325,8 @@ io.on("connection", (socket) => {
             socket.experience || 0,
             socket.ownedCharacters || ["player_1"],
             socket.currentCharacter || socket.avatarKey || "player_1",
+            null,
+            socket.avetime || 0,
           ).catch((e) =>
             console.warn(
               "savePlayer error on auto-lock (requestUseSpecial)",
@@ -5144,9 +5147,13 @@ io.on("connection", (socket) => {
           socket.experience || 0,
           socket.ownedCharacters || ["player_1"],
           socket.currentCharacter || "player_1",
+          null,
+          socket.avetime || 0,
         );
 
-        console.log(`✅ 연결 해제 시 ${socket.nickname} 데이터 저장 완료`);
+        console.log(
+          `✅ 연결 해제 시 ${socket.nickname} 데이터 저장 완료 (avetime=${socket.avetime || 0})`,
+        );
       } catch (e) {
         console.warn(`❌ 연결 해제 시 ${socket.nickname} 데이터 저장 실패:`, e);
       }
