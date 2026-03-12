@@ -926,6 +926,9 @@ function processSkipTurn(room, io) {
   }
 
   // Schedule AI turn if the next player is a bot.
+  console.log(
+    `[AI] processSkipTurn -> scheduleAiTurn room=${room.roomId} turnIndex=${room.turnIndex}`,
+  );
   scheduleAiTurn(room, io);
 }
 
@@ -4315,6 +4318,9 @@ io.on("connection", (socket) => {
     });
 
     // If the first turn belongs to a bot, schedule its action.
+    console.log(
+      `[AI] scheduleAiTurn invoked at gameStart room=${room.roomId} turnIndex=${room.turnIndex}`,
+    );
     scheduleAiTurn(room, io);
     respond({
       ok: true,
