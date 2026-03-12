@@ -281,6 +281,9 @@ const WIN_REWARD_XP = RANK_REWARD_XP[0];
 const XP_PER_LEVEL = 100;
 const THUNDER_CARD_TYPE = "thunder";
 const THUNDER_CARD_COUNT = 1;
+
+// startup debug
+console.log("[SERVER] index.js loaded, build=", SERVER_BUILD);
 const BOMB_CARD_TYPE = "bomb";
 // Multiplayer default counts
 const BOMB_CARD_COUNT = 1;
@@ -1457,6 +1460,7 @@ function emitServerDebug(room, event, payload = {}) {
 
 // 2. 소켓 로직
 io.on("connection", (socket) => {
+  console.log("[SERVER] new socket connected", socket.id);
   socket.emit("serverHello", {
     build: SERVER_BUILD,
     pid: process.pid,
@@ -3723,6 +3727,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("startGameRequest", async (ack) => {
+    console.log("[SERVER] startGameRequest received from", socket.id);
     const respond =
       typeof ack === "function"
         ? (payload) => {
