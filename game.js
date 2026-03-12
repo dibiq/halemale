@@ -495,6 +495,201 @@ class LobbyScene extends Phaser.Scene {
     super("LobbyScene");
   }
 
+  // avatar helper methods (copied from GameScene) so lobby can use same logic
+  getAvatarAnimKey(baseKey) {
+    return `avatar_anim_${baseKey}`;
+  }
+
+  getAvatarAnimFrameRate(baseKey) {
+    return baseKey === "player_1" || baseKey === "player_2" ? 18 : 2;
+  }
+
+  getAvatarAnimMaxFrame(baseKey) {
+    return baseKey === "player_1" ? 4 : 2; // player_2 handled dynamically elsewhere
+  }
+
+  getAvatarDisplayKey(baseKey) {
+    if (this.textures.exists(`${baseKey}_1`)) return `${baseKey}_1`;
+    if (baseKey === "player_1") {
+      if (this.textures.exists("player_1_frame_1")) return "player_1_frame_1";
+    }
+    if (baseKey === "player_2") {
+      if (this.textures.exists("player_2_frame_1")) return "player_2_frame_1";
+    }
+    const sheetKey = `${baseKey}_sprite_a`;
+    if (this.textures.exists(sheetKey)) return sheetKey;
+    return null;
+  }
+
+  ensureAvatarAnimation(baseKey) {
+    let scene = this;
+    if (scene && scene.scene) {
+      scene = scene.scene;
+    }
+    if (!scene || typeof scene.getAvatarAnimKey !== "function") {
+      scene = this;
+    }
+    const animKey = scene.getAvatarAnimKey(baseKey);
+    if (scene.anims.exists(animKey)) {
+      return animKey;
+    }
+    try {
+      if (baseKey === "player_1") {
+        if (this.textures.exists("player_1_frame_1")) {
+          const frames = [];
+          let idx = 1;
+          while (true) {
+            const textureKey = `player_1_frame_${idx}`;
+            if (this.textures.exists(textureKey)) {
+              frames.push({ key: textureKey });
+              idx += 1;
+              continue;
+            }
+            break;
+          }
+          if (frames.length > 0) {
+            this.anims.create({
+              key: animKey,
+              frames,
+              frameRate: this.getAvatarAnimFrameRate(baseKey),
+              repeat: -1,
+            });
+            return animKey;
+          }
+        }
+      }
+      if (baseKey === "player_2") {
+        if (this.textures.exists("player_2_frame_1")) {
+          const frames = [];
+          let idx = 1;
+          while (true) {
+            const textureKey = `player_2_frame_${idx}`;
+            if (this.textures.exists(textureKey)) {
+              frames.push({ key: textureKey });
+              idx += 1;
+              continue;
+            }
+            break;
+          }
+          if (frames.length > 0) {
+            this.anims.create({
+              key: animKey,
+              frames,
+              frameRate: this.getAvatarAnimFrameRate(baseKey),
+              repeat: -1,
+            });
+            return animKey;
+          }
+        }
+        const frames = [];
+        let idx = 1;
+        while (true) {
+          const textureKey = `player_2_${idx}`;
+          if (this.textures.exists(textureKey)) {
+            frames.push({ key: textureKey });
+            idx += 1;
+            continue;
+          }
+          break;
+        }
+        if (frames.length > 0) {
+          this.anims.create({
+            key: animKey,
+            frames,
+            frameRate: this.getAvatarAnimFrameRate(baseKey),
+            repeat: -1,
+          });
+          return animKey;
+        }
+      }
+      const maxFrame = this.getAvatarAnimMaxFrame(baseKey);
+      const frames = [];
+      for (let frame = 1; frame <= maxFrame; frame += 1) {
+        const textureKey = `${baseKey}_${frame}`;
+        if (this.textures.exists(textureKey)) {
+          frames.push({ key: textureKey });
+        }
+      }
+      if (frames.length === 0) {
+        return null;
+      }
+      this.anims.create({
+        key: animKey,
+        frames,
+        frameRate: this.getAvatarAnimFrameRate(baseKey),
+        repeat: -1,
+      });
+      return animKey;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  applyAvatarAnimation(target, baseKey) {
+    const scene = target && target.scene ? target.scene : this;
+    if (!scene || !scene.add) return;
+    if (!target || !target.active) return;
+    if (typeof target.getData === "function") {
+      if (target.getData("avatarDisplayWidth") === undefined) {
+        target.setData("avatarDisplayWidth", target.displayWidth);
+      }
+      if (target.getData("avatarDisplayHeight") === undefined) {
+        target.setData("avatarDisplayHeight", target.displayHeight);
+      }
+    }
+    const avatarDisplayWidth =
+      typeof target.getData === "function"
+        ? target.getData("avatarDisplayWidth")
+        : target.displayWidth;
+    const avatarDisplayHeight =
+      typeof target.getData === "function"
+        ? target.getData("avatarDisplayHeight")
+        : target.displayHeight;
+    if (
+      typeof target.getData === "function" &&
+      target.getData("avatarBaseY") === undefined
+    ) {
+      target.setData("avatarBaseY", target.y);
+    }
+    const avatarBaseY =
+      typeof target.getData === "function"
+        ? target.getData("avatarBaseY")
+        : target.y;
+    const animKey = this.ensureAvatarAnimation(baseKey);
+    if (baseKey === "player_1" || baseKey === "player_2") {
+      target.setOrigin(0.5, 1);
+      if (avatarDisplayWidth > 0 && avatarDisplayHeight > 0) {
+        target.setDisplaySize(avatarDisplayWidth, avatarDisplayHeight);
+      }
+      target.y = avatarBaseY + target.displayHeight * 0.5;
+      const firstFrameKey =
+        baseKey === "player_1" && this.textures.exists("player_1_frame_1")
+          ? "player_1_frame_1"
+          : `${baseKey}_1`;
+      if (firstFrameKey && this.textures.exists(firstFrameKey)) {
+        target.setTexture(firstFrameKey);
+      }
+      if (animKey) {
+        target.play(animKey, true);
+        if (avatarDisplayWidth > 0 && avatarDisplayHeight > 0) {
+          target.setDisplaySize(avatarDisplayWidth, avatarDisplayHeight);
+        }
+      }
+    } else {
+      if (animKey) {
+        target.play(animKey, true);
+      } else if (
+        avatarDisplayWidth > 0 &&
+        avatarDisplayHeight > 0 &&
+        this.textures.exists(baseKey)
+      ) {
+        target.setTexture(baseKey);
+        target.setDisplaySize(avatarDisplayWidth, avatarDisplayHeight);
+      }
+    }
+  }
+
+
   init(data = {}) {
     // 1. 필요한 상태를 미리 체크 (비동기)
     this.isOnline = false;
@@ -1213,6 +1408,10 @@ class LobbyScene extends Phaser.Scene {
 
     socket.off("myProfile").on("myProfile", (profilePayload) => {
       const profile = profilePayload || {};
+      // cache on socket so new scenes can initialize from existing data
+      try {
+        socket.profile = profile;
+      } catch (e) {}
       const normalizeSpecialCardId = (rawId) => {
         if (rawId === null || rawId === undefined) return null;
 
@@ -2558,6 +2757,16 @@ class LobbyScene extends Phaser.Scene {
       !this.profileExpBarFill ||
       !this.profileExpText
     ) {
+      // still update game-screen profile if exists
+      if (this.profileNameTxt) {
+        this.profileNameTxt.setText(this.myProfile.nickname || "");
+      }
+      if (this.profileLevelTxt) {
+        this.profileLevelTxt.setText(`Lv ${this.myProfile.level}`);
+      }
+      if (this.profileCoinsTxt) {
+        this.profileCoinsTxt.setText(`Coins: ${this.myProfile.coins}`);
+      }
       return;
     }
 
@@ -2566,6 +2775,16 @@ class LobbyScene extends Phaser.Scene {
       `LV.${this.myProfile.level} ${this.myProfile.nickname}`,
     );
     this.profileCoinText.setText(`X ${this.myProfile.coins}`);
+    // also update game-screen card if present
+    if (this.profileNameTxt) {
+      this.profileNameTxt.setText(this.myProfile.nickname || "");
+    }
+    if (this.profileLevelTxt) {
+      this.profileLevelTxt.setText(`Lv ${this.myProfile.level}`);
+    }
+    if (this.profileCoinsTxt) {
+      this.profileCoinsTxt.setText(`Coins: ${this.myProfile.coins}`);
+    }
 
     // 경험치 바 업데이트
     const currentExp = this.myProfile.experience % XP_PER_LEVEL;
@@ -7960,6 +8179,132 @@ class GameScene extends Phaser.Scene {
       coins: 0,
       experience: 0,
     };
+    // reaction time samples recorded during the current game
+    this.reactionTimes = [];
+  }
+
+  // replicate lobby's profile updater so GameScene has its own
+  updateMyProfileUI(profile = {}) {
+    // identical logic to LobbyScene version; keeps game UI in sync
+    const prev = this.myProfile || {};
+    const prevLevel = Number(prev.level) || 1;
+    const hasIncomingStats =
+      typeof profile.level !== "undefined" ||
+      typeof profile.coins !== "undefined" ||
+      typeof profile.experience !== "undefined";
+
+    const normalizeCharacterKey = (value) =>
+      typeof value === "string" && /^player_[1-4]$/.test(value) ? value : null;
+
+    const incomingOwnedCharacters = Array.isArray(profile.owned_characters)
+      ? profile.owned_characters
+      : Array.isArray(prev.owned_characters)
+        ? prev.owned_characters
+        : [];
+
+    const normalizedOwnedCharacters = Array.from(
+      new Set(
+        ["player_1"].concat(
+          incomingOwnedCharacters.filter(
+            (key) => typeof key === "string" && /^player_[1-4]$/.test(key),
+          ),
+        ),
+      ),
+    );
+
+    const normalizedCurrentCharacter =
+      normalizeCharacterKey(profile.current_character) ||
+      normalizeCharacterKey(profile.avatarKey) ||
+      normalizeCharacterKey(prev.current_character) ||
+      "player_1";
+
+    const normalizedAvatarKey =
+      normalizeCharacterKey(profile.avatarKey) ||
+      normalizeCharacterKey(profile.current_character) ||
+      normalizeCharacterKey(prev.avatarKey) ||
+      normalizedCurrentCharacter;
+
+    this.myProfile = {
+      ...prev,
+      ...profile,
+      nickname:
+        profile.nickname ||
+        prev.nickname ||
+        localStorage.getItem("nickname") ||
+        "요리사",
+      level: Number(profile.level ?? prev.level ?? 1) || 1,
+      coins: Number(profile.coins ?? prev.coins ?? 0) || 0,
+      experience: Number(profile.experience ?? prev.experience ?? 0) || 0,
+      owned_characters: normalizedOwnedCharacters,
+      current_character: normalizedCurrentCharacter,
+      avatarKey: normalizedAvatarKey,
+    };
+
+    if (
+      hasIncomingStats &&
+      this.hasReceivedProfileStats &&
+      this.myProfile.level > prevLevel
+    ) {
+      this.showToast(
+        `레벨 업! Lv.${prevLevel} → Lv.${this.myProfile.level}`,
+        "#2ecc71",
+      );
+    }
+    if (hasIncomingStats) {
+      this.hasReceivedProfileStats = true;
+    }
+
+    // update any game-screen text refs
+    if (this.profileNameTxt) {
+      this.profileNameTxt.setText(this.myProfile.nickname || "");
+    }
+    if (this.profileLevelTxt) {
+      this.profileLevelTxt.setText(`Lv ${this.myProfile.level}`);
+    }
+    if (this.profileCoinsTxt) {
+      this.profileCoinsTxt.setText(`Coins: ${this.myProfile.coins}`);
+    }
+
+    // combine with lobby-style text if present (rare inside GameScene but safe)
+    if (this.profileIdText) {
+      this.profileIdText.setText(`LV.${this.myProfile.level} ${this.myProfile.nickname}`);
+    }
+    if (this.profileCoinText) {
+      this.profileCoinText.setText(`X ${this.myProfile.coins}`);
+    }
+
+    // experience bar update (if game scene uses it)
+    if (this.profileExpBarFill && this.profileExpText) {
+      const currentExp = this.myProfile.experience % XP_PER_LEVEL;
+      const expRatio = currentExp / XP_PER_LEVEL;
+      const { width } = this.cameras.main;
+      const profileSize = width * 0.2;
+      const expBarWidth = profileSize * 0.9;
+      const expBarHeight = width * 0.032;
+      const statY = profileSize * 1.18;
+      const expBarCenterX = profileSize * 0.4;
+
+      this.profileExpBarFill.clear();
+      this.profileExpBarFill.fillStyle(0x2ecc71, 1);
+      this.profileExpBarFill.fillRoundedRect(
+        expBarCenterX - expBarWidth / 2,
+        statY - expBarHeight / 2,
+        expBarWidth * expRatio,
+        expBarHeight,
+        8,
+      );
+
+      this.profileExpText.setText(`EXP  ${currentExp}/${XP_PER_LEVEL}`);
+    }
+  }
+
+  // compute average of recorded reactionTimes, return number (seconds)
+  computeAvgReaction() {
+    if (!Array.isArray(this.reactionTimes) || this.reactionTimes.length === 0) {
+      return 0;
+    }
+    const sum = this.reactionTimes.reduce((a, b) => a + b, 0);
+    return sum / this.reactionTimes.length;
   }
 
   // helper methods for avatar keys and sprite sheets (also copied to LobbyScene)
@@ -7975,16 +8320,74 @@ class GameScene extends Phaser.Scene {
     return baseKey === "player_1" ? 4 : 2; // player_2 handled dynamically
   }
 
-  // pick a display key for a base avatar; returns null if none found
+  // choose current avatar key, mirror LobbyScene logic
+  getSelectedAvatarKey() {
+    const ownedKeys = this.getOwnedProfileAvatarKeys();
+
+    const current = Array.isArray(this.profileAvatarKeys)
+      ? this.profileAvatarKeys[this.profileAvatarIndex]
+      : null;
+
+    if (typeof current === "string" && ownedKeys.includes(current)) {
+      return current;
+    }
+
+    const saved = localStorage.getItem("profileAvatarKey");
+    if (typeof saved === "string" && ownedKeys.includes(saved)) {
+      return saved;
+    }
+
+    return ownedKeys[0] || "player_1";
+  }
+
+  // returns avatar keys the player actually owns (used by selection logic)
+  getOwnedProfileAvatarKeys() {
+    const allKeys = Array.isArray(this.profileAvatarKeys)
+      ? this.profileAvatarKeys
+      : [];
+    if (allKeys.length === 0) {
+      return ["player_1"];
+    }
+
+    const ownedList = Array.isArray(this.myProfile?.owned_characters)
+      ? this.myProfile.owned_characters
+      : [];
+    const ownedSet = new Set(["player_1", ...ownedList]);
+
+    const ownedKeys = allKeys.filter((key) => ownedSet.has(key));
+    return ownedKeys.length > 0 ? ownedKeys : ["player_1"];
+  }
+
+  // choose a texture key to display for a given avatar base key
   getAvatarDisplayKey(baseKey) {
     if (this.textures.exists(`${baseKey}_1`)) return `${baseKey}_1`;
     if (baseKey === "player_1") {
       if (this.textures.exists("player_1_frame_1")) return "player_1_frame_1";
     }
+    if (baseKey === "player_2") {
+      if (this.textures.exists("player_2_frame_1")) return "player_2_frame_1";
+    }
     const sheetKey = `${baseKey}_sprite_a`;
     if (this.textures.exists(sheetKey)) return sheetKey;
     return null;
   }
+
+  // wrapper for baseline calculation (server function also defined in index.js)
+  getHumanReactionBaseline(room) {
+    if (
+      typeof window !== "undefined" &&
+      typeof getHumanReactionBaseline === "function"
+    ) {
+      try {
+        return getHumanReactionBaseline(room);
+      } catch (e) {
+        console.warn("baseline helper error", e);
+        return 0;
+      }
+    }
+    return 0;
+  }
+
   safeSyncInventory(reason, extra = {}) {
     try {
       if (typeof this.syncInventoryToServer === "function") {
@@ -8363,6 +8766,113 @@ class GameScene extends Phaser.Scene {
     // 특수카드 사용(턴당 1회) 추적 초기화
     this.specialUsedThisTurn = {}; // { playerId: true }
 
+    // make sure repositionProfileCard method exists on `this`
+    // (defined further down outside create())
+
+    // create profile card method
+    const createProfileCard = () => {
+      const cardW = this.cameras.main.width * 0.24;
+      const cardH = this.cameras.main.height * 0.14;
+      this.profileCardBaseW = cardW;
+      this.profileCardBaseH = cardH;
+      const safePaddingLocal = Math.max(this.cameras.main.width * 0.06, 24);
+      // temporarily place offscreen and hide; we'll reposition when deck exists
+      const card = this.add
+        .container(-9999, -9999)
+        .setDepth(1000003)
+        .setScrollFactor(0)
+        .setVisible(false);
+      this.children.bringToTop(card);
+      console.log(
+        "[PROFILE] createProfileCard width,height",
+        this.cameras.main.width,
+        this.cameras.main.height,
+      );
+      // background plate
+      const bg = this.add
+        .rectangle(0, 0, cardW, cardH, 0x000000, 0.6)
+        .setStrokeStyle(2, 0xffffff);
+      let avatarKey = this.getSelectedAvatarKey();
+      let avatarTex = this.getAvatarDisplayKey(avatarKey) || avatarKey;
+      if (!this.textures.exists(avatarTex)) avatarTex = "player_1_frame_1";
+      const avatar = this.add
+        .sprite(-cardW * 0.35, 0, avatarTex)
+        .setDisplaySize(cardH * 0.8, cardH * 0.8);
+      // stack text vertically on the left of the card (shifted right)
+      const textOffsetX = -cardW * 0.1; // moved closer to center
+      const nameTxt = this.add
+        .text(textOffsetX, -cardH * 0.25, this.myProfile?.nickname || "", {
+          fontFamily: "Jua",
+          fontSize: `${cardH * 0.16}px`,
+          color: "#ffffff",
+        })
+        .setOrigin(0, 0.5);
+      const levelTxt = this.add
+        .text(
+          textOffsetX,
+          -cardH * 0.05,
+          `Lv ${this.myProfile?.level || 1}`,
+          {
+            fontFamily: "Jua",
+            fontSize: `${cardH * 0.14}px`,
+            color: "#f1c40f",
+          },
+        )
+        .setOrigin(0, 0.5);
+      const coinsTxt = this.add
+        .text(
+          textOffsetX,
+          cardH * 0.15,
+          `Coins: ${this.myProfile?.coins || 0}`,
+          {
+            fontFamily: "Jua",
+            fontSize: `${cardH * 0.13}px`,
+            color: "#00ffcc",
+          },
+        )
+        .setOrigin(0, 0.5);
+      // keep references for later updates
+      this.profileNameTxt = nameTxt;
+      this.profileLevelTxt = levelTxt;
+      this.profileCoinsTxt = coinsTxt;
+      // display average reaction time (use samples if available)
+      const avgRaw = this.computeAvgReaction();
+      const avg = avgRaw.toFixed(2);
+      const reactTxt = this.add
+        .text(cardW * 0.25, 0, `Avg: ${avg}s`, {
+          fontFamily: "Jua",
+          fontSize: `${cardH * 0.13}px`,
+          color: "#ffffff",
+        })
+        .setOrigin(0.5);
+      card.add([bg, avatar, nameTxt, levelTxt, coinsTxt, reactTxt]);
+      this.profileCard = card;
+      // keep reference to react text for updates
+      this.profileReactTxt = reactTxt;
+      // populate text immediately if profile already known
+      if (typeof this.updateMyProfileUI === 'function') {
+        this.updateMyProfileUI();
+      }
+      console.log("[PROFILE] card created", card);
+      if (typeof this.showToast === "function") {
+        this.showToast("프로필 카드 생성", "#ffffff");
+      }
+      // make visible once repositioned (if deck already exists it will happen immediately)
+      if (this.myDeckSprite && typeof this.repositionProfileCard === 'function') {
+        this.repositionProfileCard();
+      }
+    };
+    // call immediately
+    createProfileCard();
+    // initialize with cached profile data if available (important for multiplayer)
+    if (typeof socket !== 'undefined' && socket.profile) {
+      this.updateMyProfileUI(socket.profile);
+    }
+    // if deck already exists (rare), move profile to its right straight away
+    if (this.myDeckSprite && typeof this.repositionProfileCard === 'function') {
+      this.repositionProfileCard();
+    }
+
     // make sure player2 frames are prepared early
     ensurePlayer2Frames(this);
 
@@ -8517,6 +9027,9 @@ class GameScene extends Phaser.Scene {
     });
 
     socket.off("myProfile").on("myProfile", (profile) => {
+      // cache again in case stats update separately
+      try { socket.profile = profile; } catch (e) {}
+      // update local profile stats for toast/etc
       const prevStats = this.profileStats || {
         level: 1,
         coins: 0,
@@ -8542,6 +9055,11 @@ class GameScene extends Phaser.Scene {
         coins: safeCoins,
         experience: safeExperience,
       };
+
+      // make sure the game-scene profile UI also reflects the full profile
+      if (typeof this.updateMyProfileUI === 'function') {
+        this.updateMyProfileUI(profile);
+      }
 
       if (newLevel > prevLevel) {
         this.showToast(`레벨 업! Lv.${prevLevel} → Lv.${newLevel}`, "#2ecc71");
@@ -8575,6 +9093,7 @@ class GameScene extends Phaser.Scene {
     // ============================================
     socket.off("gameStart").on("gameStart", (data) => {
       console.log("Gamestart");
+      this.showToast("gameStart event received", "#ff0");
 
       this.resultGameoverPlayed = false;
 
@@ -8638,7 +9157,6 @@ class GameScene extends Phaser.Scene {
         this.roundData.timeAttackEndsAt = data.timeAttackEndsAt;
       }
       this.roundData.isGameStarted = true;
-      this.isGameReady = true;
 
       // 게임 시작 시 모든 플레이어의 특수 사용 플래그 초기화
       this.specialUsedThisTurn = {};
@@ -8712,17 +9230,10 @@ class GameScene extends Phaser.Scene {
     socket.off("cardFlipped").on("cardFlipped", (data) => {
       if (this.isSingle) return;
 
-      console.log(`[client] cardFlipped event`, data);
       // log AI/human and thunder
       if (data.playerId && data.playerId.startsWith("AI_")) {
-        console.log("[client] AI flipped card", data.playerId, data.card);
       }
       if (data?.card?.type === THUNDER_CARD_TYPE) {
-        console.log("⚡ [client] THUNDER cardFlipped:", {
-          playerId: data.playerId,
-          nextTurnId: data.nextTurnId,
-          remainingCount: data.remainingCount,
-        });
         // allow immediate bell presses even if pause still active
         this.allowBellBecauseThunder = true;
         // clear after short delay (give time for server state update)
@@ -8861,27 +9372,40 @@ class GameScene extends Phaser.Scene {
       this.triggerEliminationEffects(this.roundData.players, updatedPlayers);
 
       if (data.success) {
-        // if we already showed optimistic success for this bell, skip animation
+        // if we already showed optimistic success for this bell, skip only the animation,
+        // but still update state, log, and record reaction.
+        let skipAnimation = false;
         if (data.winnerId === socket.id && this.optimisticBellHandled) {
-          // just update state and return
+          skipAnimation = true;
           this.roundData.players = updatedPlayers;
-          return;
+          // do not return here; continue to processing
+        }
+
+        // record reaction time for myself and refresh profile text
+        if (data.winnerId === socket.id && typeof data.reactionTime !== 'undefined') {
+          const rt = parseFloat(data.reactionTime);
+          if (!isNaN(rt)) {
+            this.reactionTimes = this.reactionTimes || [];
+            this.reactionTimes.push(rt);
+            if (this.profileReactTxt) {
+              const avgVal = this.computeAvgReaction().toFixed(2);
+              this.profileReactTxt.setText(`Avg: ${avgVal}s`);
+            }
+          }
         }
 
         const message = `${data.winnerNickname} ${data.collectedCount}장 획득(${data.reactionTime}초)`;
         this.addGameLog(`${message}`, "#f1c40f");
 
         // 💡 [수정] 승리 애니메이션 호출 (renderTable은 애니메이션 끝난 후 함수 내부에서 실행됨)
-        this.playWinAnimation({
-          winnerId: data.winnerId, // 서버에서 승자 ID를 보내준다고 가정
-          players: updatedPlayers,
-          prevPlayers: prevPlayers, // 바닥 카드가 남아있는 이전 상태 전달
-        });
+        if (!skipAnimation) {
+          this.playWinAnimation({
+            winnerId: data.winnerId, // 서버에서 승자 ID를 보내준다고 가정
+            players: updatedPlayers,
+            prevPlayers: prevPlayers, // 바닥 카드가 남아있는 이전 상태 전달
+          });
+        }
 
-        this.addGameLog(
-          `${data.winnerNickname}님 획득! (${data.reactionTime}초)`,
-          "#f1c40f",
-        );
         // winner case - just update players immediately
         this.roundData.players = updatedPlayers;
         /*this.time.delayedCall(500, () => {
@@ -9060,7 +9584,6 @@ class GameScene extends Phaser.Scene {
     });
 
     socket.off("specialUsed").on("specialUsed", (data) => {
-      console.log("[client specialUsed] received:", data);
       try {
         if (!data) return;
         try {
@@ -9185,7 +9708,6 @@ class GameScene extends Phaser.Scene {
 
         // 왕 카드 사용 연출: 서버가 보낸 대상(target) 또는 recipients[0]를 사용
         if (Number(data.cardId) === 8 && data.by) {
-          console.log("[client specialUsed] king branch, data:", data);
           const targetId =
             data.target ||
             (Array.isArray(data.recipients) && data.recipients.length > 0
@@ -9240,7 +9762,6 @@ class GameScene extends Phaser.Scene {
 
         // 6번 카드: 블록(가림) 카드 처리
         if (Number(data.cardId) === 6 && data.by) {
-          console.log("[client specialUsed] block branch, data:", data);
           try {
             // 서버가 보낸 플레이어 상태가 있으면 병합합니다.
             // 서버는 openCardStack에 blockcard를 추가해 보낼 수 있으므로,
@@ -9264,10 +9785,6 @@ class GameScene extends Phaser.Scene {
 
             // 서버가 전달한 effectId가 있으면 등록(클라이언트가 중복으로 openStack을 변경하지 않도록 함)
             if (data.effectId) {
-              console.log(
-                "[client specialUsed] registering effectId:",
-                data.effectId,
-              );
               this.blockEffects = this.blockEffects || [];
               this.blockEffects.push({
                 id: data.effectId,
@@ -9968,6 +10485,19 @@ class GameScene extends Phaser.Scene {
     this.playerTableGroup.add(nameTxt);
   }
 
+  repositionProfileCard() {
+    // move profile card to the right of my deck and make visible
+    if (!this.profileCard || !this.myDeckSprite) return;
+    const baseMargin = Math.max(this.cameras.main.width * 0.02, 12);
+    const extraOffset = Math.max(this.cameras.main.width * 0.02, 24); // push further right
+    //const newX = this.myDeckSprite.x + this.myDeckSprite.displayWidth / 2 + baseMargin + extraOffset;
+    const newX = this.myDeckSprite.x + this.myDeckSprite.displayWidth * 2;
+
+    const newY = this.myDeckSprite.y;
+    this.profileCard.setPosition(newX, newY);
+    if (!this.profileCard.visible) this.profileCard.setVisible(true);
+  }
+
   drawPlayerDeck(p, layout) {
     const { width } = this.cameras.main;
 
@@ -9983,9 +10513,16 @@ class GameScene extends Phaser.Scene {
     if (isMe) {
       // keep reference for later animation
       this.myDeckSprite = deck;
+      // once my deck exists, reposition the profile card above and to the right of it
+      if (typeof this.profileCard !== 'undefined') {
+        // delay a tick to ensure container sizes are available
+        this.time.delayedCall(0, () => {
+          if (typeof this.repositionProfileCard === 'function') {
+            this.repositionProfileCard();
+          }
+        });
+      }
     }
-
-    // 내 카드 덱인 경우에만 클릭 이벤트 부여
     if (isMe && cardCount > 0) {
       deck.setInteractive({ useHandCursor: true });
       deck.on("pointerdown", () => {
@@ -16566,27 +17103,10 @@ class GameScene extends Phaser.Scene {
       });
     });
   }
-}
+};
 
-// share animation helpers with LobbyScene as well
-if (typeof LobbyScene !== "undefined" && typeof GameScene !== "undefined") {
-  LobbyScene.prototype.ensureAvatarAnimation =
-    GameScene.prototype.ensureAvatarAnimation;
-  LobbyScene.prototype.applyAvatarAnimation =
-    GameScene.prototype.applyAvatarAnimation;
+/* prettier-ignore-file */
 
-  // also copy underlying helpers so lobby scene can resolve keys
-  [
-    "getAvatarAnimKey",
-    "getAvatarAnimFrameRate",
-    "getAvatarAnimMaxFrame",
-    "getAvatarDisplayKey",
-  ].forEach((fn) => {
-    if (typeof GameScene.prototype[fn] === "function") {
-      LobbyScene.prototype[fn] = GameScene.prototype[fn];
-    }
-  });
-}
 // pick scale mode based on orientation.  portrait devices get ENVELOP
 // which fills the width and crops top/bottom; landscape devices use FIT
 // so the full 9:16 world is visible with black bars on the shorter axis.

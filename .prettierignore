@@ -1,0 +1,2 @@
+# ignore game.js because project-specific formatting breaks on large JS file
+game.js
