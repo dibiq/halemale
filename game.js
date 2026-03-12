@@ -1074,6 +1074,10 @@ class LobbyScene extends Phaser.Scene {
           if (Number.isFinite(safeCoins)) {
             payload.coins = safeCoins;
           }
+          const safeAvetime = Number(this.myProfile && this.myProfile.avetime);
+          if (Number.isFinite(safeAvetime)) {
+            payload.avetime = safeAvetime;
+          }
 
           const ownedCharacters = Array.isArray(
             this.myProfile && this.myProfile.owned_characters,
@@ -2751,6 +2755,14 @@ class LobbyScene extends Phaser.Scene {
     }
 
     // combined text exists check
+    // if server provided avetime and our local samples empty, seed it
+    if (
+      typeof this.myProfile.avetime === 'number' &&
+      (!Array.isArray(this.reactionTimes) || this.reactionTimes.length === 0)
+    ) {
+      this.reactionTimes = [this.myProfile.avetime];
+    }
+
     if (
       !this.profileIdText ||
       !this.profileCoinText ||
@@ -4283,6 +4295,10 @@ class LobbyScene extends Phaser.Scene {
         const safeCoins = Number(this.myProfile.coins);
         if (Number.isFinite(safeCoins)) {
           payload.coins = safeCoins;
+        }
+        const safeAvetime = Number(this.myProfile.avetime);
+        if (Number.isFinite(safeAvetime)) {
+          payload.avetime = safeAvetime;
         }
 
         const ownedCharacters = Object.entries(getOwnedCharacters())
@@ -8835,6 +8851,32 @@ class GameScene extends Phaser.Scene {
       this.profileNameTxt = nameTxt;
       this.profileLevelTxt = levelTxt;
       this.profileCoinsTxt = coinsTxt;
+
+      // experience bar below coins
+      const currentExp = Number(this.myProfile?.experience || 0);
+      const expRatio = (currentExp % XP_PER_LEVEL) / XP_PER_LEVEL;
+      const expBarWidth = cardW * 0.6;
+      const expBarHeight = cardH * 0.1;
+      const expY = cardH * 0.35;
+      const expBg = this.add.graphics();
+      expBg.fillStyle(0x555555, 1);
+      expBg.fillRoundedRect(-expBarWidth / 2, expY - expBarHeight / 2, expBarWidth, expBarHeight, 4);
+      expBg.setDepth(1);
+      const expFill = this.add.graphics();
+      expFill.fillStyle(0x2ecc71, 1);
+      expFill.fillRoundedRect(-expBarWidth / 2, expY - expBarHeight / 2, expBarWidth * expRatio, expBarHeight, 4);
+      expFill.setDepth(1);
+      const expTxt = this.add
+        .text(0, expY + expBarHeight / 2, `EXP ${currentExp % XP_PER_LEVEL}/${XP_PER_LEVEL}`, {
+          fontFamily: "Jua",
+          fontSize: `${cardH * 0.1}px`,
+          color: "#ffffff",
+        })
+        .setOrigin(0.5);
+      this.profileExpBarBg = expBg;
+      this.profileExpBarFill = expFill;
+      this.profileExpText = expTxt;
+
       // display average reaction time (use samples if available)
       const avgRaw = this.computeAvgReaction();
       const avg = avgRaw.toFixed(2);
@@ -8845,7 +8887,7 @@ class GameScene extends Phaser.Scene {
           color: "#ffffff",
         })
         .setOrigin(0.5);
-      card.add([bg, avatar, nameTxt, levelTxt, coinsTxt, reactTxt]);
+      card.add([bg, avatar, nameTxt, levelTxt, coinsTxt, expBg, expFill, expTxt, reactTxt]);
       this.profileCard = card;
       // keep reference to react text for updates
       this.profileReactTxt = reactTxt;
@@ -9387,9 +9429,17 @@ class GameScene extends Phaser.Scene {
           if (!isNaN(rt)) {
             this.reactionTimes = this.reactionTimes || [];
             this.reactionTimes.push(rt);
+            // update stored average so later sync sends it
+            const newAvg = this.computeAvgReaction();
+            this.myProfile = this.myProfile || {};
+            this.myProfile.avetime = newAvg;
             if (this.profileReactTxt) {
-              const avgVal = this.computeAvgReaction().toFixed(2);
+              const avgVal = newAvg.toFixed(2);
               this.profileReactTxt.setText(`Avg: ${avgVal}s`);
+            }
+            // send updated profile to server so avetime persists immediately
+            if (typeof emitInventory === 'function') {
+              emitInventory('reaction');
             }
           }
         }

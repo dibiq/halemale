@@ -110,6 +110,7 @@ async function savePlayer(
   ownedCharacters = null,
   currentCharacter = null,
   lastCheckinDate = null,
+  avetime = 0, // new average reaction time
 ) {
   if (!pool) return;
 
@@ -130,6 +131,7 @@ async function savePlayer(
       coins,
       items,
       experience,
+      avetime,
       owned_characters,
       current_character,
       last_checkin_date,
@@ -141,6 +143,7 @@ async function savePlayer(
       $3,
       $4,
       $5,
+      $9,
       COALESCE($6::jsonb, '[]'::jsonb),
       COALESCE($7, 'player_1'),
       $8,
@@ -152,6 +155,7 @@ async function savePlayer(
       coins = EXCLUDED.coins,
       items = EXCLUDED.items,
       experience = EXCLUDED.experience,
+      avetime = EXCLUDED.avetime,
       owned_characters = COALESCE($6::jsonb, players.owned_characters),
       current_character = COALESCE($7, players.current_character),
       last_checkin_date = COALESCE($8, players.last_checkin_date),
@@ -169,6 +173,7 @@ async function savePlayer(
         : null,
       normalizedCurrentCharacter,
       lastCheckinDate,
+      avetime,
     ]);
     console.log(
       `✅ ${id} 데이터 저장 성공 (coins=${coins}, owned=${JSON.stringify(normalizedOwnedCharacters)}, current=${normalizedCurrentCharacter}, rowCount=${result.rowCount})`,
@@ -201,7 +206,11 @@ async function ensurePlayersSchema() {
       ALTER TABLE players
       ADD COLUMN IF NOT EXISTS last_checkin_date DATE;
     `);
-    console.log("✅ players.experience 컬럼 확인 완료");
+    await pool.query(`
+      ALTER TABLE players
+      ADD COLUMN IF NOT EXISTS avetime DOUBLE PRECISION NOT NULL DEFAULT 0;
+    `);
+    console.log("✅ players.experience/avetime 컬럼 확인 완료");
   } catch (err) {
     console.error("❌ players 스키마 확인 에러:", err);
   }
@@ -455,6 +464,8 @@ function applyCoinCardReward(room, player, io) {
       targetSocket.experience || 0,
       targetSocket.ownedCharacters || ["player_1"],
       targetSocket.currentCharacter || targetSocket.avatarKey || "player_1",
+      null,
+      targetSocket.avetime || 0,
     ).catch((err) => {
       console.warn("coin reward save failed", err);
     });
@@ -465,6 +476,7 @@ function applyCoinCardReward(room, player, io) {
       coins: Number(targetSocket.coins) || 0,
       items: mergedItems.items,
       experience: Number(targetSocket.experience) || 0,
+      avetime: Number(targetSocket.avetime) || 0,
       avatarKey:
         targetSocket.currentCharacter || targetSocket.avatarKey || "player_1",
       specialCards: targetSocket.specialCards || {},
@@ -746,6 +758,10 @@ function finalizeGame(room, io, { winner, sorted, message }) {
       currentCoins,
       currentItems,
       currentExp,
+      null,
+      null,
+      null,
+      p.avetime || 0,
     );
 
     io.to(p.id).emit("myProfile", {
@@ -754,6 +770,7 @@ function finalizeGame(room, io, { winner, sorted, message }) {
       coins: currentCoins,
       items: currentItems,
       experience: currentExp,
+      avetime: p.avetime || 0,
       avatarKey: p.avatarKey || "player_1",
     });
   });
@@ -1571,6 +1588,7 @@ io.on("connection", (socket) => {
     const savedData = await getPlayer(socket.nickname);
     if (savedData) {
       console.log(`${socket.nickname}의 데이터를 불러왔습니다:`, savedData);
+      console.log(`   avetime=${savedData.avetime}`);
       let parsedItems = [];
       let parsedSpecialCards = {};
 
@@ -1615,6 +1633,7 @@ io.on("connection", (socket) => {
       socket.experience =
         Number(savedData.experience) ||
         Math.max((Number(savedData.level) || 1) - 1, 0) * XP_PER_LEVEL;
+      socket.avetime = Number(savedData.avetime) || 0;
       socket.items = parsedItems;
       socket.specialCards = parsedSpecialCards; // 특수카드 할당
       socket.ownedCharacters = normalizeOwnedCharacters(
@@ -1658,6 +1677,7 @@ io.on("connection", (socket) => {
       level: socket.level,
       coins: socket.coins,
       exp: socket.experience,
+      avetime: socket.avetime,
     });
 
     socket.emit("myProfile", {
@@ -1666,6 +1686,7 @@ io.on("connection", (socket) => {
       coins: Number(socket.coins) || 0,
       items: Array.isArray(socket.items) ? socket.items : [],
       experience: Number(socket.experience) || 0,
+      avetime: Number(socket.avetime) || 0,
       avatarKey: socket.currentCharacter || socket.avatarKey || "player_1",
       specialCards: socket.specialCards || {},
       owned_characters: socket.ownedCharacters || ["player_1"],
@@ -1797,6 +1818,8 @@ io.on("connection", (socket) => {
         socket.experience,
         socket.ownedCharacters,
         socket.currentCharacter,
+        null,
+        socket.avetime || 0,
       );
       console.log(`✅ ${socket.nickname} 특수카드 ${cardId} 구매 DB 저장 완료`);
     } catch (e) {
@@ -1810,6 +1833,7 @@ io.on("connection", (socket) => {
       coins: Number(socket.coins) || 0,
       items: Array.isArray(socket.items) ? socket.items : [],
       experience: Number(socket.experience) || 0,
+      avetime: Number(socket.avetime) || 0,
       avatarKey: socket.currentCharacter || socket.avatarKey || "player_1",
       specialCards: socket.specialCards || {},
       owned_characters: socket.ownedCharacters || ["player_1"],
@@ -1874,6 +1898,8 @@ io.on("connection", (socket) => {
         socket.experience || 0,
         socket.ownedCharacters || ["player_1"],
         socket.currentCharacter || "player_1",
+        null,
+        socket.avetime || 0,
       );
       console.log(
         `✅ ${targetNickname} 코인 ${amount} 충전 DB 저장 완료 (총 코인: ${socket.coins})`,
@@ -1893,6 +1919,7 @@ io.on("connection", (socket) => {
       coins: Number(socket.coins) || 0,
       items: Array.isArray(socket.items) ? socket.items : [],
       experience: Number(socket.experience) || 0,
+      avetime: Number(socket.avetime) || 0,
       avatarKey: socket.currentCharacter || socket.avatarKey || "player_1",
       specialCards: socket.specialCards || {},
       owned_characters: socket.ownedCharacters || ["player_1"],
@@ -2005,6 +2032,8 @@ io.on("connection", (socket) => {
         socket.experience,
         socket.ownedCharacters,
         socket.currentCharacter,
+        null,
+        socket.avetime || 0,
       );
 
       // 성공시 클라이언트에 최신 프로필 전송
@@ -2014,6 +2043,7 @@ io.on("connection", (socket) => {
         coins: Number(socket.coins) || 0,
         items: Array.isArray(socket.items) ? socket.items : [],
         experience: Number(socket.experience) || 0,
+        avetime: Number(socket.avetime) || 0,
         avatarKey: socket.currentCharacter || socket.avatarKey || "player_1",
         specialCards: socket.specialCards || {},
         owned_characters: socket.ownedCharacters || ["player_1"],
@@ -2108,6 +2138,8 @@ io.on("connection", (socket) => {
         socket.experience || 0,
         socket.ownedCharacters || ["player_1"],
         socket.currentCharacter,
+        null,
+        socket.avetime || 0,
       );
 
       // 최신 프로필 정보 전송
@@ -2117,6 +2149,7 @@ io.on("connection", (socket) => {
         coins: Number(socket.coins) || 0,
         items: Array.isArray(socket.items) ? socket.items : [],
         experience: Number(socket.experience) || 0,
+        avetime: Number(socket.avetime) || 0,
         avatarKey: socket.currentCharacter || "player_1",
         specialCards: socket.specialCards || {},
         owned_characters: socket.ownedCharacters || ["player_1"],
@@ -2442,6 +2475,8 @@ io.on("connection", (socket) => {
                       resolvedSock.currentCharacter ||
                         resolvedSock.avatarKey ||
                         "player_1",
+                      null,
+                      resolvedSock.avetime || 0,
                     ).catch((e) =>
                       console.warn("savePlayer error on shield consume", e),
                     );
@@ -2524,6 +2559,8 @@ io.on("connection", (socket) => {
                   resolvedSock.currentCharacter ||
                     resolvedSock.avatarKey ||
                     "player_1",
+                  null,
+                  resolvedSock.avetime || 0,
                 ).catch((e) =>
                   console.warn("savePlayer error on shield consume", e),
                 );
@@ -2536,6 +2573,7 @@ io.on("connection", (socket) => {
                       ? resolvedSock.items
                       : [],
                     experience: Number(resolvedSock.experience) || 0,
+                    avetime: Number(resolvedSock.avetime) || 0,
                     avatarKey:
                       resolvedSock.currentCharacter ||
                       resolvedSock.avatarKey ||
@@ -2605,6 +2643,8 @@ io.on("connection", (socket) => {
                       resolvedSock.currentCharacter ||
                         resolvedSock.avatarKey ||
                         "player_1",
+                      null,
+                      resolvedSock.avetime || 0,
                     ).catch((e) =>
                       console.warn("savePlayer error on shield consume", e),
                     );
@@ -2755,6 +2795,8 @@ io.on("connection", (socket) => {
                       tSock.experience || 0,
                       tSock.ownedCharacters || ["player_1"],
                       tSock.currentCharacter || tSock.avatarKey || "player_1",
+                      null,
+                      tSock.avetime || 0,
                     ).catch((e) =>
                       console.warn("savePlayer error on shield consume", e),
                     );
@@ -2842,6 +2884,8 @@ io.on("connection", (socket) => {
                     pSock.experience || 0,
                     pSock.ownedCharacters || ["player_1"],
                     pSock.currentCharacter || pSock.avatarKey || "player_1",
+                    null,
+                    pSock.avetime || 0,
                   ).catch((e) =>
                     console.warn("savePlayer error on shield consume", e),
                   );
@@ -2852,6 +2896,7 @@ io.on("connection", (socket) => {
                       coins: Number(pSock.coins) || 0,
                       items: Array.isArray(pSock.items) ? pSock.items : [],
                       experience: Number(pSock.experience) || 0,
+                      avetime: Number(pSock.avetime) || 0,
                       avatarKey:
                         pSock.currentCharacter || pSock.avatarKey || "player_1",
                       specialCards: pSock.specialCards || {},
@@ -2900,6 +2945,8 @@ io.on("connection", (socket) => {
             socket.experience || 0,
             socket.ownedCharacters || ["player_1"],
             socket.currentCharacter || socket.avatarKey || "player_1",
+            null,
+            socket.avetime || 0,
           ).catch((e) => console.warn("savePlayer error on useSpecial", e));
 
           // 사용자에게 프로필 업데이트 전송
@@ -2910,6 +2957,7 @@ io.on("connection", (socket) => {
               coins: Number(socket.coins) || 0,
               items: Array.isArray(socket.items) ? socket.items : [],
               experience: Number(socket.experience) || 0,
+              avetime: Number(socket.avetime) || 0,
               avatarKey:
                 socket.currentCharacter || socket.avatarKey || "player_1",
               specialCards: socket.specialCards || {},
@@ -3043,6 +3091,12 @@ io.on("connection", (socket) => {
         socket.coins = incomingCoins;
       }
     }
+    if (typeof payload.avetime !== "undefined") {
+      const incomingAve = Number(payload.avetime);
+      if (Number.isFinite(incomingAve)) {
+        socket.avetime = incomingAve;
+      }
+    }
 
     const incomingOwnedCharacters =
       payload.owned_characters || payload.ownedCharacters;
@@ -3071,6 +3125,14 @@ io.on("connection", (socket) => {
       socket.specialCards = payload.specialCards;
     }
 
+    // if client provided avetime, update socket copy
+    if (typeof payload.avetime !== "undefined") {
+      const a = parseFloat(payload.avetime);
+      if (!isNaN(a)) {
+        socket.avetime = a;
+      }
+    }
+
     const mergedItems = {
       items: Array.isArray(socket.items) ? socket.items : [],
       specialCards: socket.specialCards || {},
@@ -3084,6 +3146,8 @@ io.on("connection", (socket) => {
       socket.experience,
       socket.ownedCharacters,
       socket.currentCharacter || "player_1",
+      null,
+      socket.avetime || 0,
     );
   };
 
@@ -4883,6 +4947,8 @@ io.on("connection", (socket) => {
               penalizedSocket.currentCharacter ||
                 penalizedSocket.avatarKey ||
                 "player_1",
+              null,
+              penalizedSocket.avetime || 0,
             ).catch((e) => console.warn("savePlayer error on auto-lock", e));
 
             // 해당 플레이어에게 프로필 업데이트 전송
@@ -4895,6 +4961,7 @@ io.on("connection", (socket) => {
                   ? penalizedSocket.items
                   : [],
                 experience: Number(penalizedSocket.experience) || 0,
+                avetime: Number(penalizedSocket.avetime) || 0,
                 avatarKey:
                   penalizedSocket.currentCharacter ||
                   penalizedSocket.avatarKey ||
