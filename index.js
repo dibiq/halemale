@@ -1068,6 +1068,7 @@ function scheduleAiTurn(room, io) {
   const debugRoom = room.roomId || "?";
   console.log(
     `[AI] scheduleAiTurn start room=${debugRoom} turnIndex=${room.turnIndex}`,
+    emitServerDebug(room, "ai.scheduleStart", { turnIndex: room.turnIndex });
   );
 
   // always give bots a chance to ring first
@@ -1112,8 +1113,12 @@ function scheduleAiTurn(room, io) {
   }
 
   console.log(`[AI] scheduling flip for bot ${current.id} in 2200ms`);
+  emitServerDebug(room, "ai.schedulingFlip", { botId: current.id });
+  emitServerDebug(room, "ai.schedulingFlip", { botId: current.id });
   room.aiTimers.turn = setTimeout(() => {
     console.log(`[AI] flip timeout fired for room=${debugRoom}`);
+    emitServerDebug(room, "ai.timeoutFired", {});
+  emitServerDebug(room, "ai.timeoutFired", {});
     if (!room.isGameStarted) return;
     const active = room.players[room.turnIndex];
     if (
@@ -4409,6 +4414,9 @@ io.on("connection", (socket) => {
     }
 
     room.turnIndex = getSafeNextIndex(room);
+    console.log(`[TURN_DEBUG] advance turn -> ${room.turnIndex}`);
+    emitServerDebug(room, "turn.advanced", { turnIndex: room.turnIndex });
+    emitServerDebug(room, "turn.advanced", { turnIndex: room.turnIndex });
     let p = room.players[room.turnIndex];
 
     // 카드가 없는 사람은 이미 탈락자이므로 요청 무시
@@ -4431,6 +4439,8 @@ io.on("connection", (socket) => {
     }
 
     room.isFlipping = true;
+    console.log("[TURN_DEBUG] human flip set isFlipping true");
+    emitServerDebug(room, "human.flipStart", { playerId: socket.id });
 
     // 💡 [추가] 카드가 뒤집히는 시점의 시간을 기록 (반응 속도 측정 시작)
     room.lastFlipTime = Date.now();
