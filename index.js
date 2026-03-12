@@ -112,6 +112,9 @@ async function savePlayer(
   lastCheckinDate = null,
   avetime = null, // new average reaction time; null means "don't update"
 ) {
+  console.log(
+    `\n[savePlayer] id=${id} level=${level} coins=${coins} exp=${experience} avetime=${avetime}`,
+  );
   if (!pool) return;
 
   const normalizedOwnedCharacters = Array.isArray(ownedCharacters)
@@ -758,6 +761,22 @@ function finalizeGame(room, io, { winner, sorted, message }) {
       }
     });
   }
+  // if we still have no average (no samples at all), fall back to whatever
+  // socket stored from prior games so we don't drop an existing value.
+  room.players.forEach((p) => {
+    if (!p.avetime || p.avetime === 0) {
+      const sock = io.sockets && io.sockets.sockets.get(p.id);
+      if (sock && typeof sock.avetime === "number" && sock.avetime > 0) {
+        p.avetime = sock.avetime;
+      }
+    }
+  });
+
+  // debug print before saving
+  console.log("[GAME END] preparing to save avetime values:");
+  room.players.forEach((p) => {
+    console.log(`  player=${p.nickname} id=${p.id} avetime=${p.avetime}`);
+  });
 
   // before saving, optionally record current socket avetime if already populated
   // (won't overwrite sample-based value when hook is disabled)
