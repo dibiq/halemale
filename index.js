@@ -4312,6 +4312,9 @@ io.on("connection", (socket) => {
       timeAttackEndsAt: room.timeAttackEndsAt,
     });
 
+    console.log(
+      `[SERVER] emitting gameStart for room=${room.roomId} turnIndex=${room.turnIndex}`,
+    );
     emitServerDebug(room, "gameStart.emitted", {
       nextTurnId: room.players[room.turnIndex].id,
       totalPlayers: room.players.length,

@@ -8730,17 +8730,11 @@ class GameScene extends Phaser.Scene {
     socket.off("cardFlipped").on("cardFlipped", (data) => {
       if (this.isSingle) return;
 
-      // (block removal happens after we update openStack below)
-
-      try {
-        const cardType = data?.card?.type;
-        const cardLabel = cardType
-          ? `type=${cardType}`
-          : data?.card && Number.isFinite(Number(data.card.fruit))
-            ? `fruit=${data.card.fruit} count=${data.card.count}`
-            : "unknown";
-      } catch (e) {}
-
+      console.log(`[client] cardFlipped event`, data);
+      // log AI/human and thunder
+      if (data.playerId && data.playerId.startsWith("AI_")) {
+        console.log("[client] AI flipped card", data.playerId, data.card);
+      }
       if (data?.card?.type === THUNDER_CARD_TYPE) {
         console.log("⚡ [client] THUNDER cardFlipped:", {
           playerId: data.playerId,
