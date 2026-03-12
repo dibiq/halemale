@@ -5574,11 +5574,11 @@ class LobbyScene extends Phaser.Scene {
         };
 
         const showRoomCreateForm = (container) => {
-          const roomNameInputY = contentY * -0.36;
-          const passwordInputY = contentY * -0.22;
-          const publicToggleY = height * 0.02;
-          const itemToggleY = height * 0.07;
-          const modeToggleY = height * 0.115;
+          const roomNameInputY = contentY * -0.3; // 내려서 간격 확보
+          const passwordInputY = contentY * -0.16; // 입력칸도 아래
+          const publicToggleY = height * 0.01; // 올라감
+          const itemToggleY = height * 0.065; // 아래 토글도 위로
+          const modeToggleY = itemToggleY; // same row
           const createBtnY = height * 0.155;
 
           // 방 이름 입력창 (DOM 절대 좌표)
@@ -5608,12 +5608,12 @@ class LobbyScene extends Phaser.Scene {
           let isPublic = true;
           let isItemMode = true;
           let isTimeAttack = false;
-          const btnGapX = width * 0.13;
+          const btnGapX = width * 0.12; // 간격 줄임
 
           const publicBtnImg = this.add
             .image(-btnGapX, publicToggleY, "uibtn")
             .setDisplaySize(width * 0.22, height * 0.05)
-            .setTint(0x3498db) // 활성 상태 (파란색)
+            .setTint(0x3498db)
             .setInteractive({ useHandCursor: true });
           const publicBtnText = this.add
             .text(-btnGapX, publicToggleY, "🌐 공개", {
@@ -5627,7 +5627,7 @@ class LobbyScene extends Phaser.Scene {
           const privateBtnImg = this.add
             .image(btnGapX, publicToggleY, "uibtn")
             .setDisplaySize(width * 0.22, height * 0.05)
-            .setTint(0x7f8c8d) // 비활성 상태 (회색)
+            .setTint(0x7f8c8d)
             .setInteractive({ useHandCursor: true });
           const privateBtnText = this.add
             .text(btnGapX, publicToggleY, "🔒 비공개", {
@@ -5656,7 +5656,7 @@ class LobbyScene extends Phaser.Scene {
             backgroundColor: "#fff8f0",
             outline: "none",
             color: "#000",
-            display: "none", // 처음엔 숨김
+            display: "none",
           });
           pwEl.addEventListener("input", () => {
             pwEl.value = pwEl.value.replace(/[^0-9]/g, "").substring(0, 4);
@@ -5689,110 +5689,96 @@ class LobbyScene extends Phaser.Scene {
             updateToggle(false);
           });
 
-          const itemBtnImg = this.add
+          // 아이템전 토글 단일 버튼 (왼쪽)
+          const itemToggleImg = this.add
             .image(-btnGapX, itemToggleY, "uibtn")
             .setDisplaySize(width * 0.22, height * 0.05)
-            .setTint(0x2ecc71)
+            .setTint(isItemMode ? 0x2ecc71 : 0x7f8c8d)
             .setInteractive({ useHandCursor: true });
-          const itemBtnText = this.add
-            .text(-btnGapX, itemToggleY, "🎯 아이템전", {
-              fontFamily: "Jua",
-              fontSize: `${width * 0.03}px`,
-              color: "#ffffff",
-              fontWeight: "bold",
-            })
+          const itemToggleText = this.add
+            .text(
+              -btnGapX,
+              itemToggleY,
+              isItemMode ? "🎯 아이템전" : "🚫 노템전",
+              {
+                fontFamily: "Jua",
+                fontSize: `${width * 0.03}px`,
+                color: "#ffffff",
+                fontWeight: "bold",
+              },
+            )
             .setOrigin(0.5);
 
-          const noItemBtnImg = this.add
+          const updateItemToggle = () => {
+            itemToggleImg.setTint(isItemMode ? 0x2ecc71 : 0x7f8c8d);
+            itemToggleText.setText(isItemMode ? "🎯 아이템전" : "🚫 노템전");
+          };
+
+          itemToggleImg.on("pointerdown", () => {
+            this.sound.play("btn", { volume: 0.1 });
+            isItemMode = !isItemMode;
+            updateItemToggle();
+            if (isItemMode) {
+              this.showToast("게임에서 아이템을 사용할 수 있습니다", "#2ecc71");
+            } else {
+              this.showToast("게임에서 아이템을 사용할 수 없습니다", "#e74c3c");
+            }
+          });
+          itemToggleText.on("pointerdown", () => {
+            this.sound.play("btn", { volume: 0.1 });
+            isItemMode = !isItemMode;
+            updateItemToggle();
+            if (isItemMode) {
+              this.showToast("게임에서 아이템을 사용할 수 있습니다", "#2ecc71");
+            } else {
+              this.showToast("게임에서 아이템을 사용할 수 없습니다", "#e74c3c");
+            }
+          });
+
+          // 게임 모드 토글 단일 버튼 (오른쪽)
+          const modeToggleImg = this.add
             .image(btnGapX, itemToggleY, "uibtn")
             .setDisplaySize(width * 0.22, height * 0.05)
-            .setTint(0x7f8c8d)
+            .setTint(isTimeAttack ? 0xf1c40f : 0x7f8c8d)
             .setInteractive({ useHandCursor: true });
-          const noItemBtnText = this.add
-            .text(btnGapX, itemToggleY, "🚫 노템전", {
-              fontFamily: "Jua",
-              fontSize: `${width * 0.03}px`,
-              color: "#ffffff",
-              fontWeight: "bold",
-            })
+          const modeToggleText = this.add
+            .text(
+              btnGapX,
+              itemToggleY,
+              isTimeAttack ? "⏱ 타임어택" : "💰 올인",
+              {
+                fontFamily: "Jua",
+                fontSize: `${width * 0.03}px`,
+                color: "#ffffff",
+                fontWeight: "bold",
+              },
+            )
             .setOrigin(0.5);
 
-          const updateItemToggle = (useItemMode) => {
-            isItemMode = useItemMode;
-            itemBtnImg.setTint(useItemMode ? 0x2ecc71 : 0x7f8c8d);
-            noItemBtnImg.setTint(useItemMode ? 0x7f8c8d : 0xe74c3c);
+          const updateModeToggle = () => {
+            modeToggleImg.setTint(isTimeAttack ? 0xf1c40f : 0x7f8c8d);
+            modeToggleText.setText(isTimeAttack ? "⏱ 타임어택" : "💰 올인");
           };
 
-          itemBtnImg.on("pointerdown", () => {
+          modeToggleImg.on("pointerdown", () => {
             this.sound.play("btn", { volume: 0.1 });
-            updateItemToggle(true);
-            this.showToast("게임에서 아이템을 사용할 수 있습니다", "#2ecc71");
+            isTimeAttack = !isTimeAttack;
+            updateModeToggle();
+            if (isTimeAttack) {
+              this.showToast("타임어택 모드가 선택되었습니다", "#f1c40f");
+            } else {
+              this.showToast("올인 모드가 선택되었습니다", "#34495e");
+            }
           });
-          itemBtnText.on("pointerdown", () => {
+          modeToggleText.on("pointerdown", () => {
             this.sound.play("btn", { volume: 0.1 });
-            updateItemToggle(true);
-            this.showToast("게임에서 아이템을 사용할 수 있습니다", "#2ecc71");
-          });
-          noItemBtnImg.on("pointerdown", () => {
-            this.sound.play("btn", { volume: 0.1 });
-            updateItemToggle(false);
-            this.showToast("게임에서 아이템을 사용할 수 없습니다", "#e74c3c");
-          });
-          noItemBtnText.on("pointerdown", () => {
-            this.sound.play("btn", { volume: 0.1 });
-            updateItemToggle(false);
-            this.showToast("게임에서 아이템을 사용할 수 없습니다", "#e74c3c");
-          });
-
-          const timeBtnImg = this.add
-            .image(-btnGapX, modeToggleY, "uibtn")
-            .setDisplaySize(width * 0.22, height * 0.05)
-            .setTint(0x7f8c8d)
-            .setInteractive({ useHandCursor: true });
-          const timeBtnText = this.add
-            .text(-btnGapX, modeToggleY, "⏱️ 타임어택", {
-              fontFamily: "Jua",
-              fontSize: `${width * 0.03}px`,
-              color: "#ffffff",
-              fontWeight: "bold",
-            })
-            .setOrigin(0.5);
-
-          const allInBtnImg = this.add
-            .image(btnGapX, modeToggleY, "uibtn")
-            .setDisplaySize(width * 0.22, height * 0.05)
-            .setTint(0x2ecc71)
-            .setInteractive({ useHandCursor: true });
-          const allInBtnText = this.add
-            .text(btnGapX, modeToggleY, "🎴 올인", {
-              fontFamily: "Jua",
-              fontSize: `${width * 0.03}px`,
-              color: "#ffffff",
-              fontWeight: "bold",
-            })
-            .setOrigin(0.5);
-
-          const updateModeToggle = (useTimeAttack) => {
-            isTimeAttack = useTimeAttack;
-            timeBtnImg.setTint(useTimeAttack ? 0x3498db : 0x7f8c8d);
-            allInBtnImg.setTint(useTimeAttack ? 0x7f8c8d : 0x2ecc71);
-          };
-
-          timeBtnImg.on("pointerdown", () => {
-            this.sound.play("btn", { volume: 0.1 });
-            updateModeToggle(true);
-          });
-          timeBtnText.on("pointerdown", () => {
-            this.sound.play("btn", { volume: 0.1 });
-            updateModeToggle(true);
-          });
-          allInBtnImg.on("pointerdown", () => {
-            this.sound.play("btn", { volume: 0.1 });
-            updateModeToggle(false);
-          });
-          allInBtnText.on("pointerdown", () => {
-            this.sound.play("btn", { volume: 0.1 });
-            updateModeToggle(false);
+            isTimeAttack = !isTimeAttack;
+            updateModeToggle();
+            if (isTimeAttack) {
+              this.showToast("타임어택 모드가 선택되었습니다", "#f1c40f");
+            } else {
+              this.showToast("올인 모드가 선택되었습니다", "#34495e");
+            }
           });
 
           // 방 만들기 버튼
@@ -5852,14 +5838,10 @@ class LobbyScene extends Phaser.Scene {
             publicBtnText,
             privateBtnImg,
             privateBtnText,
-            itemBtnImg,
-            itemBtnText,
-            noItemBtnImg,
-            noItemBtnText,
-            timeBtnImg,
-            timeBtnText,
-            allInBtnImg,
-            allInBtnText,
+            itemToggleImg,
+            itemToggleText,
+            modeToggleImg,
+            modeToggleText,
             pwInput,
             createBtnImg,
             createBtnText,
