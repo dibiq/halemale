@@ -9457,10 +9457,8 @@ class GameScene extends Phaser.Scene {
               const avgVal = newAvg.toFixed(2);
               this.profileReactTxt.setText(`Avg: ${avgVal}s`);
             }
-            // send updated profile to server so avetime persists immediately
-            if (typeof emitInventory === 'function') {
-              emitInventory('reaction');
-            }
+            // we no longer sync on every ring; final average will be sent at game end
+            // (this reduces unnecessary socket traffic)
           }
         }
 
@@ -9937,6 +9935,11 @@ class GameScene extends Phaser.Scene {
     });
 
     socket.off("gameEnded").on("gameEnded", (data) => {
+      // sync final average reaction time when match ends
+      if (typeof emitInventory === 'function') {
+        // reason 'final' merely for debugging; no payload change
+        emitInventory('final');
+      }
       // 💡 즉시 띄우지 않고 1~1.5초 정도 여유를 줌
       this.time.delayedCall(1000, () => {
         this.playFinishAnimation(() => {

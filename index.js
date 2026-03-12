@@ -747,7 +747,24 @@ function finalizeGame(room, io, { winner, sorted, message }) {
     player.level = getLevelFromExperience(player.experience);
   });
 
+  // compute final average from any accumulated samples (ensures accuracy at game end)
+  if (room.reactionSamples && typeof room.reactionSamples === "object") {
+    room.players.forEach((p) => {
+      const samples = room.reactionSamples[p.id];
+      if (Array.isArray(samples) && samples.length > 0) {
+        const sum = samples.reduce((a, b) => a + b, 0);
+        p.avetime = +(sum / samples.length / 1000).toFixed(2);
+      }
+    });
+  }
+
+  // before saving, refresh each player's avetime from latest socket state
   room.players.forEach((p) => {
+    const sock = io.sockets && io.sockets.sockets.get(p.id);
+    if (sock && typeof sock.avetime === "number" && sock.avetime > 0) {
+      p.avetime = sock.avetime;
+    }
+
     const currentExp = Number(p.experience) || 0;
     const currentLevel = Number(p.level) || getLevelFromExperience(currentExp);
     const currentCoins = Number(p.coins) || 0;
@@ -3134,16 +3151,6 @@ io.on("connection", (socket) => {
       const a = parseFloat(payload.avetime);
       if (!isNaN(a)) {
         socket.avetime = a;
-        // also reflect in any room the socket is currently in
-        const room = socket.roomId && rooms[socket.roomId];
-        if (room && Array.isArray(room.players)) {
-          const rp = room.players.find(
-            (p) => p.id === socket.id || p.nickname === socket.nickname,
-          );
-          if (rp) {
-            rp.avetime = a;
-          }
-        }
       }
     }
 
