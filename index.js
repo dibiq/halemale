@@ -1153,9 +1153,11 @@ function scheduleAiTurn(room, io) {
 
   if (computeBellSuccessCondition(room)) {
     console.log(
-      `[AI][DEBUG] scheduleAiTurn: bell 조건 true (id=${current.id}) -> 벨 시도`,
+      `[AI][DEBUG] scheduleAiTurn: bell 조건 true (id=${current.id}) -> 2초 후 벨 시도`,
     );
-    handleAiBell(room, io, current.id);
+    setTimeout(() => {
+      handleAiBell(room, io, current.id);
+    }, 2000);
     return;
   }
 
@@ -1228,8 +1230,8 @@ function scheduleAiBell(room, io) {
     if (player.isEliminated) return;
     if (!player.myDeck || player.myDeck.length <= 0) return;
 
-    // uniform 1.7‑second reaction for every bot
-    const delay = 1700;
+    // 봇 벨 반응 딜레이를 2초(2000ms)로 조정
+    const delay = 2000;
     room.aiTimers.bells[player.id] = setTimeout(() => {
       handleAiBell(room, io, player.id);
     }, delay);
