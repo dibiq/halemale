@@ -1062,18 +1062,25 @@ function scheduleAiTurn(room, io) {
   ensureAiState(room);
   clearAiTurnTimer(room);
 
+  const debugRoom = room.roomId || "?";
+  console.log(
+    `[AI] scheduleAiTurn start room=${debugRoom} turnIndex=${room.turnIndex}`,
+  );
+
   // always give bots a chance to ring first
   scheduleAiBell(room, io);
 
-  // wait if a human ring is being evaluated or just completed
   if (room.bellPending || room.bellLocked) {
+    console.log(
+      `[AI] delaying turn due to bellPending=${!!room.bellPending} locked=${!!room.bellLocked}`,
+    );
     room.aiTimers.turn = setTimeout(() => scheduleAiTurn(room, io), 50);
     return;
   }
 
-  // honor special-card pauses
   const pauseRemaining = getSpecialPauseRemaining(room);
   if (pauseRemaining > 0) {
+    console.log(`[AI] delaying turn for pauseRemaining=${pauseRemaining}`);
     room.aiTimers.turn = setTimeout(
       () => scheduleAiTurn(room, io),
       pauseRemaining + 20,
@@ -1082,18 +1089,28 @@ function scheduleAiTurn(room, io) {
   }
 
   const current = room.players[room.turnIndex];
-  if (!isBotPlayer(current)) return;
-  if (!current.myDeck || current.myDeck.length === 0) return;
-  if (room.isFlipping) return;
+  if (!isBotPlayer(current)) {
+    console.log(`[AI] not a bot's turn (id=${current && current.id})`);
+    return;
+  }
+  if (!current.myDeck || current.myDeck.length === 0) {
+    console.log(`[AI] bot has no cards, skip`);
+    return;
+  }
+  if (room.isFlipping) {
+    console.log(`[AI] room.isFlipping true, skip`);
+    return;
+  }
 
-  // if the table already qualifies for a bell, ring instead of flipping
   if (computeBellSuccessCondition(room)) {
+    console.log(`[AI] bell condition true, ringing instead of flipping`);
     handleAiBell(room, io, current.id);
     return;
   }
 
-  // schedule the bot flip; delay slightly longer than the bell reaction
+  console.log(`[AI] scheduling flip for bot ${current.id} in 2200ms`);
   room.aiTimers.turn = setTimeout(() => {
+    console.log(`[AI] flip timeout fired for room=${debugRoom}`);
     if (!room.isGameStarted) return;
     const active = room.players[room.turnIndex];
     if (
@@ -1102,19 +1119,31 @@ function scheduleAiTurn(room, io) {
       !room.bellPending &&
       !computeBellSuccessCondition(room)
     ) {
+      console.log(`[AI] executing handleAiFlip for ${current.id}`);
       handleAiFlip(room, io, current.id);
+    } else {
+      console.log(
+        `[AI] flip aborted (active=${active && active.id}, bellPending=${!!room.bellPending})`,
+      );
     }
   }, 2200);
 }
 
 function scheduleAiBell(room, io) {
   if (!room || !room.isGameStarted) return;
-  if (room.bellLocked || room.bellPending) return;
+  if (room.bellLocked || room.bellPending) {
+    console.log("[AI] scheduleAiBell skipped due to lock/pending", {
+      bellLocked: room.bellLocked,
+      bellPending: room.bellPending,
+    });
+    return;
+  }
   ensureAiState(room);
   clearAiBellTimers(room);
 
   const pauseRemaining = getSpecialPauseRemaining(room);
   if (pauseRemaining > 0) {
+    console.log("[AI] scheduleAiBell pauseRemaining", pauseRemaining);
     room.aiTimers.bells._pause = setTimeout(() => {
       scheduleAiBell(room, io);
     }, pauseRemaining + 20);
@@ -1158,19 +1187,34 @@ function scheduleAiBell(room, io) {
 
 function handleAiFlip(room, io, playerId) {
   if (!room || !room.isGameStarted) return;
-  // if a human ring is under evaluation, skip entirely
-  if (room.bellPending) return;
-  // also avoid flipping if the board already satisfies bell condition –
-  // the bot should ring instead of adding another card.
-  if (computeBellSuccessCondition(room)) return;
-  // don't let bots act while a bell is being processed – the lock
-  // indicates someone has just rang and we should wait for the
-  // next real flip (human or bot) to clear the lock.
-  if (room.bellLocked) return;
+  console.log(
+    "[AI] handleAiFlip called for",
+    playerId,
+    "turnIndex=",
+    room.turnIndex,
+  );
+  if (room.bellPending) {
+    console.log("[AI] handleAiFlip exit bellPending");
+    return;
+  }
+  if (computeBellSuccessCondition(room)) {
+    console.log("[AI] handleAiFlip exit bell condition true");
+    return;
+  }
+  if (room.bellLocked) {
+    console.log("[AI] handleAiFlip exit bellLocked");
+    return;
+  }
 
-  if (room.isFlipping) return;
+  if (room.isFlipping) {
+    console.log("[AI] handleAiFlip exit isFlipping");
+    return;
+  }
 
-  if (getSpecialPauseRemaining(room) > 0) return;
+  if (getSpecialPauseRemaining(room) > 0) {
+    console.log("[AI] handleAiFlip exit pauseRemaining");
+    return;
+  }
 
   // cancel any pending turn timer for this room; the bot is about
   // to act so there is no need for the scheduled callback anymore.
@@ -1319,8 +1363,15 @@ function handleAiFlip(room, io, playerId) {
 
 function handleAiBell(room, io, playerId) {
   if (!room || !room.isGameStarted) return;
-  if (room.bellLocked) return;
-  if (room.isFlipping) return;
+  console.log("[AI] handleAiBell for", playerId, "turnIndex=", room.turnIndex);
+  if (room.bellLocked) {
+    console.log("[AI] handleAiBell exit bellLocked");
+    return;
+  }
+  if (room.isFlipping) {
+    console.log("[AI] handleAiBell exit isFlipping");
+    return;
+  }
 
   const p = room.players.find((pl) => pl.id === playerId);
   if (!p || p.isEliminated) return;
@@ -4388,6 +4439,11 @@ io.on("connection", (socket) => {
         remaining: p.myDeck.length,
         turnIndex: room.turnIndex,
       });
+    } else {
+      console.log(
+        `[TURN_DEBUG] normal card flipped by ${p.nickname} ${p.id}`,
+        card,
+      );
     }
     p.openCard = card;
     p.openCardStack.push(card);
