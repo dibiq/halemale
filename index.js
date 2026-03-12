@@ -1,3 +1,14 @@
+// AI 봇 및 벨 성공 조건 함수 정의
+function computeBellSuccessCondition(room) {
+  if (!room || !Array.isArray(room.players)) return false;
+  const totals = getFruitTotals(room.players);
+  const isFive = Object.values(totals).some((t) => t === 5);
+  const hasThunder = hasThunderCardOnTable(room.players);
+  const hasBomb = hasBombCardOnTable(room.players);
+  const hasNot5 = hasNot5CardOnTable(room.players);
+  // 벨 성공 조건: 폭탄이 없고, 번개가 있거나, not5카드가 있으면 5가 아니어야 하고, 아니면 5가 있어야 함
+  return !hasBomb && (hasThunder || (hasNot5 ? !isFive : isFive));
+}
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
