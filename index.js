@@ -724,6 +724,10 @@ function finalizeGame(room, io, { winner, sorted, message }) {
     winner: winner && winner.nickname,
     sortedCount: Array.isArray(sorted) ? sorted.length : null,
   });
+  // additional trace to ensure we see this in logs
+  console.log(
+    "[DEBUG] finalizeGame entry trace (should appear whenever a game ends)",
+  );
   if (!room || !io || !winner || !Array.isArray(sorted)) {
     console.log("[DEBUG] finalizeGame aborted due to invalid args");
     return;
@@ -786,6 +790,10 @@ function finalizeGame(room, io, { winner, sorted, message }) {
 
   // debug print before saving
   console.log("[GAME END] preparing to save avetime values:");
+  console.log(
+    "[GAME END] about to emit gameEnded for room",
+    room && room.roomId,
+  );
   room.players.forEach((p) => {
     console.log(`  player=${p.nickname} id=${p.id} avetime=${p.avetime}`);
   });
@@ -882,6 +890,10 @@ function finalizeGame(room, io, { winner, sorted, message }) {
 }
 
 function handleTimeAttackExpiry(room, io) {
+  console.log(
+    "[DEBUG] handleTimeAttackExpiry called for room",
+    room && room.roomId,
+  );
   if (!room || !room.isGameStarted) {
     console.log("[AI] scheduleAiTurn: room 없음 또는 게임 미시작");
     return;
@@ -898,6 +910,12 @@ function handleTimeAttackExpiry(room, io) {
 }
 
 function checkGameOver(room, io, options = {}) {
+  console.log(
+    "[DEBUG] checkGameOver called for room",
+    room && room.roomId,
+    "options",
+    options,
+  );
   const forceEliminateZeroDeck = options.forceEliminateZeroDeck === true;
   // 덱이 0장인 사람들을 판별
   // If there's an active bell-success window (5 or thunder on table),
@@ -942,10 +960,8 @@ function checkGameOver(room, io, options = {}) {
   });
 
   if ((survivors.length <= 1 || forceEndForHumanElim) && room.isGameStarted) {
-    console.log("[DEBUG] checkGameOver triggering finalize", {
-      survivors: survivors.map((p) => p.nickname),
-      forceEndForHumanElim,
-    });
+    console.log("[DEBUG] checkGameOver triggering finalize", {});
+    console.log("[DEBUG] checkGameOver winner/sorted path active");
     const winner = forceEndForHumanElim
       ? survivors[0] || room.players[0]
       : survivors.length === 1
