@@ -8812,12 +8812,13 @@ class GameScene extends Phaser.Scene {
       this.profileCardBaseH = cardH;
       const safePaddingLocal = Math.max(this.cameras.main.width * 0.06, 24);
       // temporarily place offscreen and hide; we'll reposition when deck exists
+      // depth should be above basic UI but below most animating cards
       const card = this.add
         .container(-9999, -9999)
-        .setDepth(1000003)
+        .setDepth(100) // match other UI elements, not the sliding cards
         .setScrollFactor(0)
         .setVisible(false);
-      this.children.bringToTop(card);
+      // no need for bringToTop; depth already correct
       console.log(
         "[PROFILE] createProfileCard width,height",
         this.cameras.main.width,

@@ -3134,6 +3134,16 @@ io.on("connection", (socket) => {
       const a = parseFloat(payload.avetime);
       if (!isNaN(a)) {
         socket.avetime = a;
+        // also reflect in any room the socket is currently in
+        const room = socket.roomId && rooms[socket.roomId];
+        if (room && Array.isArray(room.players)) {
+          const rp = room.players.find(
+            (p) => p.id === socket.id || p.nickname === socket.nickname,
+          );
+          if (rp) {
+            rp.avetime = a;
+          }
+        }
       }
     }
 
