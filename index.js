@@ -565,6 +565,7 @@ function reconcileRoomPlayerByNickname(room, socket, payload = {}) {
   player.level = socket.level || player.level || 1;
   player.coins = socket.coins || player.coins || 0;
   player.experience = socket.experience || player.experience || 0;
+  player.avetime = socket.avetime || player.avetime || 0;
   player.items = socket.items || player.items || [];
 
   if (room.host === previousId) {
@@ -3182,6 +3183,8 @@ io.on("connection", (socket) => {
       socket.level = savedData.level || 1;
       socket.coins = savedData.coins || 0;
       socket.experience = savedData.experience || 0;
+      // also restore average reaction time from DB
+      socket.avetime = Number(savedData.avetime) || 0;
 
       // items 파싱
       let parsedItems = [];
@@ -3255,6 +3258,7 @@ io.on("connection", (socket) => {
       level: socket.level || 1, // 💡 방장 데이터도 포함
       coins: socket.coins || 0,
       experience: socket.experience || 0,
+      avetime: socket.avetime || 0, // ⚠️ keep average speed in room state
       specialCards: socket.specialCards || {},
       items: socket.items || [],
       myDeck: [],
@@ -3281,6 +3285,23 @@ io.on("connection", (socket) => {
       itemMode: rooms[roomId].itemMode,
       gameMode: rooms[roomId].gameMode,
     });
+    // immediately send profile so client has the latest avetime etc
+    try {
+      socket.emit("myProfile", {
+        nickname: socket.nickname,
+        level: Number(socket.level) || 1,
+        coins: Number(socket.coins) || 0,
+        items: Array.isArray(socket.items) ? socket.items : [],
+        experience: Number(socket.experience) || 0,
+        avetime: Number(socket.avetime) || 0,
+        avatarKey: socket.currentCharacter || socket.avatarKey || "player_1",
+        specialCards: socket.specialCards || {},
+        owned_characters: socket.ownedCharacters || ["player_1"],
+        current_character: socket.currentCharacter || "player_1",
+      });
+    } catch (e) {
+      console.warn("emit myProfile error on createRoom", e);
+    }
 
     // 방 생성 시 목록 브로드캐스트 (공개/비공개 모두)
     broadcastPublicRooms();
@@ -3378,6 +3399,7 @@ io.on("connection", (socket) => {
         level: socket.level || 1, // 💡 socket에 저장된 값을 가져옴
         coins: socket.coins || 0, // 💡 socket에 저장된 값을 가져옴
         experience: socket.experience || 0,
+        avetime: socket.avetime || 0,
         specialCards: socket.specialCards || {},
         items: socket.items || [],
         myDeck: [],
@@ -3404,6 +3426,23 @@ io.on("connection", (socket) => {
       newPlayerNickname: nickname,
       isRejoin,
     });
+    // ensure client knows their own profile (including avetime) before game start
+    try {
+      socket.emit("myProfile", {
+        nickname: socket.nickname,
+        level: Number(socket.level) || 1,
+        coins: Number(socket.coins) || 0,
+        items: Array.isArray(socket.items) ? socket.items : [],
+        experience: Number(socket.experience) || 0,
+        avetime: Number(socket.avetime) || 0,
+        avatarKey: socket.currentCharacter || socket.avatarKey || "player_1",
+        specialCards: socket.specialCards || {},
+        owned_characters: socket.ownedCharacters || ["player_1"],
+        current_character: socket.currentCharacter || "player_1",
+      });
+    } catch (e) {
+      console.warn("emit myProfile error on joinRoom", e);
+    }
   });
 
   // 💡 [추가] 공개 방 입장 이벤트
@@ -3504,6 +3543,7 @@ io.on("connection", (socket) => {
         level: socket.level || 1, // 💡 이 부분 추가
         coins: socket.coins || 0, // 💡 이 부분 추가
         experience: socket.experience || 0,
+        avetime: socket.avetime || 0,
         items: socket.items || [], // 💡 이 부분 추가
         myDeck: [],
         openCard: null,
@@ -3531,31 +3571,22 @@ io.on("connection", (socket) => {
       newPlayerNickname: nickname,
       isRejoin,
     });
-
-    // 입장한 플레이어 본인에게 입장 성공 알림
-    socket.emit("joinRoomSuccess", {
-      roomId,
-      players: room.players,
-      hostId: room.host,
-      maxPlayers: room.maxPlayers,
-      roomName: room.roomName,
-      isGameStarted: room.isGameStarted || false,
-      itemMode: room.itemMode,
-      gameMode: room.gameMode,
-    });
-  });
-
-  socket.on("toggleReady", () => {
-    const room = rooms[socket.roomId];
-    if (!room || room.host === socket.id) return;
-    const player = room.players.find((p) => p.id === socket.id);
-    if (player) {
-      player.isReady = !player.isReady;
-      io.to(socket.roomId).emit("readyStatusUpdated", {
-        players: room.players,
-        hostId: room.host,
-        roomName: room.roomName,
+    // also send profile to the newly joined client
+    try {
+      socket.emit("myProfile", {
+        nickname: socket.nickname,
+        level: Number(socket.level) || 1,
+        coins: Number(socket.coins) || 0,
+        items: Array.isArray(socket.items) ? socket.items : [],
+        experience: Number(socket.experience) || 0,
+        avetime: Number(socket.avetime) || 0,
+        avatarKey: socket.currentCharacter || socket.avatarKey || "player_1",
+        specialCards: socket.specialCards || {},
+        owned_characters: socket.ownedCharacters || ["player_1"],
+        current_character: socket.currentCharacter || "player_1",
       });
+    } catch (e) {
+      console.warn("emit myProfile error on joinPublicRoom", e);
     }
   });
 

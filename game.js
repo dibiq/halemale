@@ -8271,8 +8271,10 @@ class GameScene extends Phaser.Scene {
     }
 
     // seed reaction sample from server snapshot if we don't have any local data yet
+    // only use it when the value is a positive number (0 means "no data").
     if (
       typeof this.myProfile.avetime === 'number' &&
+      this.myProfile.avetime > 0 &&
       (!Array.isArray(this.reactionTimes) || this.reactionTimes.length === 0)
     ) {
       this.reactionTimes = [this.myProfile.avetime];
@@ -8333,8 +8335,11 @@ class GameScene extends Phaser.Scene {
     if (!Array.isArray(this.reactionTimes) || this.reactionTimes.length === 0) {
       return 0;
     }
-    const sum = this.reactionTimes.reduce((a, b) => a + b, 0);
-    return sum / this.reactionTimes.length;
+    // filter out non-positive values which may be placeholder/invalid
+    const valid = this.reactionTimes.filter((v) => Number.isFinite(v) && v > 0);
+    if (valid.length === 0) return 0;
+    const sum = valid.reduce((a, b) => a + b, 0);
+    return sum / valid.length;
   }
 
   // helper methods for avatar keys and sprite sheets (also copied to LobbyScene)
