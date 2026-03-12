@@ -759,13 +759,9 @@ function finalizeGame(room, io, { winner, sorted, message }) {
     });
   }
 
-  // before saving, refresh each player's avetime from latest socket state
+  // before saving, optionally record current socket avetime if already populated
+  // (won't overwrite sample-based value when hook is disabled)
   room.players.forEach((p) => {
-    const sock = io.sockets && io.sockets.sockets.get(p.id);
-    if (sock && typeof sock.avetime === "number" && sock.avetime > 0) {
-      p.avetime = sock.avetime;
-    }
-
     const currentExp = Number(p.experience) || 0;
     const currentLevel = Number(p.level) || getLevelFromExperience(currentExp);
     const currentCoins = Number(p.coins) || 0;
@@ -3189,6 +3185,10 @@ io.on("connection", (socket) => {
     socket.nickname = nickname || "요리사";
     socket.avatarKey = avatarKey;
     console.log(`🏠 createRoom - socket.nickname 설정됨: ${socket.nickname}`);
+    console.log(
+      `[DEBUG] createRoom initial avetime for ${socket.nickname}:`,
+      socket.avetime,
+    );
 
     // 💡 [추가] nickname으로 DB에서 플레이어 정보 조회 (level, coins, experience 복원)
     const savedData = await getPlayer(socket.nickname);
@@ -3359,6 +3359,7 @@ io.on("connection", (socket) => {
     console.log(
       `🚪 joinRoom - socket.nickname 설정됨: ${socket.nickname}, isRejoin: ${isRejoin}`,
     );
+    console.log(`[DEBUG] joinRoom avetime after load:`, socket.avetime);
 
     // 💡 [추가] nickname으로 DB에서 플레이어 정보 조회 (level, coins, experience 복원)
     const savedData = await getPlayer(nickname);
@@ -3501,6 +3502,7 @@ io.on("connection", (socket) => {
     console.log(
       `🌐 joinPublicRoom - socket.nickname 설정됨: ${socket.nickname}, isRejoin: ${isRejoin}`,
     );
+    console.log(`[DEBUG] joinPublicRoom avetime after load:`, socket.avetime);
 
     // 💡 [추가] nickname으로 DB에서 플레이어 정보 조회 (level, coins, experience 복원)
     const savedData = await getPlayer(nickname);
