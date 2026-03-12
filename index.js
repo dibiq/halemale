@@ -820,7 +820,7 @@ function finalizeGame(room, io, { winner, sorted, message }) {
     const currentItems = Array.isArray(p.items) ? p.items : [];
 
     savePlayer(
-      p.nickname,
+      p.id,
       currentLevel,
       currentCoins,
       currentItems,
@@ -828,7 +828,7 @@ function finalizeGame(room, io, { winner, sorted, message }) {
       null,
       null,
       null,
-      p.avetime || 0,
+      p.avetime ?? null,
     );
 
     io.to(p.id).emit("myProfile", {
@@ -837,7 +837,7 @@ function finalizeGame(room, io, { winner, sorted, message }) {
       coins: currentCoins,
       items: currentItems,
       experience: currentExp,
-      avetime: p.avetime || 0,
+      avetime: p.avetime ?? 0,
       avatarKey: p.avatarKey || "player_1",
     });
   });
