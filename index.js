@@ -1068,8 +1068,8 @@ function scheduleAiTurn(room, io) {
   const debugRoom = room.roomId || "?";
   console.log(
     `[AI] scheduleAiTurn start room=${debugRoom} turnIndex=${room.turnIndex}`,
-    emitServerDebug(room, "ai.scheduleStart", { turnIndex: room.turnIndex });
   );
+  emitServerDebug(room, "ai.scheduleStart", { turnIndex: room.turnIndex });
 
   // always give bots a chance to ring first
   scheduleAiBell(room, io);
@@ -1118,7 +1118,7 @@ function scheduleAiTurn(room, io) {
   room.aiTimers.turn = setTimeout(() => {
     console.log(`[AI] flip timeout fired for room=${debugRoom}`);
     emitServerDebug(room, "ai.timeoutFired", {});
-  emitServerDebug(room, "ai.timeoutFired", {});
+    emitServerDebug(room, "ai.timeoutFired", {});
     if (!room.isGameStarted) return;
     const active = room.players[room.turnIndex];
     if (
