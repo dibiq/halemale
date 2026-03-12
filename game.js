@@ -9936,6 +9936,10 @@ class GameScene extends Phaser.Scene {
 
     socket.off("gameEnded").on("gameEnded", (data) => {
       console.log("[CLIENT] gameEnded event", data);
+      if (data && data.serverDebug) {
+        console.log("[CLIENT] serverDebug:");
+        data.serverDebug.forEach((ln) => console.log("  ", ln));
+      }
       if (data && data.avetimeById) {
         console.log("[CLIENT] avetimeById:", data.avetimeById);
       }

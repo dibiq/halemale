@@ -719,6 +719,18 @@ function clearTimeAttackTimer(room) {
 }
 
 function finalizeGame(room, io, { winner, sorted, message }) {
+  // accumulate debug strings to send back in gameEnded payload
+  const debugLines = [];
+  debugLines.push("[DEBUG] finalizeGame called");
+  debugLines.push(`  roomId=${room && room.roomId}`);
+  debugLines.push(`  winner=${winner && winner.nickname}`);
+  debugLines.push(
+    `  sortedCount=${Array.isArray(sorted) ? sorted.length : null}`,
+  );
+  debugLines.push(
+    "[DEBUG] finalizeGame entry trace (should appear whenever a game ends)",
+  );
+
   console.log("[DEBUG] finalizeGame called", {
     roomId: room && room.roomId,
     winner: winner && winner.nickname,
@@ -730,6 +742,7 @@ function finalizeGame(room, io, { winner, sorted, message }) {
   );
   if (!room || !io || !winner || !Array.isArray(sorted)) {
     console.log("[DEBUG] finalizeGame aborted due to invalid args");
+    debugLines.push("[DEBUG] finalizeGame aborted due to invalid args");
     return;
   }
 
@@ -836,6 +849,8 @@ function finalizeGame(room, io, { winner, sorted, message }) {
       m[p.id] = p.avetime || 0;
       return m;
     }, {}),
+    // attach debug strings from server execution so the client can see them
+    serverDebug: debugLines,
     ranking: sorted.map((p) => {
       const before = beforeStateById.get(p.id) || {
         beforeCoins: Number(p.coins) || 0,
@@ -1799,8 +1814,17 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("claimDailyReward", async () => {
+  socket.on("claimDailyReward", async (data) => {
     const today = getDateStringInTimeZone(new Date(), DAILY_LOGIN_TIMEZONE);
+    // payload might include avetime
+    if (
+      data &&
+      typeof data === "object" &&
+      typeof data.avetime !== "undefined"
+    ) {
+      const a = parseFloat(data.avetime);
+      if (!isNaN(a)) socket.avetime = a;
+    }
     const lastCheckin = normalizeDateString(socket.lastCheckinDate);
 
     if (!today) {
@@ -1864,7 +1888,11 @@ io.on("connection", (socket) => {
 
   // 특수카드 구매 이벤트
   socket.on("buySpecialCard", async (data) => {
-    const { cardId, cardPrice } = data;
+    const { cardId, cardPrice, avetime } = data || {};
+    if (typeof avetime !== "undefined") {
+      const a = parseFloat(avetime);
+      if (!isNaN(a)) socket.avetime = a;
+    }
 
     // 1. 코인 차감
     socket.coins -= cardPrice;
@@ -1919,7 +1947,14 @@ io.on("connection", (socket) => {
 
   // 코인 추가 구매 이벤트
   socket.on("addCoins", async (data) => {
-    const { amount, nickname, playerId, timestamp } = data;
+    const { amount, nickname, playerId, timestamp, avetime } = data || {};
+    // 클라이언트가 평균속도를 함께 보낼 수 있도록 허용
+    if (typeof avetime !== "undefined") {
+      const a = parseFloat(avetime);
+      if (!isNaN(a)) {
+        socket.avetime = a;
+      }
+    }
 
     console.log(`💰 [DEBUG] addCoins 요청 받음:`, {
       amount,
@@ -2012,6 +2047,11 @@ io.on("connection", (socket) => {
 
   const handleBuyCharacter = async (data) => {
     const payload = data && typeof data === "object" ? data : {};
+    // allow average reaction time to be included when coins/characters change
+    if (typeof payload.avetime !== "undefined") {
+      const a = parseFloat(payload.avetime);
+      if (!isNaN(a)) socket.avetime = a;
+    }
     const targetPlayerId =
       typeof socket.nickname === "string" && socket.nickname.trim()
         ? socket.nickname.trim()
@@ -2164,6 +2204,7 @@ io.on("connection", (socket) => {
     }
   };
 
+  // handleBuyCharacter already captures socket.avetime from payload if sent
   socket.on("buyCharacter", handleBuyCharacter);
 
   // 케릭터 착용 이벤트 핸들러
