@@ -110,7 +110,7 @@ async function savePlayer(
   ownedCharacters = null,
   currentCharacter = null,
   lastCheckinDate = null,
-  avetime = 0, // new average reaction time
+  avetime = null, // new average reaction time; null means "don't update"
 ) {
   if (!pool) return;
 
@@ -155,7 +155,8 @@ async function savePlayer(
       coins = EXCLUDED.coins,
       items = EXCLUDED.items,
       experience = EXCLUDED.experience,
-      avetime = EXCLUDED.avetime,
+      // 0 is treated as "no value" so we don't wipe existing average
+      avetime = COALESCE(NULLIF(EXCLUDED.avetime, 0), players.avetime),
       owned_characters = COALESCE($6::jsonb, players.owned_characters),
       current_character = COALESCE($7, players.current_character),
       last_checkin_date = COALESCE($8, players.last_checkin_date),
@@ -5187,6 +5188,11 @@ io.on("connection", (socket) => {
           specialCards: socket.specialCards || {},
         };
 
+        // only include avetime if we actually have a value to preserve
+        const avetimeArg =
+          typeof socket.avetime === "number" && socket.avetime > 0
+            ? socket.avetime
+            : null;
         await savePlayer(
           socket.nickname,
           socket.level || 1,
@@ -5196,11 +5202,14 @@ io.on("connection", (socket) => {
           socket.ownedCharacters || ["player_1"],
           socket.currentCharacter || "player_1",
           null,
-          socket.avetime || 0,
+          avetimeArg,
         );
 
         console.log(
-          `✅ 연결 해제 시 ${socket.nickname} 데이터 저장 완료 (avetime=${socket.avetime || 0})`,
+          `✅ 연결 해제 시 ${socket.nickname} 데이터 저장 완료` +
+            (avetimeArg !== null
+              ? ` (avetime=${avetimeArg})`
+              : " (avetime unchanged)"),
         );
       } catch (e) {
         console.warn(`❌ 연결 해제 시 ${socket.nickname} 데이터 저장 실패:`, e);
