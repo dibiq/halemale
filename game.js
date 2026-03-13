@@ -9311,26 +9311,41 @@ class GameScene extends Phaser.Scene {
       // 1. 데이터 갱신
       const player = this.roundData.players.find((p) => p.id === data.playerId);
       const wasEliminated = Boolean(player && player.isEliminated);
+      const isOptimisticFlip =
+        data.playerId &&
+        this._optimisticFlipById &&
+        this._optimisticFlipById[data.playerId];
+
       if (player) {
-        if (data.openCardStack) {
-          player.openStack = data.openCardStack;
+        // If we're in an optimistic flip state, delay stacking the new open card
+        // until the optimistic animation has finished (avoids double-visual).
+        if (!isOptimisticFlip) {
+          if (data.openCardStack) {
+            player.openStack = data.openCardStack;
+          } else {
+            if (!player.openStack) player.openStack = [];
+            // 애니메이션 전에는 아직 넣지 않습니다 (playCardFlipAnimation 내부에서 처리)
+          }
         } else {
-          if (!player.openStack) player.openStack = [];
-          // 애니메이션 전에는 아직 넣지 않습니다 (playCardFlipAnimation 내부에서 처리)
+          // store server data for later application after animation ends
+          const state = this._optimisticFlipById[data.playerId];
+          if (state) {
+            state.serverData = data;
+          }
         }
         if (data?.card?.type === THUNDER_CARD_TYPE) {
           player.openCard = data.card;
         }
         player.cards = data.remainingCount ?? player.cards;
-
-        // 💡 탈락 상태 업데이트
-        if (typeof data.isEliminated === "boolean") {
-          player.isEliminated = data.isEliminated;
-          if (player.isEliminated && !wasEliminated) {
-            this.maybePlayEliminationEffect(player.id);
-          }
+      
+      // 💡 탈락 상태 업데이트
+      if (typeof data.isEliminated === "boolean") {
+        player.isEliminated = data.isEliminated;
+        if (player.isEliminated && !wasEliminated) {
+          this.maybePlayEliminationEffect(player.id);
         }
       }
+    }
 
       this.showSpecialCardToast(data?.card, data?.playerId);
 
@@ -11317,18 +11332,15 @@ class GameScene extends Phaser.Scene {
     if (!data || !this.roundData.players) return;
     // If we already played an optimistic animation for this player, skip visual tween
     if (data.playerId && this._optimisticFlipById && this._optimisticFlipById[data.playerId]) {
-      try {
-        delete this._optimisticFlipById[data.playerId];
-      } catch (e) {}
-      // integrate server-side card data into state without replaying animation
-      const player = this.roundData.players.find((p) => p.id === data.playerId);
-      if (player) {
-        if (!player.openStack) player.openStack = [];
-        if (!data.openCardStack) player.openStack.push(data.card);
-        else player.openStack = data.openCardStack;
-        player.isFlipping = false;
+      const state = this._optimisticFlipById[data.playerId];
+      if (!state.done) {
+        // animation still running: hold server data until arrival
+        state.serverData = data;
+        return;
       }
-      this.renderTable(this.roundData.players);
+      // animation already finished: apply server state and clean up
+      this.applyFlipServerData(data);
+      delete this._optimisticFlipById[data.playerId];
       return;
     }
     const { width, height } = this.cameras.main;
@@ -11456,49 +11468,12 @@ class GameScene extends Phaser.Scene {
       "blockEffects=",
       this.blockEffects,
     );*/
-    let revealLogged = false;
-
     this.tweens.add({
       targets: tempCard,
       x: startPos.x + Math.cos(rad) * dist * 0.7 + targetOffsetX,
       y: startPos.y + Math.sin(rad) * dist + targetOffsetY,
       duration: 300,
       ease: "Cubic.out",
-      onUpdate: (tween) => {
-        // 블록 효과가 활성화된 경우, 발행자(issuer)만 카드 면을 볼 수 있도록 함
-        if (tween.progress > 0.5 && tempCard.texture.key === "card_back") {
-          if (
-            Array.isArray(this.blockEffects) &&
-            this.blockEffects.length > 0 &&
-            !viewerIsIssuer &&
-            !submitterShielded
-          ) {
-            // block active and viewer is NOT issuer -> keep back texture (do not reveal)
-            if (!revealLogged) {
-              /*console.log(
-                "[flip] reveal suppressed for viewer=",
-                viewerId,
-                "cardKey=",
-                cardKey,
-              );*/
-              revealLogged = true;
-            }
-          } else {
-            if (this.textures.exists(cardKey)) {
-              if (!revealLogged) {
-                /*console.log(
-                  "[flip] revealing face for viewer=",
-                  viewerId,
-                  "cardKey=",
-                  cardKey,
-                );*/
-                revealLogged = true;
-              }
-              tempCard.setTexture(cardKey);
-            }
-          }
-        }
-      },
       onComplete: () => {
         // 💡 애니메이션 종료 후: 이제 배열에 카드를 실제로 추가함
         if (!player.openStack) player.openStack = [];
@@ -11517,6 +11492,22 @@ class GameScene extends Phaser.Scene {
         this.renderTable(this.roundData.players);
       },
     });
+  }
+
+  applyFlipServerData(data) {
+    if (!data || !this.roundData || !Array.isArray(this.roundData.players)) return;
+    const player = this.roundData.players.find((p) => p.id === data.playerId);
+    if (!player) return;
+
+    if (!player.openStack) player.openStack = [];
+    if (data.openCardStack) {
+      player.openStack = data.openCardStack;
+    } else {
+      player.openStack.push(data.card);
+    }
+
+    player.isFlipping = false;
+    this.renderTable(this.roundData.players);
   }
 
   showShieldEffect(playerId) {
@@ -12474,7 +12465,10 @@ class GameScene extends Phaser.Scene {
 
             // mark optimistic flip so server event won't double-animate
             this._optimisticFlipById = this._optimisticFlipById || {};
-            this._optimisticFlipById[myId] = true;
+            this._optimisticFlipById[myId] = {
+              done: false,
+              serverData: null,
+            };
 
             this.tweens.add({
               targets: tempCard,
@@ -12491,10 +12485,16 @@ class GameScene extends Phaser.Scene {
                 try {
                   tempCard.destroy();
                 } catch (e) {}
-                // clear optimistic flag after animation; server may still send payload
-                try {
-                  delete this._optimisticFlipById[myId];
-                } catch (e) {}
+
+                const state = this._optimisticFlipById[myId];
+                if (state) {
+                  state.done = true;
+                  // If server update already arrived, apply it now (so face animation happens after flight)
+                  if (state.serverData) {
+                    this.applyFlipServerData(state.serverData);
+                    delete this._optimisticFlipById[myId];
+                  }
+                }
               },
             });
           } catch (e) {

@@ -47,6 +47,7 @@ function getAllowedOrigins() {
     "https://halemale.private-apps.tossmini.com",
     "https://halemale-client.onrender.com",
     "http://192.168.10.113:5173",
+    "http://10.89.86.196:5173/",
     "http://localhost:5173",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
