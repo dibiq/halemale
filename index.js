@@ -819,17 +819,27 @@ function finalizeGame(room, io, { winner, sorted, message }) {
     const currentCoins = Number(p.coins) || 0;
     const currentItems = Array.isArray(p.items) ? p.items : [];
 
-    savePlayer(
-      p.id,
-      currentLevel,
-      currentCoins,
-      currentItems,
-      currentExp,
-      null,
-      null,
-      null,
-      p.avetime ?? null,
-    );
+    // Prefer saving under the player's persisted DB id (nickname) when available
+    try {
+      const sock =
+        io.sockets && io.sockets.sockets ? io.sockets.sockets.get(p.id) : null;
+      const dbId = sock && sock.nickname ? sock.nickname : p.nickname;
+      const av =
+        typeof p.avetime === "number" && p.avetime > 0 ? p.avetime : null;
+      savePlayer(
+        dbId,
+        currentLevel,
+        currentCoins,
+        currentItems,
+        currentExp,
+        null,
+        null,
+        null,
+        av,
+      ).catch((e) => console.warn("savePlayer game end failed", e));
+    } catch (e) {
+      console.warn("finalizeGame savePlayer wrapper error", e);
+    }
 
     io.to(p.id).emit("myProfile", {
       nickname: p.nickname,
