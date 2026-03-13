@@ -3352,7 +3352,11 @@ class LobbyScene extends Phaser.Scene {
     // 서버가 주는 데이터가 있으면 갱신, 없으면 기존값 유지 (undefined 방지)
     this.currentRoomId = data.roomId || this.currentRoomId;
     this.currentPlayers = data.players || [];
-    this.currentMax = data.max || this.currentMax;
+    if (typeof data.max === "number") {
+      this.currentMax = data.max;
+    } else if (typeof this.currentMax !== "number") {
+      this.currentMax = 4;
+    }
     this.hostId = data.hostId || this.hostId;
     this.currentRoomName = data.roomName || this.currentRoomName || "대기실";
     if (typeof data.itemMode === "boolean") {
@@ -6738,6 +6742,9 @@ class LobbyScene extends Phaser.Scene {
 
       const isEmptySlot = i >= players.length;
       const canAddAi = isHost && isEmptySlot && players.length < maxPlayers;
+      console.log(
+        `[showWaiting] slot=${i} isHost=${isHost} isEmptySlot=${isEmptySlot} players.len=${players.length} maxPlayers=${maxPlayers} canAddAi=${canAddAi} hostId=${this.hostId} myId=${socket.id}`,
+      );
       if (canAddAi) {
         const aiBtnY = pos.y + cardH * 0.21;
         const aiBtn = this.add
