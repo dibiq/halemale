@@ -852,6 +852,9 @@ function finalizeGame(room, io, { winner, sorted, message }) {
       const dbId = sock && sock.nickname ? sock.nickname : p.nickname;
       const av =
         typeof p.avetime === "number" && p.avetime > 0 ? p.avetime : null;
+      console.log(
+        `[finalizeGame] calling savePlayer for id=${p.id} nickname=${p.nickname} dbId=${dbId} avetime=${av}`,
+      );
       savePlayer(
         dbId,
         currentLevel,
