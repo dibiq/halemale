@@ -3888,7 +3888,9 @@ io.on("connection", (socket) => {
         ? room.players[targetIndex].nickname || socket.nickname || "누군가"
         : socket.nickname || "누군가";
 
+    let removedPlayerIndex = -1;
     if (targetIndex >= 0) {
+      removedPlayerIndex = targetIndex;
       room.players.splice(targetIndex, 1);
     }
 
@@ -3911,6 +3913,45 @@ io.on("connection", (socket) => {
       if (room.host === targetId) {
         const nextHostId = pickNextHostId(room);
         if (nextHostId) room.host = nextHostId;
+      }
+      // If a player left during an active game, we must adjust turnIndex
+      // so we don't end up with an out-of-range index or skip a player.
+      if (
+        room.isGameStarted &&
+        typeof removedPlayerIndex === "number" &&
+        removedPlayerIndex >= 0
+      ) {
+        // Normalize existing turnIndex
+        const prevTurnIndex =
+          typeof room.turnIndex === "number" ? room.turnIndex : 0;
+
+        if (removedPlayerIndex < prevTurnIndex) {
+          // Removal before current turn shifts indices left
+          room.turnIndex = Math.max(0, prevTurnIndex - 1);
+        } else if (removedPlayerIndex === prevTurnIndex) {
+          // The player who had the turn left; keep same numeric index
+          // which now refers to the next player in sequence. If out of
+          // bounds, wrap to 0.
+          if (room.players.length === 0) {
+            room.turnIndex = 0;
+          } else {
+            room.turnIndex = prevTurnIndex % room.players.length;
+          }
+        }
+
+        // Ensure turnIndex is safe
+        if (room.players.length > 0) {
+          if (room.turnIndex >= room.players.length)
+            room.turnIndex = room.players.length - 1;
+          if (room.turnIndex < 0) room.turnIndex = 0;
+        } else {
+          room.turnIndex = 0;
+        }
+
+        // Clear AI timers to avoid stale callbacks for the removed player,
+        // then let processSkipTurn reschedule as needed.
+        clearAiBellTimers(room);
+        clearAiTurnTimer(room);
       }
       io.to(roomId).emit("playerLeft", {
         playerId: targetId,
