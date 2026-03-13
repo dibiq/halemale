@@ -1825,7 +1825,7 @@ class LobbyScene extends Phaser.Scene {
       }
 
       if (this.isRoomOpen) {
-        this.showCustomAlert("로비로 이동합니다!", () => {
+        this.showCustomAlert("메인으로 이동합니다!", () => {
           this.leaveCurrentRoom();
         });
         this.lastBackPressedAt = 0;
@@ -14644,93 +14644,95 @@ class GameScene extends Phaser.Scene {
     const centerX = width / 2;
     const centerY = height / 2;
 
+    // 강한 붉은 플래시 + 비네트
     const flash = this.add
-      .rectangle(centerX, centerY, width, height, 0x0f172a, 0.35)
-      .setDepth(10000);
+      .rectangle(centerX, centerY, width, height, 0xff1111, 0.5)
+      .setDepth(10000)
+      .setAlpha(0);
 
     this.tweens.add({
       targets: flash,
+      alpha: 0.7,
+      duration: 200,
+      ease: "Quad.easeOut",
+    });
+    this.tweens.add({
+      targets: flash,
       alpha: 0,
-      duration: 500,
-      ease: "Power2",
+      duration: 1000,
+      delay: 260,
+      ease: "Quad.easeIn",
       onComplete: () => flash.destroy(),
     });
 
-    this.cameras.main.shake(420, 0.018);
-
-    const stampRadius = width * 0.2;
+    // 도장 텍스트 + 배경 요소
+    const stampRadius = width * 0.22;
     const stamp = this.add
       .circle(centerX, centerY, stampRadius, 0xb91c1c, 0.22)
-      .setDepth(10000)
+      .setDepth(10001)
       .setAlpha(0)
-      .setScale(0.12);
-    stamp.setStrokeStyle(12, 0xef4444, 0.7);
+      .setScale(0.1);
+    stamp.setStrokeStyle(14, 0xef4444, 0.85);
 
     const stampRing = this.add
-      .circle(centerX, centerY, stampRadius * 0.72, 0x000000, 0)
+      .circle(centerX, centerY, stampRadius * 0.75, 0x000000, 0)
       .setDepth(10000)
       .setAlpha(0)
-      .setScale(0.12);
-    stampRing.setStrokeStyle(7, 0xfca5a5, 0.8);
-
-    const shockwave = this.add
-      .circle(centerX, centerY, stampRadius * 0.4, 0xffffff, 0)
-      .setDepth(9999)
-      .setAlpha(0.6)
-      .setScale(0.6);
-    shockwave.setStrokeStyle(6, 0xfbbf24, 0.9);
+      .setScale(0.1);
+    stampRing.setStrokeStyle(10, 0xff8888, 0.9);
 
     const text = this.add
       .text(centerX, centerY, "탈락", {
         fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.16}px`,
-        color: "#f8fafc",
-        fontWeight: "bold",
+        fontSize: `${width * 0.19}px`,
+        color: "#fff5f5",
+        fontWeight: "900",
         stroke: "#1f2937",
-        strokeThickness: 12,
+        strokeThickness: 14,
       })
       .setOrigin(0.5)
-      .setDepth(10001)
+      .setDepth(10002)
       .setAlpha(0)
-      .setScale(0.35);
+      .setScale(0.25);
 
-    console.log("[elimination] rendered", {
-      playerId,
-      depth: text.depth,
-      alpha: text.alpha,
-      scale: text.scaleX,
-    });
-
+    // Stamp bounce (도장 찍히는 느낌)
     this.tweens.add({
       targets: [stamp, stampRing, text],
       alpha: 1,
-      scale: (target) => (target === text ? 1.45 : 1.12),
-      duration: 220,
+      scale: (target) => (target === text ? 1.55 : 1.1),
+      duration: 240,
       ease: "Back.out",
       onComplete: () => {
+        // 소리나 추가 효과를 여기에 넣을 수 있음
+        const shockwave = this.add
+          .circle(centerX, centerY, stampRadius * 0.4, 0xffffff, 0.4)
+          .setDepth(9998)
+          .setAlpha(0)
+          .setScale(0.4);
+        shockwave.setStrokeStyle(8, 0xfbbf24, 0.95);
         this.tweens.add({
           targets: shockwave,
-          alpha: 0,
-          scale: 2.1,
-          duration: 260,
+          alpha: 0.85,
+          scale: 2.3,
+          duration: 300,
           ease: "Sine.out",
-          onComplete: () => shockwave.destroy(),
+          onComplete: () => {
+            this.tweens.add({
+              targets: shockwave,
+              alpha: 0,
+              duration: 260,
+              ease: "Sine.in",
+              onComplete: () => shockwave.destroy(),
+            });
+          },
         });
+
+        // 서서히 사라지는 효과
         this.tweens.add({
           targets: [stamp, stampRing, text],
-          angle: { from: -3.5, to: 3.5 },
-          duration: 420,
-          ease: "Sine.inOut",
-          yoyo: true,
-          repeat: 2,
-        });
-        this.tweens.add({
-          targets: [stamp, stampRing, text],
-          y: centerY - height * 0.1,
           alpha: 0,
-          scale: (target) => (target === text ? 0.95 : 0.9),
-          duration: 1000,
-          delay: 760,
+          duration: 680,
+          delay: 420,
           ease: "Sine.in",
           onComplete: () => {
             stamp.destroy();
@@ -14740,6 +14742,7 @@ class GameScene extends Phaser.Scene {
         });
       },
     });
+
   }
 
   maybePlayEliminationEffect(playerId) {
