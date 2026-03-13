@@ -11313,6 +11313,22 @@ class GameScene extends Phaser.Scene {
 
   playCardFlipAnimation(data) {
     if (!data || !this.roundData.players) return;
+    // If we already played an optimistic animation for this player, skip visual tween
+    if (data.playerId && this._optimisticFlipById && this._optimisticFlipById[data.playerId]) {
+      try {
+        delete this._optimisticFlipById[data.playerId];
+      } catch (e) {}
+      // integrate server-side card data into state without replaying animation
+      const player = this.roundData.players.find((p) => p.id === data.playerId);
+      if (player) {
+        if (!player.openStack) player.openStack = [];
+        if (!data.openCardStack) player.openStack.push(data.card);
+        else player.openStack = data.openCardStack;
+        player.isFlipping = false;
+      }
+      this.renderTable(this.roundData.players);
+      return;
+    }
     const { width, height } = this.cameras.main;
     const cardKey = this.getCardKey(data.card);
     if (data?.card?.type === THUNDER_CARD_TYPE) {
@@ -12394,15 +12410,95 @@ class GameScene extends Phaser.Scene {
 
     // 내 차례 검증이 끝난 뒤에만 입력 잠금
     this.canClick = false;
-    // animate deck when submitting
+    // Optimistic UX: play a quick 'prep' (backward) motion then immediately
+    // animate a temp card flying to the open-stack area so user feels instant feedback.
     if (this.myDeckSprite) {
       const origY = this.myDeckSprite.y;
+      // backward prep (opposite of submit direction)
       this.tweens.add({
         targets: this.myDeckSprite,
-        y: origY - 10,
-        duration: 80,
-        yoyo: true,
+        y: origY + 12,
+        duration: 70,
         ease: "Quad.easeOut",
+        onComplete: () => {
+          try {
+            // compute target position mirroring playCardFlipAnimation logic
+            if (!this.roundData || !Array.isArray(this.roundData.players)) return;
+            const { width, height } = this.cameras.main;
+            const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
+            let myIndex = this.roundData.players.findIndex((p) => p.id === myId);
+            if (myIndex === -1) myIndex = 0;
+            const playerCount = this.roundData.players.length;
+            const pos =
+              playerCount === 2
+                ? [
+                    { x: width * 0.5, y: height * 0.75, rotation: 0 },
+                    { x: width * 0.5, y: height * 0.18, rotation: 180 },
+                  ]
+                : playerCount === 3
+                  ? [
+                      { x: width * 0.5, y: height * 0.75, rotation: 0 },
+                      { x: width * 0.11, y: height * 0.45, rotation: 90 },
+                      { x: width * 0.89, y: height * 0.45, rotation: -90 },
+                    ]
+                  : [
+                      { x: width * 0.5, y: height * 0.75, rotation: 0 },
+                      { x: width * 0.11, y: height * 0.45, rotation: 90 },
+                      { x: width * 0.5, y: height * 0.18, rotation: 180 },
+                      { x: width * 0.89, y: height * 0.45, rotation: -90 },
+                    ];
+
+            const startPos = pos[0]; // for my view the open-area base is pos[0]
+            const currentPlayer = this.roundData.players.find((p) => p.id === myId);
+            const currentStackCount = currentPlayer && currentPlayer.openStack ? currentPlayer.openStack.length : 0;
+            const step = 1;
+            let targetOffsetX = 0;
+            let targetOffsetY = 0;
+            if (startPos.rotation === 0) targetOffsetY = -currentStackCount * step;
+            else if (startPos.rotation === 90) targetOffsetX = currentStackCount * step;
+            else if (startPos.rotation === 180) targetOffsetY = currentStackCount * step;
+            else if (startPos.rotation === -90 || startPos.rotation === 270) targetOffsetX = -currentStackCount * step;
+
+            const dist = width * 0.25;
+            const rad = Phaser.Math.DegToRad(startPos.rotation - 90);
+            const targetX = startPos.x + Math.cos(rad) * dist * 0.7 + targetOffsetX;
+            const targetY = startPos.y + Math.sin(rad) * dist + targetOffsetY;
+
+            // create a temp visual card from deck -> open area
+            const tempCard = this.add
+              .image(this.myDeckSprite.x, this.myDeckSprite.y, "card_back")
+              .setDisplaySize(this.myDeckSprite.displayWidth, this.myDeckSprite.displayHeight)
+              .setDepth(2000);
+
+            // mark optimistic flip so server event won't double-animate
+            this._optimisticFlipById = this._optimisticFlipById || {};
+            this._optimisticFlipById[myId] = true;
+
+            this.tweens.add({
+              targets: tempCard,
+              x: targetX,
+              y: targetY,
+              duration: 300,
+              ease: "Cubic.out",
+              onStart: () => {
+                if (this.cache.audio.exists("pass")) {
+                  this.sound.play("pass", { volume: 0.2 });
+                }
+              },
+              onComplete: () => {
+                try {
+                  tempCard.destroy();
+                } catch (e) {}
+                // clear optimistic flag after animation; server may still send payload
+                try {
+                  delete this._optimisticFlipById[myId];
+                } catch (e) {}
+              },
+            });
+          } catch (e) {
+            console.warn("optimistic flip failed", e);
+          }
+        },
       });
     }
 
