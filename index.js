@@ -179,7 +179,7 @@ async function savePlayer(
       coins = EXCLUDED.coins,
       items = EXCLUDED.items,
       experience = EXCLUDED.experience,
-      // 0 is treated as "no value" so we don't wipe existing average
+      /* 0 is treated as "no value" so we don't wipe existing average */
       avetime = COALESCE(NULLIF(EXCLUDED.avetime, 0), players.avetime),
       owned_characters = COALESCE($6::jsonb, players.owned_characters),
       current_character = COALESCE($7, players.current_character),
