@@ -112,8 +112,29 @@ async function savePlayer(
   lastCheckinDate = null,
   avetime = null, // new average reaction time; null means "don't update"
 ) {
+  // Normalize id: if a live socket exists for this id and it has a nickname,
+  // prefer the nickname as the DB primary key. This prevents accidental
+  // writes under socket ids which produce separate DB rows.
+  let dbId = id;
+  try {
+    if (
+      typeof id === "string" &&
+      typeof io !== "undefined" &&
+      io &&
+      io.sockets &&
+      io.sockets.sockets
+    ) {
+      const sock = io.sockets.sockets.get(id);
+      if (sock && typeof sock.nickname === "string" && sock.nickname.trim()) {
+        dbId = sock.nickname.trim();
+      }
+    }
+  } catch (e) {
+    // ignore mapping errors
+  }
+
   console.log(
-    `\n[savePlayer] id=${id} level=${level} coins=${coins} exp=${experience} avetime=${avetime}`,
+    `\n[savePlayer] id=${id} dbId=${dbId} level=${level} coins=${coins} exp=${experience} avetime=${avetime}`,
   );
   if (!pool) return;
 
@@ -146,7 +167,7 @@ async function savePlayer(
       $3,
       $4,
       $5,
-      $9,
+      COALESCE($9, 0),
       COALESCE($6::jsonb, '[]'::jsonb),
       COALESCE($7, 'player_1'),
       $8,
@@ -167,7 +188,7 @@ async function savePlayer(
   `;
   try {
     const result = await pool.query(query, [
-      id,
+      dbId,
       level,
       coins,
       JSON.stringify(items),
@@ -473,7 +494,9 @@ function applyCoinCardReward(room, player, io) {
       targetSocket.ownedCharacters || ["player_1"],
       targetSocket.currentCharacter || targetSocket.avatarKey || "player_1",
       null,
-      targetSocket.avetime || 0,
+      typeof targetSocket.avetime === "number" && targetSocket.avetime > 0
+        ? targetSocket.avetime
+        : null,
     ).catch((err) => {
       console.warn("coin reward save failed", err);
     });
@@ -573,7 +596,10 @@ function reconcileRoomPlayerByNickname(room, socket, payload = {}) {
   player.level = socket.level || player.level || 1;
   player.coins = socket.coins || player.coins || 0;
   player.experience = socket.experience || player.experience || 0;
-  player.avetime = socket.avetime || player.avetime || 0;
+  player.avetime =
+    typeof socket.avetime === "number" && socket.avetime > 0
+      ? socket.avetime
+      : player.avetime || 0;
   player.items = socket.items || player.items || [];
 
   if (room.host === previousId) {
@@ -1873,7 +1899,9 @@ io.on("connection", (socket) => {
         socket.ownedCharacters,
         socket.currentCharacter,
         today,
-        socket.avetime || 0,
+        typeof socket.avetime === "number" && socket.avetime > 0
+          ? socket.avetime
+          : null,
       );
 
       socket.emit("dailyReward", {
@@ -1929,7 +1957,9 @@ io.on("connection", (socket) => {
         socket.ownedCharacters,
         socket.currentCharacter,
         null,
-        socket.avetime || 0,
+        typeof socket.avetime === "number" && socket.avetime > 0
+          ? socket.avetime
+          : null,
       );
       console.log(`✅ ${socket.nickname} 특수카드 ${cardId} 구매 DB 저장 완료`);
     } catch (e) {
@@ -2016,7 +2046,9 @@ io.on("connection", (socket) => {
         socket.ownedCharacters || ["player_1"],
         socket.currentCharacter || "player_1",
         null,
-        socket.avetime || 0,
+        typeof socket.avetime === "number" && socket.avetime > 0
+          ? socket.avetime
+          : null,
       );
       console.log(
         `✅ ${targetNickname} 코인 ${amount} 충전 DB 저장 완료 (총 코인: ${socket.coins})`,
@@ -2155,7 +2187,9 @@ io.on("connection", (socket) => {
         socket.ownedCharacters,
         socket.currentCharacter,
         null,
-        socket.avetime || 0,
+        typeof socket.avetime === "number" && socket.avetime > 0
+          ? socket.avetime
+          : null,
       );
 
       // 성공시 클라이언트에 최신 프로필 전송
@@ -2262,7 +2296,9 @@ io.on("connection", (socket) => {
         socket.ownedCharacters || ["player_1"],
         socket.currentCharacter,
         null,
-        socket.avetime || 0,
+        typeof socket.avetime === "number" && socket.avetime > 0
+          ? socket.avetime
+          : null,
       );
 
       // 최신 프로필 정보 전송
@@ -2448,7 +2484,9 @@ io.on("connection", (socket) => {
             socket.ownedCharacters || ["player_1"],
             socket.currentCharacter || socket.avatarKey || "player_1",
             null,
-            socket.avetime || 0,
+            typeof socket.avetime === "number" && socket.avetime > 0
+              ? socket.avetime
+              : null,
           ).catch((e) =>
             console.warn(
               "savePlayer error on auto-lock (requestUseSpecial)",
@@ -2601,7 +2639,10 @@ io.on("connection", (socket) => {
                         resolvedSock.avatarKey ||
                         "player_1",
                       null,
-                      resolvedSock.avetime || 0,
+                      typeof resolvedSock.avetime === "number" &&
+                        resolvedSock.avetime > 0
+                        ? resolvedSock.avetime
+                        : null,
                     ).catch((e) =>
                       console.warn("savePlayer error on shield consume", e),
                     );
@@ -2685,7 +2726,10 @@ io.on("connection", (socket) => {
                     resolvedSock.avatarKey ||
                     "player_1",
                   null,
-                  resolvedSock.avetime || 0,
+                  typeof resolvedSock.avetime === "number" &&
+                    resolvedSock.avetime > 0
+                    ? resolvedSock.avetime
+                    : null,
                 ).catch((e) =>
                   console.warn("savePlayer error on shield consume", e),
                 );
@@ -2769,7 +2813,10 @@ io.on("connection", (socket) => {
                         resolvedSock.avatarKey ||
                         "player_1",
                       null,
-                      resolvedSock.avetime || 0,
+                      typeof resolvedSock.avetime === "number" &&
+                        resolvedSock.avetime > 0
+                        ? resolvedSock.avetime
+                        : null,
                     ).catch((e) =>
                       console.warn("savePlayer error on shield consume", e),
                     );
@@ -2921,7 +2968,9 @@ io.on("connection", (socket) => {
                       tSock.ownedCharacters || ["player_1"],
                       tSock.currentCharacter || tSock.avatarKey || "player_1",
                       null,
-                      tSock.avetime || 0,
+                      typeof tSock.avetime === "number" && tSock.avetime > 0
+                        ? tSock.avetime
+                        : null,
                     ).catch((e) =>
                       console.warn("savePlayer error on shield consume", e),
                     );
@@ -3010,7 +3059,9 @@ io.on("connection", (socket) => {
                     pSock.ownedCharacters || ["player_1"],
                     pSock.currentCharacter || pSock.avatarKey || "player_1",
                     null,
-                    pSock.avetime || 0,
+                    typeof pSock.avetime === "number" && pSock.avetime > 0
+                      ? pSock.avetime
+                      : null,
                   ).catch((e) =>
                     console.warn("savePlayer error on shield consume", e),
                   );
@@ -3071,7 +3122,9 @@ io.on("connection", (socket) => {
             socket.ownedCharacters || ["player_1"],
             socket.currentCharacter || socket.avatarKey || "player_1",
             null,
-            socket.avetime || 0,
+            typeof socket.avetime === "number" && socket.avetime > 0
+              ? socket.avetime
+              : null,
           ).catch((e) => console.warn("savePlayer error on useSpecial", e));
 
           // 사용자에게 프로필 업데이트 전송
@@ -5118,7 +5171,10 @@ io.on("connection", (socket) => {
                 penalizedSocket.avatarKey ||
                 "player_1",
               null,
-              penalizedSocket.avetime || 0,
+              typeof penalizedSocket.avetime === "number" &&
+                penalizedSocket.avetime > 0
+                ? penalizedSocket.avetime
+                : null,
             ).catch((e) => console.warn("savePlayer error on auto-lock", e));
 
             // 해당 플레이어에게 프로필 업데이트 전송
