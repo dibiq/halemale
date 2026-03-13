@@ -8819,11 +8819,7 @@ class GameScene extends Phaser.Scene {
         .setScrollFactor(0)
         .setVisible(false);
       // no need for bringToTop; depth already correct
-      console.log(
-        "[PROFILE] createProfileCard width,height",
-        this.cameras.main.width,
-        this.cameras.main.height,
-      );
+      
       // background plate
       const bg = this.add
         .rectangle(0, 0, cardW, cardH, 0x000000, 0.6)
@@ -8915,7 +8911,6 @@ class GameScene extends Phaser.Scene {
       if (typeof this.updateMyProfileUI === 'function') {
         this.updateMyProfileUI();
       }
-      console.log("[PROFILE] card created", card);
       if (typeof this.showToast === "function") {
         this.showToast("프로필 카드 생성", "#ffffff");
       }

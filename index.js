@@ -167,7 +167,7 @@ async function savePlayer(
       $3,
       $4,
       $5,
-      COALESCE($9, 0),
+      COALESCE($9::double precision, 0),
       COALESCE($6::jsonb, '[]'::jsonb),
       COALESCE($7, 'player_1'),
       $8,
@@ -180,7 +180,7 @@ async function savePlayer(
       items = EXCLUDED.items,
       experience = EXCLUDED.experience,
       /* 0 is treated as "no value" so we don't wipe existing average */
-      avetime = COALESCE(NULLIF(EXCLUDED.avetime, 0), players.avetime),
+      avetime = COALESCE(NULLIF(EXCLUDED.avetime::double precision, 0::double precision), players.avetime),
       owned_characters = COALESCE($6::jsonb, players.owned_characters),
       current_character = COALESCE($7, players.current_character),
       last_checkin_date = COALESCE($8, players.last_checkin_date),
