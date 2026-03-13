@@ -2553,6 +2553,7 @@ class LobbyScene extends Phaser.Scene {
 
     socket.off("readyStatusUpdated").on("readyStatusUpdated", (data) => {
       if (this.isLeavingRoom) return;
+      console.log("[readyStatusUpdated] received", data);
       this.refreshLobbyUI(data);
     });
 
@@ -3374,6 +3375,10 @@ class LobbyScene extends Phaser.Scene {
     console.log(
       `[Sync] 방:${this.currentRoomId}, 나:${socket.id}, 방장:${this.hostId}, 방장여부:${isHost}`,
     );
+    try {
+      const dbg = (data.players || []).map((p) => ({ id: p.id, nickname: p.nickname, isReady: !!p.isReady }));
+    } catch (e) {
+    }
 
     // UI 그리기 (기존 함수 호출)
     this.showWaiting(
@@ -6742,9 +6747,7 @@ class LobbyScene extends Phaser.Scene {
 
       const isEmptySlot = i >= players.length;
       const canAddAi = isHost && isEmptySlot && players.length < maxPlayers;
-      console.log(
-        `[showWaiting] slot=${i} isHost=${isHost} isEmptySlot=${isEmptySlot} players.len=${players.length} maxPlayers=${maxPlayers} canAddAi=${canAddAi} hostId=${this.hostId} myId=${socket.id}`,
-      );
+   
       if (canAddAi) {
         const aiBtnY = pos.y + cardH * 0.21;
         const aiBtn = this.add
@@ -7156,6 +7159,7 @@ class LobbyScene extends Phaser.Scene {
           ease: "Quad.easeInOut",
           onComplete: () => {
             readyBtnImg.disableInteractive();
+            console.log("emit: toggleReady", { myId: socket.id });
             socket.emit("toggleReady");
             this.time.delayedCall(300, () => {
               if (readyBtnImg && readyBtnImg.active) {
@@ -8918,9 +8922,7 @@ class GameScene extends Phaser.Scene {
       if (typeof this.updateMyProfileUI === 'function') {
         this.updateMyProfileUI();
       }
-      if (typeof this.showToast === "function") {
-        this.showToast("프로필 카드 생성", "#ffffff");
-      }
+   
       // make visible once repositioned (if deck already exists it will happen immediately)
       if (this.myDeckSprite && typeof this.repositionProfileCard === 'function') {
         this.repositionProfileCard();
