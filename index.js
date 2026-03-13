@@ -4696,6 +4696,32 @@ io.on("connection", (socket) => {
     });
   });
 
+  // 플레이어 준비 토글 처리 (클라이언트에서 emit: "toggleReady")
+  socket.on("toggleReady", () => {
+    try {
+      const room = rooms[socket.roomId];
+      if (!room) return;
+      const player = room.players.find((p) => p.id === socket.id);
+      if (!player) return;
+
+      player.isReady = !Boolean(player.isReady);
+      console.log(
+        `[READY] ${socket.id} (${socket.nickname}) toggled ready -> ${player.isReady}`,
+      );
+
+      // Broadcast updated ready status to room
+      io.to(room.roomId).emit("readyStatusUpdated", {
+        players: room.players,
+        hostId: room.host,
+        max: room.maxPlayers,
+        roomName: room.roomName,
+        roomNumber: room.roomNumber,
+      });
+    } catch (e) {
+      console.warn("toggleReady handler error", e);
+    }
+  });
+
   socket.on("flipCard", () => {
     const room = rooms[socket.roomId];
     // if the human is trying to flip, cancel any AI action that might be
