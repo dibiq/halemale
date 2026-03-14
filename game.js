@@ -1024,6 +1024,7 @@ class LobbyScene extends Phaser.Scene {
 
     // Reset game-over sound guard per game session
     this.resultGameoverPlayed = false;
+    this._lastResultPlayersHash = null;
     // ensure player2 frames exist for lobby avatars
     ensurePlayer2Frames(this);
 
@@ -8305,6 +8306,10 @@ class GameScene extends Phaser.Scene {
     };
     // reaction time samples recorded during the current game
     this.reactionTimes = [];
+    // Toggle optimistic (client-side) flip animations in multiplayer.
+    // Set to false to make multiplayer use the same server-driven animation
+    // flow as singleplayer.
+    this.useOptimisticFlip = false;
   }
 
   // replicate lobby's profile updater so GameScene has its own
@@ -9268,6 +9273,52 @@ class GameScene extends Phaser.Scene {
       this.showToast("gameStart event received", "#ff0");
 
       this.resultGameoverPlayed = false;
+      this._lastResultPlayersHash = null;
+
+      // stop any lingering gameover sound from previous match
+      try {
+        if (this._currentGameoverSound) {
+          try {
+            this._currentGameoverSound.stop();
+          } catch (e) {}
+          try {
+            this._currentGameoverSound.destroy();
+          } catch (e) {}
+          this._currentGameoverSound = null;
+        }
+      } catch (e) {}
+
+      // Reset any lingering block effects at the start of a new match.
+      // In multiplayer the scene is reused between matches, so stale
+      // entries in `this.blockEffects` may cause unexpected `blockcard`
+      // renderings even when no player used the item in the current
+      // match. Clear them here so rendering only shows active effects.
+      this.blockEffects = [];
+      this.blockActive = false;
+      this.blockBy = null;
+
+      // Clear various transient/locking flags and timers that may persist
+      // across matches when the same scene instance is reused.
+      try {
+        this.specialCardPauseUntil = 0;
+        this.allowBellBecauseThunder = false;
+        this.optimisticBellHandled = false;
+        this.specialUsedThisTurn = {};
+        this._optimisticFlipById = {};
+        this._pendingServerOpenStackById = {};
+        if (this._aiTurnWatchTimer) {
+          this._aiTurnWatchTimer.remove();
+          this._aiTurnWatchTimer = null;
+        }
+        if (this.myTurnTimer) {
+          this.myTurnTimer.remove();
+          this.myTurnTimer = null;
+        }
+        if (this.specialCardPauseTimer) {
+          this.specialCardPauseTimer.remove();
+          this.specialCardPauseTimer = null;
+        }
+      } catch (e) {}
 
       // 1. 결과창이 떠 있다면 위로 치우며 제거
       if (this.resultContainer) {
@@ -9396,11 +9447,49 @@ class GameScene extends Phaser.Scene {
         }
 
         this.renderTable(this.roundData.players);
+
+        // If the next turn belongs to an AI player, start a watchdog timer
+        // that requests the server to run the AI if no flip arrives.
+        try {
+          if (this._aiTurnWatchTimer) {
+            this._aiTurnWatchTimer.remove();
+            this._aiTurnWatchTimer = null;
+          }
+          if (typeof data.nextTurnId === "string" && /^AI_/.test(data.nextTurnId)) {
+            // wait slightly longer than a player's auto-timer (6s) to allow
+            // animations and network latency; non-blocking best-effort.
+            this._aiTurnWatchTimer = this.time.delayedCall(8000, () => {
+              const current = this.roundData.players[this.turnIndex];
+              if (!current || current.id !== data.nextTurnId) return;
+              // if no openStack change for that AI, ask server to progress AI
+              const hasOpen = Array.isArray(current.openStack) && current.openStack.length > 0;
+              if (!hasOpen && socket && socket.connected) {
+                console.warn("[AI watchdog] requesting AI move for", data.nextTurnId);
+                try {
+                  socket.emit("requestAiMove", { playerId: data.nextTurnId });
+                } catch (e) {
+                  console.warn("emit requestAiMove failed", e);
+                }
+                this.showToast("AI 응답이 지연되어 서버에 요청을 보냈습니다.", "#f39c12");
+              }
+            });
+          }
+        } catch (e) {
+          console.warn("ai watchdog error", e);
+        }
       }
     });
 
     socket.off("cardFlipped").on("cardFlipped", (data) => {
       if (this.isSingle) return;
+
+      // clear any AI watchdog when any card flip arrives
+      try {
+        if (this._aiTurnWatchTimer) {
+          this._aiTurnWatchTimer.remove();
+          this._aiTurnWatchTimer = null;
+        }
+      } catch (e) {}
 
       // log AI/human and thunder
       if (data.playerId && data.playerId.startsWith("AI_")) {
@@ -9427,13 +9516,15 @@ class GameScene extends Phaser.Scene {
         // until the optimistic animation has finished (avoids double-visual).
         if (!isOptimisticFlip) {
           if (data.openCardStack) {
-            player.openStack = data.openCardStack;
+            // Queue server-provided stack to be applied after animation completes
+            this._pendingServerOpenStackById = this._pendingServerOpenStackById || {};
+            this._pendingServerOpenStackById[data.playerId] = data.openCardStack;
           } else {
             if (!player.openStack) player.openStack = [];
             // 애니메이션 전에는 아직 넣지 않습니다 (playCardFlipAnimation 내부에서 처리)
           }
         } else {
-          // store server data for later application after animation ends
+          // store server data for later application after optimistic animation ends
           const state = this._optimisticFlipById[data.playerId];
           if (state) {
             state.serverData = data;
@@ -9443,15 +9534,15 @@ class GameScene extends Phaser.Scene {
           player.openCard = data.card;
         }
         player.cards = data.remainingCount ?? player.cards;
-      
-      // 💡 탈락 상태 업데이트
-      if (typeof data.isEliminated === "boolean") {
-        player.isEliminated = data.isEliminated;
-        if (player.isEliminated && !wasEliminated) {
-          this.maybePlayEliminationEffect(player.id);
+
+        // 💡 탈락 상태 업데이트
+        if (typeof data.isEliminated === "boolean") {
+          player.isEliminated = data.isEliminated;
+          if (player.isEliminated && !wasEliminated) {
+            this.maybePlayEliminationEffect(player.id);
+          }
         }
       }
-    }
 
       this.showSpecialCardToast(data?.card, data?.playerId);
 
@@ -11449,14 +11540,11 @@ class GameScene extends Phaser.Scene {
       this._singleFlipInProgress[data.playerId] = true;
     }
 
-    // If we already played an optimistic animation for this player, skip visual tween
-    // (Singleplayer does not use server confirmations for flips.)
-    if (
-      !this.isSingle &&
-      data.playerId &&
-      this._optimisticFlipById &&
-      this._optimisticFlipById[data.playerId]
-    ) {
+    // If optimistic flips are enabled, and we have an optimistic animation
+    // for this player, coordinate server data with that animation. If
+    // optimistic flips are disabled, always run the server-driven animation
+    // so multiplayer matches singleplayer flow.
+    if (this.useOptimisticFlip && !this.isSingle && data.playerId && this._optimisticFlipById && this._optimisticFlipById[data.playerId]) {
       const state = this._optimisticFlipById[data.playerId];
       if (!state.done) {
         // animation still running: hold server data until arrival
@@ -11624,19 +11712,35 @@ class GameScene extends Phaser.Scene {
 
         tempCard.destroy();
 
-        // In singleplayer, apply the pending card to the open stack only after animation.
-        if (this.isSingle && data.playerId) {
-          const pending =
-            this._pendingSingleFlip && this._pendingSingleFlip[data.playerId];
-          if (pending) {
-            const p = this.roundData.players.find((pl) => pl.id === data.playerId);
-            if (p) {
-              if (!p.openStack || !Array.isArray(p.openStack)) p.openStack = [];
-              // push pending card into openStack and clear openCard to avoid duplicate counting
-              p.openStack.push(pending);
-              p.openCard = null;
+        // Apply pending cards after animation finishes.
+        if (data.playerId) {
+          const p = this.roundData.players.find((pl) => pl.id === data.playerId);
+          if (p) {
+            // 1) If singleplayer had a pending flip, apply it.
+            if (this.isSingle) {
+              const pending = this._pendingSingleFlip && this._pendingSingleFlip[data.playerId];
+              if (pending) {
+                if (!p.openStack || !Array.isArray(p.openStack)) p.openStack = [];
+                p.openStack.push(pending);
+                p.openCard = null;
+                delete this._pendingSingleFlip[data.playerId];
+              }
             }
-            delete this._pendingSingleFlip[data.playerId];
+
+            // 2) For multiplayer: if server sent an open stack earlier, apply it now.
+            if (!this.isSingle) {
+              this._pendingServerOpenStackById = this._pendingServerOpenStackById || {};
+              const pendingStack = this._pendingServerOpenStackById[data.playerId];
+              if (pendingStack) {
+                p.openStack = Array.isArray(pendingStack) ? pendingStack.slice() : [];
+                delete this._pendingServerOpenStackById[data.playerId];
+              } else {
+                // fallback: if server didn't send a stack, push the card from animation data
+                if (!p.openStack) p.openStack = [];
+                if (!data.openCardStack) p.openStack.push(data.card);
+                else p.openStack = data.openCardStack;
+              }
+            }
           }
         }
 
@@ -11655,6 +11759,15 @@ class GameScene extends Phaser.Scene {
     if (!data || !this.roundData || !Array.isArray(this.roundData.players)) return;
     const player = this.roundData.players.find((p) => p.id === data.playerId);
     if (!player) return;
+
+    // If the player is currently running a flip animation, queue the server
+    // update to be applied after animation completes so visual order is correct.
+    if (player.isFlipping && !this.isSingle) {
+      this._pendingServerOpenStackById = this._pendingServerOpenStackById || {};
+      if (data.openCardStack) this._pendingServerOpenStackById[data.playerId] = data.openCardStack;
+      else this._pendingServerOpenStackById[data.playerId] = [data.card];
+      return;
+    }
 
     if (!player.openStack) player.openStack = [];
     if (data.openCardStack) {
@@ -12574,7 +12687,9 @@ class GameScene extends Phaser.Scene {
     this.canClick = false;
     // Optimistic UX (멀티플레이 전용): play a quick 'prep' (backward) motion then immediately
     // animate a temp card flying to the open-stack area so user feels instant feedback.
-    if (!this.isSingle && this.myDeckSprite) {
+    // Disabled when `this.useOptimisticFlip` is false so multiplayer uses the
+    // same server-driven animation path as singleplayer.
+    if (!this.isSingle && this.myDeckSprite && this.useOptimisticFlip) {
       const origY = this.myDeckSprite.y;
       // backward prep (opposite of submit direction)
       this.tweens.add({
@@ -12793,54 +12908,13 @@ class GameScene extends Phaser.Scene {
         const hasNot5 = this.hasNot5OnTable ? this.hasNot5OnTable() : false;
         const successWindow = hasThunder || (hasNot5 ? !isFive : isFive);
         if (successWindow) {
-          // 플레이어가 정답일 가능성이 높으므로 즉시 성공 이펙트만 재생
+          // 플레이어가 정답일 가능성이 높으므로 즉시 작은 성공 피드백만 재생합니다.
+          // 전체 카드 획득 애니메이션은 서버의 `bellResult` 확정이 도착한 후에만 재생됩니다.
           this.playSuccessEffect();
-
-          // optimistic card pickup animation for lightning/five
+          // lightweight local feedback for pressing the bell
           try {
-            const prevPlayers = this.roundData.players.map((p) => ({
-              ...p,
-              openStack: p.openStack ? [...p.openStack] : [],
-            }));
-            let updatedPlayers = prevPlayers.map((p) => ({ ...p }));
-            const me = updatedPlayers.find((p) => p.id === socket.id);
-            if (me) {
-              // collect cards from all other players and clear their stacks
-              updatedPlayers.forEach((p) => {
-                if (p.id === socket.id) return;
-                if (Array.isArray(p.openStack) && p.openStack.length) {
-                  p.openStack.forEach((c) => {
-                    if (c) me.myDeck.unshift(c);
-                  });
-                }
-              });
-              // clear everyone's floor state (including winner)
-              updatedPlayers.forEach((p) => {
-                p.openStack = [];
-                p.openCard = null;
-              });
-              me.cards = me.myDeck.length;
-            } else {
-              // still clear floor for all if somehow no me found
-              updatedPlayers.forEach((p) => {
-                p.openStack = [];
-                p.openCard = null;
-              });
-            }
-            this.playWinAnimation({
-              winnerId: socket.id,
-              players: updatedPlayers,
-              prevPlayers,
-            });
-            this.roundData.players = updatedPlayers;
-            // mark that we already displayed the win animation
-            this.optimisticBellHandled = true;
-            setTimeout(() => {
-              this.optimisticBellHandled = false;
-            }, 1200);
-          } catch (e) {
-            console.warn("optimistic win animation failed", e);
-          }
+            this.showToast("종을 눌렀습니다. 결과를 기다리는 중...", "#f1c40f");
+          } catch (e) {}
         } else {
           this.playFailureEffect();
         }
@@ -16324,8 +16398,16 @@ class GameScene extends Phaser.Scene {
     // the guard, preventing the real end‑of‑game sound from firing — making it
     // appear to "skip" occasionally.
     if (!isUpdate) {
-      if (!this.resultGameoverPlayed) {
+      // allow replaying gameover for a new result set even if a prior
+      // display in this session already played it.  Track the last
+      // players hash so different matches will still trigger sound.
+      const playersHash = Array.isArray(players)
+        ? players.map((p) => String(p.id)).join("|")
+        : "";
+
+      if (!this.resultGameoverPlayed || this._lastResultPlayersHash !== playersHash) {
         this.resultGameoverPlayed = true;
+        this._lastResultPlayersHash = playersHash;
 
         const bgm = this.sound.get("bgm");
         const originalBgmVolume =
@@ -16343,6 +16425,11 @@ class GameScene extends Phaser.Scene {
           volume: 0,
           loop: false,
         });
+        // expose on the scene so other handlers (confirm/auto-leave/new-game)
+        // can stop it if the user advances before it finishes.
+        try {
+          this._currentGameoverSound = gameoverSound;
+        } catch (e) {}
 
         // debug logging for intermittent failures
         console.log("[sound] playing gameover", gameoverSound);
@@ -16376,6 +16463,9 @@ class GameScene extends Phaser.Scene {
         gameoverSound.once("complete", () => {
           try {
             gameoverSound.destroy();
+          } catch (e) {}
+          try {
+            if (this._currentGameoverSound === gameoverSound) this._currentGameoverSound = null;
           } catch (e) {}
           if (bgm && bgm.isPlaying && originalBgmVolume !== null) {
             this.tweens.add({
@@ -16716,6 +16806,18 @@ class GameScene extends Phaser.Scene {
     };
 
     const goToLobby = () => {
+      // stop any playing gameover sound immediately when user leaves result
+      try {
+        if (this._currentGameoverSound) {
+          try {
+            this._currentGameoverSound.stop();
+          } catch (e) {}
+          try {
+            this._currentGameoverSound.destroy();
+          } catch (e) {}
+          this._currentGameoverSound = null;
+        }
+      } catch (e) {}
       this.returnToLobby();
     };
 
