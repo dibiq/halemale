@@ -10127,7 +10127,7 @@ class GameScene extends Phaser.Scene {
         return;
       }
 
-      this.showCustomAlert("로비로 이동합니다!", () => {
+      this.showCustomAlert("코인 및 경험치 획득을 포기하고\n로비로 이동합니다!", () => {
         this.returnToLobby({ rejoinRoom: false, leaveRoom: true });
       });
     };
