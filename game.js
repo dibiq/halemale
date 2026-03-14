@@ -2687,6 +2687,22 @@ class LobbyScene extends Phaser.Scene {
   }
 
   updateMyProfileUI(profile = {}) {
+    // In singleplayer we do not show/update multiplayer profile UI.
+    // Guard against stale/destroyed text objects from a previous multiplayer session.
+    if (
+      this.isSingle &&
+      !this.profileNameTxt &&
+      !this.profileLevelTxt &&
+      !this.profileCoinsTxt &&
+      !this.profileIdText &&
+      !this.profileCoinText &&
+      !this.profileExpBarFill &&
+      !this.profileExpText &&
+      !this.profileReactTxt
+    ) {
+      return;
+    }
+
     const prev = this.myProfile || {};
     const prevLevel = Number(prev.level) || 1;
     const hasIncomingStats =
@@ -8283,7 +8299,9 @@ class GameScene extends Phaser.Scene {
 
     // seed reaction sample from server snapshot if we don't have any local data yet
     // only use it when the value is a positive number (0 means "no data").
+    // In singleplayer we don't track average reaction time.
     if (
+      !this.isSingle &&
       typeof this.myProfile.avetime === 'number' &&
       this.myProfile.avetime > 0 &&
       (!Array.isArray(this.reactionTimes) || this.reactionTimes.length === 0)
@@ -8292,18 +8310,18 @@ class GameScene extends Phaser.Scene {
     }
 
     // update any game-screen text refs
-    if (this.profileNameTxt) {
+    if (this.profileNameTxt && this.profileNameTxt.active) {
       this.profileNameTxt.setText(this.myProfile.nickname || "");
     }
-    if (this.profileLevelTxt) {
+    if (this.profileLevelTxt && this.profileLevelTxt.active) {
       this.profileLevelTxt.setText(`Lv ${this.myProfile.level}`);
     }
-    if (this.profileCoinsTxt) {
+    if (this.profileCoinsTxt && this.profileCoinsTxt.active) {
       this.profileCoinsTxt.setText(`Coins: ${this.myProfile.coins}`);
     }
 
     // make sure the react-time display stays in sync as well
-    if (this.profileReactTxt) {
+    if (this.profileReactTxt && this.profileReactTxt.active) {
       const avgVal = this.computeAvgReaction().toFixed(2);
       this.profileReactTxt.setText(`Avg: ${avgVal}s`);
     }
@@ -8768,6 +8786,10 @@ class GameScene extends Phaser.Scene {
     }
 
     this.isSingle = !!data.isSingle;
+    // In singleplayer mode we do not track average reaction time / avetime.
+    if (this.isSingle) {
+      this.reactionTimes = [];
+    }
     this.isGameReady = false;
     this.resultContainer = null;
 
@@ -8928,14 +8950,17 @@ class GameScene extends Phaser.Scene {
         this.repositionProfileCard();
       }
     };
-    // call immediately
-    createProfileCard();
+    // call immediately (only for multiplayer; singleplayer does not show a profile panel)
+    if (!this.isSingle) {
+      createProfileCard();
+    }
+
     // initialize with cached profile data if available (important for multiplayer)
     if (typeof socket !== 'undefined' && socket.profile) {
       this.updateMyProfileUI(socket.profile);
     }
     // if deck already exists (rare), move profile to its right straight away
-    if (this.myDeckSprite && typeof this.repositionProfileCard === 'function') {
+    if (!this.isSingle && this.myDeckSprite && typeof this.repositionProfileCard === 'function') {
       this.repositionProfileCard();
     }
 
@@ -9463,7 +9488,12 @@ class GameScene extends Phaser.Scene {
         }
 
         // record reaction time for myself and refresh profile text
-        if (data.winnerId === socket.id && typeof data.reactionTime !== 'undefined') {
+        // (Skip reaction time tracking in singleplayer to avoid avetime growth.)
+        if (
+          !this.isSingle &&
+          data.winnerId === socket.id &&
+          typeof data.reactionTime !== 'undefined'
+        ) {
           const rt = parseFloat(data.reactionTime);
           if (!isNaN(rt)) {
             this.reactionTimes = this.reactionTimes || [];
@@ -11332,8 +11362,22 @@ class GameScene extends Phaser.Scene {
 
   playCardFlipAnimation(data) {
     if (!data || !this.roundData.players) return;
+
+    // In singleplayer, avoid running two overlapping card-flight animations for the same player.
+    if (this.isSingle && data.playerId) {
+      this._singleFlipInProgress = this._singleFlipInProgress || {};
+      if (this._singleFlipInProgress[data.playerId]) return;
+      this._singleFlipInProgress[data.playerId] = true;
+    }
+
     // If we already played an optimistic animation for this player, skip visual tween
-    if (data.playerId && this._optimisticFlipById && this._optimisticFlipById[data.playerId]) {
+    // (Singleplayer does not use server confirmations for flips.)
+    if (
+      !this.isSingle &&
+      data.playerId &&
+      this._optimisticFlipById &&
+      this._optimisticFlipById[data.playerId]
+    ) {
       const state = this._optimisticFlipById[data.playerId];
       if (!state.done) {
         // animation still running: hold server data until arrival
@@ -11380,7 +11424,12 @@ class GameScene extends Phaser.Scene {
     }
 
     const player = this.roundData.players.find((p) => p.id === data.playerId);
-    if (!player) return;
+    if (!player) {
+      if (this.isSingle && data.playerId && this._singleFlipInProgress) {
+        delete this._singleFlipInProgress[data.playerId];
+      }
+      return;
+    }
 
     // 💡 애니메이션 시작 전: 상태만 '뒤집는 중'으로 변경
     player.isFlipping = true;
@@ -11505,6 +11554,11 @@ class GameScene extends Phaser.Scene {
         }
 
         tempCard.destroy();
+
+        // In singleplayer, allow another flip animation after this one finishes.
+        if (this.isSingle && data.playerId && this._singleFlipInProgress) {
+          delete this._singleFlipInProgress[data.playerId];
+        }
 
         // 마지막으로 전체(새 카드 포함) 렌더링
         this.renderTable(this.roundData.players);
@@ -12421,9 +12475,9 @@ class GameScene extends Phaser.Scene {
 
     // 내 차례 검증이 끝난 뒤에만 입력 잠금
     this.canClick = false;
-    // Optimistic UX: play a quick 'prep' (backward) motion then immediately
+    // Optimistic UX (멀티플레이 전용): play a quick 'prep' (backward) motion then immediately
     // animate a temp card flying to the open-stack area so user feels instant feedback.
-    if (this.myDeckSprite) {
+    if (!this.isSingle && this.myDeckSprite) {
       const origY = this.myDeckSprite.y;
       // backward prep (opposite of submit direction)
       this.tweens.add({
@@ -12483,13 +12537,11 @@ class GameScene extends Phaser.Scene {
 
             // mark optimistic flip so the server-side animation is suppressed
             // and the local animation is used instead.
-            if (!this.isSingle) {
-              this._optimisticFlipById = this._optimisticFlipById || {};
-              this._optimisticFlipById[myId] = {
-                done: false,
-                serverData: null,
-              };
-            }
+            this._optimisticFlipById = this._optimisticFlipById || {};
+            this._optimisticFlipById[myId] = {
+              done: false,
+              serverData: null,
+            };
 
             this.tweens.add({
               targets: tempCard,
@@ -12506,22 +12558,6 @@ class GameScene extends Phaser.Scene {
                 try {
                   tempCard.destroy();
                 } catch (e) {}
-
-                // Singleplayer: after flight completes, add the card to openStack.
-                if (this.isSingle && this._pendingSingleFlip) {
-                  const { playerId: pId, card } = this._pendingSingleFlip;
-                  const player = this.roundData.players.find((p) => p.id === pId);
-                  if (player) {
-                    if (!player.openStack || !Array.isArray(player.openStack)) {
-                      player.openStack = [];
-                    }
-                    player.openStack.push(card);
-                    player.isFlipping = false;
-                    this.renderTable(this.roundData.players);
-                  }
-                  this._pendingSingleFlip = null;
-                  return;
-                }
 
                 // Multiplayer: coordinate with server update
                 if (this._optimisticFlipById && this._optimisticFlipById[myId]) {
@@ -12546,6 +12582,8 @@ class GameScene extends Phaser.Scene {
     this.isFlipping = true;
 
     if (this.isSingle) {
+      // In singleplayer we use the regular flip animation path (processSingleFlip)
+      // and avoid the optimistic “temporary card flies” duplication.
       this.processSingleFlip(myId);
     } else {
       socket.emit("flipCard");
@@ -14287,11 +14325,9 @@ class GameScene extends Phaser.Scene {
     // 즉시 현재 보여지는 카드로 설정
     player.openCard = randomCard;
 
-    // 싱글플레이에서도 서버-동기화 방식과 동일하게
-    // playCardFlipAnimation에서 결과를 적용하도록 합니다.
-    // 이 플레이어의 optimistic state를 초기화합니다.
-    if (!this._optimisticFlipById) this._optimisticFlipById = {};
-    this._optimisticFlipById[myId] = { done: false, serverData: null };
+    // In singleplayer we don't wait for server confirmations, so don't use optimistic
+    // flip state tracking. The flip animation will complete and update state directly.
+    // (This keeps the singleplayer flip animation from being skipped.)
 
     const specialPauseMs = this.showSpecialCardToast(randomCard, playerId);
 
