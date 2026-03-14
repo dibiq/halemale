@@ -1080,6 +1080,13 @@ function processSkipTurn(room, io) {
         cards: p.myDeck?.length || 0,
       })),
     });
+    // Defensive: if this change caused a game-over condition, finalize now.
+    if (checkGameOver(room, io)) {
+      console.log(
+        `[AI][DEBUG] processSkipTurn: checkGameOver triggered after turnChanged for room=${room && room.roomId}`,
+      );
+      return;
+    }
   } else {
     console.log("[AI][DEBUG] processSkipTurn: activePlayer 없음");
   }
