@@ -745,7 +745,7 @@ function clearTimeAttackTimer(room) {
   room.timeAttackEndsAt = null;
 }
 
-function finalizeGame(room, io, { winner, sorted, message }) {
+async function finalizeGame(room, io, { winner, sorted, message }) {
   // accumulate debug strings to send back in gameEnded payload
   const debugLines = [];
   debugLines.push("[DEBUG] finalizeGame called");
@@ -836,6 +836,17 @@ function finalizeGame(room, io, { winner, sorted, message }) {
     console.log(`  player=${p.nickname} id=${p.id} avetime=${p.avetime}`);
   });
 
+  // Ask clients for a final profile sync (including experience) to avoid
+  // race conditions where the client's last XP update hasn't arrived yet.
+  try {
+    io.to(room.roomId).emit("requestProfileSync", { reason: "final" });
+    // wait a short time for clients to respond with sync events
+    await new Promise((res) => setTimeout(res, 250));
+    console.log("[GAME END] waited 250ms for final profile sync responses");
+  } catch (e) {
+    console.warn("final profile sync wait failed", e);
+  }
+
   // before saving, optionally record current socket avetime if already populated
   // (won't overwrite sample-based value when hook is disabled)
   room.players.forEach((p) => {
@@ -846,21 +857,44 @@ function finalizeGame(room, io, { winner, sorted, message }) {
 
     // Prefer saving under the player's persisted DB id (nickname) when available
     try {
-      const sock =
+      let sock =
         io.sockets && io.sockets.sockets ? io.sockets.sockets.get(p.id) : null;
+      // If lookup by p.id failed, try to find a socket with matching nickname.
+      if (!sock && io.sockets && io.sockets.sockets) {
+        try {
+          for (const [sid, s] of io.sockets.sockets) {
+            if (s && s.nickname === p.nickname) {
+              sock = s;
+              break;
+            }
+          }
+        } catch (e) {}
+      }
       const dbId = sock && sock.nickname ? sock.nickname : p.nickname;
       const av =
         typeof p.avetime === "number" && p.avetime > 0 ? p.avetime : null;
       // Prefer the live socket's experience/level if available (keeps
       // gameplay-updated XP from client). Fall back to room snapshot.
-      const expToSave =
-        sock && typeof sock.experience === "number"
+      const expToSave = Number(
+        sock &&
+          (typeof sock.experience === "number" ||
+            typeof sock.experience === "string")
           ? Number(sock.experience)
-          : Number(p.experience) || 0;
-      const levelToSave =
-        sock && typeof sock.level === "number"
+          : Number(p.experience) || 0,
+      );
+      const levelToSave = Number(
+        sock &&
+          (typeof sock.level === "number" || typeof sock.level === "string")
           ? Number(sock.level)
-          : getLevelFromExperience(expToSave);
+          : getLevelFromExperience(expToSave),
+      );
+      console.log("[finalizeGame] save values for", p.nickname, {
+        expToSave,
+        levelToSave,
+        sockExists: !!sock,
+        pExp: p.experience,
+        pLevel: p.level,
+      });
       console.log(
         `[finalizeGame] calling savePlayer for id=${p.id} nickname=${p.nickname} dbId=${dbId} avetime=${av}`,
       );
@@ -3277,9 +3311,11 @@ io.on("connection", (socket) => {
       if (Number.isFinite(incomingExp)) {
         const reason = typeof payload.reason === "string" ? payload.reason : "";
         if (reason === "experienceGain" || reason.indexOf("experience") >= 0) {
-          socket.experience = (Number(socket.experience) || 0) + incomingExp;
+          socket.experience = Number(
+            (Number(socket.experience) || 0) + incomingExp,
+          );
         } else {
-          socket.experience = incomingExp;
+          socket.experience = Number(incomingExp);
         }
       }
     }
@@ -3293,6 +3329,22 @@ io.on("connection", (socket) => {
         socket.level = incomingLevel;
       }
     }
+    // Debug log for experience sync
+    try {
+      if (
+        typeof payload.reason === "string" &&
+        payload.reason.indexOf("experience") >= 0
+      ) {
+        console.log("[syncInventory] experience sync:", {
+          id: socket.id,
+          nickname: socket.nickname,
+          reason: payload.reason,
+          incoming: payload.experience,
+          socketExperience: socket.experience,
+          socketLevel: socket.level,
+        });
+      }
+    } catch (e) {}
     if (typeof payload.avetime !== "undefined") {
       const incomingAve = Number(payload.avetime);
       if (Number.isFinite(incomingAve)) {
@@ -3359,7 +3411,11 @@ io.on("connection", (socket) => {
         const room = rooms[socket.roomId];
         room.players = room.players.map((p) => {
           if (!p) return p;
-          if (p.id === socket.id || p.nickname === socket.nickname) {
+          if (
+            p.id === socket.id ||
+            p.nickname === socket.nickname ||
+            p.nickname === targetPlayerId
+          ) {
             return Object.assign({}, p, {
               level: socket.level || p.level,
               experience:
@@ -3377,6 +3433,12 @@ io.on("connection", (socket) => {
         io.to(socket.roomId).emit("playerUpdated", {
           players: rooms[socket.roomId].players,
         });
+        console.log(
+          "[syncInventory] room snapshot updated for",
+          socket.nickname,
+          "room=",
+          socket.roomId,
+        );
       }
     } catch (e) {
       console.warn("syncPlayerInventory room snapshot update failed", e);

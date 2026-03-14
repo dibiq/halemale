@@ -10324,6 +10324,16 @@ class GameScene extends Phaser.Scene {
       });
     });
 
+    // Respond to server's request for a final profile sync (include experience)
+    socket.off("requestProfileSync").on("requestProfileSync", (payload) => {
+      try {
+        // includeExperience true so server receives latest XP/level
+        emitInventory("final", { includeExperience: true });
+      } catch (e) {
+        console.warn("requestProfileSync handler failed", e);
+      }
+    });
+
     // 💡 실시간 플레이어 상태 업데이트 (탈락 표시)
     socket.off("updatePlayerStatus").on("updatePlayerStatus", (data) => {
       if (this.isSingle || !data.players) return;
