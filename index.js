@@ -802,8 +802,7 @@ function finalizeGame(room, io, { winner, sorted, message }) {
     }
     // NOTE: Removed end-of-game rank-based XP distribution. XP is now
     // awarded during gameplay (per-card) on the client/server flow.
-    // Preserve existing experience, recompute level from current experience.
-    player.level = getLevelFromExperience(player.experience);
+    // Preserve existing experience; do not overwrite player.level here.
   });
 
   // compute final average from any accumulated samples (ensures accuracy at game end)
@@ -841,7 +840,7 @@ function finalizeGame(room, io, { winner, sorted, message }) {
   // (won't overwrite sample-based value when hook is disabled)
   room.players.forEach((p) => {
     const currentExp = Number(p.experience) || 0;
-    const currentLevel = Number(p.level) || getLevelFromExperience(currentExp);
+    const currentLevel = getLevelFromExperience(currentExp);
     const currentCoins = Number(p.coins) || 0;
     const currentItems = Array.isArray(p.items) ? p.items : [];
 
@@ -904,8 +903,7 @@ function finalizeGame(room, io, { winner, sorted, message }) {
       const earnedExperience = 0;
       const finalCoins = Number(p.coins) || 0;
       const finalExperience = Number(p.experience) || 0;
-      const finalLevel =
-        Number(p.level) || getLevelFromExperience(finalExperience);
+      const finalLevel = getLevelFromExperience(finalExperience);
       const leveledUp = finalLevel > (Number(before.beforeLevel) || 1);
 
       return {

@@ -997,6 +997,7 @@ class LobbyScene extends Phaser.Scene {
   }
 
   async create() {
+    const scene = this;
     this.isJoinPopupOpen = false;
     this.isToastOpen = false;
     this.isRoomOpen = false;
@@ -2850,6 +2851,22 @@ class LobbyScene extends Phaser.Scene {
 
     // 경험치 숫자 텍스트 업데이트
     this.profileExpText.setText(`EXP  ${currentExp}/${XP_PER_LEVEL}`);
+  }
+
+  // Helper: determine whether given playerId refers to an AI/bot.
+  isPlayerAi(playerId) {
+    try {
+      if (!playerId) return false;
+      // Prefer explicit server-provided flag when available
+      if (Array.isArray(this.roundData?.players)) {
+        const p = this.roundData.players.find((x) => x && x.id === playerId);
+        if (p && typeof p.isBot === "boolean") return !!p.isBot;
+      }
+      // Fallback to common id patterns used by client or server
+      return typeof playerId === "string" && (/^AI_/i.test(playerId) || /^AI_BOT_/i.test(playerId) || playerId.startsWith("AI_BOT_"));
+    } catch (e) {
+      return false;
+    }
   }
 
   getOwnedProfileAvatarKeys() {
@@ -8913,6 +8930,20 @@ class GameScene extends Phaser.Scene {
 
   async create() {
     // GameScene의 init 혹은 create 상단에 추가
+    const gameScene = this;
+    // Local helper (closure) to reliably detect AI ids inside socket callbacks
+    const isPlayerAiLocal = (playerId) => {
+      try {
+        if (!playerId) return false;
+        if (Array.isArray(gameScene.roundData?.players)) {
+          const p = gameScene.roundData.players.find((x) => x && x.id === playerId);
+          if (p && typeof p.isBot === "boolean") return !!p.isBot;
+        }
+        return typeof playerId === "string" && (/^AI_/i.test(playerId) || /^AI_BOT_/i.test(playerId) || playerId.startsWith("AI_BOT_"));
+      } catch (e) {
+        return false;
+      }
+    };
     if (this.resultContainer) {
       this.resultContainer.destroy();
       this.resultContainer = null;
@@ -9482,7 +9513,7 @@ class GameScene extends Phaser.Scene {
             this._aiTurnWatchTimer = null;
             this._aiTurnWatchRetries = 0;
           }
-          if (typeof data.nextTurnId === "string" && /^AI_/.test(data.nextTurnId)) {
+          if (typeof data.nextTurnId === "string" && isPlayerAiLocal(data.nextTurnId)) {
             if (this._aiPaused) {
               // AI temporarily paused (e.g. during result screen), do not schedule watchdog
               return;
@@ -9570,7 +9601,7 @@ class GameScene extends Phaser.Scene {
       } catch (e) {}
 
       // log AI/human and thunder
-      if (data.playerId && data.playerId.startsWith("AI_")) {
+      if (data.playerId && isPlayerAiLocal(data.playerId)) {
       }
       if (data?.card?.type === THUNDER_CARD_TYPE) {
         // allow immediate bell presses even if pause still active
@@ -9777,6 +9808,7 @@ class GameScene extends Phaser.Scene {
         this.roundData.players = updatedPlayers;
 
         // 멀티플레이: 로컬 플레이어가 카드를 획득했으면 즉시 경험치 지급
+        console.log('[bellResult] winnerId=', data.winnerId, 'collectedCount=', data.collectedCount, 'socket.id=', socket && socket.id, 'isSingle=', this.isSingle);
         try {
           if (
             !this.isSingle &&
@@ -9787,6 +9819,7 @@ class GameScene extends Phaser.Scene {
           ) {
             const gained = Number(data.collectedCount) || 0;
             if (typeof this.awardExperience === "function") {
+              console.log('[bellResult] invoking awardExperience', gained);
               this.awardExperience(gained);
             }
           }
@@ -13879,7 +13912,11 @@ class GameScene extends Phaser.Scene {
   // 즉시 경험치 부여: 멀티플레이에서 카드 획득 시 호출
   awardExperience(amount) {
     try {
-      if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) return;
+      console.log('[awardExperience] called with', amount, 'profile=', this.myProfile && { level: this.myProfile.level, experience: this.myProfile.experience });
+      if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) {
+        console.log('[awardExperience] invalid amount', amount);
+        return;
+      }
       if (!this.myProfile) this.myProfile = {};
       const xpGain = Number(amount) || 0;
       const prevExpTotal = Number(this.myProfile.experience || 0);
@@ -13894,6 +13931,9 @@ class GameScene extends Phaser.Scene {
         leveled = true;
       }
       this.myProfile.experience = newTotal;
+
+      // 로그: 갱신된 값
+      console.log('[awardExperience] xpGain=', xpGain, 'newExp=', this.myProfile.experience, 'newLevel=', this.myProfile.level);
 
       // UI 즉시 갱신
       if (typeof this.updateMyProfileUI === "function") {
@@ -15498,7 +15538,7 @@ class GameScene extends Phaser.Scene {
     this.renderTable(this.roundData.players);
 
     // 6. 다음 차례가 AI라면 카드 뒤집기 예약
-    if (nextPlayer.id.startsWith("AI_")) {
+    if (this.isPlayerAi(nextPlayer.id)) {
       const aiSetting = this.aiSettings.find((ai) => ai.id === nextPlayer.id);
       const baseDelay = aiSetting ? aiSetting.flipDelay : 1500;
       const delay = baseDelay + Math.random() * 400;
@@ -15611,7 +15651,7 @@ class GameScene extends Phaser.Scene {
     this.ensureSingleTotalCards();
 
     // 승자 다음 동작 예약 (AI는 뒤집기, 플레이어는 다시 입력 허용)
-    if (winner && winner.id.startsWith("AI_")) {
+    if (winner && this.isPlayerAi(winner.id)) {
       this.time.delayedCall(1500, () => {
         if (this.isGameStarted) {
           this.processSingleFlip(winner.id);
