@@ -980,6 +980,7 @@ class LobbyScene extends Phaser.Scene {
     this.load.audio("pop", `${ASSET_SERVER}/sounds/pop.wav${VERSION}`);
     this.load.audio("bell", `${ASSET_SERVER}/sounds/bell.mp3${VERSION}`);
     this.load.audio("effect", `${ASSET_SERVER}/sounds/effect.mp3${VERSION}`);
+    this.load.audio("bubble", `${ASSET_SERVER}/sounds/bubble.mp3${VERSION}`);
 
     this.load.audio("btn", `${ASSET_SERVER}/sounds/btn.wav${VERSION}`);
     this.load.audio("readygo", `${ASSET_SERVER}/sounds/readygo.mp3${VERSION}`);
@@ -1078,6 +1079,15 @@ class LobbyScene extends Phaser.Scene {
           const safeAvetime = Number(this.myProfile && this.myProfile.avetime);
           if (Number.isFinite(safeAvetime)) {
             payload.avetime = safeAvetime;
+          }
+
+          const safeLevel = Number(this.myProfile && this.myProfile.level);
+          if (Number.isFinite(safeLevel)) {
+            payload.level = safeLevel;
+          }
+          const safeExperience = Number(this.myProfile && this.myProfile.experience);
+          if (Number.isFinite(safeExperience)) {
+            payload.experience = safeExperience;
           }
 
           const ownedCharacters = Array.isArray(
@@ -2053,7 +2063,8 @@ class LobbyScene extends Phaser.Scene {
       this.sound.play("btn", { volume: 0.08 });
       this.tweens.add({
         targets: [avatarLeftBtn, avatarLeftIcon],
-        scale: "*=0.95",
+        scaleX: 0.95,
+        scaleY: 0.95,
         duration: 100,
         yoyo: true,
         ease: "Quad.easeInOut",
@@ -2067,7 +2078,8 @@ class LobbyScene extends Phaser.Scene {
       this.sound.play("btn", { volume: 0.08 });
       this.tweens.add({
         targets: [avatarRightBtn, avatarRightIcon],
-        scale: "*=0.95",
+        scaleX: 0.95,
+        scaleY: 0.95,
         duration: 100,
         yoyo: true,
         ease: "Quad.easeInOut",
@@ -2554,7 +2566,6 @@ class LobbyScene extends Phaser.Scene {
 
     socket.off("readyStatusUpdated").on("readyStatusUpdated", (data) => {
       if (this.isLeavingRoom) return;
-      console.log("[readyStatusUpdated] received", data);
       this.refreshLobbyUI(data);
     });
 
@@ -3389,9 +3400,7 @@ class LobbyScene extends Phaser.Scene {
 
     const isHost = socket.id === this.hostId;
     // 로그로 현재 상태 확인
-    console.log(
-      `[Sync] 방:${this.currentRoomId}, 나:${socket.id}, 방장:${this.hostId}, 방장여부:${isHost}`,
-    );
+   
     try {
       const dbg = (data.players || []).map((p) => ({ id: p.id, nickname: p.nickname, isReady: !!p.isReady }));
     } catch (e) {
@@ -4424,6 +4433,10 @@ class LobbyScene extends Phaser.Scene {
           payload.currentCharacter = currentCharacter;
           payload.current_character = currentCharacter;
         }
+        const safeLevel = Number(this.myProfile.level);
+        if (Number.isFinite(safeLevel)) payload.level = safeLevel;
+        const safeExperience = Number(this.myProfile.experience);
+        if (Number.isFinite(safeExperience)) payload.experience = safeExperience;
       }
 
       socket.emit("syncPlayerInventory", payload);
@@ -4479,7 +4492,7 @@ class LobbyScene extends Phaser.Scene {
 
     const tabs = [
       { key: "special", label: "특수카드" },
-      { key: "character", label: "케릭터" },
+      { key: "character", label: "캐릭터" },
       { key: "coin", label: "코인" },
     ];
     let currentTab = "special";
@@ -8881,6 +8894,9 @@ class GameScene extends Phaser.Scene {
 
     this.myTurnTimer = null;
 
+    // AI watchdog retry counter
+    this._aiTurnWatchRetries = 0;
+    this._aiAutoNotifyTimer = null;
     // 할리갈리 전용 데이터
     this.myCards = []; // 내 덱
     this.openCards = {}; // 각 플레이어별 바닥에 오픈된 카드 { playerId: card }
@@ -9307,8 +9323,11 @@ class GameScene extends Phaser.Scene {
         this._optimisticFlipById = {};
         this._pendingServerOpenStackById = {};
         if (this._aiTurnWatchTimer) {
-          this._aiTurnWatchTimer.remove();
+          try {
+            this._aiTurnWatchTimer.remove();
+          } catch (e) {}
           this._aiTurnWatchTimer = null;
+          this._aiTurnWatchRetries = 0;
         }
         if (this.myTurnTimer) {
           this.myTurnTimer.remove();
@@ -9318,6 +9337,11 @@ class GameScene extends Phaser.Scene {
           this.specialCardPauseTimer.remove();
           this.specialCardPauseTimer = null;
         }
+        // Reactivate AI handling for the new match
+        try {
+          this._aiPaused = false;
+          this._aiTurnWatchRetries = 0;
+        } catch (e) {}
       } catch (e) {}
 
       // 1. 결과창이 떠 있다면 위로 치우며 제거
@@ -9452,27 +9476,74 @@ class GameScene extends Phaser.Scene {
         // that requests the server to run the AI if no flip arrives.
         try {
           if (this._aiTurnWatchTimer) {
-            this._aiTurnWatchTimer.remove();
+            try {
+              this._aiTurnWatchTimer.remove();
+            } catch (e) {}
             this._aiTurnWatchTimer = null;
+            this._aiTurnWatchRetries = 0;
           }
           if (typeof data.nextTurnId === "string" && /^AI_/.test(data.nextTurnId)) {
-            // wait slightly longer than a player's auto-timer (6s) to allow
-            // animations and network latency; non-blocking best-effort.
-            this._aiTurnWatchTimer = this.time.delayedCall(8000, () => {
+            if (this._aiPaused) {
+              // AI temporarily paused (e.g. during result screen), do not schedule watchdog
+              return;
+            }
+            const aiPlayerId = data.nextTurnId;
+            this._aiTurnWatchRetries = 0;
+
+            const attemptAiRequest = () => {
               const current = this.roundData.players[this.turnIndex];
-              if (!current || current.id !== data.nextTurnId) return;
-              // if no openStack change for that AI, ask server to progress AI
+              if (!current || current.id !== aiPlayerId) return;
               const hasOpen = Array.isArray(current.openStack) && current.openStack.length > 0;
               if (!hasOpen && socket && socket.connected) {
-                console.warn("[AI watchdog] requesting AI move for", data.nextTurnId);
                 try {
-                  socket.emit("requestAiMove", { playerId: data.nextTurnId });
+                  socket.emit("requestAiMove", { playerId: aiPlayerId });
                 } catch (e) {
                   console.warn("emit requestAiMove failed", e);
                 }
-                this.showToast("AI 응답이 지연되어 서버에 요청을 보냈습니다.", "#f39c12");
+                this.showToast("AI 응답 지연, 서버에 요청을 보냈습니다.", "#f39c12");
+                this._aiTurnWatchRetries += 1;
+                if (this._aiTurnWatchRetries < 3) {
+                  // schedule another retry after short delay
+                  try {
+                    this._aiTurnWatchTimer = this.time.delayedCall(5000, attemptAiRequest);
+                  } catch (e) {
+                    this._aiTurnWatchTimer = null;
+                  }
+                } else {
+                  // final attempt: ask server with force flag (server may ignore)
+                  try {
+                    socket.emit("requestAiMove", { playerId: aiPlayerId, force: true });
+                  } catch (e) {}
+                }
               }
-            });
+            };
+
+            // initial wait to allow animations/latency, then attempt
+            try {
+              this._aiTurnWatchTimer = this.time.delayedCall(8000, attemptAiRequest);
+            } catch (e) {
+              this._aiTurnWatchTimer = null;
+            }
+              // Also schedule a short notify aligned with player auto-timer (6s)
+              try {
+                if (this._aiAutoNotifyTimer) {
+                  try { this._aiAutoNotifyTimer.remove(); } catch (e) {}
+                  this._aiAutoNotifyTimer = null;
+                }
+                this._aiAutoNotifyTimer = this.time.delayedCall(6000, () => {
+                  const current = this.roundData.players[this.turnIndex];
+                  if (!current || current.id !== aiPlayerId) return;
+                  if (socket && socket.connected) {
+                    try {
+                      socket.emit("requestAiMove", { playerId: aiPlayerId, reason: "auto_timeout" });
+                    } catch (e) {
+                      console.warn("emit requestAiMove(auto_timeout) failed", e);
+                    }
+                  }
+                });
+              } catch (e) {
+                this._aiAutoNotifyTimer = null;
+              }
           }
         } catch (e) {
           console.warn("ai watchdog error", e);
@@ -9486,8 +9557,15 @@ class GameScene extends Phaser.Scene {
       // clear any AI watchdog when any card flip arrives
       try {
         if (this._aiTurnWatchTimer) {
-          this._aiTurnWatchTimer.remove();
+          try {
+            this._aiTurnWatchTimer.remove();
+          } catch (e) {}
           this._aiTurnWatchTimer = null;
+          this._aiTurnWatchRetries = 0;
+        }
+        if (this._aiAutoNotifyTimer) {
+          try { this._aiAutoNotifyTimer.remove(); } catch (e) {}
+          this._aiAutoNotifyTimer = null;
         }
       } catch (e) {}
 
@@ -10169,6 +10247,22 @@ class GameScene extends Phaser.Scene {
         // reason 'final' merely for debugging; no payload change
         emitInventory('final');
       }
+      // Ensure any AI timers/actions are stopped when match ends so
+      // they don't leak into subsequent matches while result UI is shown.
+      try {
+        if (this._aiTurnWatchTimer) {
+          try { this._aiTurnWatchTimer.remove(); } catch (e) {}
+          this._aiTurnWatchTimer = null;
+        }
+        if (this._aiAutoNotifyTimer) {
+          try { this._aiAutoNotifyTimer.remove(); } catch (e) {}
+          this._aiAutoNotifyTimer = null;
+        }
+        this._aiTurnWatchRetries = 0;
+        // mark AI as paused while showing results
+        this._aiPaused = true;
+      } catch (e) {}
+
       // 💡 즉시 띄우지 않고 1~1.5초 정도 여유를 줌
       this.time.delayedCall(1000, () => {
         this.playFinishAnimation(() => {
@@ -10218,7 +10312,7 @@ class GameScene extends Phaser.Scene {
         return;
       }
 
-      this.showCustomAlert("코인 및 경험치 획득을 포기하고\n로비로 이동합니다!", () => {
+      this.showCustomAlert("코인 및 경험치를 포기하고\n로비로 이동합니다!", () => {
         this.returnToLobby({ rejoinRoom: false, leaveRoom: true });
       });
     };
@@ -10706,7 +10800,6 @@ class GameScene extends Phaser.Scene {
 
     // 4. 실제 자동 실행 예약: 1초 대기 + 5초 타이머 = 총 6초
     this.myTurnTimer = this.time.delayedCall(6000, () => {
-      console.log("⏰ 1초 대기 + 5초 경과! 자동 뒤집기 실행");
       this.handleFlipCard();
     });
   }
@@ -13678,7 +13771,7 @@ class GameScene extends Phaser.Scene {
       // single-play reward feedback: pop sound + coin burst at button
       if (this.isSingle) {
         try {
-          this.sound.play("buble", { volume: 0.3 });
+          this.sound.play("bubble", { volume: 0.3 });
         } catch (e) {}
         // determine burst coordinates from the claim button if available
         let burstX = this.cameras.main.centerX;
@@ -17257,6 +17350,8 @@ class GameScene extends Phaser.Scene {
         color: "#ffffff",
         align: "center",
         wordWrap: { width: width * 0.6 },
+        stroke: "#000000",
+            strokeThickness: 3,
       })
       .setOrigin(0.5)
       .setDepth(4002);
