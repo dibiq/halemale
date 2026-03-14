@@ -1082,12 +1082,13 @@ class LobbyScene extends Phaser.Scene {
             payload.avetime = safeAvetime;
           }
 
+          const includeExperience = options.includeExperience !== false;
           const safeLevel = Number(this.myProfile && this.myProfile.level);
-          if (Number.isFinite(safeLevel)) {
+          if (includeExperience && Number.isFinite(safeLevel)) {
             payload.level = safeLevel;
           }
           const safeExperience = Number(this.myProfile && this.myProfile.experience);
-          if (Number.isFinite(safeExperience)) {
+          if (includeExperience && Number.isFinite(safeExperience)) {
             payload.experience = safeExperience;
           }
 
@@ -10295,8 +10296,9 @@ class GameScene extends Phaser.Scene {
       }
       // sync final average reaction time when match ends
       if (typeof emitInventory === 'function') {
-        // reason 'final' merely for debugging; no payload change
-        emitInventory('final');
+        // Do not include experience/level in final sync to avoid
+        // overwriting gameplay-updated values. Only send other profile data.
+        emitInventory('final', { includeExperience: false });
       }
       // Ensure any AI timers/actions are stopped when match ends so
       // they don't leak into subsequent matches while result UI is shown.
@@ -16876,10 +16878,8 @@ class GameScene extends Phaser.Scene {
         if (!targetPos || coinCount <= 0) {
           return;
         }
-        const expReward =
-          Number(rankedPlayers[rankIndex]?.earnedExperience) ||
-          Number(players?.[rankIndex]?.earnedExperience) ||
-          0;
+        // EXP is awarded during gameplay; do not show per-rank EXP at game end.
+        const expReward = 0;
 
         const targetX = targetPos.x;
         const targetY = targetPos.y - width * 0.14;

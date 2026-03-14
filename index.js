@@ -869,14 +869,17 @@ function finalizeGame(room, io, { winner, sorted, message }) {
       console.warn("finalizeGame savePlayer wrapper error", e);
     }
 
+    // Do not emit level/experience at game end to avoid overwriting
+    // gameplay-updated values on clients. Emit only non-XP profile fields.
     io.to(p.id).emit("myProfile", {
       nickname: p.nickname,
-      level: currentLevel,
       coins: currentCoins,
       items: currentItems,
-      experience: currentExp,
       avetime: p.avetime ?? 0,
       avatarKey: p.avatarKey || "player_1",
+      specialCards: p.specialCards || {},
+      owned_characters: p.owned_characters || [],
+      current_character: p.current_character || p.avatarKey || "player_1",
     });
   });
 
@@ -892,20 +895,11 @@ function finalizeGame(room, io, { winner, sorted, message }) {
     ranking: sorted.map((p) => {
       const before = beforeStateById.get(p.id) || {
         beforeCoins: Number(p.coins) || 0,
-        beforeExperience: Number(p.experience) || 0,
-        beforeLevel: Number(p.level) || 1,
       };
-
       const rankIndex = sorted.findIndex((sp) => sp.id === p.id);
       const earnedCoins =
         rankIndex >= 0 ? RANK_REWARD_COINS[rankIndex] || 0 : 0;
-      // end-of-game XP disabled; no earnedExperience from ranking
-      const earnedExperience = 0;
       const finalCoins = Number(p.coins) || 0;
-      const finalExperience = Number(p.experience) || 0;
-      const finalLevel = getLevelFromExperience(finalExperience);
-      const leveledUp = finalLevel > (Number(before.beforeLevel) || 1);
-
       return {
         id: p.id,
         nickname: p.nickname,
@@ -913,12 +907,6 @@ function finalizeGame(room, io, { winner, sorted, message }) {
         currentCoins: before.beforeCoins,
         earnedCoins,
         finalCoins,
-        currentLevel: before.beforeLevel,
-        finalLevel,
-        currentExperience: before.beforeExperience,
-        earnedExperience,
-        finalExperience,
-        leveledUp,
       };
     }),
     winner: winner.nickname,
@@ -930,11 +918,6 @@ function finalizeGame(room, io, { winner, sorted, message }) {
       3: RANK_REWARD_COINS[2] || 0,
     },
     winnerCoins: winner.coins,
-    // end-of-game XP rewards disabled
-    rewardExperience: 0,
-    rewardExperienceByRank: { 1: 0, 2: 0, 3: 0 },
-    winnerExperience: winner.experience,
-    winnerLevel: winner.level,
   });
 }
 
