@@ -3267,6 +3267,21 @@ io.on("connection", (socket) => {
         socket.coins = incomingCoins;
       }
     }
+    // Accept client-provided experience/level updates so gameplay-awarded
+    // XP is reflected on the server during the match. This prevents
+    // reverting to previously persisted DB values at game end.
+    if (typeof payload.experience !== "undefined") {
+      const incomingExp = Number(payload.experience);
+      if (Number.isFinite(incomingExp)) {
+        socket.experience = incomingExp;
+      }
+    }
+    if (typeof payload.level !== "undefined") {
+      const incomingLevel = Number(payload.level);
+      if (Number.isFinite(incomingLevel)) {
+        socket.level = incomingLevel;
+      }
+    }
     if (typeof payload.avetime !== "undefined") {
       const incomingAve = Number(payload.avetime);
       if (Number.isFinite(incomingAve)) {
@@ -3325,6 +3340,36 @@ io.on("connection", (socket) => {
       null,
       socket.avetime || 0,
     );
+
+    // If this socket is in a room, update the room's player snapshot so
+    // subsequent game-end logic (finalizeGame) sees the latest values.
+    try {
+      if (socket.roomId && rooms && rooms[socket.roomId]) {
+        const room = rooms[socket.roomId];
+        room.players = room.players.map((p) => {
+          if (!p) return p;
+          if (p.id === socket.id || p.nickname === socket.nickname) {
+            return Object.assign({}, p, {
+              level: socket.level || p.level,
+              experience:
+                typeof socket.experience !== "undefined"
+                  ? socket.experience
+                  : p.experience,
+              coins:
+                typeof socket.coins !== "undefined" ? socket.coins : p.coins,
+              items: Array.isArray(socket.items) ? socket.items : p.items,
+            });
+          }
+          return p;
+        });
+        // notify room of updated player state for UI
+        io.to(socket.roomId).emit("playerUpdated", {
+          players: rooms[socket.roomId].players,
+        });
+      }
+    } catch (e) {
+      console.warn("syncPlayerInventory room snapshot update failed", e);
+    }
   };
 
   socket.on("syncPlayerInventory", handleSyncPlayerInventory);
