@@ -10225,7 +10225,9 @@ class GameScene extends Phaser.Scene {
       this.drawSpecialCards(p, layout); // 특수카드 표시
 
       if (p.openStack && p.openStack.length > 0) {
-        this.drawOpenCard(p.openStack, layout);
+        // While flipping, hide the last card so it only appears after the animation finishes.
+        const stackToRender = p.isFlipping && p.openStack.length > 0 ? p.openStack.slice(0, -1) : p.openStack;
+        this.drawOpenCard(stackToRender, layout);
       }
     });
 
@@ -11486,6 +11488,22 @@ class GameScene extends Phaser.Scene {
         }
 
         player.isFlipping = false;
+
+        // 싱글플레이: 제출된 카드가 이전에 대기 중이었으면 추가
+        if (this.isSingle && this._pendingSingleFlip) {
+          const pending = this._pendingSingleFlip;
+          if (pending.playerId === data.playerId) {
+            const pendingPlayer = this.roundData.players.find((p) => p.id === pending.playerId);
+            if (pendingPlayer) {
+              if (!pendingPlayer.openStack || !Array.isArray(pendingPlayer.openStack)) {
+                pendingPlayer.openStack = [];
+              }
+              pendingPlayer.openStack.push(pending.card);
+            }
+            this._pendingSingleFlip = null;
+          }
+        }
+
         tempCard.destroy();
 
         // 마지막으로 전체(새 카드 포함) 렌더링
@@ -12463,12 +12481,15 @@ class GameScene extends Phaser.Scene {
               .setDisplaySize(this.myDeckSprite.displayWidth, this.myDeckSprite.displayHeight)
               .setDepth(2000);
 
-            // mark optimistic flip so server event won't double-animate
-            this._optimisticFlipById = this._optimisticFlipById || {};
-            this._optimisticFlipById[myId] = {
-              done: false,
-              serverData: null,
-            };
+            // mark optimistic flip so the server-side animation is suppressed
+            // and the local animation is used instead.
+            if (!this.isSingle) {
+              this._optimisticFlipById = this._optimisticFlipById || {};
+              this._optimisticFlipById[myId] = {
+                done: false,
+                serverData: null,
+              };
+            }
 
             this.tweens.add({
               targets: tempCard,
@@ -12486,8 +12507,25 @@ class GameScene extends Phaser.Scene {
                   tempCard.destroy();
                 } catch (e) {}
 
-                const state = this._optimisticFlipById[myId];
-                if (state) {
+                // Singleplayer: after flight completes, add the card to openStack.
+                if (this.isSingle && this._pendingSingleFlip) {
+                  const { playerId: pId, card } = this._pendingSingleFlip;
+                  const player = this.roundData.players.find((p) => p.id === pId);
+                  if (player) {
+                    if (!player.openStack || !Array.isArray(player.openStack)) {
+                      player.openStack = [];
+                    }
+                    player.openStack.push(card);
+                    player.isFlipping = false;
+                    this.renderTable(this.roundData.players);
+                  }
+                  this._pendingSingleFlip = null;
+                  return;
+                }
+
+                // Multiplayer: coordinate with server update
+                if (this._optimisticFlipById && this._optimisticFlipById[myId]) {
+                  const state = this._optimisticFlipById[myId];
                   state.done = true;
                   // If server update already arrived, apply it now (so face animation happens after flight)
                   if (state.serverData) {
@@ -14249,12 +14287,23 @@ class GameScene extends Phaser.Scene {
     // 즉시 현재 보여지는 카드로 설정
     player.openCard = randomCard;
 
+    // 싱글플레이에서도 서버-동기화 방식과 동일하게
+    // playCardFlipAnimation에서 결과를 적용하도록 합니다.
+    // 이 플레이어의 optimistic state를 초기화합니다.
+    if (!this._optimisticFlipById) this._optimisticFlipById = {};
+    this._optimisticFlipById[myId] = { done: false, serverData: null };
+
     const specialPauseMs = this.showSpecialCardToast(randomCard, playerId);
 
-    // --- 핵심 수정: 싱글플레이에서는 로컬 openStack을 직접 누적 ---
-    if (!player.openStack || !Array.isArray(player.openStack))
-      player.openStack = [];
-    player.openStack.push(randomCard); // 즉시 누적해서 기존 바닥 카드들이 유지되게 함
+    // 싱글플레이에서는 애니메이션이 끝날 때까지 카드가 바닥에 보이면 안 되므로
+    // 이 시점에서는 openStack에 바로 추가하지 않습니다.
+    if (!player.openStack || !Array.isArray(player.openStack)) player.openStack = [];
+
+    // 제출했던 카드를 나중에 openStack에 추가하기 위해 임시 저장
+    this._pendingSingleFlip = {
+      playerId,
+      card: randomCard,
+    };
 
     if (randomCard?.type === COIN_CARD_TYPE) {
       const reward = COIN_CARD_REWARD;
@@ -14297,7 +14346,7 @@ class GameScene extends Phaser.Scene {
       playerId: playerId,
       card: randomCard,
       remainingCards: player.cards,
-      // playCardFlipAnimation 내부에서 중복 push를 방지하도록 현재 스택 전달
+      // 현재 오픈 스택(업데이트된 상태)을 전달하여, 애니메이션 후에도 유지
       openCardStack: [...player.openStack],
     };
 
