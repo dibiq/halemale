@@ -800,10 +800,9 @@ function finalizeGame(room, io, { winner, sorted, message }) {
     if (coinReward > 0) {
       player.coins = (Number(player.coins) || 0) + coinReward;
     }
-    const expReward = RANK_REWARD_XP[rankIndex] || 0;
-    if (expReward > 0) {
-      player.experience = (Number(player.experience) || 0) + expReward;
-    }
+    // NOTE: Removed end-of-game rank-based XP distribution. XP is now
+    // awarded during gameplay (per-card) on the client/server flow.
+    // Preserve existing experience, recompute level from current experience.
     player.level = getLevelFromExperience(player.experience);
   });
 
@@ -901,8 +900,8 @@ function finalizeGame(room, io, { winner, sorted, message }) {
       const rankIndex = sorted.findIndex((sp) => sp.id === p.id);
       const earnedCoins =
         rankIndex >= 0 ? RANK_REWARD_COINS[rankIndex] || 0 : 0;
-      const earnedExperience =
-        rankIndex >= 0 ? RANK_REWARD_XP[rankIndex] || 0 : 0;
+      // end-of-game XP disabled; no earnedExperience from ranking
+      const earnedExperience = 0;
       const finalCoins = Number(p.coins) || 0;
       const finalExperience = Number(p.experience) || 0;
       const finalLevel =
@@ -933,12 +932,9 @@ function finalizeGame(room, io, { winner, sorted, message }) {
       3: RANK_REWARD_COINS[2] || 0,
     },
     winnerCoins: winner.coins,
-    rewardExperience: RANK_REWARD_XP[0] || 0,
-    rewardExperienceByRank: {
-      1: RANK_REWARD_XP[0] || 0,
-      2: RANK_REWARD_XP[1] || 0,
-      3: RANK_REWARD_XP[2] || 0,
-    },
+    // end-of-game XP rewards disabled
+    rewardExperience: 0,
+    rewardExperienceByRank: { 1: 0, 2: 0, 3: 0 },
     winnerExperience: winner.experience,
     winnerLevel: winner.level,
   });

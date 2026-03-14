@@ -9775,6 +9775,24 @@ class GameScene extends Phaser.Scene {
 
         // winner case - just update players immediately
         this.roundData.players = updatedPlayers;
+
+        // 멀티플레이: 로컬 플레이어가 카드를 획득했으면 즉시 경험치 지급
+        try {
+          if (
+            !this.isSingle &&
+            data.success &&
+            data.winnerId === socket.id &&
+            Number.isFinite(Number(data.collectedCount)) &&
+            Number(data.collectedCount) > 0
+          ) {
+            const gained = Number(data.collectedCount) || 0;
+            if (typeof this.awardExperience === "function") {
+              this.awardExperience(gained);
+            }
+          }
+        } catch (e) {
+          console.warn("awardExperience failed", e);
+        }
         /*this.time.delayedCall(500, () => {
           this.renderTable(this.roundData.players);
         });*/
@@ -13006,7 +13024,7 @@ class GameScene extends Phaser.Scene {
           this.playSuccessEffect();
           // lightweight local feedback for pressing the bell
           try {
-            this.showToast("종을 눌렀습니다. 결과를 기다리는 중...", "#f1c40f");
+            //this.showToast("종을 눌렀습니다. 결과를 기다리는 중...", "#f1c40f");
           } catch (e) {}
         } else {
           this.playFailureEffect();
@@ -13855,6 +13873,105 @@ class GameScene extends Phaser.Scene {
       });
     } catch (e) {
       console.warn("quest reward sync failed", e);
+    }
+  }
+
+  // 즉시 경험치 부여: 멀티플레이에서 카드 획득 시 호출
+  awardExperience(amount) {
+    try {
+      if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) return;
+      if (!this.myProfile) this.myProfile = {};
+      const xpGain = Number(amount) || 0;
+      const prevExpTotal = Number(this.myProfile.experience || 0);
+      const prevLevel = Number(this.myProfile.level || 1) || 1;
+      let newTotal = prevExpTotal + xpGain;
+      let leveled = false;
+
+      // 처리: 레벨업이 발생하면 레벨 증가 및 경험치 롤오버
+      while (newTotal >= XP_PER_LEVEL) {
+        newTotal -= XP_PER_LEVEL;
+        this.myProfile.level = (Number(this.myProfile.level) || 1) + 1;
+        leveled = true;
+      }
+      this.myProfile.experience = newTotal;
+
+      // UI 즉시 갱신
+      if (typeof this.updateMyProfileUI === "function") {
+        this.updateMyProfileUI();
+      }
+
+      // 경험치 바 강조 애니메이션 (간단한 스케일 펄스)
+      try {
+        if (this.profileExpBarFill) {
+          this.tweens.killTweensOf(this.profileExpBarFill);
+          this.profileExpBarFill.setScale(1, 1);
+          this.tweens.add({
+            targets: this.profileExpBarFill,
+            scaleX: 1.06,
+            duration: 300,
+            yoyo: true,
+            ease: "Sine.easeOut",
+          });
+        }
+      } catch (e) {
+        /* ignore animation errors */
+      }
+
+      // 떠오르는 +N XP 텍스트
+      try {
+        const x = this.profileExpText ? this.profileExpText.x : this.cameras.main.width * 0.1;
+        const y = this.profileExpText ? this.profileExpText.y - 20 : this.cameras.main.height * 0.06;
+        const txt = this.add
+          .text(x, y, `+${xpGain} XP`, {
+            fontFamily: GAME_FONTS.main,
+            fontSize: `${this.cameras.main.width * 0.032}px`,
+            color: "#ffffff",
+            stroke: "#000000",
+            strokeThickness: 4,
+            fontWeight: "bold",
+          })
+          .setOrigin(0.5)
+          .setDepth(12050);
+        this.tweens.add({
+          targets: txt,
+          y: y - 36,
+          alpha: 0,
+          duration: 900,
+          ease: "Power1",
+          onComplete: () => {
+            try {
+              txt.destroy();
+            } catch (e) {}
+          },
+        });
+      } catch (e) {
+        /* ignore */
+      }
+
+      // 효과음: bubble
+      try {
+        if (this.cache && this.cache.audio && this.cache.audio.exists("bubble")) {
+          this.sound.play("bubble", { volume: 0.45 });
+        }
+      } catch (e) {}
+
+      // 서버 동기화
+      try {
+        this.safeSyncInventory("experienceGain", {
+          experience: xpGain,
+          level: Number(this.myProfile.level) || prevLevel,
+        });
+      } catch (e) {
+        console.warn("experience sync failed", e);
+      }
+
+      // 레벨업 토스트
+      if (leveled) {
+        const newLv = Number(this.myProfile.level) || prevLevel;
+        this.showToast(`레벨 업! Lv.${prevLevel} → Lv.${newLv}`, "#2ecc71");
+      }
+    } catch (e) {
+      console.warn("awardExperience error", e);
     }
   }
 
@@ -16758,9 +16875,7 @@ class GameScene extends Phaser.Scene {
             didShowRewardText = true;
             this.time.delayedCall(flyDelay, () => {
               playRewardTextAnimation(rankIndex, coinCount);
-              if (expReward > 0) {
-                playExpTextAnimation(rankIndex, expReward);
-              }
+              // EXP display removed from end-of-game results (XP awarded during gameplay)
             });
           }
 
@@ -16845,58 +16960,7 @@ class GameScene extends Phaser.Scene {
       });
     };
 
-    const playExpTextAnimation = (rankIndex, rewardExp) => {
-      if (isUpdate || rewardExp <= 0) {
-        return;
-      }
-
-      const pos = podiumPositions[rankIndex];
-      if (!pos) {
-        return;
-      }
-
-      const expText = this.add
-        .text(pos.x, pos.y - width * 0.14, `EXP + ${rewardExp}`, {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.045}px`,
-          color: "#7dd3fc",
-          fontWeight: "bold",
-          stroke: "#0f172a",
-          strokeThickness: 5,
-        })
-        .setOrigin(0.5)
-        .setAlpha(0)
-        .setScale(0.6);
-
-      container.add(expText);
-
-      this.tweens.add({
-        targets: expText,
-        alpha: 1,
-        scale: 1,
-        duration: 220,
-        ease: "Back.easeOut",
-        onComplete: () => {
-          if (!expText || !expText.active) {
-            return;
-          }
-
-          this.tweens.add({
-            targets: expText,
-            y: expText.y - width * 0.07,
-            alpha: 0,
-            scale: 1.05,
-            duration: 720,
-            ease: "Sine.easeOut",
-            onComplete: () => {
-              if (expText && expText.active) {
-                expText.destroy();
-              }
-            },
-          });
-        },
-      });
-    };
+    // EXP end-of-game text animation removed — XP is shown during gameplay
 
     const goToLobby = () => {
       // stop any playing gameover sound immediately when user leaves result
