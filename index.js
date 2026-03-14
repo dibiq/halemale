@@ -3251,15 +3251,26 @@ io.on("connection", (socket) => {
       }
     }
     // Accept client-provided experience/level updates so gameplay-awarded
-    // XP is reflected on the server during the match. This prevents
-    // reverting to previously persisted DB values at game end.
+    // XP is reflected on the server during the match. If the client
+    // sends an 'experienceGain' reason, treat payload.experience as a
+    // delta and add it to the existing socket.experience. Otherwise,
+    // accept absolute experience if provided.
     if (typeof payload.experience !== "undefined") {
       const incomingExp = Number(payload.experience);
       if (Number.isFinite(incomingExp)) {
-        socket.experience = incomingExp;
+        const reason = typeof payload.reason === "string" ? payload.reason : "";
+        if (reason === "experienceGain" || reason.indexOf("experience") >= 0) {
+          socket.experience = (Number(socket.experience) || 0) + incomingExp;
+        } else {
+          socket.experience = incomingExp;
+        }
       }
     }
-    if (typeof payload.level !== "undefined") {
+    // Recompute level from experience if experience is known; otherwise
+    // accept client-provided absolute level when present.
+    if (typeof socket.experience !== "undefined") {
+      socket.level = getLevelFromExperience(Number(socket.experience) || 0);
+    } else if (typeof payload.level !== "undefined") {
       const incomingLevel = Number(payload.level);
       if (Number.isFinite(incomingLevel)) {
         socket.level = incomingLevel;
