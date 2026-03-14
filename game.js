@@ -11526,32 +11526,22 @@ class GameScene extends Phaser.Scene {
       duration: 300,
       ease: "Cubic.out",
       onComplete: () => {
-        // 💡 애니메이션 종료 후: 이제 배열에 카드를 실제로 추가함
-        if (!player.openStack) player.openStack = [];
+        // 💡 애니메이션 종료 후: 싱글플레이는 이미 openStack에 추가되어 있으므로
+        // 추가/대체 로직을 실행하지 않습니다.
+        if (!this.isSingle) {
+          if (!player.openStack) player.openStack = [];
 
-        // 서버에서 전체 스택을 주지 않은 경우 수동 push, 줬으면 이미 위에서 세팅됨
-        if (!data.openCardStack) {
-          player.openStack.push(data.card);
-        } else {
-          player.openStack = data.openCardStack;
+          // 서버에서 전체 스택을 주지 않은 경우 수동 push, 줬으면 이미 위에서 세팅됨
+          if (!data.openCardStack) {
+            player.openStack.push(data.card);
+          } else {
+            player.openStack = data.openCardStack;
+          }
         }
 
         player.isFlipping = false;
 
-        // 싱글플레이: 제출된 카드가 이전에 대기 중이었으면 추가
-        if (this.isSingle && this._pendingSingleFlip) {
-          const pending = this._pendingSingleFlip;
-          if (pending.playerId === data.playerId) {
-            const pendingPlayer = this.roundData.players.find((p) => p.id === pending.playerId);
-            if (pendingPlayer) {
-              if (!pendingPlayer.openStack || !Array.isArray(pendingPlayer.openStack)) {
-                pendingPlayer.openStack = [];
-              }
-              pendingPlayer.openStack.push(pending.card);
-            }
-            this._pendingSingleFlip = null;
-          }
-        }
+// 싱글플레이는 openStack이 이미 업데이트되어 있으므로 별도 처리가 필요 없습니다.
 
         tempCard.destroy();
 
@@ -14331,15 +14321,11 @@ class GameScene extends Phaser.Scene {
 
     const specialPauseMs = this.showSpecialCardToast(randomCard, playerId);
 
-    // 싱글플레이에서는 애니메이션이 끝날 때까지 카드가 바닥에 보이면 안 되므로
-    // 이 시점에서는 openStack에 바로 추가하지 않습니다.
+    // 싱글플레이: 즉시 openStack에 추가하되, 애니메이션 중에는
+    // renderTable()가 마지막 카드만 숨겨서 비행 효과처럼 보이도록 합니다.
     if (!player.openStack || !Array.isArray(player.openStack)) player.openStack = [];
+    player.openStack.push(randomCard);
 
-    // 제출했던 카드를 나중에 openStack에 추가하기 위해 임시 저장
-    this._pendingSingleFlip = {
-      playerId,
-      card: randomCard,
-    };
 
     if (randomCard?.type === COIN_CARD_TYPE) {
       const reward = COIN_CARD_REWARD;
