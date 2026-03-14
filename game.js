@@ -3527,7 +3527,58 @@ class LobbyScene extends Phaser.Scene {
     });
   }
 
+  clearActiveToast() {
+    // stop any pending removals or tweens and destroy active toast
+    if (this._toastClearTimer) {
+      this._toastClearTimer.remove(false);
+      this._toastClearTimer = null;
+    }
+    if (this._toastClearTimeoutId) {
+      try {
+        window.clearTimeout(this._toastClearTimeoutId);
+      } catch (e) {}
+      this._toastClearTimeoutId = null;
+    }
+    if (this._toastFallbackTimeoutId) {
+      try {
+        window.clearTimeout(this._toastFallbackTimeoutId);
+      } catch (e) {}
+      this._toastFallbackTimeoutId = null;
+    }
+    if (this._toastFallbackCheckIntervalId) {
+      try {
+        window.clearInterval(this._toastFallbackCheckIntervalId);
+      } catch (e) {}
+      this._toastFallbackCheckIntervalId = null;
+    }
+    if (this.activeToastTween) {
+      try {
+        this.activeToastTween.stop();
+      } catch (e) {}
+      this.activeToastTween = null;
+    }
+    if (this.activeToast) {
+      try {
+        this.activeToast.destroy();
+      } catch (e) {}
+      this.activeToast = null;
+    }
+    if (this.toastLayer) {
+      try {
+        this.toastLayer.removeAll(true);
+      } catch (e) {}
+      try {
+        this.toastLayer.setVisible(false);
+        this.toastLayer.setActive(false);
+      } catch (e) {}
+    }
+    this.isToastOpen = false;
+  }
+
   showToast(message, color = "#ffffff") {
+    // Ensure previous toasts are fully cleared before showing a new one.
+    this.clearActiveToast();
+
     this.isToastOpen = true;
 
     if (!this.cameras || !this.cameras.main) return;
@@ -3591,7 +3642,8 @@ class LobbyScene extends Phaser.Scene {
     } catch (e) {}
 
     // 보여주기 애니메이션
-    this.tweens.add({
+    this.activeToast = toast;
+    this.activeToastTween = this.tweens.add({
       targets: toast,
       y: height * 0.22,
       duration: 300,
@@ -3600,7 +3652,7 @@ class LobbyScene extends Phaser.Scene {
         toast.y = height * 0.19;
       },
       onComplete: () => {
-        this.time.delayedCall(1000, () => {
+        this._toastClearTimer = this.time.delayedCall(1000, () => {
           // always clean up the toast even if the scene was paused
           if (toast.scene) {
             this.tweens.add({
@@ -3609,21 +3661,47 @@ class LobbyScene extends Phaser.Scene {
               duration: 300,
               ease: "Power2.easeIn",
               onComplete: () => {
-                toast.destroy();
-                this.activeToast = null;
-                this.isToastOpen = false;
+                this.clearActiveToast();
               },
             });
           } else {
-            try {
-              toast.destroy();
-            } catch (e) {}
-            this.activeToast = null;
-            this.isToastOpen = false;
+            this.clearActiveToast();
           }
         });
+
+        // Backup timer using native setTimeout in case Phaser timer doesn't run
+        if (typeof window !== "undefined" && !this._toastClearTimeoutId) {
+          this._toastClearTimeoutId = window.setTimeout(() => {
+            this.clearActiveToast();
+          }, 1300);
+        }
       },
     });
+
+    // *Extra* fallback for cases where tweens/timers never complete (e.g., scene pause)
+    // This ensures the toast does not stay stuck indefinitely.
+    if (typeof window !== "undefined" && !this._toastFallbackTimeoutId) {
+      this._toastFallbackTimeoutId = window.setTimeout(() => {
+        this.clearActiveToast();
+      }, 2500);
+    }
+    // Additional safety: periodic check to ensure toast is removed even if timers/tweens
+    // are stuck (some environments pause Phaser timers). This interval will be
+    // cleared by `clearActiveToast` when cleanup occurs.
+    if (typeof window !== "undefined" && !this._toastFallbackCheckIntervalId) {
+      this._toastFallbackCheckIntervalId = window.setInterval(() => {
+        try {
+          // if activeToast is missing from scene or inactive, attempt cleanup
+          if (!this.activeToast || !this.activeToast.scene || !this.activeToast.active) {
+            this.clearActiveToast();
+          }
+        } catch (e) {
+          try {
+            this.clearActiveToast();
+          } catch (e2) {}
+        }
+      }, 800);
+    }
   }
 
   // specialized toast for coin rewards (uses image + number)
@@ -3891,6 +3969,9 @@ class LobbyScene extends Phaser.Scene {
     const myId = socket.id || "PLAYER_ME";
     const myNickname = localStorage.getItem("nickname") || "나";
 
+    // 싱글플레이에서 사용하는 초기 카드 수 (이 값이 전체 카드 총합의 기준입니다)
+    this.singleInitialCardCount = 20;
+
     const singleGameData = {
       roomId: "SINGLE",
       maxPlayers: 4,
@@ -3903,7 +3984,7 @@ class LobbyScene extends Phaser.Scene {
         {
           id: myId,
           nickname: myNickname,
-          cards: 25,
+          cards: 20,
           isReady: true,
           openCard: null,
           openCardStack: [],
@@ -3911,7 +3992,7 @@ class LobbyScene extends Phaser.Scene {
         {
           id: "AI_1",
           nickname: "초보 요리사",
-          cards: 25,
+          cards: 20,
           isReady: true,
           openCard: null,
           openCardStack: [],
@@ -3919,7 +4000,7 @@ class LobbyScene extends Phaser.Scene {
         {
           id: "AI_2",
           nickname: "중급 요리사",
-          cards: 25,
+          cards: 20,
           isReady: true,
           openCard: null,
           openCardStack: [],
@@ -3927,7 +4008,7 @@ class LobbyScene extends Phaser.Scene {
         {
           id: "AI_3",
           nickname: "천재 요리사",
-          cards: 25,
+          cards: 20,
           isReady: true,
           openCard: null,
           openCardStack: [],
@@ -10255,9 +10336,11 @@ class GameScene extends Phaser.Scene {
       this.drawSpecialCards(p, layout); // 특수카드 표시
 
       if (p.openStack && p.openStack.length > 0) {
-        // While flipping, hide the last card so it only appears after the animation finishes.
-        const stackToRender = p.isFlipping && p.openStack.length > 0 ? p.openStack.slice(0, -1) : p.openStack;
-        this.drawOpenCard(stackToRender, layout);
+        // During flip animation, the last card is still part of the stack
+        // even if it is being animated. Show it as slightly transparent so
+        // the displayed total matches what will be collected.
+        const stackToRender = p.openStack;
+        this.drawOpenCard(stackToRender, layout, { isFlipping: p.isFlipping });
       }
     });
 
@@ -10898,7 +10981,7 @@ class GameScene extends Phaser.Scene {
   
   }*/
 
-  drawOpenCard(openStack, layout) {
+  drawOpenCard(openStack, layout, options = {}) {
     if (!openStack || !Array.isArray(openStack)) return;
     const { width } = this.cameras.main;
 
@@ -10921,12 +11004,6 @@ class GameScene extends Phaser.Scene {
     }
     const stackToDraw = player ? player.openStack : cleanedStack;
 
-    // 애니메이션 중에는 최상단(현재 제출 중인) 일반 카드는 표시하지 않되,
-    // 항상 blockcard는 표시하도록 처리합니다.
-    const fullStack = stackToDraw;
-    const cardsToDraw =
-      player && player.isFlipping ? fullStack.slice(0, -1) : fullStack;
-
     const dist = width * 0.25;
     const rad = Phaser.Math.DegToRad(layout.rotation - 90);
 
@@ -10934,13 +11011,12 @@ class GameScene extends Phaser.Scene {
     const baseX = layout.x + Math.cos(rad) * dist * 0.7;
     const baseY = layout.y + Math.sin(rad) * dist;
 
+    const fullStack = stackToDraw;
+    const cardsToDraw = fullStack; // 항상 전체 스택을 그립니다
+
     // blockcard가 항상 최상단에 보이도록, 일반 카드와 blockcard를 분리하여 그립니다.
-    // 주의: 애니메이션 중일 때는 cardsToDraw에서 최상단 일반 카드를 제외하지만
-    // blockcard는 fullStack에서 항상 가져와 그려야 하므로 분리하여 처리합니다.
-    const normalCards = (
-      player && player.isFlipping ? fullStack.slice(0, -1) : fullStack
-    ).filter((c) => !(c && c.type === "blockcard"));
-    const blockCards = fullStack.filter((c) => c && c.type === "blockcard");
+    const normalCards = cardsToDraw.filter((c) => !(c && c.type === "blockcard"));
+    const blockCards = cardsToDraw.filter((c) => c && c.type === "blockcard");
 
     // 일반 카드 먼저 그리기
     normalCards.forEach((card, idx) => {
@@ -10957,11 +11033,14 @@ class GameScene extends Phaser.Scene {
       else if (layout.rotation === -90 || layout.rotation === 270)
         offsetX = -index * step;
 
+      const alpha = 1;
+
       if (this.textures.exists(cardKey)) {
         const openCardImg = this.add
           .image(baseX + offsetX, baseY + offsetY, cardKey)
           .setDisplaySize(width * 0.18, width * 0.25)
-          .setDepth(150 + index);
+          .setDepth(150 + index)
+          .setAlpha(alpha);
 
         this.playerTableGroup.add(openCardImg);
       } else if (card && card.type === THUNDER_CARD_TYPE) {
@@ -10975,18 +11054,18 @@ class GameScene extends Phaser.Scene {
             0.95,
           )
           .setStrokeStyle(4, 0xfde047, 1)
-          .setDepth(150 + index);
+          .setDepth(150 + index)
+          .setAlpha(alpha);
 
         const thunderIcon = this.add
           .text(baseX + offsetX, baseY + offsetY, "⚡", {
             fontFamily: GAME_FONTS.main,
-            fontSize: `${width * 0.08}px`,
+            fontSize: `${width * 0.12}px`,
             color: "#ffffff",
-            stroke: "#111111",
-            strokeThickness: 4,
           })
           .setOrigin(0.5)
-          .setDepth(151 + index);
+          .setDepth(151 + index)
+          .setAlpha(alpha);
 
         this.playerTableGroup.add([thunderCardBg, thunderIcon]);
       }
@@ -11544,6 +11623,22 @@ class GameScene extends Phaser.Scene {
 // 싱글플레이는 openStack이 이미 업데이트되어 있으므로 별도 처리가 필요 없습니다.
 
         tempCard.destroy();
+
+        // In singleplayer, apply the pending card to the open stack only after animation.
+        if (this.isSingle && data.playerId) {
+          const pending =
+            this._pendingSingleFlip && this._pendingSingleFlip[data.playerId];
+          if (pending) {
+            const p = this.roundData.players.find((pl) => pl.id === data.playerId);
+            if (p) {
+              if (!p.openStack || !Array.isArray(p.openStack)) p.openStack = [];
+              // push pending card into openStack and clear openCard to avoid duplicate counting
+              p.openStack.push(pending);
+              p.openCard = null;
+            }
+            delete this._pendingSingleFlip[data.playerId];
+          }
+        }
 
         // In singleplayer, allow another flip animation after this one finishes.
         if (this.isSingle && data.playerId && this._singleFlipInProgress) {
@@ -12134,9 +12229,12 @@ class GameScene extends Phaser.Scene {
       return bCards - aCards;
     });
 
-    // 2. 종료 연출(FINISH!) 실행 후 결과창 노출
+    // 2. 종료 연출(FINISH!) 실행 후 결과창 노출 (멀티플레이 결과창과 동일하게)
     this.playFinishAnimation(() => {
-      this.showSingleResultOverlay(sortedPlayers, result);
+      // 멀티플레이 결과창과 동일한 podium/캐릭터 연출을 재활용
+      this.showResultOverlay(sortedPlayers.slice(0, 3), false, {
+        result,
+      });
     });
   }
 
@@ -12248,8 +12346,8 @@ class GameScene extends Phaser.Scene {
     this.canClick = true;
 
     // 3. 플레이어들의 카드 데이터 초기화 (처음 시작 장수로 리셋)
-    // 예: 모든 플레이어에게 다시 20장씩 부여 (기존 게임 설정에 맞춰 조절)
-    const initialCardCount = 25;
+    // 전체 카드 수는 startSingleGame()에서 설정한 initialCardCount를 따르도록.
+    const initialCardCount = this.singleInitialCardCount || 20;
     this.roundData.players.forEach((p) => {
       p.cards = initialCardCount;
       p.remainingCards = initialCardCount;
@@ -12267,6 +12365,7 @@ class GameScene extends Phaser.Scene {
     this.updateTurnEffect();
 
     this.addGameLog("게임을 다시 시작합니다!", "#2ecc71");
+    this.ensureSingleTotalCards();
   }
 
   showSingleResultOverlay(players, result) {
@@ -14312,6 +14411,22 @@ class GameScene extends Phaser.Scene {
     const randomCard =
       playerDeck.length > 0 ? playerDeck.pop() : this.createRandomFruitCard();
 
+    // 기존에 바닥에 보이던 카드(있다면)도 쌓아두기
+    if (player.openCard) {
+      if (!player.openStack || !Array.isArray(player.openStack)) player.openStack = [];
+      // 중복 삽입 방지: 이미 스택의 최상단에 같은 카드가 들어있다면 다시 push하지 않음
+      const last = player.openStack[player.openStack.length - 1];
+      const sameByRef = last === player.openCard;
+      const sameByValue =
+        last && player.openCard &&
+        last.type === player.openCard.type &&
+        (last.type === THUNDER_CARD_TYPE || last.type === BOMB_CARD_TYPE ||
+          (Number(last.fruit) === Number(player.openCard.fruit) && Number(last.count) === Number(player.openCard.count)));
+      if (!sameByRef && !sameByValue) {
+        player.openStack.push(player.openCard);
+      }
+    }
+
     // 즉시 현재 보여지는 카드로 설정
     player.openCard = randomCard;
 
@@ -14321,10 +14436,11 @@ class GameScene extends Phaser.Scene {
 
     const specialPauseMs = this.showSpecialCardToast(randomCard, playerId);
 
-    // 싱글플레이: 즉시 openStack에 추가하되, 애니메이션 중에는
-    // renderTable()가 마지막 카드만 숨겨서 비행 효과처럼 보이도록 합니다.
-    if (!player.openStack || !Array.isArray(player.openStack)) player.openStack = [];
-    player.openStack.push(randomCard);
+    // 싱글플레이에서는 카드가 실제로 바닥에 놓이는 시점을
+    // "플립 애니메이션 완료 시점"으로 맞춥니다.
+    // (즉, 애니메이션 중엔 아직 바닥 스택에 카드가 표시되지 않도록)
+    this._pendingSingleFlip = this._pendingSingleFlip || {};
+    this._pendingSingleFlip[playerId] = randomCard;
 
 
     if (randomCard?.type === COIN_CARD_TYPE) {
@@ -14364,6 +14480,11 @@ class GameScene extends Phaser.Scene {
       this.handleTutorialCardDrawn(playerId, randomCard);
     }
 
+    // Ensure openStack is always an array to avoid spread errors
+    if (!player.openStack || !Array.isArray(player.openStack)) {
+      player.openStack = [];
+    }
+
     const animationData = {
       playerId: playerId,
       card: randomCard,
@@ -14396,10 +14517,12 @@ class GameScene extends Phaser.Scene {
         if (!this.isGameStarted) return;
         this.nextTurn();
         this.checkFruitCountForAI();
+        this.ensureSingleTotalCards();
       });
     } else {
       this.nextTurn();
       this.checkFruitCountForAI();
+      this.ensureSingleTotalCards();
     }
   }
   // AI가 종을 치는 로직
@@ -14993,6 +15116,7 @@ class GameScene extends Phaser.Scene {
       this.maybePlayEliminationEffect(loser.id);
     }
     this.renderTable(players);
+    this.ensureSingleTotalCards();
 
     // 5. 내 카드가 0이 되었다면 패배 판정을 위해 턴 체크
     if (loser.id === (this.myId || "PLAYER_ME") && loser.cards <= 0) {
@@ -15109,9 +15233,8 @@ class GameScene extends Phaser.Scene {
     // 2. 바닥 카드(실제 객체)를 수집
     const collectedCards = [];
     prevPlayers.forEach((p) => {
-      if (Array.isArray(p.openStack) && p.openStack.length > 0) {
-        collectedCards.push(...p.openStack);
-      }
+      if (!Array.isArray(p.openStack) || p.openStack.length === 0) return;
+      collectedCards.push(...p.openStack);
     });
 
     const totalCollected = collectedCards.length;
@@ -15193,6 +15316,7 @@ class GameScene extends Phaser.Scene {
     // 상태 갱신
     this.updateEliminationStatus();
     this.updateTurnEffect();
+    this.ensureSingleTotalCards();
 
     // 승자 다음 동작 예약 (AI는 뒤집기, 플레이어는 다시 입력 허용)
     if (winner && winner.id.startsWith("AI_")) {
@@ -15379,12 +15503,16 @@ class GameScene extends Phaser.Scene {
 
     this.roundData.players.forEach((p) => {
       if (!p) return;
+
+      // 멀티플레이처럼, 바닥의 최상단 카드(가장 마지막에 열린 카드)만 계산합니다.
       const top =
         Array.isArray(p.openStack) && p.openStack.length > 0
           ? p.openStack[p.openStack.length - 1]
           : p.openCard;
-      // If the player is eliminated and the top is a bomb, ignore it for totals.
+
+      // If the player is eliminated and the top is a bomb, ignore it.
       if (p.isEliminated && top?.type === BOMB_CARD_TYPE) return;
+
       if (
         top &&
         Number.isFinite(Number(top.fruit)) &&
@@ -15476,6 +15604,73 @@ class GameScene extends Phaser.Scene {
         return top?.type === PLUS2_CARD_TYPE;
       }
       return player?.openCard?.type === PLUS2_CARD_TYPE;
+    });
+  }
+
+  getSingleTotalCardCount() {
+    if (!this.isSingle || !this.roundData || !Array.isArray(this.roundData.players))
+      return 0;
+
+    let total = 0;
+    this.roundData.players.forEach((p) => {
+      total += Number(p.cards) || 0;
+      if (Array.isArray(p.openStack)) total += p.openStack.length;
+      // count the currently displayed openCard if it's not already included
+      if (p.openCard) {
+        const last = Array.isArray(p.openStack) && p.openStack.length > 0
+          ? p.openStack[p.openStack.length - 1]
+          : null;
+        const sameByRef = last === p.openCard;
+        const sameByValue = last && p.openCard && last.type === p.openCard.type && (last.type === THUNDER_CARD_TYPE || last.type === BOMB_CARD_TYPE || (Number(last.fruit) === Number(p.openCard.fruit) && Number(last.count) === Number(p.openCard.count)));
+        if (!sameByRef && !sameByValue) total += 1;
+      }
+    });
+    return total;
+  }
+
+  ensureSingleTotalCards() {
+    if (!this.isSingle || !this.roundData || !Array.isArray(this.roundData.players))
+      return;
+
+    const expected =
+      (Number(this.singleInitialCardCount) || 0) *
+      (this.roundData.players ? this.roundData.players.length : 0);
+    if (!expected) return;
+
+    const current = this.getSingleTotalCardCount();
+    if (current <= expected) return;
+
+    const surplus = current - expected;
+    console.warn("[card] total exceeds expected", {
+      expected,
+      current,
+      surplus,
+    });
+
+    // surplus를 가장 카드가 많은 플레이어에서 차감
+    let maxPlayer = null;
+    this.roundData.players.forEach((p) => {
+      if (!maxPlayer || (Number(p.cards) || 0) > (Number(maxPlayer.cards) || 0)) {
+        maxPlayer = p;
+      }
+    });
+    if (!maxPlayer) return;
+
+    const reduce = Math.min(surplus, Number(maxPlayer.cards) || 0);
+    maxPlayer.cards = Math.max(0, (Number(maxPlayer.cards) || 0) - reduce);
+    maxPlayer.remainingCards = maxPlayer.cards;
+
+    const deck = this.getSingleDeck(maxPlayer.id);
+    if (Array.isArray(deck)) {
+      for (let i = 0; i < reduce && deck.length > 0; i += 1) {
+        deck.pop();
+      }
+    }
+
+    console.warn("[card] adjusted surplus", {
+      playerId: maxPlayer.id,
+      reduce,
+      newCards: maxPlayer.cards,
     });
   }
 
@@ -15612,23 +15807,11 @@ class GameScene extends Phaser.Scene {
     if (!label) return 0;
     const nickname = playerId ? this.getNicknameById(playerId) : "";
     const prefix = nickname ? `${nickname} ` : "";
-    this.showToast(`${label} 카드 등장!`, "#f39c12");
+    //this.showToast(`${label} 카드 등장!`, "#f39c12");
 
     // special toasts (plus1 or thunder) can sometimes persist when single-
-    // player timing is tight; clear them after a brief interval.
-    if (
-      this.isSingle &&
-      (type === PLUS1_CARD_TYPE || type === THUNDER_CARD_TYPE)
-    ) {
-      this.time.delayedCall(1100, () => {
-        try {
-          if (this.toastLayer) {
-            this.toastLayer.removeAll(true);
-          }
-        } catch (e) {}
-        this.isToastOpen = false;
-      });
-    }
+    // player timing is tight; we rely on showToast's built-in cleanup.
+    // (Do not clear immediately or it will disappear instantly.)
 
     const revealKeyMap = {
       [BOMB_CARD_TYPE]: "bomb_img",
@@ -16741,6 +16924,41 @@ class GameScene extends Phaser.Scene {
         rightCurtain.destroy();
       },
     });
+  }
+
+  clearActiveToast() {
+    if (this._toastClearTimer) {
+      this._toastClearTimer.remove(false);
+      this._toastClearTimer = null;
+    }
+    if (this._toastClearTimeoutId) {
+      try {
+        window.clearTimeout(this._toastClearTimeoutId);
+      } catch (e) {}
+      this._toastClearTimeoutId = null;
+    }
+    if (this.activeToastTween) {
+      try {
+        this.activeToastTween.stop();
+      } catch (e) {}
+      this.activeToastTween = null;
+    }
+    if (this.activeToast) {
+      try {
+        this.activeToast.destroy();
+      } catch (e) {}
+      this.activeToast = null;
+    }
+    if (this.toastLayer) {
+      try {
+        this.toastLayer.removeAll(true);
+      } catch (e) {}
+      try {
+        this.toastLayer.setVisible(false);
+        this.toastLayer.setActive(false);
+      } catch (e) {}
+    }
+    this.isToastOpen = false;
   }
 
   showReadyGo() {
