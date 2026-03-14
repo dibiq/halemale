@@ -851,15 +851,25 @@ function finalizeGame(room, io, { winner, sorted, message }) {
       const dbId = sock && sock.nickname ? sock.nickname : p.nickname;
       const av =
         typeof p.avetime === "number" && p.avetime > 0 ? p.avetime : null;
+      // Prefer the live socket's experience/level if available (keeps
+      // gameplay-updated XP from client). Fall back to room snapshot.
+      const expToSave =
+        sock && typeof sock.experience === "number"
+          ? Number(sock.experience)
+          : Number(p.experience) || 0;
+      const levelToSave =
+        sock && typeof sock.level === "number"
+          ? Number(sock.level)
+          : getLevelFromExperience(expToSave);
       console.log(
         `[finalizeGame] calling savePlayer for id=${p.id} nickname=${p.nickname} dbId=${dbId} avetime=${av}`,
       );
       savePlayer(
         dbId,
-        currentLevel,
+        levelToSave,
         currentCoins,
         currentItems,
-        currentExp,
+        expToSave,
         null,
         null,
         null,
