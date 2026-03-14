@@ -12222,11 +12222,19 @@ class GameScene extends Phaser.Scene {
     // 💡 모든 타이머 중지 (AI의 뒤집기나 종치기 등)
     this.time.removeAllEvents();
 
-    // 1. 점수(카드 장수) 순으로 정렬하여 결과 데이터 생성
+    // 1. 결과 정렬: 생존자(비탈락) 우선, 그다음 카드 장수, 마지막으로 바닥 카드 갯수로 비교
     const sortedPlayers = [...this.roundData.players].sort((a, b) => {
+      const aAlive = (!a.isEliminated && (Number(a.cards) || 0) > 0) ? 1 : 0;
+      const bAlive = (!b.isEliminated && (Number(b.cards) || 0) > 0) ? 1 : 0;
+      if (aAlive !== bAlive) return bAlive - aAlive; // 생존자 먼저
+
       const aCards = Number(a.cards) || 0;
       const bCards = Number(b.cards) || 0;
-      return bCards - aCards;
+      if (aCards !== bCards) return bCards - aCards; // 카드 많은 순
+
+      const aFloor = (Array.isArray(a.openStack) ? a.openStack.length : 0) + (a.openCard ? 1 : 0);
+      const bFloor = (Array.isArray(b.openStack) ? b.openStack.length : 0) + (b.openCard ? 1 : 0);
+      return bFloor - aFloor; // 바닥 카드 많은 순
     });
 
     // 2. 종료 연출(FINISH!) 실행 후 결과창 노출 (멀티플레이 결과창과 동일하게)
