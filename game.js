@@ -9038,7 +9038,7 @@ class GameScene extends Phaser.Scene {
         .rectangle(0, 0, cardW, cardH, 0x000000, 0.6)
         .setStrokeStyle(2, 0xffffff);
       const levelTxt = this.add
-        .text(0, -cardH * 0.25, `Lv ${this.myProfile?.level || 1}`, {
+        .text(0, -cardH * 0.28, `Lv ${this.myProfile?.level || 1}`, {
           fontFamily: "Jua",
           fontSize: `${cardH * 0.16}px`,
           color: "#f1c40f",
@@ -9047,27 +9047,27 @@ class GameScene extends Phaser.Scene {
       // keep reference for later updates
       this.profileLevelTxt = levelTxt;
 
-      // experience bar below coins
+      // experience bar centered in profile card
       const currentExp = Number(this.myProfile?.experience || 0);
       const expRatio = (currentExp % XP_PER_LEVEL) / XP_PER_LEVEL;
-      const expBarWidth = cardW * 0.6;
-      const expBarHeight = cardH * 0.1;
-      const expY = cardH * 0.35;
+      const expBarWidth = cardW * 0.7;
+      const expBarHeight = cardH * 0.11;
+      const expY = 0;
       const expBg = this.add.graphics();
       expBg.fillStyle(0x555555, 1);
-      expBg.fillRoundedRect(-expBarWidth / 2, expY - expBarHeight / 2, expBarWidth, expBarHeight, 4);
+      expBg.fillRoundedRect(-expBarWidth / 2, expY - expBarHeight / 2, expBarWidth, expBarHeight, 6);
       expBg.setDepth(1);
       const expFill = this.add.graphics();
       expFill.fillStyle(0x2ecc71, 1);
-      expFill.fillRoundedRect(-expBarWidth / 2, expY - expBarHeight / 2, expBarWidth * expRatio, expBarHeight, 4);
+      expFill.fillRoundedRect(-expBarWidth / 2, expY - expBarHeight / 2, expBarWidth * expRatio, expBarHeight, 6);
       expFill.setDepth(1);
       const expTxt = this.add
-        .text(0, expY + expBarHeight / 2, `EXP ${currentExp % XP_PER_LEVEL}/${XP_PER_LEVEL}`, {
+        .text(0, expY, `EXP ${currentExp % XP_PER_LEVEL}/${XP_PER_LEVEL}`, {
           fontFamily: "Jua",
-          fontSize: `${cardH * 0.1}px`,
+          fontSize: `${cardH * 0.095}px`,
           color: "#ffffff",
         })
-        .setOrigin(0.5);
+        .setOrigin(0.5, 0.5);
       this.profileExpBarBg = expBg;
       this.profileExpBarFill = expFill;
       this.profileExpText = expTxt;
@@ -9084,9 +9084,9 @@ class GameScene extends Phaser.Scene {
       const avgRaw = this.computeAvgReaction();
       const avg = avgRaw.toFixed(2);
       const reactTxt = this.add
-        .text(cardW * 0.25, 0, `Avg: ${avg}s`, {
+        .text(0, cardH * 0.25, `Avg: ${avg}s`, {
           fontFamily: "Jua",
-          fontSize: `${cardH * 0.13}px`,
+          fontSize: `${cardH * 0.12}px`,
           color: "#ffffff",
         })
         .setOrigin(0.5);
@@ -14000,8 +14000,19 @@ class GameScene extends Phaser.Scene {
 
       // 떠오르는 +N XP 텍스트
       try {
-        const x = this.profileExpText ? this.profileExpText.x : this.cameras.main.width * 0.1;
-        const y = this.profileExpText ? this.profileExpText.y - 20 : this.cameras.main.height * 0.06;
+        const expBounds =
+          this.profileExpText && typeof this.profileExpText.getBounds === "function"
+            ? this.profileExpText.getBounds()
+            : null;
+        const { width, height } = this.cameras.main;
+        const hasVisibleBounds =
+          expBounds &&
+          expBounds.centerX >= 0 &&
+          expBounds.centerX <= width &&
+          expBounds.top >= 0 &&
+          expBounds.top <= height;
+        const x = hasVisibleBounds ? expBounds.centerX : width * 0.1;
+        const y = hasVisibleBounds ? expBounds.top - 20 : height * 0.06;
         const txt = this.add
           .text(x, y, `+${xpGain} XP`, {
             fontFamily: GAME_FONTS.main,
@@ -14012,7 +14023,8 @@ class GameScene extends Phaser.Scene {
             fontWeight: "bold",
           })
           .setOrigin(0.5)
-          .setDepth(12050);
+          .setDepth(1000005)
+          .setScrollFactor(0);
         this.tweens.add({
           targets: txt,
           y: y - 36,
@@ -14061,6 +14073,19 @@ class GameScene extends Phaser.Scene {
     const hasBar = this.profileExpBarFill && this.profileExpText;
     if (hasBar) {
       try {
+        if (typeof this.profileExpBarFill.setVisible === "function") {
+          this.profileExpBarFill.setVisible(true);
+        }
+        if (typeof this.profileExpText.setVisible === "function") {
+          this.profileExpText.setVisible(true);
+        }
+        if (typeof this.profileExpBarFill.setDepth === "function") {
+          this.profileExpBarFill.setDepth(13000);
+        }
+        if (typeof this.profileExpText.setDepth === "function") {
+          this.profileExpText.setDepth(13001);
+        }
+
         this.tweens.killTweensOf(this.profileExpBarFill);
         this.tweens.add({
           targets: this.profileExpBarFill,
@@ -14077,13 +14102,20 @@ class GameScene extends Phaser.Scene {
 
     // floating text feedback (uses bar position if available)
     try {
-      const baseX = hasBar
-        ? this.profileExpText.x
-        : this.cameras.main.width * 0.5;
-      const baseY = hasBar
-        ? this.profileExpText.y - 10
-        : this.cameras.main.height * 0.15;
-
+      const expBounds =
+        this.profileExpText && typeof this.profileExpText.getBounds === "function"
+          ? this.profileExpText.getBounds()
+          : null;
+      const { width, height } = this.cameras.main;
+      const hasVisibleBounds =
+        expBounds &&
+        expBounds.centerX >= 0 &&
+        expBounds.centerX <= width &&
+        expBounds.top >= 0 &&
+        expBounds.top <= height;
+      const baseX = hasVisibleBounds ? expBounds.centerX : width * 0.5;
+      const baseY = hasVisibleBounds ? expBounds.top - 10 : height * 0.15;
+      console.log("[EXP ANIM] playing at", { baseX, baseY, xpGain, hasBar });
       const txt = this.add
         .text(baseX, baseY, `+${xpGain} XP`, {
           fontFamily: GAME_FONTS.main,
@@ -14094,12 +14126,14 @@ class GameScene extends Phaser.Scene {
           fontWeight: "bold",
         })
         .setOrigin(0.5)
-        .setDepth(12050);
+        .setDepth(1000005)
+        .setScrollFactor(0);
 
       this.tweens.add({
         targets: txt,
         y: baseY - 40,
         alpha: 0,
+        scale: { from: 1, to: 1.25 },
         duration: 900,
         ease: "Power1",
         onComplete: () => {
@@ -14116,6 +14150,7 @@ class GameScene extends Phaser.Scene {
     // player still sees feedback via a toast.
     if (!hasBar) {
       try {
+        console.log('[EXP GAIN] falling back to toast', xpGain);
         this.showToast(`+${xpGain} XP`, "#2ecc71");
       } catch (e) {
         /* ignore */
