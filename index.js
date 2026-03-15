@@ -186,6 +186,26 @@ async function savePlayer(
     ? currentCharacter
     : null;
 
+  // Derive ratio from bell totals when available; this avoids drift between stored ratio
+  // and stored correctness counts across reconnects / replays.
+  const parsedBellCorrect = Number(bellCorrect);
+  const parsedBellTotal = Number(bellTotal);
+  const normalizedBellCorrect = Number.isFinite(parsedBellCorrect)
+    ? parsedBellCorrect
+    : null;
+  const normalizedBellTotal = Number.isFinite(parsedBellTotal)
+    ? parsedBellTotal
+    : null;
+
+  let effectiveRatio = null;
+  if (normalizedBellTotal !== null && normalizedBellTotal > 0) {
+    effectiveRatio = Math.round(
+      ((normalizedBellCorrect || 0) / normalizedBellTotal) * 100,
+    );
+  } else if (Number.isFinite(ratio)) {
+    effectiveRatio = ratio;
+  }
+
   const query = `
     INSERT INTO players (
       id,
@@ -246,9 +266,9 @@ async function savePlayer(
       normalizedCurrentCharacter,
       lastCheckinDate,
       avetime,
-      ratio,
-      bellCorrect,
-      bellTotal,
+      effectiveRatio,
+      normalizedBellCorrect,
+      normalizedBellTotal,
     ]);
     // debug whether this was an insert or update
     if (result && result.command) {
@@ -1927,9 +1947,17 @@ io.on("connection", (socket) => {
       // If missing, start at 0 so level is driven by savedData.level.
       socket.experience = Number(savedData.experience) || 0;
       socket.avetime = Number(savedData.avetime) || 0;
-      socket.ratio = Number(savedData.ratio) || 0;
+
       socket.bellCorrect = Number(savedData.bell_correct) || 0;
       socket.bellTotal = Number(savedData.bell_total) || 0;
+      if (socket.bellTotal > 0) {
+        socket.ratio = Math.round(
+          (socket.bellCorrect / socket.bellTotal) * 100,
+        );
+      } else {
+        socket.ratio = Number(savedData.ratio) || 0;
+      }
+
       socket.items = parsedItems;
       socket.specialCards = parsedSpecialCards; // 특수카드 할당
       socket.ownedCharacters = normalizeOwnedCharacters(
@@ -3733,9 +3761,15 @@ io.on("connection", (socket) => {
       socket.experience = savedData.experience || 0;
       // also restore average reaction time and accuracy ratio from DB
       socket.avetime = Number(savedData.avetime) || 0;
-      socket.ratio = Number(savedData.ratio) || 0;
       socket.bellCorrect = Number(savedData.bell_correct) || 0;
       socket.bellTotal = Number(savedData.bell_total) || 0;
+      if (socket.bellTotal > 0) {
+        socket.ratio = Math.round(
+          (socket.bellCorrect / socket.bellTotal) * 100,
+        );
+      } else {
+        socket.ratio = Number(savedData.ratio) || 0;
+      }
 
       // items 파싱
       let parsedItems = [];
@@ -4068,9 +4102,15 @@ io.on("connection", (socket) => {
       socket.level = savedData.level || 1;
       socket.coins = savedData.coins || 0;
       socket.experience = savedData.experience || 0;
-      socket.ratio = Number(savedData.ratio) || 0;
       socket.bellCorrect = Number(savedData.bell_correct) || 0;
       socket.bellTotal = Number(savedData.bell_total) || 0;
+      if (socket.bellTotal > 0) {
+        socket.ratio = Math.round(
+          (socket.bellCorrect / socket.bellTotal) * 100,
+        );
+      } else {
+        socket.ratio = Number(savedData.ratio) || 0;
+      }
 
       // items 파싱
       let parsedItems = [];
