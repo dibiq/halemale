@@ -2770,6 +2770,7 @@ class LobbyScene extends Phaser.Scene {
       level: Number(profile.level ?? prev.level ?? 1) || 1,
       coins: Number(profile.coins ?? prev.coins ?? 0) || 0,
       experience: Number(profile.experience ?? prev.experience ?? 0) || 0,
+      ratio: Number(profile.ratio ?? prev.ratio ?? 0) || 0,
       owned_characters: normalizedOwnedCharacters,
       current_character: normalizedCurrentCharacter,
       avatarKey: normalizedAvatarKey,
@@ -4437,6 +4438,11 @@ class LobbyScene extends Phaser.Scene {
         const safeAvetime = Number(this.myProfile.avetime);
         if (Number.isFinite(safeAvetime)) {
           payload.avetime = safeAvetime;
+        }
+
+        const safeRatio = Number(this.myProfile.ratio);
+        if (Number.isFinite(safeRatio)) {
+          payload.ratio = safeRatio;
         }
 
         const ownedCharacters = Object.entries(getOwnedCharacters())
@@ -8359,6 +8365,9 @@ class GameScene extends Phaser.Scene {
     // Set to false to make multiplayer use the same server-driven animation
     // flow as singleplayer.
     this.useOptimisticFlip = false;
+
+    // correct/total bell press tracking for accuracy ratio
+    this.bellStats = { correct: 0, total: 0 };
   }
 
   // replicate lobby's profile updater so GameScene has its own
@@ -8459,6 +8468,10 @@ class GameScene extends Phaser.Scene {
     if (this.profileReactTxt && typeof this.profileReactTxt.setText === "function") {
       const avgVal = this.computeAvgReaction().toFixed(2);
       this.profileReactTxt.setText(`Avg: ${avgVal}s`);
+    }
+    if (this.profileRatioTxt && typeof this.profileRatioTxt.setText === "function") {
+      const ratioVal = Number(this.myProfile.ratio) || 0;
+      this.profileRatioTxt.setText(`정답률: ${ratioVal}%`);
     }
 
     // combine with lobby-style text if present (rare inside GameScene but safe)
@@ -9090,10 +9103,19 @@ class GameScene extends Phaser.Scene {
           color: "#ffffff",
         })
         .setOrigin(0.5);
-      card.add([bg, levelTxt, expBg, expFill, expTxt, reactTxt]);
+      const ratio = Number(this.myProfile?.ratio ?? 0) || 0;
+      const ratioTxt = this.add
+        .text(0, cardH * 0.375, `정답률: ${ratio}%`, {
+          fontFamily: "Jua",
+          fontSize: `${cardH * 0.095}px`,
+          color: "#ffffff",
+        })
+        .setOrigin(0.5);
+      card.add([bg, levelTxt, expBg, expFill, expTxt, reactTxt, ratioTxt]);
       this.profileCard = card;
-      // keep reference to react text for updates
+      // keep reference to react/ratio text for updates
       this.profileReactTxt = reactTxt;
+      this.profileRatioTxt = ratioTxt;
       // populate text immediately if profile already known
       if (typeof this.updateMyProfileUI === 'function') {
         this.updateMyProfileUI();
@@ -9758,6 +9780,19 @@ class GameScene extends Phaser.Scene {
       }
 
       this.playFeedback(data.success, data.message);
+
+      // update local accuracy stat (correct / total) for this session
+      if (!this.isSingle) {
+        try {
+          if (data.success && data.winnerId === socket.id) {
+            this.updateBellAccuracy({ correct: 1, total: 1 });
+          } else if (!data.success && data.penaltyId === socket.id) {
+            this.updateBellAccuracy({ correct: 0, total: 1 });
+          }
+        } catch (e) {
+          /* ignore */
+        }
+      }
 
       // 💡 [수정] prevPlayers를 깊은 복사로 만들어 openStack이 유지되도록 함
       // (서버가 이미 openCardStack을 비운 상태로 보내므로)
@@ -14065,6 +14100,32 @@ class GameScene extends Phaser.Scene {
       }
     } catch (e) {
       console.warn("awardExperience error", e);
+    }
+  }
+
+  updateBellAccuracy({ correct = 0, total = 0 } = {}) {
+    try {
+      if (!this.bellStats) {
+        this.bellStats = { correct: 0, total: 0 };
+      }
+      this.bellStats.correct += Number(correct) || 0;
+      this.bellStats.total += Number(total) || 0;
+      const ratio =
+        this.bellStats.total > 0
+          ? Math.round((this.bellStats.correct / this.bellStats.total) * 100)
+          : 0;
+      this.myProfile = this.myProfile || {};
+      this.myProfile.ratio = ratio;
+      if (this.profileRatioTxt && typeof this.profileRatioTxt.setText === "function") {
+        this.profileRatioTxt.setText(`정답률: ${ratio}%`);
+      }
+      try {
+        this.safeSyncInventory("accuracyUpdate", { ratio });
+      } catch (e) {
+        /* ignore */
+      }
+    } catch (e) {
+      console.warn("updateBellAccuracy failed", e);
     }
   }
 

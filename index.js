@@ -146,6 +146,7 @@ async function savePlayer(
   currentCharacter = null,
   lastCheckinDate = null,
   avetime = null, // new average reaction time; null means "don't update"
+  ratio = null, // correct / (correct+wrong) as percentage; null means "don't update"
 ) {
   // Normalize id: if a live socket exists for this id and it has a nickname,
   // prefer the nickname as the DB primary key. This prevents accidental
@@ -169,7 +170,7 @@ async function savePlayer(
   }
 
   console.log(
-    `\n[savePlayer] id=${id} dbId=${dbId} level=${level} coins=${coins} exp=${experience} avetime=${avetime}`,
+    `\n[savePlayer] id=${id} dbId=${dbId} level=${level} coins=${coins} exp=${experience} avetime=${avetime} ratio=${ratio}`,
   );
   if (!pool) return;
 
@@ -191,6 +192,7 @@ async function savePlayer(
       items,
       experience,
       avetime,
+      ratio,
       owned_characters,
       current_character,
       last_checkin_date,
@@ -203,6 +205,7 @@ async function savePlayer(
       $4,
       $5,
       COALESCE($9::double precision, 0),
+      COALESCE($10::double precision, 0),
       COALESCE($6::jsonb, '[]'::jsonb),
       COALESCE($7, 'player_1'),
       $8,
@@ -216,6 +219,7 @@ async function savePlayer(
       experience = EXCLUDED.experience,
       /* 0 is treated as "no value" so we don't wipe existing average */
       avetime = COALESCE(NULLIF(EXCLUDED.avetime::double precision, 0::double precision), players.avetime),
+      ratio = COALESCE(NULLIF(EXCLUDED.ratio::double precision, 0::double precision), players.ratio),
       owned_characters = COALESCE($6::jsonb, players.owned_characters),
       current_character = COALESCE($7, players.current_character),
       last_checkin_date = COALESCE($8, players.last_checkin_date),
@@ -234,6 +238,7 @@ async function savePlayer(
       normalizedCurrentCharacter,
       lastCheckinDate,
       avetime,
+      ratio,
     ]);
     // debug whether this was an insert or update
     if (result && result.command) {
@@ -274,7 +279,11 @@ async function ensurePlayersSchema() {
       ALTER TABLE players
       ADD COLUMN IF NOT EXISTS avetime DOUBLE PRECISION NOT NULL DEFAULT 0;
     `);
-    console.log("✅ players.experience/avetime 컬럼 확인 완료");
+    await pool.query(`
+      ALTER TABLE players
+      ADD COLUMN IF NOT EXISTS ratio DOUBLE PRECISION NOT NULL DEFAULT 0;
+    `);
+    console.log("✅ players.experience/avetime/ratio 컬럼 확인 완료");
   } catch (err) {
     console.error("❌ players 스키마 확인 에러:", err);
   }
@@ -929,6 +938,12 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
       const dbId = (sock && sock.nickname) || p.nickname || p.id;
       const av =
         typeof p.avetime === "number" && p.avetime > 0 ? p.avetime : null;
+      const ratioToSave =
+        sock && Number.isFinite(sock.ratio)
+          ? sock.ratio
+          : typeof p.ratio === "number"
+            ? p.ratio
+            : null;
 
       const expToSave = Number(p.experience) || 0;
       const levelToSave = Number(p.level) || 1;
@@ -939,9 +954,11 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
         sockExists: !!sock,
         pExp: p.experience,
         pLevel: p.level,
+        avetime: av,
+        ratio: ratioToSave,
       });
       console.log(
-        `[finalizeGame] calling savePlayer for id=${p.id} nickname=${p.nickname} dbId=${dbId} avetime=${av}`,
+        `[finalizeGame] calling savePlayer for id=${p.id} nickname=${p.nickname} dbId=${dbId} avetime=${av} ratio=${ratioToSave}`,
       );
 
       savePlayer(
@@ -954,6 +971,7 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
         null,
         null,
         av,
+        ratioToSave,
       ).catch((e) => console.warn("savePlayer game end failed", e));
     } catch (e) {
       console.warn("finalizeGame savePlayer wrapper error", e);
@@ -966,6 +984,7 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
       coins: currentCoins,
       items: currentItems,
       avetime: p.avetime ?? 0,
+      ratio: typeof p.ratio === "number" ? p.ratio : 0,
       avatarKey: p.avatarKey || "player_1",
       specialCards: p.specialCards || {},
       owned_characters: p.owned_characters || [],
@@ -1834,6 +1853,7 @@ io.on("connection", (socket) => {
       // If missing, start at 0 so level is driven by savedData.level.
       socket.experience = Number(savedData.experience) || 0;
       socket.avetime = Number(savedData.avetime) || 0;
+      socket.ratio = Number(savedData.ratio) || 0;
       socket.items = parsedItems;
       socket.specialCards = parsedSpecialCards; // 특수카드 할당
       socket.ownedCharacters = normalizeOwnedCharacters(
@@ -1848,6 +1868,8 @@ io.on("connection", (socket) => {
         level: socket.level,
         coins: socket.coins,
         exp: socket.experience,
+        avetime: socket.avetime,
+        ratio: socket.ratio,
       });
     } else {
       console.log(`⚠️ setNickname - ${socket.nickname} DB 데이터 없음`);
@@ -1878,6 +1900,7 @@ io.on("connection", (socket) => {
       coins: socket.coins,
       exp: socket.experience,
       avetime: socket.avetime,
+      ratio: socket.ratio,
     });
 
     socket.emit("myProfile", {
@@ -1887,6 +1910,7 @@ io.on("connection", (socket) => {
       items: Array.isArray(socket.items) ? socket.items : [],
       experience: Number(socket.experience) || 0,
       avetime: Number(socket.avetime) || 0,
+      ratio: Number(socket.ratio) || 0,
       avatarKey: socket.currentCharacter || socket.avatarKey || "player_1",
       specialCards: socket.specialCards || {},
       owned_characters: socket.ownedCharacters || ["player_1"],
@@ -3443,6 +3467,13 @@ io.on("connection", (socket) => {
       }
     }
 
+    if (typeof payload.ratio !== "undefined") {
+      const r = parseFloat(payload.ratio);
+      if (!isNaN(r)) {
+        socket.ratio = r;
+      }
+    }
+
     const mergedItems = {
       items: Array.isArray(socket.items) ? socket.items : [],
       specialCards: socket.specialCards || {},
@@ -3457,7 +3488,8 @@ io.on("connection", (socket) => {
       socket.ownedCharacters,
       socket.currentCharacter || "player_1",
       null,
-      socket.avetime || 0,
+      Number.isFinite(socket.avetime) ? socket.avetime : null,
+      Number.isFinite(socket.ratio) ? socket.ratio : null,
     );
 
     // If this socket is in a room, update the room's player snapshot so
@@ -3480,6 +3512,8 @@ io.on("connection", (socket) => {
                   : p.experience,
               coins:
                 typeof socket.coins !== "undefined" ? socket.coins : p.coins,
+              ratio:
+                typeof socket.ratio !== "undefined" ? socket.ratio : p.ratio,
               items: Array.isArray(socket.items) ? socket.items : p.items,
             });
           }
@@ -5665,6 +5699,10 @@ io.on("connection", (socket) => {
           typeof socket.avetime === "number" && socket.avetime > 0
             ? socket.avetime
             : null;
+        const ratioArg =
+          typeof socket.ratio === "number" && socket.ratio >= 0
+            ? socket.ratio
+            : null;
         await savePlayer(
           socket.nickname,
           socket.level || 1,
@@ -5675,13 +5713,15 @@ io.on("connection", (socket) => {
           socket.currentCharacter || "player_1",
           null,
           avetimeArg,
+          ratioArg,
         );
 
         console.log(
           `✅ 연결 해제 시 ${socket.nickname} 데이터 저장 완료` +
             (avetimeArg !== null
               ? ` (avetime=${avetimeArg})`
-              : " (avetime unchanged)"),
+              : " (avetime unchanged)") +
+            (ratioArg !== null ? ` (ratio=${ratioArg})` : " (ratio unchanged)"),
         );
       } catch (e) {
         console.warn(`❌ 연결 해제 시 ${socket.nickname} 데이터 저장 실패:`, e);
