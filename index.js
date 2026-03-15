@@ -1870,6 +1870,14 @@ function handleAiBell(room, io, playerId) {
 
   if (checkGameOver(room, io)) return;
 
+  // provide updated bell counts for the winning player (if available)
+  const winnerSock =
+    io.sockets && io.sockets.sockets ? io.sockets.sockets.get(winner.id) : null;
+  const winnerBellCorrect = winnerSock
+    ? Number(winnerSock.bellCorrect) || 0
+    : 0;
+  const winnerBellTotal = winnerSock ? Number(winnerSock.bellTotal) || 0 : 0;
+
   io.to(room.roomId).emit("bellResult", {
     success: true,
     winnerId: winner.id,
@@ -1878,6 +1886,8 @@ function handleAiBell(room, io, playerId) {
     nextTurnId: winner.id,
     collectedCount: collected.length,
     reactionTime: reactionTimeSec,
+    bellCorrect: winnerBellCorrect,
+    bellTotal: winnerBellTotal,
   });
 
   processSkipTurn(room, io);
@@ -3768,6 +3778,30 @@ io.on("connection", (socket) => {
         if (Number.isFinite(exp)) {
           socket.experience = exp;
         }
+      }
+
+      // Accept final bell accuracy totals (client should send the server-validated
+      // values to avoid drift). Only update if incoming values are not smaller.
+      if (typeof payload.bellCorrect !== "undefined") {
+        const bc = Number(payload.bellCorrect);
+        if (Number.isFinite(bc) && bc > (Number(socket.bellCorrect) || 0)) {
+          socket.bellCorrect = bc;
+        }
+      }
+      if (typeof payload.bellTotal !== "undefined") {
+        const bt = Number(payload.bellTotal);
+        if (Number.isFinite(bt) && bt > (Number(socket.bellTotal) || 0)) {
+          socket.bellTotal = bt;
+        }
+      }
+      if (
+        typeof socket.bellCorrect === "number" &&
+        typeof socket.bellTotal === "number" &&
+        socket.bellTotal > 0
+      ) {
+        socket.ratio = Math.round(
+          (socket.bellCorrect / socket.bellTotal) * 100,
+        );
       }
 
       // Also update the room snapshot so finalizeGame reads the latest values.
@@ -5720,6 +5754,9 @@ io.on("connection", (socket) => {
         nextTurnId: winner.id,
         collectedCount: collected.length,
         reactionTime: reactionTimeSec, // 💡 추가: 반응 속도(초)
+        // provide accurate totals so clients can display consistent accuracy
+        bellCorrect: Number(socket.bellCorrect) || 0,
+        bellTotal: Number(socket.bellTotal) || 0,
       });
 
       // leave bellLocked true until processSkipTurn clears it; that way
@@ -5844,6 +5881,8 @@ io.on("connection", (socket) => {
               recipients: [],
               penaltyPerRecipient: 0,
               autoLockUsedBy: penalizedSocket.id,
+              bellCorrect: Number(penalizedSocket.bellCorrect) || 0,
+              bellTotal: Number(penalizedSocket.bellTotal) || 0,
             });
 
             // also broadcast a specialUsed event so clients can show lock effect
@@ -5958,6 +5997,8 @@ io.on("connection", (socket) => {
           players: room.players,
           recipients,
           penaltyPerRecipient,
+          bellCorrect: Number(socket.bellCorrect) || 0,
+          bellTotal: Number(socket.bellTotal) || 0,
         });
 
         if (checkGameOver(room, io)) return;
@@ -5970,6 +6011,8 @@ io.on("connection", (socket) => {
           players: room.players,
           recipients,
           penaltyPerRecipient,
+          bellCorrect: Number(socket.bellCorrect) || 0,
+          bellTotal: Number(socket.bellTotal) || 0,
         });
       }
 

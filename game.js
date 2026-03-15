@@ -2814,6 +2814,10 @@ class LobbyScene extends Phaser.Scene {
       );
     }
 
+    if (typeof window !== "undefined") {
+      window.bellStats = { ...this.bellStats };
+    }
+
     if (
       hasIncomingStats &&
       this.hasReceivedProfileStats &&
@@ -9826,7 +9830,32 @@ class GameScene extends Phaser.Scene {
       // update local accuracy stat (correct / total) for this session
       if (!this.isSingle) {
         try {
-          if (data.success && data.winnerId === socket.id) {
+          // Prefer server-provided counters when available to avoid double-counting.
+          if (
+            typeof data.bellCorrect === "number" &&
+            typeof data.bellTotal === "number"
+          ) {
+            const correct = Number(data.bellCorrect) || 0;
+            const total = Number(data.bellTotal) || 0;
+            this.bellStats = { correct, total };
+            const ratio = total > 0 ? Math.round((correct / total) * 100) : 0;
+            this.myProfile = this.myProfile || {};
+            this.myProfile.ratio = ratio;
+            if (
+              this.profileRatioTxt &&
+              typeof this.profileRatioTxt.setText === "function"
+            ) {
+              this.profileRatioTxt.setText(`정답률: ${ratio}%`);
+            }
+            if (typeof socket !== "undefined" && socket.profile) {
+              socket.profile.bellCorrect = correct;
+              socket.profile.bellTotal = total;
+              socket.profile.ratio = ratio;
+            }
+            if (typeof window !== "undefined") {
+              window.bellStats = { correct, total };
+            }
+          } else if (data.success && data.winnerId === socket.id) {
             this.updateBellAccuracy({ correct: 1, total: 1 });
           } else if (!data.success && data.penaltyId === socket.id) {
             this.updateBellAccuracy({ correct: 0, total: 1 });
@@ -10397,7 +10426,12 @@ class GameScene extends Phaser.Scene {
       if (typeof emitInventory === 'function') {
         // Do not include experience/level in final sync to avoid
         // overwriting gameplay-updated values. Only send other profile data.
-        emitInventory('final', { includeExperience: false });
+        // Ensure the server sees the final bell accuracy totals.
+        emitInventory('final', {
+          includeExperience: false,
+          bellCorrect: this.bellStats?.correct,
+          bellTotal: this.bellStats?.total,
+        });
       }
       // Ensure any AI timers/actions are stopped when match ends so
       // they don't leak into subsequent matches while result UI is shown.
@@ -14184,14 +14218,17 @@ class GameScene extends Phaser.Scene {
       if (this.profileRatioTxt && typeof this.profileRatioTxt.setText === "function") {
         this.profileRatioTxt.setText(`정답률: ${ratio}%`);
       }
-      try {
-        this.safeSyncInventory("accuracyUpdate", {
-          ratio,
-          bellCorrect: this.bellStats.correct,
-          bellTotal: this.bellStats.total,
-        });
-      } catch (e) {
-        /* ignore */
+
+      // do not sync bell stats constantly from the client; the server is
+      // authoritative and will send updated totals via bellResult.
+      // This prevents out-of-order updates from inflating totals.
+      if (typeof socket !== "undefined" && socket.profile) {
+        socket.profile.bellCorrect = this.bellStats.correct;
+        socket.profile.bellTotal = this.bellStats.total;
+        socket.profile.ratio = ratio;
+      }
+      if (typeof window !== "undefined") {
+        window.bellStats = { ...this.bellStats };
       }
     } catch (e) {
       console.warn("updateBellAccuracy failed", e);
