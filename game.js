@@ -1429,6 +1429,12 @@ class LobbyScene extends Phaser.Scene {
 
     socket.off("myProfile").on("myProfile", (profilePayload) => {
       const profile = profilePayload || {};
+      // DEBUG: 확인용
+      console.debug("[DEBUG] myProfile received", {
+        ratio: profile.ratio,
+        bellCorrect: profile.bellCorrect,
+        bellTotal: profile.bellTotal,
+      });
       // cache on socket so new scenes can initialize from existing data
       try {
         socket.profile = profile;
@@ -2770,7 +2776,9 @@ class LobbyScene extends Phaser.Scene {
       level: Number(profile.level ?? prev.level ?? 1) || 1,
       coins: Number(profile.coins ?? prev.coins ?? 0) || 0,
       experience: Number(profile.experience ?? prev.experience ?? 0) || 0,
-      ratio: Number(profile.ratio ?? prev.ratio ?? 0) || 0,
+      // ratio is derived from bell stats (bellCorrect/bellTotal)
+      // to avoid relying on an inconsistent cached value.
+      ratio: Number(prev.ratio ?? 0) || 0,
       owned_characters: normalizedOwnedCharacters,
       current_character: normalizedCurrentCharacter,
       avatarKey: normalizedAvatarKey,
@@ -2791,20 +2799,19 @@ class LobbyScene extends Phaser.Scene {
       this.bellStats.total = parsedTotal;
     }
 
+    // DEBUG: log incoming bell totals/ratio so we can trace rejoin behavior
+    console.debug("[DEBUG] updateMyProfileUI - bell totals", {
+      incomingRatio: profile.ratio,
+      incomingBellCorrect: profile.bellCorrect,
+      incomingBellTotal: profile.bellTotal,
+      appliedBellStats: this.bellStats,
+    });
+
     // If bell totals are available, derive ratio from them to ensure continuity
     if (this.bellStats.total > 0) {
       this.myProfile.ratio = Math.round(
         (this.bellStats.correct / this.bellStats.total) * 100,
       );
-    } else if (
-      typeof this.myProfile.ratio === "number" &&
-      Number.isFinite(this.myProfile.ratio) &&
-      this.myProfile.ratio > 0
-    ) {
-      // Fallback: ratio is known (from server) but totals aren't.
-      // Normalize into a base (100 total) so the first correct doesn't jump to 100%.
-      this.bellStats.total = 100;
-      this.bellStats.correct = Math.round(this.myProfile.ratio);
     }
 
     if (
@@ -8399,7 +8406,10 @@ class GameScene extends Phaser.Scene {
     this.useOptimisticFlip = false;
 
     // correct/total bell press tracking for accuracy ratio
-    this.bellStats = { correct: 0, total: 0 };
+    // Seed from existing socket profile (so reconnect keeps previous totals)
+    const seedCorrect = Number(socket?.profile?.bellCorrect) || 0;
+    const seedTotal = Number(socket?.profile?.bellTotal) || 0;
+    this.bellStats = { correct: seedCorrect, total: seedTotal };
   }
 
   // replicate lobby's profile updater so GameScene has its own
@@ -14140,6 +14150,29 @@ class GameScene extends Phaser.Scene {
       if (!this.bellStats) {
         this.bellStats = { correct: 0, total: 0 };
       }
+
+      // If we already have server-loaded bell stats (from myProfile) but haven't
+      // applied them yet (total still 0), apply them now so the first correct
+      // doesn't jump to 100%.
+      if (this.bellStats.total === 0) {
+        const profileSource = this.myProfile || socket?.profile;
+        const seededTotal = Number(profileSource?.bellTotal);
+        const seededCorrect = Number(profileSource?.bellCorrect);
+        if (Number.isFinite(seededTotal) && seededTotal > 0) {
+          this.bellStats.total = seededTotal;
+          this.bellStats.correct = Number.isFinite(seededCorrect)
+            ? seededCorrect
+            : 0;
+        }
+      }
+
+      // DEBUG: log bell stats right before applying the new correct/total update
+      console.debug("[DEBUG] updateBellAccuracy - before", {
+        incoming: { correct, total },
+        bellStats: { ...this.bellStats },
+        socketProfile: socket?.profile,
+      });
+
       this.bellStats.correct += Number(correct) || 0;
       this.bellStats.total += Number(total) || 0;
       const ratio =

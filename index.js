@@ -2014,8 +2014,10 @@ io.on("connection", (socket) => {
       items: Array.isArray(socket.items) ? socket.items : [],
       experience: Number(socket.experience) || 0,
       ratio: Number(socket.ratio) || 0,
-      bellCorrect: Number(socket.bellCorrect) || 0,
-      bellTotal: Number(socket.bellTotal) || 0,
+      bellCorrect: Number.isFinite(socket.bellCorrect)
+        ? socket.bellCorrect
+        : null,
+      bellTotal: Number.isFinite(socket.bellTotal) ? socket.bellTotal : null,
       avetime: Number(socket.avetime) || 0,
       avatarKey: socket.currentCharacter || socket.avatarKey || "player_1",
       specialCards: socket.specialCards || {},
@@ -2182,8 +2184,10 @@ io.on("connection", (socket) => {
       items: Array.isArray(socket.items) ? socket.items : [],
       experience: Number(socket.experience) || 0,
       ratio: Number(socket.ratio) || 0,
-      bellCorrect: Number(socket.bellCorrect) || 0,
-      bellTotal: Number(socket.bellTotal) || 0,
+      bellCorrect: Number.isFinite(socket.bellCorrect)
+        ? socket.bellCorrect
+        : null,
+      bellTotal: Number.isFinite(socket.bellTotal) ? socket.bellTotal : null,
       avetime: Number(socket.avetime) || 0,
       avatarKey: socket.currentCharacter || socket.avatarKey || "player_1",
       specialCards: socket.specialCards || {},
@@ -2280,8 +2284,10 @@ io.on("connection", (socket) => {
       items: Array.isArray(socket.items) ? socket.items : [],
       experience: Number(socket.experience) || 0,
       ratio: Number(socket.ratio) || 0,
-      bellCorrect: Number(socket.bellCorrect) || 0,
-      bellTotal: Number(socket.bellTotal) || 0,
+      bellCorrect: Number.isFinite(socket.bellCorrect)
+        ? socket.bellCorrect
+        : null,
+      bellTotal: Number.isFinite(socket.bellTotal) ? socket.bellTotal : null,
       avetime: Number(socket.avetime) || 0,
       avatarKey: socket.currentCharacter || socket.avatarKey || "player_1",
       specialCards: socket.specialCards || {},
@@ -2414,8 +2420,10 @@ io.on("connection", (socket) => {
         items: Array.isArray(socket.items) ? socket.items : [],
         experience: Number(socket.experience) || 0,
         ratio: Number(socket.ratio) || 0,
-        bellCorrect: Number(socket.bellCorrect) || 0,
-        bellTotal: Number(socket.bellTotal) || 0,
+        bellCorrect: Number.isFinite(socket.bellCorrect)
+          ? socket.bellCorrect
+          : null,
+        bellTotal: Number.isFinite(socket.bellTotal) ? socket.bellTotal : null,
         avetime: Number(socket.avetime) || 0,
         avatarKey: socket.currentCharacter || socket.avatarKey || "player_1",
         specialCards: socket.specialCards || {},
@@ -2439,8 +2447,10 @@ io.on("connection", (socket) => {
         items: Array.isArray(socket.items) ? socket.items : [],
         experience: Number(socket.experience) || 0,
         ratio: Number(socket.ratio) || 0,
-        bellCorrect: Number(socket.bellCorrect) || 0,
-        bellTotal: Number(socket.bellTotal) || 0,
+        bellCorrect: Number.isFinite(socket.bellCorrect)
+          ? socket.bellCorrect
+          : null,
+        bellTotal: Number.isFinite(socket.bellTotal) ? socket.bellTotal : null,
         avatarKey: socket.currentCharacter || socket.avatarKey || "player_1",
         specialCards: socket.specialCards || {},
         owned_characters: socket.ownedCharacters || ["player_1"],
@@ -2529,8 +2539,10 @@ io.on("connection", (socket) => {
         items: Array.isArray(socket.items) ? socket.items : [],
         experience: Number(socket.experience) || 0,
         ratio: Number(socket.ratio) || 0,
-        bellCorrect: Number(socket.bellCorrect) || 0,
-        bellTotal: Number(socket.bellTotal) || 0,
+        bellCorrect: Number.isFinite(socket.bellCorrect)
+          ? socket.bellCorrect
+          : null,
+        bellTotal: Number.isFinite(socket.bellTotal) ? socket.bellTotal : null,
         avetime: Number(socket.avetime) || 0,
         avatarKey: socket.currentCharacter || "player_1",
         specialCards: socket.specialCards || {},
@@ -3359,8 +3371,12 @@ io.on("connection", (socket) => {
               items: Array.isArray(socket.items) ? socket.items : [],
               experience: Number(socket.experience) || 0,
               ratio: Number(socket.ratio) || 0,
-              bellCorrect: Number(socket.bellCorrect) || 0,
-              bellTotal: Number(socket.bellTotal) || 0,
+              bellCorrect: Number.isFinite(socket.bellCorrect)
+                ? socket.bellCorrect
+                : null,
+              bellTotal: Number.isFinite(socket.bellTotal)
+                ? socket.bellTotal
+                : null,
               avetime: Number(socket.avetime) || 0,
               avatarKey:
                 socket.currentCharacter || socket.avatarKey || "player_1",
@@ -3860,8 +3876,10 @@ io.on("connection", (socket) => {
       coins: socket.coins || 0,
       experience: socket.experience || 0,
       ratio: Number(socket.ratio) || 0,
-      bellCorrect: Number(socket.bellCorrect) || 0,
-      bellTotal: Number(socket.bellTotal) || 0,
+      bellCorrect: Number.isFinite(socket.bellCorrect)
+        ? socket.bellCorrect
+        : null,
+      bellTotal: Number.isFinite(socket.bellTotal) ? socket.bellTotal : null,
       avetime: socket.avetime || 0, // ⚠️ keep average speed in room state
       specialCards: socket.specialCards || {},
       items: socket.items || [],
@@ -3898,8 +3916,10 @@ io.on("connection", (socket) => {
         items: Array.isArray(socket.items) ? socket.items : [],
         experience: Number(socket.experience) || 0,
         ratio: Number(socket.ratio) || 0,
-        bellCorrect: Number(socket.bellCorrect) || 0,
-        bellTotal: Number(socket.bellTotal) || 0,
+        bellCorrect: Number.isFinite(socket.bellCorrect)
+          ? socket.bellCorrect
+          : null,
+        bellTotal: Number.isFinite(socket.bellTotal) ? socket.bellTotal : null,
         avetime: Number(socket.avetime) || 0,
         avatarKey: socket.currentCharacter || socket.avatarKey || "player_1",
         specialCards: socket.specialCards || {},
@@ -4053,8 +4073,10 @@ io.on("connection", (socket) => {
         items: Array.isArray(socket.items) ? socket.items : [],
         experience: Number(socket.experience) || 0,
         ratio: Number(socket.ratio) || 0,
-        bellCorrect: Number(socket.bellCorrect) || 0,
-        bellTotal: Number(socket.bellTotal) || 0,
+        bellCorrect: Number.isFinite(socket.bellCorrect)
+          ? socket.bellCorrect
+          : null,
+        bellTotal: Number.isFinite(socket.bellTotal) ? socket.bellTotal : null,
         avetime: Number(socket.avetime) || 0,
         avatarKey: socket.currentCharacter || socket.avatarKey || "player_1",
         specialCards: socket.specialCards || {},
@@ -4184,8 +4206,10 @@ io.on("connection", (socket) => {
         coins: socket.coins || 0, // 💡 이 부분 추가
         experience: socket.experience || 0,
         ratio: Number(socket.ratio) || 0,
-        bellCorrect: Number(socket.bellCorrect) || 0,
-        bellTotal: Number(socket.bellTotal) || 0,
+        bellCorrect: Number.isFinite(socket.bellCorrect)
+          ? socket.bellCorrect
+          : null,
+        bellTotal: Number.isFinite(socket.bellTotal) ? socket.bellTotal : null,
         avetime: socket.avetime || 0,
         items: socket.items || [], // 💡 이 부분 추가
         myDeck: [],
@@ -4223,8 +4247,10 @@ io.on("connection", (socket) => {
         items: Array.isArray(socket.items) ? socket.items : [],
         experience: Number(socket.experience) || 0,
         ratio: Number(socket.ratio) || 0,
-        bellCorrect: Number(socket.bellCorrect) || 0,
-        bellTotal: Number(socket.bellTotal) || 0,
+        bellCorrect: Number.isFinite(socket.bellCorrect)
+          ? socket.bellCorrect
+          : null,
+        bellTotal: Number.isFinite(socket.bellTotal) ? socket.bellTotal : null,
         avetime: Number(socket.avetime) || 0,
         avatarKey: socket.currentCharacter || socket.avatarKey || "player_1",
         specialCards: socket.specialCards || {},
