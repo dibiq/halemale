@@ -4440,11 +4440,6 @@ class LobbyScene extends Phaser.Scene {
           payload.avetime = safeAvetime;
         }
 
-        const safeRatio = Number(this.myProfile.ratio);
-        if (Number.isFinite(safeRatio)) {
-          payload.ratio = safeRatio;
-        }
-
         const ownedCharacters = Object.entries(getOwnedCharacters())
           .filter(([, owned]) => !!owned)
           .map(([key]) => key);
@@ -4479,6 +4474,12 @@ class LobbyScene extends Phaser.Scene {
         ) {
           payload.experience = safeExperience;
         }
+      }
+
+      // Always send ratio when available (even if profile snapshot hasn't arrived yet)
+      const safeRatio = Number(this.myProfile.ratio);
+      if (Number.isFinite(safeRatio)) {
+        payload.ratio = safeRatio;
       }
 
       socket.emit("syncPlayerInventory", payload);

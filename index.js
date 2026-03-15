@@ -648,6 +648,12 @@ function reconcileRoomPlayerByNickname(room, socket, payload = {}) {
   player.level = socket.level || player.level || 1;
   player.coins = socket.coins || player.coins || 0;
   player.experience = socket.experience || player.experience || 0;
+  player.ratio =
+    typeof socket.ratio === "number" && Number.isFinite(socket.ratio)
+      ? socket.ratio
+      : typeof player.ratio === "number"
+        ? player.ratio
+        : 0;
   player.avetime =
     typeof socket.avetime === "number" && socket.avetime > 0
       ? socket.avetime
@@ -946,12 +952,27 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
       const dbId = (sock && sock.nickname) || p.nickname || p.id;
       const av =
         typeof p.avetime === "number" && p.avetime > 0 ? p.avetime : null;
+      // If server has recorded bell accuracy stats for this player, prefer that
+      let computedRatio = null;
+      if (
+        room.bellStats &&
+        room.bellStats[p.id] &&
+        typeof room.bellStats[p.id].total === "number" &&
+        room.bellStats[p.id].total > 0
+      ) {
+        computedRatio = Math.round(
+          (room.bellStats[p.id].correct / room.bellStats[p.id].total) * 100,
+        );
+      }
+
       const ratioToSave =
-        sock && Number.isFinite(sock.ratio)
-          ? sock.ratio
-          : typeof p.ratio === "number"
-            ? p.ratio
-            : null;
+        Number.isFinite(computedRatio) && computedRatio >= 0
+          ? computedRatio
+          : sock && Number.isFinite(sock.ratio)
+            ? sock.ratio
+            : typeof p.ratio === "number"
+              ? p.ratio
+              : null;
 
       const expToSave = Number(p.experience) || 0;
       const levelToSave = Number(p.level) || 1;
@@ -3634,8 +3655,9 @@ io.on("connection", (socket) => {
       socket.level = savedData.level || 1;
       socket.coins = savedData.coins || 0;
       socket.experience = savedData.experience || 0;
-      // also restore average reaction time from DB
+      // also restore average reaction time and accuracy ratio from DB
       socket.avetime = Number(savedData.avetime) || 0;
+      socket.ratio = Number(savedData.ratio) || 0;
 
       // items 파싱
       let parsedItems = [];
@@ -3701,6 +3723,7 @@ io.on("connection", (socket) => {
       aiCounter: 0,
       aiTimers: { turn: null, bells: {} },
       reactionSamples: {},
+      bellStats: {}, // correct/total bell presses for accuracy ratio
     };
     const playerData = {
       id: socket.id,
@@ -3709,6 +3732,7 @@ io.on("connection", (socket) => {
       level: socket.level || 1, // 💡 방장 데이터도 포함
       coins: socket.coins || 0,
       experience: socket.experience || 0,
+      ratio: Number(socket.ratio) || 0,
       avetime: socket.avetime || 0, // ⚠️ keep average speed in room state
       specialCards: socket.specialCards || {},
       items: socket.items || [],
@@ -3744,6 +3768,7 @@ io.on("connection", (socket) => {
         coins: Number(socket.coins) || 0,
         items: Array.isArray(socket.items) ? socket.items : [],
         experience: Number(socket.experience) || 0,
+        ratio: Number(socket.ratio) || 0,
         avetime: Number(socket.avetime) || 0,
         avatarKey: socket.currentCharacter || socket.avatarKey || "player_1",
         specialCards: socket.specialCards || {},
@@ -3851,6 +3876,7 @@ io.on("connection", (socket) => {
         level: socket.level || 1, // 💡 socket에 저장된 값을 가져옴
         coins: socket.coins || 0, // 💡 socket에 저장된 값을 가져옴
         experience: socket.experience || 0,
+        ratio: Number(socket.ratio) || 0,
         avetime: socket.avetime || 0,
         specialCards: socket.specialCards || {},
         items: socket.items || [],
@@ -3886,6 +3912,7 @@ io.on("connection", (socket) => {
         coins: Number(socket.coins) || 0,
         items: Array.isArray(socket.items) ? socket.items : [],
         experience: Number(socket.experience) || 0,
+        ratio: Number(socket.ratio) || 0,
         avetime: Number(socket.avetime) || 0,
         avatarKey: socket.currentCharacter || socket.avatarKey || "player_1",
         specialCards: socket.specialCards || {},
@@ -4594,6 +4621,8 @@ io.on("connection", (socket) => {
     deck.sort(() => Math.random() - 0.5);
 
     room.isGameStarted = true;
+    // reset bell accuracy stats each game
+    room.bellStats = {};
     clearTimeAttackTimer(room);
     const hostIndex = room.players.findIndex((p) => p.id === room.host);
     room.turnIndex = hostIndex >= 0 ? hostIndex : 0;
@@ -4617,6 +4646,9 @@ io.on("connection", (socket) => {
       p.openCardStack = [];
       p.isReady = p.isBot ? true : false;
       p.isEliminated = false; // 시작할 때 초기화
+      // initialize per-player bell accuracy stats
+      if (!room.bellStats) room.bellStats = {};
+      room.bellStats[p.id] = { correct: 0, total: 0 };
       if (p.isBot) {
         // Keep AI skill similar within a match, with slight variation.
         const variance = 0.95 + Math.random() * 0.1;
@@ -5434,8 +5466,12 @@ io.on("connection", (socket) => {
         }
       });
 
-      if (checkGameOver(room, io)) return;
-
+      // 기록: 벨 정답/오답 통계 (서버측에도 저장하여 게임 종료 시 DB에 반영)
+      if (!room.bellStats) room.bellStats = {};
+      if (!room.bellStats[socket.id])
+        room.bellStats[socket.id] = { correct: 0, total: 0 };
+      room.bellStats[socket.id].correct += 1;
+      room.bellStats[socket.id].total += 1;
       io.to(room.roomId).emit("bellResult", {
         success: true,
         winnerId: socket.id,
@@ -5455,6 +5491,13 @@ io.on("connection", (socket) => {
       const others = room.players.filter(
         (pl) => pl.id !== sock.id && !pl.isEliminated,
       );
+
+      // 서버측 정확도 통계 업데이트 (틀리면 total++, 정답은 위쪽에서 correct++)
+      if (!room.bellStats) room.bellStats = {};
+      if (p && p.id) {
+        room.bellStats[p.id] = room.bellStats[p.id] || { correct: 0, total: 0 };
+        room.bellStats[p.id].total += 1;
+      }
 
       // 자동 자물쇠 처리: 패널티 적용 전에 해당 플레이어 소켓에 lock(id=4)이 있으면 소모하고 패널티를 건너뜁니다.
       if (room.itemMode !== false) {
