@@ -779,8 +779,7 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
   const beforeStateById = new Map(
     room.players.map((p) => {
       const beforeExperience = Number(p.experience) || 0;
-      const beforeLevel =
-        Number(p.level) || getLevelFromExperience(beforeExperience);
+      const beforeLevel = Number(p.level) || 1;
       const beforeCoins = Number(p.coins) || 0;
 
       return [
@@ -841,8 +840,9 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
   try {
     io.to(room.roomId).emit("requestProfileSync", { reason: "final" });
     // wait a short time for clients to respond with sync events
-    await new Promise((res) => setTimeout(res, 250));
-    console.log("[GAME END] waited 250ms for final profile sync responses");
+    // (avoid racing against in-flight XP updates)
+    await new Promise((res) => setTimeout(res, 500));
+    console.log("[GAME END] waited 500ms for final profile sync responses");
   } catch (e) {
     console.warn("final profile sync wait failed", e);
   }
@@ -851,7 +851,7 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
   // (won't overwrite sample-based value when hook is disabled)
   room.players.forEach((p) => {
     const currentExp = Number(p.experience) || 0;
-    const currentLevel = getLevelFromExperience(currentExp);
+    const currentLevel = Number(p.level) || 1;
     const currentCoins = Number(p.coins) || 0;
     const currentItems = Array.isArray(p.items) ? p.items : [];
 
@@ -886,7 +886,7 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
         sock &&
           (typeof sock.level === "number" || typeof sock.level === "string")
           ? Number(sock.level)
-          : getLevelFromExperience(expToSave),
+          : Number(p.level) || 1,
       );
       console.log("[finalizeGame] save values for", p.nickname, {
         expToSave,
@@ -1784,9 +1784,9 @@ io.on("connection", (socket) => {
       // 이 데이터를 socket 객체에 담아두거나 클라이언트에 보내주면 됩니다.
       socket.level = savedData.level;
       socket.coins = savedData.coins;
-      socket.experience =
-        Number(savedData.experience) ||
-        Math.max((Number(savedData.level) || 1) - 1, 0) * XP_PER_LEVEL;
+      // Persisted experience is stored as "remainder" XP (0..XP_PER_LEVEL-1).
+      // If missing, start at 0 so level is driven by savedData.level.
+      socket.experience = Number(savedData.experience) || 0;
       socket.avetime = Number(savedData.avetime) || 0;
       socket.items = parsedItems;
       socket.specialCards = parsedSpecialCards; // 특수카드 할당
@@ -1807,8 +1807,8 @@ io.on("connection", (socket) => {
       console.log(`⚠️ setNickname - ${socket.nickname} DB 데이터 없음`);
     }
 
-    socket.level =
-      Number(socket.level) || getLevelFromExperience(socket.experience);
+    // server should trust saved level value (client maintains separate remainder XP)
+    socket.level = Math.max(Number(socket.level) || 1, 1);
 
     try {
       const today = getDateStringInTimeZone(new Date(), DAILY_LOGIN_TIMEZONE);
@@ -3302,28 +3302,38 @@ io.on("connection", (socket) => {
       }
     }
     // Accept client-provided experience/level updates so gameplay-awarded
-    // XP is reflected on the server during the match. If the client
-    // sends an 'experienceGain' reason, treat payload.experience as a
-    // delta and add it to the existing socket.experience. Otherwise,
-    // accept absolute experience if provided.
+    // XP is reflected on the server during the match.
+    //
+    // The client stores XP as a "remainder" (0..XP_PER_LEVEL-1) and keeps
+    // the current level separately. For experience gain events we apply
+    // the same rollover logic as the client (level up when remainder exceeds
+    // XP_PER_LEVEL) so server and client stay in sync.
+    const reason = typeof payload.reason === "string" ? payload.reason : "";
+    const isExperienceGain = reason.indexOf("experience") >= 0;
+
     if (typeof payload.experience !== "undefined") {
       const incomingExp = Number(payload.experience);
       if (Number.isFinite(incomingExp)) {
-        const reason = typeof payload.reason === "string" ? payload.reason : "";
-        if (reason === "experienceGain" || reason.indexOf("experience") >= 0) {
-          socket.experience = Number(
-            (Number(socket.experience) || 0) + incomingExp,
-          );
+        if (isExperienceGain) {
+          const prevLevel = Number(socket.level) || 1;
+          const prevRemainder = Number(socket.experience) || 0;
+          let newExpTotal = prevRemainder + incomingExp;
+          let newLevel = prevLevel;
+          while (newExpTotal >= XP_PER_LEVEL) {
+            newExpTotal -= XP_PER_LEVEL;
+            newLevel += 1;
+          }
+          socket.experience = newExpTotal;
+          socket.level = newLevel;
         } else {
+          // Treat the provided experience as the remainder (0..XP_PER_LEVEL-1)
           socket.experience = Number(incomingExp);
         }
       }
     }
-    // Recompute level from experience if experience is known; otherwise
-    // accept client-provided absolute level when present.
-    if (typeof socket.experience !== "undefined") {
-      socket.level = getLevelFromExperience(Number(socket.experience) || 0);
-    } else if (typeof payload.level !== "undefined") {
+
+    // If the client provided an explicit level (non-experience sync), trust it.
+    if (!isExperienceGain && typeof payload.level !== "undefined") {
       const incomingLevel = Number(payload.level);
       if (Number.isFinite(incomingLevel)) {
         socket.level = incomingLevel;

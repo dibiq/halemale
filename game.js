@@ -4451,10 +4451,24 @@ class LobbyScene extends Phaser.Scene {
           payload.currentCharacter = currentCharacter;
           payload.current_character = currentCharacter;
         }
+        const isExperienceGain =
+          typeof reason === "string" && reason.indexOf("experience") >= 0;
+
         const safeLevel = Number(this.myProfile.level);
-        if (Number.isFinite(safeLevel)) payload.level = safeLevel;
+        if (
+          Number.isFinite(safeLevel) &&
+          (typeof payload.level === "undefined" || !isExperienceGain)
+        ) {
+          payload.level = safeLevel;
+        }
+
         const safeExperience = Number(this.myProfile.experience);
-        if (Number.isFinite(safeExperience)) payload.experience = safeExperience;
+        if (
+          Number.isFinite(safeExperience) &&
+          (typeof payload.experience === "undefined" || !isExperienceGain)
+        ) {
+          payload.experience = safeExperience;
+        }
       }
 
       socket.emit("syncPlayerInventory", payload);
