@@ -219,7 +219,7 @@ async function savePlayer(
       experience = EXCLUDED.experience,
       /* 0 is treated as "no value" so we don't wipe existing average */
       avetime = COALESCE(NULLIF(EXCLUDED.avetime::double precision, 0::double precision), players.avetime),
-      ratio = COALESCE(NULLIF(EXCLUDED.ratio::double precision, 0::double precision), players.ratio),
+      ratio = COALESCE(EXCLUDED.ratio::double precision, players.ratio),
       owned_characters = COALESCE($6::jsonb, players.owned_characters),
       current_character = COALESCE($7, players.current_character),
       last_checkin_date = COALESCE($8, players.last_checkin_date),
@@ -529,6 +529,12 @@ function applyCoinCardReward(room, player, io) {
       specialCards: targetSocket.specialCards || {},
     };
 
+    const ratioArg =
+      typeof targetSocket.ratio === "number" &&
+      Number.isFinite(targetSocket.ratio)
+        ? targetSocket.ratio
+        : null;
+
     savePlayer(
       targetSocket.nickname,
       targetSocket.level || 1,
@@ -541,6 +547,7 @@ function applyCoinCardReward(room, player, io) {
       typeof targetSocket.avetime === "number" && targetSocket.avetime > 0
         ? targetSocket.avetime
         : null,
+      ratioArg,
     ).catch((err) => {
       console.warn("coin reward save failed", err);
     });
@@ -552,6 +559,7 @@ function applyCoinCardReward(room, player, io) {
       items: mergedItems.items,
       experience: Number(targetSocket.experience) || 0,
       avetime: Number(targetSocket.avetime) || 0,
+      ratio: Number(targetSocket.ratio) || 0,
       avatarKey:
         targetSocket.currentCharacter || targetSocket.avatarKey || "player_1",
       specialCards: targetSocket.specialCards || {},
