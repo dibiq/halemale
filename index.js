@@ -89,6 +89,8 @@ function makeUniqueNickname(room, desired) {
   return nickname;
 }
 
+const pendingFinalProfileSyncs = new Map();
+
 function syncRoomPlayersWithActiveSockets(room, io) {
   if (!room || !Array.isArray(room.players)) return;
   const uniquePlayers = [];
@@ -100,6 +102,38 @@ function syncRoomPlayersWithActiveSockets(room, io) {
     uniquePlayers.push(player);
   });
   room.players = uniquePlayers;
+}
+
+function markFinalProfileSyncReceived(roomId, playerId) {
+  const pending = pendingFinalProfileSyncs.get(roomId);
+  if (!pending) return;
+  pending.pending.delete(playerId);
+  if (pending.pending.size === 0) {
+    if (pending.timer) clearTimeout(pending.timer);
+    pending.resolve();
+    pendingFinalProfileSyncs.delete(roomId);
+  }
+}
+
+function waitForFinalProfileSync(roomId, playerIds, timeoutMs = 500) {
+  return new Promise((resolve) => {
+    const pending = new Set(playerIds);
+    const timer = setTimeout(() => {
+      const remaining = Array.from(pending);
+      console.warn(
+        `[finalizeGame] final profile sync timeout for room=${roomId}, remaining players=`,
+        remaining,
+      );
+      pendingFinalProfileSyncs.delete(roomId);
+      resolve();
+    }, timeoutMs);
+
+    pendingFinalProfileSyncs.set(roomId, {
+      pending,
+      resolve,
+      timer,
+    });
+  });
 }
 
 async function savePlayer(
@@ -837,12 +871,16 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
 
   // Ask clients for a final profile sync (including experience) to avoid
   // race conditions where the client's last XP update hasn't arrived yet.
+  // Wait until all players have responded or until timeout.
   try {
+    const expectedIds = room.players.map((p) => p.id).filter(Boolean);
+    console.log(
+      "[GAME END] requesting final profile sync for players:",
+      expectedIds,
+    );
     io.to(room.roomId).emit("requestProfileSync", { reason: "final" });
-    // wait a short time for clients to respond with sync events
-    // (avoid racing against in-flight XP updates)
-    await new Promise((res) => setTimeout(res, 500));
-    console.log("[GAME END] waited 500ms for final profile sync responses");
+    await waitForFinalProfileSync(room.roomId, expectedIds, 500);
+    console.log("[GAME END] final profile sync wait completed");
   } catch (e) {
     console.warn("final profile sync wait failed", e);
   }
@@ -3468,6 +3506,65 @@ io.on("connection", (socket) => {
   socket.on("updatePlayerInventory", handleSyncPlayerInventory);
   socket.on("updateProfile", handleSyncPlayerInventory);
   socket.on("savePlayerProfile", handleSyncPlayerInventory);
+
+  // Final profile sync from client (ensures latest level/experience reaches server)
+  socket.on("finalProfileSync", (payload) => {
+    try {
+      if (!payload || typeof payload !== "object") return;
+      const targetPlayerId =
+        typeof socket.nickname === "string" && socket.nickname.trim()
+          ? socket.nickname.trim()
+          : typeof payload.id === "string" && payload.id.trim()
+            ? payload.id.trim()
+            : socket.nickname;
+
+      if (!targetPlayerId) return;
+
+      // Update socket state with final values (explicitly provided by the client)
+      if (typeof payload.level !== "undefined") {
+        const lvl = Number(payload.level);
+        if (Number.isFinite(lvl)) {
+          socket.level = lvl;
+        }
+      }
+      if (typeof payload.experience !== "undefined") {
+        const exp = Number(payload.experience);
+        if (Number.isFinite(exp)) {
+          socket.experience = exp;
+        }
+      }
+
+      // Also update the room snapshot so finalizeGame reads the latest values.
+      if (socket.roomId && rooms && rooms[socket.roomId]) {
+        const room = rooms[socket.roomId];
+        room.players = room.players.map((p) => {
+          if (!p) return p;
+          if (p.id === socket.id || p.nickname === targetPlayerId) {
+            return Object.assign({}, p, {
+              level: socket.level || p.level,
+              experience:
+                typeof socket.experience !== "undefined"
+                  ? socket.experience
+                  : p.experience,
+            });
+          }
+          return p;
+        });
+      }
+
+      // If finalizeGame is waiting, mark this player as updated
+      if (socket.roomId) {
+        markFinalProfileSyncReceived(socket.roomId, socket.id);
+      }
+
+      console.log("[finalProfileSync] received from", targetPlayerId, {
+        level: socket.level,
+        experience: socket.experience,
+      });
+    } catch (e) {
+      console.warn("finalProfileSync handler error", e);
+    }
+  });
 
   socket.on("createRoom", async (data) => {
     console.log("🏠 createRoom 호출됨, 받은 data:", JSON.stringify(data));

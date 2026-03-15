@@ -1042,8 +1042,12 @@ class LobbyScene extends Phaser.Scene {
           typeof options.requireServerProfile === "boolean"
             ? options.requireServerProfile
             : true;
+        const isExperienceSync =
+          typeof reason === "string" && reason.indexOf("experience") >= 0;
 
-        if (requireServerProfile && !this.hasServerProfileSnapshot) {
+        // If we are syncing experience gains, allow it even if we haven't yet
+        // received a full server profile snapshot (prevents lost XP during early game).
+        if (requireServerProfile && !this.hasServerProfileSnapshot && !isExperienceSync) {
           console.log(
             `[inventory-sync] skipped ${reason}: awaiting server profile`,
           );
@@ -10341,8 +10345,29 @@ class GameScene extends Phaser.Scene {
     // Respond to server's request for a final profile sync (include experience)
     socket.off("requestProfileSync").on("requestProfileSync", (payload) => {
       try {
-        // includeExperience true so server receives latest XP/level
-        emitInventory("final", { includeExperience: true });
+        const currentLevel = Number(this.myProfile?.level) || 1;
+        const currentExperience = Number(this.myProfile?.experience) || 0;
+        console.log("[CLIENT] requestProfileSync received, sending final profile", {
+          level: currentLevel,
+          experience: currentExperience,
+        });
+
+        // Send a dedicated final sync event so the server can reliably
+        // update finalizeGame values even if the normal sync path is skipped.
+        socket.emit("finalProfileSync", {
+          reason: "final",
+          level: currentLevel,
+          experience: currentExperience,
+          nickname: this.myProfile?.nickname || localStorage.getItem("nickname"),
+          id: socket.id,
+        });
+
+        // Also attempt to sync other profile fields (coins/items), but do not
+        // require the server profile snapshot for this particular emit.
+        emitInventory("final", {
+          includeExperience: true,
+          requireServerProfile: false,
+        });
       } catch (e) {
         console.warn("requestProfileSync handler failed", e);
       }
