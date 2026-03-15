@@ -850,45 +850,52 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
   // before saving, optionally record current socket avetime if already populated
   // (won't overwrite sample-based value when hook is disabled)
   room.players.forEach((p) => {
-    const currentExp = Number(p.experience) || 0;
-    const currentLevel = Number(p.level) || 1;
     const currentCoins = Number(p.coins) || 0;
     const currentItems = Array.isArray(p.items) ? p.items : [];
 
-    // Prefer saving under the player's persisted DB id (nickname) when available
+    // Ensure we consistently resolve the player by a single unique key.
+    // Prefer nickname (DB key), fall back to socket id when needed.
+    const playerKey =
+      typeof p.nickname === "string" && p.nickname.trim()
+        ? p.nickname.trim()
+        : p.id;
+
     try {
       let sock =
         io.sockets && io.sockets.sockets ? io.sockets.sockets.get(p.id) : null;
-      // If lookup by p.id failed, try to find a socket with matching nickname.
+
+      // If lookup by socket id failed, try to find a socket by nickname or id.
       if (!sock && io.sockets && io.sockets.sockets) {
         try {
           for (const [sid, s] of io.sockets.sockets) {
-            if (s && s.nickname === p.nickname) {
+            if (!s) continue;
+            if (s.nickname === playerKey || s.id === playerKey) {
               sock = s;
               break;
             }
           }
-        } catch (e) {}
+        } catch (e) {
+          /* ignore */
+        }
       }
-      const dbId = sock && sock.nickname ? sock.nickname : p.nickname;
+
+      // If socket exists, ensure room snapshot stays in sync with its latest state.
+      if (sock) {
+        if (typeof sock.experience !== "undefined")
+          p.experience = sock.experience;
+        if (typeof sock.level !== "undefined") p.level = sock.level;
+        if (typeof sock.coins !== "undefined") p.coins = sock.coins;
+        if (Array.isArray(sock.items)) p.items = sock.items;
+      }
+
+      const dbId = (sock && sock.nickname) || p.nickname || p.id;
       const av =
         typeof p.avetime === "number" && p.avetime > 0 ? p.avetime : null;
-      // Prefer the live socket's experience/level if available (keeps
-      // gameplay-updated XP from client). Fall back to room snapshot.
-      const expToSave = Number(
-        sock &&
-          (typeof sock.experience === "number" ||
-            typeof sock.experience === "string")
-          ? Number(sock.experience)
-          : Number(p.experience) || 0,
-      );
-      const levelToSave = Number(
-        sock &&
-          (typeof sock.level === "number" || typeof sock.level === "string")
-          ? Number(sock.level)
-          : Number(p.level) || 1,
-      );
-      console.log("[finalizeGame] save values for", p.nickname, {
+
+      const expToSave = Number(p.experience) || 0;
+      const levelToSave = Number(p.level) || 1;
+
+      console.log("[finalizeGame] save values for", playerKey, {
         expToSave,
         levelToSave,
         sockExists: !!sock,
@@ -898,6 +905,7 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
       console.log(
         `[finalizeGame] calling savePlayer for id=${p.id} nickname=${p.nickname} dbId=${dbId} avetime=${av}`,
       );
+
       savePlayer(
         dbId,
         levelToSave,
