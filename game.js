@@ -2796,6 +2796,15 @@ class LobbyScene extends Phaser.Scene {
       this.myProfile.ratio = Math.round(
         (this.bellStats.correct / this.bellStats.total) * 100,
       );
+    } else if (
+      typeof this.myProfile.ratio === "number" &&
+      Number.isFinite(this.myProfile.ratio) &&
+      this.myProfile.ratio > 0
+    ) {
+      // Fallback: ratio is known (from server) but totals aren't.
+      // Normalize into a base (100 total) so the first correct doesn't jump to 100%.
+      this.bellStats.total = 100;
+      this.bellStats.correct = Math.round(this.myProfile.ratio);
     }
 
     if (
