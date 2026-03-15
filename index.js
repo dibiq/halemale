@@ -246,8 +246,8 @@ async function savePlayer(
       /* 0 is treated as "no value" so we don't wipe existing average */
       avetime = COALESCE(NULLIF(EXCLUDED.avetime::double precision, 0::double precision), players.avetime),
       ratio = COALESCE(EXCLUDED.ratio::double precision, players.ratio),
-      bell_correct = COALESCE(EXCLUDED.bell_correct::integer, players.bell_correct),
-      bell_total = COALESCE(EXCLUDED.bell_total::integer, players.bell_total),
+      bell_correct = COALESCE(NULLIF(EXCLUDED.bell_correct::integer, 0), players.bell_correct),
+      bell_total = COALESCE(NULLIF(EXCLUDED.bell_total::integer, 0), players.bell_total),
       owned_characters = COALESCE($6::jsonb, players.owned_characters),
       current_character = COALESCE($7, players.current_character),
       last_checkin_date = COALESCE($8, players.last_checkin_date),
@@ -1977,6 +1977,8 @@ io.on("connection", (socket) => {
       });
     } else {
       console.log(`⚠️ setNickname - ${socket.nickname} DB 데이터 없음`);
+      socket.bellCorrect = 0;
+      socket.bellTotal = 0;
     }
 
     // server should trust saved level value (client maintains separate remainder XP)
@@ -3614,16 +3616,18 @@ io.on("connection", (socket) => {
       }
     }
 
+    // Do not blindly overwrite bell stats from client payloads, as this can reset
+    // accumulated history during a match. Only accept increases (or initial seeds).
     if (typeof payload.bellCorrect !== "undefined") {
       const bc = Number(payload.bellCorrect);
-      if (!isNaN(bc)) {
+      if (Number.isFinite(bc) && bc > (Number(socket.bellCorrect) || 0)) {
         socket.bellCorrect = bc;
       }
     }
 
     if (typeof payload.bellTotal !== "undefined") {
       const bt = Number(payload.bellTotal);
-      if (!isNaN(bt)) {
+      if (Number.isFinite(bt) && bt > (Number(socket.bellTotal) || 0)) {
         socket.bellTotal = bt;
       }
     }
@@ -4813,8 +4817,8 @@ io.on("connection", (socket) => {
     deck.sort(() => Math.random() - 0.5);
 
     room.isGameStarted = true;
-    // reset bell accuracy stats each game
-    room.bellStats = {};
+    // Do not reset bell accuracy totals here; we want them to persist across matches.
+    // (Each bell press will increment the existing totals.)
     clearTimeAttackTimer(room);
     const hostIndex = room.players.findIndex((p) => p.id === room.host);
     room.turnIndex = hostIndex >= 0 ? hostIndex : 0;
@@ -4838,9 +4842,11 @@ io.on("connection", (socket) => {
       p.openCardStack = [];
       p.isReady = p.isBot ? true : false;
       p.isEliminated = false; // 시작할 때 초기화
-      // initialize per-player bell accuracy stats
+      // initialize per-player bell accuracy stats if missing
       if (!room.bellStats) room.bellStats = {};
-      room.bellStats[p.id] = { correct: 0, total: 0 };
+      if (!room.bellStats[p.id]) {
+        room.bellStats[p.id] = { correct: 0, total: 0 };
+      }
       if (p.isBot) {
         // Keep AI skill similar within a match, with slight variation.
         const variance = 0.95 + Math.random() * 0.1;
