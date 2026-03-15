@@ -2776,6 +2776,21 @@ class LobbyScene extends Phaser.Scene {
       avatarKey: normalizedAvatarKey,
     };
 
+    // keep bell accuracy totals in sync with server persistence
+    if (typeof profile.bellCorrect === "number") {
+      this.bellStats.correct = profile.bellCorrect;
+    }
+    if (typeof profile.bellTotal === "number") {
+      this.bellStats.total = profile.bellTotal;
+    }
+
+    // If bell totals are available, derive ratio from them to ensure continuity
+    if (this.bellStats.total > 0) {
+      this.myProfile.ratio = Math.round(
+        (this.bellStats.correct / this.bellStats.total) * 100,
+      );
+    }
+
     if (
       hasIncomingStats &&
       this.hasReceivedProfileStats &&
@@ -14121,7 +14136,11 @@ class GameScene extends Phaser.Scene {
         this.profileRatioTxt.setText(`정답률: ${ratio}%`);
       }
       try {
-        this.safeSyncInventory("accuracyUpdate", { ratio });
+        this.safeSyncInventory("accuracyUpdate", {
+          ratio,
+          bellCorrect: this.bellStats.correct,
+          bellTotal: this.bellStats.total,
+        });
       } catch (e) {
         /* ignore */
       }

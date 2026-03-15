@@ -147,6 +147,8 @@ async function savePlayer(
   lastCheckinDate = null,
   avetime = null, // new average reaction time; null means "don't update"
   ratio = null, // correct / (correct+wrong) as percentage; null means "don't update"
+  bellCorrect = null, // total correct bell presses (null means "don't update")
+  bellTotal = null, // total bell presses
 ) {
   // Normalize id: if a live socket exists for this id and it has a nickname,
   // prefer the nickname as the DB primary key. This prevents accidental
@@ -193,6 +195,8 @@ async function savePlayer(
       experience,
       avetime,
       ratio,
+      bell_correct,
+      bell_total,
       owned_characters,
       current_character,
       last_checkin_date,
@@ -206,6 +210,8 @@ async function savePlayer(
       $5,
       COALESCE($9::double precision, 0),
       COALESCE($10::double precision, 0),
+      COALESCE($11::integer, 0),
+      COALESCE($12::integer, 0),
       COALESCE($6::jsonb, '[]'::jsonb),
       COALESCE($7, 'player_1'),
       $8,
@@ -220,6 +226,8 @@ async function savePlayer(
       /* 0 is treated as "no value" so we don't wipe existing average */
       avetime = COALESCE(NULLIF(EXCLUDED.avetime::double precision, 0::double precision), players.avetime),
       ratio = COALESCE(EXCLUDED.ratio::double precision, players.ratio),
+      bell_correct = COALESCE(EXCLUDED.bell_correct::integer, players.bell_correct),
+      bell_total = COALESCE(EXCLUDED.bell_total::integer, players.bell_total),
       owned_characters = COALESCE($6::jsonb, players.owned_characters),
       current_character = COALESCE($7, players.current_character),
       last_checkin_date = COALESCE($8, players.last_checkin_date),
@@ -239,6 +247,8 @@ async function savePlayer(
       lastCheckinDate,
       avetime,
       ratio,
+      bellCorrect,
+      bellTotal,
     ]);
     // debug whether this was an insert or update
     if (result && result.command) {
@@ -283,7 +293,17 @@ async function ensurePlayersSchema() {
       ALTER TABLE players
       ADD COLUMN IF NOT EXISTS ratio DOUBLE PRECISION NOT NULL DEFAULT 0;
     `);
-    console.log("✅ players.experience/avetime/ratio 컬럼 확인 완료");
+    await pool.query(`
+      ALTER TABLE players
+      ADD COLUMN IF NOT EXISTS bell_correct INTEGER NOT NULL DEFAULT 0;
+    `);
+    await pool.query(`
+      ALTER TABLE players
+      ADD COLUMN IF NOT EXISTS bell_total INTEGER NOT NULL DEFAULT 0;
+    `);
+    console.log(
+      "✅ players.experience/avetime/ratio/bell_correct/bell_total 컬럼 확인 완료",
+    );
   } catch (err) {
     console.error("❌ players 스키마 확인 에러:", err);
   }
@@ -974,6 +994,25 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
               ? p.ratio
               : null;
 
+      const bellStat =
+        room.bellStats && room.bellStats[p.id] ? room.bellStats[p.id] : null;
+      const bellCorrectToSave =
+        bellStat && Number.isFinite(bellStat.correct)
+          ? bellStat.correct
+          : sock && Number.isFinite(sock.bellCorrect)
+            ? sock.bellCorrect
+            : typeof p.bellCorrect === "number"
+              ? p.bellCorrect
+              : null;
+      const bellTotalToSave =
+        bellStat && Number.isFinite(bellStat.total)
+          ? bellStat.total
+          : sock && Number.isFinite(sock.bellTotal)
+            ? sock.bellTotal
+            : typeof p.bellTotal === "number"
+              ? p.bellTotal
+              : null;
+
       const expToSave = Number(p.experience) || 0;
       const levelToSave = Number(p.level) || 1;
 
@@ -1001,6 +1040,8 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
         null,
         av,
         ratioToSave,
+        bellCorrectToSave,
+        bellTotalToSave,
       ).catch((e) => console.warn("savePlayer game end failed", e));
     } catch (e) {
       console.warn("finalizeGame savePlayer wrapper error", e);
@@ -1014,6 +1055,8 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
       items: currentItems,
       avetime: p.avetime ?? 0,
       ratio: typeof p.ratio === "number" ? p.ratio : 0,
+      bellCorrect: typeof p.bellCorrect === "number" ? p.bellCorrect : 0,
+      bellTotal: typeof p.bellTotal === "number" ? p.bellTotal : 0,
       avatarKey: p.avatarKey || "player_1",
       specialCards: p.specialCards || {},
       owned_characters: p.owned_characters || [],
@@ -1883,6 +1926,8 @@ io.on("connection", (socket) => {
       socket.experience = Number(savedData.experience) || 0;
       socket.avetime = Number(savedData.avetime) || 0;
       socket.ratio = Number(savedData.ratio) || 0;
+      socket.bellCorrect = Number(savedData.bell_correct) || 0;
+      socket.bellTotal = Number(savedData.bell_total) || 0;
       socket.items = parsedItems;
       socket.specialCards = parsedSpecialCards; // 특수카드 할당
       socket.ownedCharacters = normalizeOwnedCharacters(
@@ -1938,8 +1983,10 @@ io.on("connection", (socket) => {
       coins: Number(socket.coins) || 0,
       items: Array.isArray(socket.items) ? socket.items : [],
       experience: Number(socket.experience) || 0,
-      avetime: Number(socket.avetime) || 0,
       ratio: Number(socket.ratio) || 0,
+      bellCorrect: Number(socket.bellCorrect) || 0,
+      bellTotal: Number(socket.bellTotal) || 0,
+      avetime: Number(socket.avetime) || 0,
       avatarKey: socket.currentCharacter || socket.avatarKey || "player_1",
       specialCards: socket.specialCards || {},
       owned_characters: socket.ownedCharacters || ["player_1"],
@@ -3503,6 +3550,20 @@ io.on("connection", (socket) => {
       }
     }
 
+    if (typeof payload.bellCorrect !== "undefined") {
+      const bc = Number(payload.bellCorrect);
+      if (!isNaN(bc)) {
+        socket.bellCorrect = bc;
+      }
+    }
+
+    if (typeof payload.bellTotal !== "undefined") {
+      const bt = Number(payload.bellTotal);
+      if (!isNaN(bt)) {
+        socket.bellTotal = bt;
+      }
+    }
+
     const mergedItems = {
       items: Array.isArray(socket.items) ? socket.items : [],
       specialCards: socket.specialCards || {},
@@ -3519,6 +3580,8 @@ io.on("connection", (socket) => {
       null,
       Number.isFinite(socket.avetime) ? socket.avetime : null,
       Number.isFinite(socket.ratio) ? socket.ratio : null,
+      Number.isFinite(socket.bellCorrect) ? socket.bellCorrect : null,
+      Number.isFinite(socket.bellTotal) ? socket.bellTotal : null,
     );
 
     // If this socket is in a room, update the room's player snapshot so
@@ -3543,6 +3606,14 @@ io.on("connection", (socket) => {
                 typeof socket.coins !== "undefined" ? socket.coins : p.coins,
               ratio:
                 typeof socket.ratio !== "undefined" ? socket.ratio : p.ratio,
+              bellCorrect:
+                typeof socket.bellCorrect !== "undefined"
+                  ? socket.bellCorrect
+                  : p.bellCorrect,
+              bellTotal:
+                typeof socket.bellTotal !== "undefined"
+                  ? socket.bellTotal
+                  : p.bellTotal,
               items: Array.isArray(socket.items) ? socket.items : p.items,
             });
           }
@@ -3658,6 +3729,8 @@ io.on("connection", (socket) => {
       // also restore average reaction time and accuracy ratio from DB
       socket.avetime = Number(savedData.avetime) || 0;
       socket.ratio = Number(savedData.ratio) || 0;
+      socket.bellCorrect = Number(savedData.bell_correct) || 0;
+      socket.bellTotal = Number(savedData.bell_total) || 0;
 
       // items 파싱
       let parsedItems = [];
@@ -3733,6 +3806,8 @@ io.on("connection", (socket) => {
       coins: socket.coins || 0,
       experience: socket.experience || 0,
       ratio: Number(socket.ratio) || 0,
+      bellCorrect: Number(socket.bellCorrect) || 0,
+      bellTotal: Number(socket.bellTotal) || 0,
       avetime: socket.avetime || 0, // ⚠️ keep average speed in room state
       specialCards: socket.specialCards || {},
       items: socket.items || [],
@@ -3760,7 +3835,7 @@ io.on("connection", (socket) => {
       itemMode: rooms[roomId].itemMode,
       gameMode: rooms[roomId].gameMode,
     });
-    // immediately send profile so client has the latest avetime etc
+    // immediately send profile so client has the latest avetime and accuracy totals
     try {
       socket.emit("myProfile", {
         nickname: socket.nickname,
@@ -3769,6 +3844,8 @@ io.on("connection", (socket) => {
         items: Array.isArray(socket.items) ? socket.items : [],
         experience: Number(socket.experience) || 0,
         ratio: Number(socket.ratio) || 0,
+        bellCorrect: Number(socket.bellCorrect) || 0,
+        bellTotal: Number(socket.bellTotal) || 0,
         avetime: Number(socket.avetime) || 0,
         avatarKey: socket.currentCharacter || socket.avatarKey || "player_1",
         specialCards: socket.specialCards || {},
@@ -3868,6 +3945,15 @@ io.on("connection", (socket) => {
       avatarKey,
     });
 
+    // Ensure we persist and reuse accurate bell press totals on reconnects
+    if (room) {
+      room.bellStats = room.bellStats || {};
+      room.bellStats[socket.id] = {
+        correct: Number(socket.bellCorrect) || 0,
+        total: Number(socket.bellTotal) || 0,
+      };
+    }
+
     if (!joinedPlayer) {
       const playerData = {
         id: socket.id,
@@ -3913,6 +3999,8 @@ io.on("connection", (socket) => {
         items: Array.isArray(socket.items) ? socket.items : [],
         experience: Number(socket.experience) || 0,
         ratio: Number(socket.ratio) || 0,
+        bellCorrect: Number(socket.bellCorrect) || 0,
+        bellTotal: Number(socket.bellTotal) || 0,
         avetime: Number(socket.avetime) || 0,
         avatarKey: socket.currentCharacter || socket.avatarKey || "player_1",
         specialCards: socket.specialCards || {},
@@ -3975,6 +4063,9 @@ io.on("connection", (socket) => {
       socket.level = savedData.level || 1;
       socket.coins = savedData.coins || 0;
       socket.experience = savedData.experience || 0;
+      socket.ratio = Number(savedData.ratio) || 0;
+      socket.bellCorrect = Number(savedData.bell_correct) || 0;
+      socket.bellTotal = Number(savedData.bell_total) || 0;
 
       // items 파싱
       let parsedItems = [];
@@ -4015,6 +4106,15 @@ io.on("connection", (socket) => {
       avatarKey,
     });
 
+    // Ensure we persist and reuse accurate bell press totals on reconnects
+    if (room) {
+      room.bellStats = room.bellStats || {};
+      room.bellStats[socket.id] = {
+        correct: Number(socket.bellCorrect) || 0,
+        total: Number(socket.bellTotal) || 0,
+      };
+    }
+
     if (!joinedPlayer) {
       const playerData = {
         id: socket.id,
@@ -4023,6 +4123,9 @@ io.on("connection", (socket) => {
         level: socket.level || 1, // 💡 이 부분 추가
         coins: socket.coins || 0, // 💡 이 부분 추가
         experience: socket.experience || 0,
+        ratio: Number(socket.ratio) || 0,
+        bellCorrect: Number(socket.bellCorrect) || 0,
+        bellTotal: Number(socket.bellTotal) || 0,
         avetime: socket.avetime || 0,
         items: socket.items || [], // 💡 이 부분 추가
         myDeck: [],
@@ -4059,6 +4162,9 @@ io.on("connection", (socket) => {
         coins: Number(socket.coins) || 0,
         items: Array.isArray(socket.items) ? socket.items : [],
         experience: Number(socket.experience) || 0,
+        ratio: Number(socket.ratio) || 0,
+        bellCorrect: Number(socket.bellCorrect) || 0,
+        bellTotal: Number(socket.bellTotal) || 0,
         avetime: Number(socket.avetime) || 0,
         avatarKey: socket.currentCharacter || socket.avatarKey || "player_1",
         specialCards: socket.specialCards || {},
@@ -5468,10 +5574,18 @@ io.on("connection", (socket) => {
 
       // 기록: 벨 정답/오답 통계 (서버측에도 저장하여 게임 종료 시 DB에 반영)
       if (!room.bellStats) room.bellStats = {};
-      if (!room.bellStats[socket.id])
-        room.bellStats[socket.id] = { correct: 0, total: 0 };
+      if (!room.bellStats[socket.id]) {
+        room.bellStats[socket.id] = {
+          correct: Number(socket.bellCorrect) || 0,
+          total: Number(socket.bellTotal) || 0,
+        };
+      }
       room.bellStats[socket.id].correct += 1;
       room.bellStats[socket.id].total += 1;
+
+      // keep socket-level totals in sync so disconnect/save works correctly
+      socket.bellCorrect = (Number(socket.bellCorrect) || 0) + 1;
+      socket.bellTotal = (Number(socket.bellTotal) || 0) + 1;
       io.to(room.roomId).emit("bellResult", {
         success: true,
         winnerId: socket.id,
@@ -5495,8 +5609,14 @@ io.on("connection", (socket) => {
       // 서버측 정확도 통계 업데이트 (틀리면 total++, 정답은 위쪽에서 correct++)
       if (!room.bellStats) room.bellStats = {};
       if (p && p.id) {
-        room.bellStats[p.id] = room.bellStats[p.id] || { correct: 0, total: 0 };
+        room.bellStats[p.id] = room.bellStats[p.id] || {
+          correct: Number(sock.bellCorrect) || 0,
+          total: Number(sock.bellTotal) || 0,
+        };
         room.bellStats[p.id].total += 1;
+
+        // keep socket-side totals in sync for disconnection persistence
+        sock.bellTotal = (Number(sock.bellTotal) || 0) + 1;
       }
 
       // 자동 자물쇠 처리: 패널티 적용 전에 해당 플레이어 소켓에 lock(id=4)이 있으면 소모하고 패널티를 건너뜁니다.
@@ -5754,6 +5874,16 @@ io.on("connection", (socket) => {
           typeof socket.ratio === "number" && socket.ratio >= 0
             ? socket.ratio
             : null;
+        const bellCorrectArg =
+          typeof socket.bellCorrect === "number" &&
+          Number.isFinite(socket.bellCorrect)
+            ? socket.bellCorrect
+            : null;
+        const bellTotalArg =
+          typeof socket.bellTotal === "number" &&
+          Number.isFinite(socket.bellTotal)
+            ? socket.bellTotal
+            : null;
         await savePlayer(
           socket.nickname,
           socket.level || 1,
@@ -5765,6 +5895,8 @@ io.on("connection", (socket) => {
           null,
           avetimeArg,
           ratioArg,
+          bellCorrectArg,
+          bellTotalArg,
         );
 
         console.log(
