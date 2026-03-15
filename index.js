@@ -245,9 +245,43 @@ async function savePlayer(
       experience = EXCLUDED.experience,
       /* 0 is treated as "no value" so we don't wipe existing average */
       avetime = COALESCE(NULLIF(EXCLUDED.avetime::double precision, 0::double precision), players.avetime),
-      ratio = COALESCE(EXCLUDED.ratio::double precision, players.ratio),
-      bell_correct = COALESCE(NULLIF(EXCLUDED.bell_correct::integer, 0), players.bell_correct),
-      bell_total = COALESCE(NULLIF(EXCLUDED.bell_total::integer, 0), players.bell_total),
+      ratio = CASE
+        WHEN (
+          CASE
+            WHEN COALESCE(NULLIF(EXCLUDED.bell_total::integer, 0), 0) > players.bell_total
+            THEN COALESCE(NULLIF(EXCLUDED.bell_total::integer, 0), players.bell_total)
+            ELSE players.bell_total + COALESCE(NULLIF(EXCLUDED.bell_total::integer, 0), 0)
+          END
+        ) > 0
+        THEN ROUND(
+          (
+            CASE
+              WHEN COALESCE(NULLIF(EXCLUDED.bell_correct::integer, 0), 0) > players.bell_correct
+              THEN COALESCE(NULLIF(EXCLUDED.bell_correct::integer, 0), players.bell_correct)
+              ELSE players.bell_correct + COALESCE(NULLIF(EXCLUDED.bell_correct::integer, 0), 0)
+            END
+          )::double precision
+            /
+          (
+            CASE
+              WHEN COALESCE(NULLIF(EXCLUDED.bell_total::integer, 0), 0) > players.bell_total
+              THEN COALESCE(NULLIF(EXCLUDED.bell_total::integer, 0), players.bell_total)
+              ELSE players.bell_total + COALESCE(NULLIF(EXCLUDED.bell_total::integer, 0), 0)
+            END
+          )
+        ) * 100
+        ELSE COALESCE(EXCLUDED.ratio::double precision, players.ratio)
+      END,
+      bell_correct = CASE
+        WHEN COALESCE(NULLIF(EXCLUDED.bell_correct::integer, 0), 0) > players.bell_correct
+        THEN COALESCE(NULLIF(EXCLUDED.bell_correct::integer, 0), players.bell_correct)
+        ELSE players.bell_correct + COALESCE(NULLIF(EXCLUDED.bell_correct::integer, 0), 0)
+      END,
+      bell_total = CASE
+        WHEN COALESCE(NULLIF(EXCLUDED.bell_total::integer, 0), 0) > players.bell_total
+        THEN COALESCE(NULLIF(EXCLUDED.bell_total::integer, 0), players.bell_total)
+        ELSE players.bell_total + COALESCE(NULLIF(EXCLUDED.bell_total::integer, 0), 0)
+      END,
       owned_characters = COALESCE($6::jsonb, players.owned_characters),
       current_character = COALESCE($7, players.current_character),
       last_checkin_date = COALESCE($8, players.last_checkin_date),
