@@ -8513,11 +8513,50 @@ class GameScene extends Phaser.Scene {
     // make sure the react-time display stays in sync as well
     if (this.profileReactTxt && typeof this.profileReactTxt.setText === "function") {
       const avgVal = this.computeAvgReaction().toFixed(2);
-      this.profileReactTxt.setText(`Avg: ${avgVal}s`);
+      this.profileReactTxt.setText(`반응속도: ${avgVal}s`);
     }
     if (this.profileRatioTxt && typeof this.profileRatioTxt.setText === "function") {
+      const prevRatioVal = Number(prev.ratio) || 0;
       const ratioVal = Number(this.myProfile.ratio) || 0;
-      this.profileRatioTxt.setText(`정답률: ${ratioVal}%`);
+      const oldText = this.profileRatioTxt.text;
+      const newText = `정답률: ${ratioVal}%`;
+      if (oldText !== newText) {
+        this.profileRatioTxt.setText(newText);
+
+        // 색상 변경: 상승=빨 red, 하락=파 blue, 유지=white
+        let color = "#ffffff";
+        if (ratioVal > prevRatioVal) {
+          color = "#ff4d4d";
+        } else if (ratioVal < prevRatioVal) {
+          color = "#4da6ff";
+        }
+        try {
+          if (color !== "#ffffff") {
+            this.profileRatioTxt.setColor(color);
+            setTimeout(() => {
+              if (this.profileRatioTxt && typeof this.profileRatioTxt.setColor === "function") {
+                this.profileRatioTxt.setColor("#ffffff");
+              }
+            }, 550);
+          }
+        } catch (e) {
+          // ignore
+        }
+
+        // Animate to highlight the change
+        try {
+          this.tweens.add({
+            targets: this.profileRatioTxt,
+            scaleX: 1.15,
+            scaleY: 1.15,
+            duration: 140,
+            yoyo: true,
+            ease: "Sine.easeOut",
+          });
+        } catch (e) {
+          // ignore if tween not available
+        }
+      }
     }
 
     // combine with lobby-style text if present (rare inside GameScene but safe)
@@ -9096,67 +9135,90 @@ class GameScene extends Phaser.Scene {
       const bg = this.add
         .rectangle(0, 0, cardW, cardH, 0x000000, 0.6)
         .setStrokeStyle(2, 0xffffff);
+
+      // layout helpers
+      const padding = Math.max(cardW * 0.06, 10);
+      const leftX = -cardW / 2 + padding;
+      const levelY = -cardH * 0.28;
+      const expBarY = levelY + cardH * 0.18;
+
+      // level text (top)
       const levelTxt = this.add
-        .text(0, -cardH * 0.28, `Lv ${this.myProfile?.level || 1}`, {
+        .text(leftX, levelY, `Lv ${this.myProfile?.level || 1}`, {
           fontFamily: "Jua",
-          fontSize: `${cardH * 0.16}px`,
+          fontSize: `${cardH * 0.14}px`,
           color: "#f1c40f",
         })
-        .setOrigin(0.5, 0.5);
+        .setOrigin(0, 0.5);
       // keep reference for later updates
       this.profileLevelTxt = levelTxt;
 
-      // experience bar centered in profile card
       const currentExp = Number(this.myProfile?.experience || 0);
       const expRatio = (currentExp % XP_PER_LEVEL) / XP_PER_LEVEL;
       const expBarWidth = cardW * 0.7;
       const expBarHeight = cardH * 0.11;
-      const expY = 0;
+      const expBarX = leftX;
+
       const expBg = this.add.graphics();
       expBg.fillStyle(0x555555, 1);
-      expBg.fillRoundedRect(-expBarWidth / 2, expY - expBarHeight / 2, expBarWidth, expBarHeight, 6);
+      expBg.fillRoundedRect(
+        expBarX,
+        expBarY - expBarHeight / 2,
+        expBarWidth,
+        expBarHeight,
+        6,
+      );
       expBg.setDepth(1);
+
       const expFill = this.add.graphics();
       expFill.fillStyle(0x2ecc71, 1);
-      expFill.fillRoundedRect(-expBarWidth / 2, expY - expBarHeight / 2, expBarWidth * expRatio, expBarHeight, 6);
+      expFill.fillRoundedRect(
+        expBarX,
+        expBarY - expBarHeight / 2,
+        expBarWidth * expRatio,
+        expBarHeight,
+        6,
+      );
       expFill.setDepth(1);
+
       const expTxt = this.add
-        .text(0, expY, `EXP ${currentExp % XP_PER_LEVEL}/${XP_PER_LEVEL}`, {
+        .text(expBarX + expBarWidth * 0.05, expBarY, `EXP ${currentExp % XP_PER_LEVEL}/${XP_PER_LEVEL}`, {
           fontFamily: "Jua",
-          fontSize: `${cardH * 0.095}px`,
+          fontSize: `${cardH * 0.09}px`,
           color: "#ffffff",
         })
-        .setOrigin(0.5, 0.5);
+        .setOrigin(0, 0.5);
       this.profileExpBarBg = expBg;
       this.profileExpBarFill = expFill;
       this.profileExpText = expTxt;
 
       // store layout for consistent updates (prevents misalignment)
       this.profileExpBarLayout = {
-        x: -expBarWidth / 2,
-        y: expY - expBarHeight / 2,
+        x: expBarX,
+        y: expBarY - expBarHeight / 2,
         width: expBarWidth,
         height: expBarHeight,
       };
 
-      // display average reaction time (use samples if available)
+      // display average reaction time (Avg) and accuracy (정답률)
       const avgRaw = this.computeAvgReaction();
       const avg = avgRaw.toFixed(2);
       const reactTxt = this.add
-        .text(0, cardH * 0.25, `Avg: ${avg}s`, {
+        .text(leftX, cardH * 0.06, `반응속도: ${avg}s`, {
           fontFamily: "Jua",
-          fontSize: `${cardH * 0.12}px`,
+          fontSize: `${cardH * 0.13}px`,
           color: "#ffffff",
         })
-        .setOrigin(0.5);
+        .setOrigin(0, 0.5);
       const ratio = Number(this.myProfile?.ratio ?? 0) || 0;
       const ratioTxt = this.add
-        .text(0, cardH * 0.375, `정답률: ${ratio}%`, {
+        .text(leftX, cardH * 0.22, `정답률: ${ratio}%`, {
           fontFamily: "Jua",
-          fontSize: `${cardH * 0.095}px`,
+          fontSize: `${cardH * 0.13}px`,
           color: "#ffffff",
         })
-        .setOrigin(0.5);
+        .setOrigin(0, 0.5);
+
       card.add([bg, levelTxt, expBg, expFill, expTxt, reactTxt, ratioTxt]);
       this.profileCard = card;
       // keep reference to react/ratio text for updates
@@ -9840,12 +9902,56 @@ class GameScene extends Phaser.Scene {
             this.bellStats = { correct, total };
             const ratio = total > 0 ? Math.round((correct / total) * 100) : 0;
             this.myProfile = this.myProfile || {};
+            const prevRatioVal = Number(this.myProfile.ratio || 0);
             this.myProfile.ratio = ratio;
             if (
               this.profileRatioTxt &&
               typeof this.profileRatioTxt.setText === "function"
             ) {
-              this.profileRatioTxt.setText(`정답률: ${ratio}%`);
+              const oldText = this.profileRatioTxt.text;
+              const newText = `정답률: ${ratio}%`;
+              if (oldText !== newText) {
+                this.profileRatioTxt.setText(newText);
+
+                // 색상 애니메이션: 상승=빨강, 하락=파랑
+                let highlightColor = "#ffffff";
+                if (ratio > prevRatioVal) {
+                  highlightColor = "#ff4d4d";
+                } else if (ratio < prevRatioVal) {
+                  highlightColor = "#4da6ff";
+                }
+
+                try {
+                  this.tweens.killTweensOf(this.profileRatioTxt);
+                  if (this._ratioColorTimeout) {
+                    clearTimeout(this._ratioColorTimeout);
+                    this._ratioColorTimeout = null;
+                  }
+                  this.profileRatioTxt.setScale(1);
+                  if (highlightColor !== "#ffffff") {
+                    this.profileRatioTxt.setColor(highlightColor);
+                    this._ratioColorTimeout = setTimeout(() => {
+                      if (
+                        this.profileRatioTxt &&
+                        typeof this.profileRatioTxt.setColor === "function"
+                      ) {
+                        this.profileRatioTxt.setColor("#ffffff");
+                      }
+                      this._ratioColorTimeout = null;
+                    }, 550);
+                  }
+                  this.tweens.add({
+                    targets: this.profileRatioTxt,
+                    scaleX: 1.15,
+                    scaleY: 1.15,
+                    duration: 140,
+                    yoyo: true,
+                    ease: "Sine.easeOut",
+                  });
+                } catch (e) {
+                  // ignore if tweens unavailable
+                }
+              }
             }
             if (typeof socket !== "undefined" && socket.profile) {
               socket.profile.bellCorrect = correct;
@@ -14107,7 +14213,8 @@ class GameScene extends Phaser.Scene {
       }
 
       // 경험치 획득 애니메이션 (progress bar + floating text)
-      this.scheduleExpGainAnimation(xpGain);
+      // 항상 트윈/텍스트를 시도해서 보이지 않는 경우가 없도록 함.
+      this.playExpGainAnimation(xpGain);
 
       // 떠오르는 +N XP 텍스트
       try {
@@ -14216,7 +14323,49 @@ class GameScene extends Phaser.Scene {
       this.myProfile = this.myProfile || {};
       this.myProfile.ratio = ratio;
       if (this.profileRatioTxt && typeof this.profileRatioTxt.setText === "function") {
-        this.profileRatioTxt.setText(`정답률: ${ratio}%`);
+        const oldText = this.profileRatioTxt.text;
+        const newText = `정답률: ${ratio}%`;
+        if (oldText !== newText) {
+          this.profileRatioTxt.setText(newText);
+
+          // color animation: rise=red, fall=blue, then reset to white
+          const prevRatio = Number(this.myProfile.ratio ?? 0);
+          const currentRatio = Number(ratio);
+          let highlightColor = "#ffffff";
+          if (currentRatio > prevRatio) {
+            highlightColor = "#ff4d4d"; // 상승: 빨간
+          } else if (currentRatio < prevRatio) {
+            highlightColor = "#4da6ff"; // 하락: 파랑
+          }
+          try {
+            // kill previous tweens/timeouts so we can always re-run
+            this.tweens.killTweensOf(this.profileRatioTxt);
+            if (this._ratioColorTimeout) {
+              clearTimeout(this._ratioColorTimeout);
+              this._ratioColorTimeout = null;
+            }
+            this.profileRatioTxt.setScale(1);
+            if (highlightColor !== "#ffffff") {
+              this.profileRatioTxt.setColor(highlightColor);
+              this._ratioColorTimeout = setTimeout(() => {
+                if (this.profileRatioTxt && typeof this.profileRatioTxt.setColor === "function") {
+                  this.profileRatioTxt.setColor("#ffffff");
+                }
+                this._ratioColorTimeout = null;
+              }, 550);
+            }
+            this.tweens.add({
+              targets: this.profileRatioTxt,
+              scaleX: 1.15,
+              scaleY: 1.15,
+              duration: 140,
+              yoyo: true,
+              ease: "Sine.easeOut",
+            });
+          } catch (e) {
+            // ignore if tweens are unavailable
+          }
+        }
       }
 
       // do not sync bell stats constantly from the client; the server is
@@ -14298,11 +14447,11 @@ class GameScene extends Phaser.Scene {
 
       this.tweens.add({
         targets: txt,
-        y: baseY - 40,
+        y: baseY - 60,
         alpha: 0,
         scale: { from: 1, to: 1.25 },
-        duration: 900,
-        ease: "Power1",
+        duration: 1600,
+        ease: "Sine.easeOut",
         onComplete: () => {
           try {
             txt.destroy();
