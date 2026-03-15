@@ -8456,7 +8456,7 @@ class GameScene extends Phaser.Scene {
     }
 
     // make sure the react-time display stays in sync as well
-    if (this.profileReactTxt && this.profileReactTxt.active) {
+    if (this.profileReactTxt && typeof this.profileReactTxt.setText === "function") {
       const avgVal = this.computeAvgReaction().toFixed(2);
       this.profileReactTxt.setText(`Avg: ${avgVal}s`);
     }
@@ -8473,20 +8473,34 @@ class GameScene extends Phaser.Scene {
     if (this.profileExpBarFill && this.profileExpText) {
       const currentExp = this.myProfile.experience % XP_PER_LEVEL;
       const expRatio = currentExp / XP_PER_LEVEL;
-      const { width } = this.cameras.main;
-      const profileSize = width * 0.2;
-      const expBarWidth = profileSize * 0.9;
-      const expBarHeight = width * 0.032;
-      const statY = profileSize * 1.18;
-      const expBarCenterX = profileSize * 0.4;
+
+      const layout = this.profileExpBarLayout;
+      let x = 0;
+      let y = 0;
+      let width = 0;
+      let height = 0;
+
+      if (layout && typeof layout === "object") {
+        x = layout.x;
+        y = layout.y;
+        width = layout.width;
+        height = layout.height;
+      } else {
+        const { width: screenW } = this.cameras.main;
+        const profileSize = screenW * 0.2;
+        width = profileSize * 0.9;
+        height = screenW * 0.032;
+        y = profileSize * 1.18 - height / 2;
+        x = profileSize * 0.4 - width / 2;
+      }
 
       this.profileExpBarFill.clear();
       this.profileExpBarFill.fillStyle(0x2ecc71, 1);
       this.profileExpBarFill.fillRoundedRect(
-        expBarCenterX - expBarWidth / 2,
-        statY - expBarHeight / 2,
-        expBarWidth * expRatio,
-        expBarHeight,
+        x,
+        y,
+        width * expRatio,
+        height,
         8,
       );
 
@@ -8950,6 +8964,20 @@ class GameScene extends Phaser.Scene {
   async create() {
     // GameScene의 init 혹은 create 상단에 추가
     const gameScene = this;
+
+    // Ensure legacy code paths do not crash when the prototype method is missing.
+    // (Some builds may drop method definitions due to bundling or reset.)
+    if (typeof this.isPlayerAi !== "function") {
+      this.isPlayerAi = (playerId) => {
+        if (!playerId) return false;
+        if (Array.isArray(this.roundData?.players)) {
+          const p = this.roundData.players.find((x) => x && x.id === playerId);
+          if (p && typeof p.isBot === "boolean") return !!p.isBot;
+        }
+        return typeof playerId === "string" && (/^AI_/i.test(playerId) || /^AI_BOT_/i.test(playerId) || playerId.startsWith("AI_BOT_"));
+      };
+    }
+
     // Local helper (closure) to reliably detect AI ids inside socket callbacks
     const isPlayerAiLocal = (playerId) => {
       try {
@@ -9009,49 +9037,15 @@ class GameScene extends Phaser.Scene {
       const bg = this.add
         .rectangle(0, 0, cardW, cardH, 0x000000, 0.6)
         .setStrokeStyle(2, 0xffffff);
-      let avatarKey = this.getSelectedAvatarKey();
-      let avatarTex = this.getAvatarDisplayKey(avatarKey) || avatarKey;
-      if (!this.textures.exists(avatarTex)) avatarTex = "player_1_frame_1";
-      const avatar = this.add
-        .sprite(-cardW * 0.35, 0, avatarTex)
-        .setDisplaySize(cardH * 0.8, cardH * 0.8);
-      // stack text vertically on the left of the card (shifted right)
-      const textOffsetX = -cardW * 0.1; // moved closer to center
-      const nameTxt = this.add
-        .text(textOffsetX, -cardH * 0.25, this.myProfile?.nickname || "", {
+      const levelTxt = this.add
+        .text(0, -cardH * 0.25, `Lv ${this.myProfile?.level || 1}`, {
           fontFamily: "Jua",
           fontSize: `${cardH * 0.16}px`,
-          color: "#ffffff",
+          color: "#f1c40f",
         })
-        .setOrigin(0, 0.5);
-      const levelTxt = this.add
-        .text(
-          textOffsetX,
-          -cardH * 0.05,
-          `Lv ${this.myProfile?.level || 1}`,
-          {
-            fontFamily: "Jua",
-            fontSize: `${cardH * 0.14}px`,
-            color: "#f1c40f",
-          },
-        )
-        .setOrigin(0, 0.5);
-      const coinsTxt = this.add
-        .text(
-          textOffsetX,
-          cardH * 0.15,
-          `Coins: ${this.myProfile?.coins || 0}`,
-          {
-            fontFamily: "Jua",
-            fontSize: `${cardH * 0.13}px`,
-            color: "#00ffcc",
-          },
-        )
-        .setOrigin(0, 0.5);
-      // keep references for later updates
-      this.profileNameTxt = nameTxt;
+        .setOrigin(0.5, 0.5);
+      // keep reference for later updates
       this.profileLevelTxt = levelTxt;
-      this.profileCoinsTxt = coinsTxt;
 
       // experience bar below coins
       const currentExp = Number(this.myProfile?.experience || 0);
@@ -9078,6 +9072,14 @@ class GameScene extends Phaser.Scene {
       this.profileExpBarFill = expFill;
       this.profileExpText = expTxt;
 
+      // store layout for consistent updates (prevents misalignment)
+      this.profileExpBarLayout = {
+        x: -expBarWidth / 2,
+        y: expY - expBarHeight / 2,
+        width: expBarWidth,
+        height: expBarHeight,
+      };
+
       // display average reaction time (use samples if available)
       const avgRaw = this.computeAvgReaction();
       const avg = avgRaw.toFixed(2);
@@ -9088,7 +9090,7 @@ class GameScene extends Phaser.Scene {
           color: "#ffffff",
         })
         .setOrigin(0.5);
-      card.add([bg, avatar, nameTxt, levelTxt, coinsTxt, expBg, expFill, expTxt, reactTxt]);
+      card.add([bg, levelTxt, expBg, expFill, expTxt, reactTxt]);
       this.profileCard = card;
       // keep reference to react text for updates
       this.profileReactTxt = reactTxt;
@@ -9096,7 +9098,9 @@ class GameScene extends Phaser.Scene {
       if (typeof this.updateMyProfileUI === 'function') {
         this.updateMyProfileUI();
       }
-   
+      // flush any pending exp gain animations (if xp was earned before the UI was ready)
+      this.flushPendingExpGainAnimations();
+
       // make visible once repositioned (if deck already exists it will happen immediately)
       if (this.myDeckSprite && typeof this.repositionProfileCard === 'function') {
         this.repositionProfileCard();
@@ -13991,22 +13995,8 @@ class GameScene extends Phaser.Scene {
         this.updateMyProfileUI();
       }
 
-      // 경험치 바 강조 애니메이션 (간단한 스케일 펄스)
-      try {
-        if (this.profileExpBarFill) {
-          this.tweens.killTweensOf(this.profileExpBarFill);
-          this.profileExpBarFill.setScale(1, 1);
-          this.tweens.add({
-            targets: this.profileExpBarFill,
-            scaleX: 1.06,
-            duration: 300,
-            yoyo: true,
-            ease: "Sine.easeOut",
-          });
-        }
-      } catch (e) {
-        /* ignore animation errors */
-      }
+      // 경험치 획득 애니메이션 (progress bar + floating text)
+      this.scheduleExpGainAnimation(xpGain);
 
       // 떠오르는 +N XP 텍스트
       try {
@@ -14066,7 +14056,105 @@ class GameScene extends Phaser.Scene {
     }
   }
 
+  playExpGainAnimation(xpGain) {
+    // highlight and pulse the exp bar
+    const hasBar = this.profileExpBarFill && this.profileExpText;
+    if (hasBar) {
+      try {
+        this.tweens.killTweensOf(this.profileExpBarFill);
+        this.tweens.add({
+          targets: this.profileExpBarFill,
+          alpha: { from: 1, to: 0.4 },
+          duration: 220,
+          yoyo: true,
+          repeat: 1,
+          ease: "Sine.easeInOut",
+        });
+      } catch (e) {
+        /* ignore */
+      }
+    }
+
+    // floating text feedback (uses bar position if available)
+    try {
+      const baseX = hasBar
+        ? this.profileExpText.x
+        : this.cameras.main.width * 0.5;
+      const baseY = hasBar
+        ? this.profileExpText.y - 10
+        : this.cameras.main.height * 0.15;
+
+      const txt = this.add
+        .text(baseX, baseY, `+${xpGain} XP`, {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${this.cameras.main.width * 0.032}px`,
+          color: "#ffffff",
+          stroke: "#000000",
+          strokeThickness: 4,
+          fontWeight: "bold",
+        })
+        .setOrigin(0.5)
+        .setDepth(12050);
+
+      this.tweens.add({
+        targets: txt,
+        y: baseY - 40,
+        alpha: 0,
+        duration: 900,
+        ease: "Power1",
+        onComplete: () => {
+          try {
+            txt.destroy();
+          } catch (e) {}
+        },
+      });
+    } catch (e) {
+      /* ignore */
+    }
+
+    // If EXP bar isn't available (e.g., profile panel not shown yet), ensure
+    // player still sees feedback via a toast.
+    if (!hasBar) {
+      try {
+        this.showToast(`+${xpGain} XP`, "#2ecc71");
+      } catch (e) {
+        /* ignore */
+      }
+    }
+  }
+
+  scheduleExpGainAnimation(xpGain) {
+    if (!Number.isFinite(xpGain) || xpGain <= 0) return;
+
+    if (this.profileExpBarFill) {
+      this.playExpGainAnimation(xpGain);
+      return;
+    }
+
+    if (!Array.isArray(this._pendingExpGainAnimations)) {
+      this._pendingExpGainAnimations = [];
+    }
+    this._pendingExpGainAnimations.push(xpGain);
+  }
+
+  flushPendingExpGainAnimations() {
+    if (!Array.isArray(this._pendingExpGainAnimations) || !this._pendingExpGainAnimations.length) {
+      return;
+    }
+    const pending = [...this._pendingExpGainAnimations];
+    this._pendingExpGainAnimations = [];
+    pending.forEach((xpGain) => {
+      try {
+        this.playExpGainAnimation(xpGain);
+      } catch (e) {
+        console.warn("flushPendingExpGainAnimations failed", e);
+      }
+    });
+  }
+
   updateTutorialPointer(pointerKey) {
+
+
     if (!this.tutorialState) return;
 
     if (!Array.isArray(this.tutorialState.pointerObjects)) {
