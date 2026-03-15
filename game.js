@@ -2777,11 +2777,18 @@ class LobbyScene extends Phaser.Scene {
     };
 
     // keep bell accuracy totals in sync with server persistence
-    if (typeof profile.bellCorrect === "number") {
-      this.bellStats.correct = profile.bellCorrect;
+    if (!this.bellStats) {
+      this.bellStats = { correct: 0, total: 0 };
     }
-    if (typeof profile.bellTotal === "number") {
-      this.bellStats.total = profile.bellTotal;
+
+    // allow string/number (socket.io sometimes serializes numbers as strings)
+    const parsedCorrect = Number(profile.bellCorrect);
+    if (Number.isFinite(parsedCorrect)) {
+      this.bellStats.correct = parsedCorrect;
+    }
+    const parsedTotal = Number(profile.bellTotal);
+    if (Number.isFinite(parsedTotal)) {
+      this.bellStats.total = parsedTotal;
     }
 
     // If bell totals are available, derive ratio from them to ensure continuity
