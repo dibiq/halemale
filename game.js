@@ -785,28 +785,45 @@ class LobbyScene extends Phaser.Scene {
       ? `${VERSION}&p2=20260227_1`
       : "?p2=20260227_1";
 
-    this.load.image(
-      "popupclose",
-      `${ASSET_SERVER}/images/popupclose.png${VERSION}`,
-    );
-
+    //Main Resources
     for (let i = 1; i <= 47; i += 1) {
       this.load.image(
         `mainbg_frame_${i}`,
         `assets/images/bg_sprite/${i}.png${VERSION}`,
       );
     }
-
-    this.load.image("gamebg", `${ASSET_SERVER}/images/gamebg.png${VERSION}`);
-    this.load.image(
-      "invitebg",
-      `${ASSET_SERVER}/images/invitebg.png${VERSION}`,
-    );
     this.load.image("coin", `${ASSET_SERVER}/images/coin.png${VERSION}`);
     this.load.image("exp", `${ASSET_SERVER}/images/exp.png${VERSION}`);
     this.load.image(
       "statusbg",
       `${ASSET_SERVER}/images/statusbg.png${VERSION}`,
+    );
+
+    this.load.image(
+      "profilebg",
+      `${ASSET_SERVER}/images/profilebg.png${VERSION}`,
+    );
+
+    this.load.image("soundon", `${ASSET_SERVER}/images/soundon.png${VERSION}`);
+
+    this.load.image(
+      "soundoff",
+      `${ASSET_SERVER}/images/soundoff.png${VERSION}`,
+    );
+
+    this.load.audio("bgm", `${ASSET_SERVER}/sounds/bg.mp3${VERSION}`);
+
+
+    //Not Main Resources
+    this.load.image(
+      "popupclose",
+      `${ASSET_SERVER}/images/popupclose.png${VERSION}`,
+    ); 
+
+    this.load.image("gamebg", `${ASSET_SERVER}/images/gamebg.png${VERSION}`);
+    this.load.image(
+      "invitebg",
+      `${ASSET_SERVER}/images/invitebg.png${VERSION}`,
     );
 
     this.load.image("roombg", `${ASSET_SERVER}/images/roombg.png${VERSION}`);
@@ -904,10 +921,7 @@ class LobbyScene extends Phaser.Scene {
     this.load.image("uibtn", `${ASSET_SERVER}/images/ui_btn.png${VERSION}`);
     this.load.image("ui_btn", `${ASSET_SERVER}/images/ui_btn.png${VERSION}`);
     this.load.image("btnbg", `${ASSET_SERVER}/images/btnbg.png${VERSION}`);
-    this.load.image(
-      "profilebg",
-      `${ASSET_SERVER}/images/profilebg.png${VERSION}`,
-    );
+
 
     this.load.image("slide", `${ASSET_SERVER}/images/slide.png${VERSION}`);
     this.load.image("storebg", `${ASSET_SERVER}/images/storebg.png${VERSION}`);
@@ -944,18 +958,10 @@ class LobbyScene extends Phaser.Scene {
       "resultbg",
       `${ASSET_SERVER}/images/resultbg.png${VERSION}`,
     );
-    this.load.image("soundon", `${ASSET_SERVER}/images/soundon.png${VERSION}`);
-    this.load.image(
-      "soundoff",
-      `${ASSET_SERVER}/images/soundoff.png${VERSION}`,
-    );
-    //this.load.image("popupbg", `${ASSET_SERVER}/images/popupbg.png${VERSION}`);
+
     this.load.image("home", `${ASSET_SERVER}/images/home.png${VERSION}`);
 
-    // ============================================
-    // 1. 할리갈리 카드 에셋 로드 (반복문)
-    // ============================================
-    const fruits = ["strawberry", "banana", "lime", "plum"];
+      const fruits = ["strawberry", "banana", "lime", "plum"];
     fruits.forEach((fruit) => {
       for (let count = 1; count <= 5; count++) {
         // 키 형식: strawberry_1, banana_5 등
@@ -972,12 +978,9 @@ class LobbyScene extends Phaser.Scene {
       `${ASSET_SERVER}/images/cards/card_back.png${VERSION}`,
     );
 
-    // ============================================
-    // 2. 할리갈리 UI 에셋 로드
-    // ============================================
+ 
     this.load.image("bell", `${ASSET_SERVER}/images/bell.png${VERSION}`);
 
-    this.load.audio("bgm", `${ASSET_SERVER}/sounds/bg.mp3${VERSION}`);
     this.load.audio("pop", `${ASSET_SERVER}/sounds/pop.wav${VERSION}`);
     this.load.audio("bell", `${ASSET_SERVER}/sounds/bell.mp3${VERSION}`);
     this.load.audio("effect", `${ASSET_SERVER}/sounds/effect.mp3${VERSION}`);
@@ -995,6 +998,205 @@ class LobbyScene extends Phaser.Scene {
       "gameover",
       `${ASSET_SERVER}/sounds/gameover.mp3${VERSION}`,
     );
+    //Not Main Resources End
+
+    // Note: assets above marked as "Not Main Resources" are intended to be loaded
+    // after the main screen is shown to reduce initial load time.
+    this._deferredAssetsLoaded = false;
+    this.loadDeferredAssets = () => {
+      if (this._deferredAssetsLoaded) return;
+      this._deferredAssetsLoaded = true;
+
+      this.load.once("complete", () => {
+        console.log("[Load] deferred assets loaded");
+      });
+
+      // Not Main Resources (deferred)
+      this.load.image(
+        "popupclose",
+        `${ASSET_SERVER}/images/popupclose.png${VERSION}`,
+      );
+
+      this.load.image("gamebg", `${ASSET_SERVER}/images/gamebg.png${VERSION}`);
+      this.load.image(
+        "invitebg",
+        `${ASSET_SERVER}/images/invitebg.png${VERSION}`,
+      );
+
+      this.load.image("roombg", `${ASSET_SERVER}/images/roombg.png${VERSION}`);
+      this.load.image("chatbg", `${ASSET_SERVER}/images/chatbg.png${VERSION}`);
+      this.load.image(
+        "playerbg",
+        `${ASSET_SERVER}/images/playerbg.png${VERSION}`,
+      );
+
+      this.load.image("multbg", `${ASSET_SERVER}/images/multbg.png${VERSION}`);
+
+      this.load.image(
+        "ton_img",
+        `${ASSET_SERVER}/images/cards/special/ton.png${VERSION}`,
+      );
+
+      this.load.image(
+        "thun_img",
+        `${ASSET_SERVER}/images/cards/special/thun.png${VERSION}`,
+      );
+
+      this.load.image(
+        "bomb_img",
+        `${ASSET_SERVER}/images/cards/special/bomb.png${VERSION}`,
+      );
+
+      this.load.image(
+        "coincard",
+        `${ASSET_SERVER}/images/cards/special/ongame_coin.png${VERSION}`,
+      );
+      this.load.image(
+        "thun",
+        `${ASSET_SERVER}/images/cards/special/ongame_thun.png${VERSION}`,
+      );
+      this.load.image(
+        "bomb",
+        `${ASSET_SERVER}/images/cards/special/ongame_bomb.png${VERSION}`,
+      );
+      this.load.image(
+        "ton",
+        `${ASSET_SERVER}/images/cards/special/ongame_ton.png${VERSION}`,
+      );
+
+      this.load.image(
+        "pen",
+        `${ASSET_SERVER}/images/cards/special/ongame_pen.png${VERSION}`,
+      );
+
+      this.load.image(
+        "plus1",
+        `${ASSET_SERVER}/images/cards/special/ongame_plus1.png${VERSION}`,
+      );
+
+      this.load.image(
+        "plus2",
+        `${ASSET_SERVER}/images/cards/special/ongame_plus2.png${VERSION}`,
+      );
+
+      this.load.image(
+        "not5",
+        `${ASSET_SERVER}/images/cards/special/ongame_not5.png${VERSION}`,
+      );
+
+      this.load.image(
+        "lock",
+        `${ASSET_SERVER}/images/cards/special/lock.png${VERSION}`,
+      );
+
+      this.load.image(
+        "shield",
+        `${ASSET_SERVER}/images/cards/special/shield.png${VERSION}`,
+      );
+
+      this.load.image(
+        "block",
+        `${ASSET_SERVER}/images/cards/special/block.png${VERSION}`,
+      );
+
+      this.load.image(
+        "blockcard",
+        `${ASSET_SERVER}/images/cards/special/blockcard.png${VERSION}`,
+      );
+
+      this.load.image(
+        "thief",
+        `${ASSET_SERVER}/images/cards/special/thief.png${VERSION}`,
+      );
+
+      this.load.image(
+        "king",
+        `${ASSET_SERVER}/images/cards/special/king.png${VERSION}`,
+      );
+
+      this.load.image("itembg", `${ASSET_SERVER}/images/itembg.png${VERSION}`);
+      this.load.image("uibtn", `${ASSET_SERVER}/images/ui_btn.png${VERSION}`);
+      this.load.image("ui_btn", `${ASSET_SERVER}/images/ui_btn.png${VERSION}`);
+      this.load.image("btnbg", `${ASSET_SERVER}/images/btnbg.png${VERSION}`);
+
+      this.load.image("slide", `${ASSET_SERVER}/images/slide.png${VERSION}`);
+      this.load.image("storebg", `${ASSET_SERVER}/images/storebg.png${VERSION}`);
+
+      for (let i = 1; i <= 91; i += 1) {
+        this.load.image(
+          `player_1_frame_${i}`,
+          `assets/images/player_1_sprite/${i}.png${PLAYER1_SPRITE_VERSION}`,
+        );
+      }
+
+      for (let i = 1; i <= 91; i += 1) {
+        this.load.image(
+          `player_2_frame_${i}`,
+          `assets/images/player_2_sprite/${i}.png${PLAYER2_SPRITE_VERSION}`,
+        );
+      }
+
+      // 플레이어 애니메이션용 이미지
+      this.load.image(`${ASSET_SERVER}/images/player_3_1.png${VERSION}`);
+      this.load.image(
+        "player_3_2",
+        `${ASSET_SERVER}/images/player_3_2.png${VERSION}`,
+      );
+      this.load.image(
+        "player_4_1",
+        `${ASSET_SERVER}/images/player_4_1.png${VERSION}`,
+      );
+      this.load.image(
+        "player_4_2",
+        `${ASSET_SERVER}/images/player_4_2.png${VERSION}`,
+      );
+      this.load.image(
+        "resultbg",
+        `${ASSET_SERVER}/images/resultbg.png${VERSION}`,
+      );
+
+      this.load.image("home", `${ASSET_SERVER}/images/home.png${VERSION}`);
+
+      const fruits = ["strawberry", "banana", "lime", "plum"];
+      fruits.forEach((fruit) => {
+        for (let count = 1; count <= 5; count++) {
+          // 키 형식: strawberry_1, banana_5 등
+          this.load.image(
+            `${fruit}_${count}`,
+            `${ASSET_SERVER}/images/cards/${fruit}_${count}.png${VERSION}`,
+          );
+        }
+      });
+
+      // 카드 뒷면 로드
+      this.load.image(
+        "card_back",
+        `${ASSET_SERVER}/images/cards/card_back.png${VERSION}`,
+      );
+
+      this.load.image("bell", `${ASSET_SERVER}/images/bell.png${VERSION}`);
+
+      this.load.audio("pop", `${ASSET_SERVER}/sounds/pop.wav${VERSION}`);
+      this.load.audio("bell", `${ASSET_SERVER}/sounds/bell.mp3${VERSION}`);
+      this.load.audio("effect", `${ASSET_SERVER}/sounds/effect.mp3${VERSION}`);
+      this.load.audio("bubble", `${ASSET_SERVER}/sounds/bubble.mp3${VERSION}`);
+
+      this.load.audio("btn", `${ASSET_SERVER}/sounds/btn.wav${VERSION}`);
+      this.load.audio("readygo", `${ASSET_SERVER}/sounds/readygo.mp3${VERSION}`);
+      this.load.audio("pass", `${ASSET_SERVER}/sounds/pass.wav${VERSION}`);
+      this.load.audio(
+        "cardflip",
+        `${ASSET_SERVER}/sounds/cardflip.wav${VERSION}`,
+      );
+
+      this.load.audio(
+        "gameover",
+        `${ASSET_SERVER}/sounds/gameover.mp3${VERSION}`,
+      );
+
+      this.load.start();
+    };
+
   }
 
   async create() {
@@ -1033,6 +1235,14 @@ class LobbyScene extends Phaser.Scene {
 
     this.currentJoinPopupCloseHandler = null;
     this.currentShopPopupCloseHandler = null;
+
+    // Load deferred assets (marked //Not Main Resources) shortly after startup
+    // to reduce initial load time but still prepare for later use.
+    this.time.delayedCall(400, () => {
+      if (typeof this.loadDeferredAssets === "function") {
+        this.loadDeferredAssets();
+      }
+    });
 
     const savedNickname = localStorage.getItem("nickname");
 
