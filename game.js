@@ -8511,10 +8511,13 @@ class GameScene extends Phaser.Scene {
       this.profileNameTxt.setText(this.myProfile.nickname || "");
     }
     if (this.profileLevelTxt && this.profileLevelTxt.active) {
-      this.profileLevelTxt.setText(`Lv ${this.myProfile.level}`);
+      this.profileLevelTxt.setText(`Lv ${this.myProfile.level} ${this.myProfile.nickname || ""}`);
     }
     if (this.profileCoinsTxt && this.profileCoinsTxt.active) {
       this.profileCoinsTxt.setText(`Coins: ${this.myProfile.coins}`);
+    }
+    if (this.profileCoinTxt && this.profileCoinTxt.active) {
+      this.profileCoinTxt.setText(`보유코인: ${this.myProfile.coins}`);
     }
 
     // make sure the react-time display stays in sync as well
@@ -9149,13 +9152,18 @@ class GameScene extends Phaser.Scene {
       const levelY = -cardH * 0.28;
       const expBarY = levelY + cardH * 0.18;
 
-      // level text (top)
+      // level + nickname text (top)
       const levelTxt = this.add
-        .text(leftX, levelY, `Lv ${this.myProfile?.level || 1}`, {
-          fontFamily: "Jua",
-          fontSize: `${cardH * 0.14}px`,
-          color: "#f1c40f",
-        })
+        .text(
+          leftX,
+          levelY,
+          `Lv ${this.myProfile?.level || 1} ${this.myProfile?.nickname || ""}`,
+          {
+            fontFamily: "Jua",
+            fontSize: `${cardH * 0.14}px`,
+            color: "#f1c40f",
+          },
+        )
         .setOrigin(0, 0.5);
       // keep reference for later updates
       this.profileLevelTxt = levelTxt;
@@ -9226,11 +9234,20 @@ class GameScene extends Phaser.Scene {
         })
         .setOrigin(0, 0.5);
 
-      card.add([bg, levelTxt, expBg, expFill, expTxt, reactTxt, ratioTxt]);
+      const coinTxt = this.add
+        .text(leftX, cardH * 0.34, `보유코인: ${this.myProfile?.coins || 0}`, {
+          fontFamily: "Jua",
+          fontSize: `${cardH * 0.13}px`,
+          color: "#ffffff",
+        })
+        .setOrigin(0, 0.5);
+
+      card.add([bg, levelTxt, expBg, expFill, expTxt, reactTxt, ratioTxt, coinTxt]);
       this.profileCard = card;
-      // keep reference to react/ratio text for updates
+      // keep reference to react/ratio/coin text for updates
       this.profileReactTxt = reactTxt;
       this.profileRatioTxt = ratioTxt;
+      this.profileCoinTxt = coinTxt;
       // populate text immediately if profile already known
       if (typeof this.updateMyProfileUI === 'function') {
         this.updateMyProfileUI();
@@ -9745,6 +9762,12 @@ class GameScene extends Phaser.Scene {
     socket.off("cardFlipped").on("cardFlipped", (data) => {
       if (this.isSingle) return;
 
+      const myId = this.isSingle
+        ? this.myId
+        : typeof socket !== "undefined"
+        ? socket.id
+        : null;
+
       // clear any AI watchdog when any card flip arrives
       try {
         if (this._aiTurnWatchTimer) {
@@ -9817,11 +9840,22 @@ class GameScene extends Phaser.Scene {
 
       if (data?.card?.type === COIN_CARD_TYPE) {
         const reward = Number(data.coinReward) || COIN_CARD_REWARD;
-        this.playCoinCardRewardAnimation(data.playerId, reward);
-        if (data.playerId === socket.id) {
+        const newTotal = Number.isFinite(Number(data.coinTotal))
+          ? Number(data.coinTotal)
+          : undefined;
+
+        // Only play the coin reward animation for the local player.
+        if (data.playerId === myId) {
+          this.playCoinCardRewardAnimation(data.playerId, reward, newTotal);
+        }
+
+        if (data.playerId === myId) {
           if (Number.isFinite(Number(data.coinTotal))) {
             this.profileStats = this.profileStats || {};
             this.profileStats.coins = Number(data.coinTotal);
+            if (this.myProfile) {
+              this.myProfile.coins = Number(data.coinTotal);
+            }
           }
         }
       }
@@ -9900,18 +9934,20 @@ class GameScene extends Phaser.Scene {
       if (!this.isSingle) {
         try {
           // Prefer server-provided counters when available to avoid double-counting.
+          const myId = socket?.id;
+          const isSelfBell =
+            !this.isSingle &&
+            (data.winnerId === myId || data.penaltyId === myId);
+
           if (
+            isSelfBell &&
             typeof data.bellCorrect === "number" &&
             typeof data.bellTotal === "number"
           ) {
             const correct = Number(data.bellCorrect) || 0;
             const total = Number(data.bellTotal) || 0;
             this.bellStats = { correct, total };
-              const ratio = total > 0 ? Math.round((correct / total) * 100) : 0;
-            const myId = socket?.id;
-            const isSelfBell =
-              !this.isSingle &&
-              (data.winnerId === myId || data.penaltyId === myId);
+            const ratio = total > 0 ? Math.round((correct / total) * 100) : 0;
 
             this.myProfile = this.myProfile || {};
             const prevRatioVal = Number(this.myProfile.ratio || 0);
@@ -9925,45 +9961,43 @@ class GameScene extends Phaser.Scene {
               if (oldText !== newText) {
                 this.profileRatioTxt.setText(newText);
 
-                if (isSelfBell) {
-                  // 색상 애니메이션: 상승=빨강, 하락=파랑
-                  let highlightColor = "#ffffff";
-                  if (ratio > prevRatioVal) {
-                    highlightColor = "#ff4d4d";
-                  } else if (ratio < prevRatioVal) {
-                    highlightColor = "#4da6ff";
-                  }
+                // 색상 애니메이션: 상승=빨강, 하락=파랑
+                let highlightColor = "#ffffff";
+                if (ratio > prevRatioVal) {
+                  highlightColor = "#ff4d4d";
+                } else if (ratio < prevRatioVal) {
+                  highlightColor = "#4da6ff";
+                }
 
-                  try {
-                    this.tweens.killTweensOf(this.profileRatioTxt);
-                    if (this._ratioColorTimeout) {
-                      clearTimeout(this._ratioColorTimeout);
-                      this._ratioColorTimeout = null;
-                    }
-                    this.profileRatioTxt.setScale(1);
-                    if (highlightColor !== "#ffffff") {
-                      this.profileRatioTxt.setColor(highlightColor);
-                      this._ratioColorTimeout = setTimeout(() => {
-                        if (
-                          this.profileRatioTxt &&
-                          typeof this.profileRatioTxt.setColor === "function"
-                        ) {
-                          this.profileRatioTxt.setColor("#ffffff");
-                        }
-                        this._ratioColorTimeout = null;
-                      }, 550);
-                    }
-                    this.tweens.add({
-                      targets: this.profileRatioTxt,
-                      scaleX: 1.15,
-                      scaleY: 1.15,
-                      duration: 140,
-                      yoyo: true,
-                      ease: "Sine.easeOut",
-                    });
-                  } catch (e) {
-                    // ignore if tweens unavailable
+                try {
+                  this.tweens.killTweensOf(this.profileRatioTxt);
+                  if (this._ratioColorTimeout) {
+                    clearTimeout(this._ratioColorTimeout);
+                    this._ratioColorTimeout = null;
                   }
+                  this.profileRatioTxt.setScale(1);
+                  if (highlightColor !== "#ffffff") {
+                    this.profileRatioTxt.setColor(highlightColor);
+                    this._ratioColorTimeout = setTimeout(() => {
+                      if (
+                        this.profileRatioTxt &&
+                        typeof this.profileRatioTxt.setColor === "function"
+                      ) {
+                        this.profileRatioTxt.setColor("#ffffff");
+                      }
+                      this._ratioColorTimeout = null;
+                    }, 550);
+                  }
+                  this.tweens.add({
+                    targets: this.profileRatioTxt,
+                    scaleX: 1.15,
+                    scaleY: 1.15,
+                    duration: 140,
+                    yoyo: true,
+                    ease: "Sine.easeOut",
+                  });
+                } catch (e) {
+                  // ignore if tweens unavailable
                 }
               }
             }
@@ -11011,8 +11045,50 @@ class GameScene extends Phaser.Scene {
       this.timeAttackText.setPosition(cx, cy + width * 0.035);
     }
 
-    if (remainingSec <= 10) {
+    if (remainingSec <= 0) {
+      // Time over: show a message, bounce, and blink
+      this.timeAttackText.setText("타임오버");
       this.timeAttackText.setColor("#ff3b30");
+      this.timeAttackText.setTint(0xff3b30);
+
+      // stop urgent tween if running
+      if (this.timeAttackUrgentTween) {
+        this.timeAttackUrgentTween.stop();
+        this.timeAttackUrgentTween = null;
+      }
+
+      if (!this._timeAttackOverTween) {
+        this._timeAttackOverTween = this.tweens.add({
+          targets: this.timeAttackText,
+          scale: 1.3,
+          duration: 250,
+          yoyo: true,
+          repeat: -1,
+          ease: "Back.easeOut",
+        });
+      }
+
+      if (!this._timeAttackOverBlinkTween) {
+        this._timeAttackOverBlinkTween = this.tweens.add({
+          targets: this.timeAttackText,
+          alpha: 0.3,
+          duration: 250,
+          yoyo: true,
+          repeat: -1,
+          ease: "Sine.easeInOut",
+        });
+      }
+    } else if (remainingSec <= 10) {
+      this.timeAttackText.setColor("#ff3b30");
+      this.timeAttackText.setTint(0xffffff);
+      if (this._timeAttackOverTween) {
+        this._timeAttackOverTween.stop();
+        this._timeAttackOverTween = null;
+      }
+      if (this._timeAttackOverBlinkTween) {
+        this._timeAttackOverBlinkTween.stop();
+        this._timeAttackOverBlinkTween = null;
+      }
       if (!this.timeAttackUrgentTween) {
         this.timeAttackUrgentTween = this.tweens.add({
           targets: this.timeAttackText,
@@ -11026,9 +11102,18 @@ class GameScene extends Phaser.Scene {
       }
     } else {
       this.timeAttackText.setColor("#ffd166");
+      this.timeAttackText.setTint(0xffffff);
       if (this.timeAttackUrgentTween) {
         this.timeAttackUrgentTween.stop();
         this.timeAttackUrgentTween = null;
+      }
+      if (this._timeAttackOverTween) {
+        this._timeAttackOverTween.stop();
+        this._timeAttackOverTween = null;
+      }
+      if (this._timeAttackOverBlinkTween) {
+        this._timeAttackOverBlinkTween.stop();
+        this._timeAttackOverBlinkTween = null;
       }
       this.timeAttackText.setScale(1);
       this.timeAttackText.setAlpha(1);
@@ -15281,13 +15366,14 @@ class GameScene extends Phaser.Scene {
 
     if (randomCard?.type === COIN_CARD_TYPE) {
       const reward = COIN_CARD_REWARD;
-      this.playCoinCardRewardAnimation(playerId, reward);
+      const newTotal =
+        (Number(this.profileStats?.coins) || 0) + reward;
+      this.playCoinCardRewardAnimation(playerId, reward, newTotal);
       if (playerId === myId) {
         this.profileStats = this.profileStats || {};
-        this.profileStats.coins =
-          (Number(this.profileStats.coins) || 0) + reward;
+        this.profileStats.coins = newTotal;
         if (this.myProfile) {
-          this.myProfile.coins = (Number(this.myProfile.coins) || 0) + reward;
+          this.myProfile.coins = newTotal;
         }
         const nickname =
           localStorage.getItem("nickname") ||
@@ -16705,8 +16791,17 @@ class GameScene extends Phaser.Scene {
     return pos[targetIdx];
   }
 
-  playCoinCardRewardAnimation(playerId, amount) {
+  playCoinCardRewardAnimation(playerId, amount, newTotal) {
     if (!playerId || !Number.isFinite(Number(amount))) return;
+
+    // Only animate when the coin reward is for the local player.
+    // This prevents bot players from showing coin animations on the local UI.
+    const myId = this.isSingle
+      ? this.myId
+      : typeof socket !== "undefined"
+      ? socket.id
+      : null;
+    if (playerId !== myId) return;
 
     const layout = this.getPlayerLayoutForId(playerId);
     if (!layout) return;
@@ -16716,12 +16811,51 @@ class GameScene extends Phaser.Scene {
     const rad = Phaser.Math.DegToRad(layout.rotation - 90);
     const startX = layout.x + Math.cos(rad) * dist * 0.7;
     const startY = layout.y + Math.sin(rad) * dist;
-    const targetX = layout.x;
-    const targetY = layout.y;
     const coinCount = 18;
     const lift = width * 0.1;
     const spread = width * 0.12;
     const coinSize = width * 0.05;
+
+    // target for coins should be the profile coin text if available,
+    // otherwise fallback to player layout position.
+    let targetX = layout.x;
+    let targetY = layout.y;
+    if (this.profileCoinTxt && this.profileCoinTxt.active) {
+      const bounds = this.profileCoinTxt.getBounds();
+      targetX = bounds.centerX;
+      targetY = bounds.centerY;
+    }
+
+    // Determine the numeric range for coin count animation
+    const currentCoins = this.profileCoinTxt
+      ? Number((this.profileCoinTxt.text || "").replace(/[^0-9]/g, "")) || 0
+      : Number(this.myProfile?.coins) || 0;
+    const finalCoins = Number.isFinite(Number(newTotal))
+      ? Number(newTotal)
+      : currentCoins + Number(amount);
+
+    let completed = 0;
+    const onCoinArrived = () => {
+      completed += 1;
+      if (completed !== coinCount) return;
+
+      // Animate coin total change once all coins reached the target
+      if (this.profileCoinTxt && this.profileCoinTxt.active) {
+        this.tweens.addCounter({
+          from: currentCoins,
+          to: finalCoins,
+          duration: 800,
+          ease: "Linear",
+          onUpdate: (tween) => {
+            const value = Math.round(tween.getValue());
+            this.profileCoinTxt.setText(`보유코인: ${value}`);
+          },
+          onComplete: () => {
+            this.profileCoinTxt.setText(`보유코인: ${finalCoins}`);
+          },
+        });
+      }
+    };
 
     for (let i = 0; i < coinCount; i += 1) {
       const coin = this.add
@@ -16754,6 +16888,7 @@ class GameScene extends Phaser.Scene {
             ease: "Cubic.in",
             onComplete: () => {
               coin.destroy();
+              onCoinArrived();
             },
           });
         },

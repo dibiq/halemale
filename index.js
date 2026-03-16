@@ -150,6 +150,11 @@ async function savePlayer(
   bellCorrect = null, // total correct bell presses (null means "don't update")
   bellTotal = null, // total bell presses
 ) {
+  // Skip bots: they should never be persisted to the player DB.
+  if (typeof id === "string" && /^AI(_BOT)?_/.test(id)) {
+    return;
+  }
+
   // Normalize id: if a live socket exists for this id and it has a nickname,
   // prefer the nickname as the DB primary key. This prevents accidental
   // writes under socket ids which produce separate DB rows.
@@ -867,7 +872,7 @@ function getFruitTotals(players) {
   return totals;
 }
 
-const TIME_ATTACK_DURATION_MS = 1 * 60 * 1000;
+const TIME_ATTACK_DURATION_MS = 3 * 60 * 1000; // 3분
 
 function clearTimeAttackTimer(room) {
   if (!room) return;
@@ -987,6 +992,9 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
   // before saving, optionally record current socket avetime if already populated
   // (won't overwrite sample-based value when hook is disabled)
   room.players.forEach((p) => {
+    // Skip bots: they should not be persisted to the player DB.
+    if (p && p.isBot) return;
+
     const currentCoins = Number(p.coins) || 0;
     const currentItems = Array.isArray(p.items) ? p.items : [];
 
