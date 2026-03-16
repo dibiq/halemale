@@ -773,17 +773,24 @@ app.get("/health", (req, res) =>
 );
 
 function getRoomListPayload() {
-  return Object.values(rooms).map((room) => ({
-    roomId: room.roomId,
-    roomName: room.roomName || `${room.players[0]?.nickname || "방장"}의 방`,
-    hostNickname: room.players[0]?.nickname || "방장",
-    playerCount: room.players.length,
-    maxPlayers: room.maxPlayers,
-    isPublic: room.isPublic,
-    isGameStarted: room.isGameStarted || false,
-    itemMode: room.itemMode !== false,
-    gameMode: room.gameMode || "allin",
-  }));
+  return Object.values(rooms)
+    .sort((a, b) => {
+      // ensure newest rooms appear first (createdAt timestamp)
+      const aTime = Number(a.createdAt) || 0;
+      const bTime = Number(b.createdAt) || 0;
+      return bTime - aTime;
+    })
+    .map((room) => ({
+      roomId: room.roomId,
+      roomName: room.roomName || `${room.players[0]?.nickname || "방장"}의 방`,
+      hostNickname: room.players[0]?.nickname || "방장",
+      playerCount: room.players.length,
+      maxPlayers: room.maxPlayers,
+      isPublic: room.isPublic,
+      isGameStarted: room.isGameStarted || false,
+      itemMode: room.itemMode !== false,
+      gameMode: room.gameMode || "allin",
+    }));
 }
 
 // 방 목록 조회 API (공개/비공개 모두 반환)
@@ -3947,6 +3954,7 @@ io.on("connection", (socket) => {
       aiTimers: { turn: null, bells: {} },
       reactionSamples: {},
       bellStats: {}, // correct/total bell presses for accuracy ratio
+      createdAt: Date.now(), // used to sort room list for UI
     };
     const playerData = {
       id: socket.id,

@@ -5931,13 +5931,14 @@ class LobbyScene extends Phaser.Scene {
     // 로딩 표시
     this.showLoading("방 목록 로딩 중...");
 
-    // 공개 방 목록 가져오기
-    fetch(`${SERVER_URL}/api/rooms`)
+    // 공개 방 목록 가져오기 (캐시 방지)
+    fetch(`${SERVER_URL}/api/rooms`, { cache: "no-store" })
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
       })
       .then((rooms) => {
+        console.log("[RoomList] fetched rooms", rooms?.length);
         this.hideLoading(); // ✅ 방 목록 로드 완료 시 로딩창 닫기
         // 1. 기존 팝업 닫기
         if (this.joinPopupContainer) this.joinPopupContainer.destroy();
@@ -6670,9 +6671,10 @@ class LobbyScene extends Phaser.Scene {
         // 새로고침 실행 함수
         const doRefresh = () => {
           if (!this.joinPopupContainer) return;
-          fetch(`${SERVER_URL}/api/rooms`)
+          fetch(`${SERVER_URL}/api/rooms`, { cache: "no-store" })
             .then((res) => res.json())
             .then((freshRooms) => {
+              console.log("[RoomList] refreshed rooms", freshRooms?.length);
               if (!this.joinPopupContainer) return;
               rooms = freshRooms;
               if (currentTab === "browse") {
@@ -8840,19 +8842,25 @@ class GameScene extends Phaser.Scene {
       this.reactionTimes = [this.myProfile.avetime];
     }
 
-    // update any game-screen text refs
-    if (this.profileNameTxt && this.profileNameTxt.active) {
-      this.profileNameTxt.setText(this.myProfile.nickname || "");
-    }
-    if (this.profileLevelTxt && this.profileLevelTxt.active) {
-      this.profileLevelTxt.setText(`Lv ${this.myProfile.level} ${this.myProfile.nickname || ""}`);
-    }
-    if (this.profileCoinsTxt && this.profileCoinsTxt.active) {
-      this.profileCoinsTxt.setText(`Coins: ${this.myProfile.coins}`);
-    }
-    if (this.profileCoinTxt && this.profileCoinTxt.active) {
-      this.profileCoinTxt.setText(`보유코인: ${this.myProfile.coins}`);
-    }
+    // update any game-screen text refs (wrapped safely to prevent crashes if the text object has been destroyed)
+    const safeSetText = (txtObj, value) => {
+      try {
+        if (txtObj && txtObj.active && typeof txtObj.setText === "function") {
+          txtObj.setText(value);
+        }
+      } catch (e) {
+        // ignore phantom errors when the object is partially destroyed
+        console.warn("[Quest Debug] safeSetText failed", e);
+      }
+    };
+
+    safeSetText(this.profileNameTxt, this.myProfile.nickname || "");
+    safeSetText(
+      this.profileLevelTxt,
+      `Lv ${this.myProfile.level} ${this.myProfile.nickname || ""}`,
+    );
+    safeSetText(this.profileCoinsTxt, `Coins: ${this.myProfile.coins}`);
+    safeSetText(this.profileCoinTxt, `보유코인: ${this.myProfile.coins}`);
 
     // make sure the react-time display stays in sync as well
     if (this.profileReactTxt && typeof this.profileReactTxt.setText === "function") {
