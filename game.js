@@ -6260,7 +6260,7 @@ class LobbyScene extends Phaser.Scene {
             if (isTimeAttack) {
               this.showToast("타임어택 모드가 선택되었습니다", "#f1c40f");
             } else {
-              this.showToast("올인 모드가 선택되었습니다", "#34495e");
+              this.showToast("올인 모드가 선택되었습니다", "#f1c40f");
             }
           });
           modeToggleText.on("pointerdown", () => {
@@ -8008,7 +8008,7 @@ class LobbyScene extends Phaser.Scene {
     // 배경 어둡게
     const overlay = this.add
       .rectangle(centerX, centerY, width, height, 0x000000, 0.5)
-      .setDepth(4000)
+      .setDepth(30000)
       .setInteractive();
 
     // 팝업 배경 (invitebg 이미지)
@@ -8017,7 +8017,7 @@ class LobbyScene extends Phaser.Scene {
     const popupBg = this.add
       .image(centerX, centerY, "invitebg")
       .setDisplaySize(popupWidth, popupHeight)
-      .setDepth(4001);
+      .setDepth(30001);
 
     // 타이틀
     const titleText = this.add
@@ -8028,7 +8028,7 @@ class LobbyScene extends Phaser.Scene {
         fontWeight: "bold",
       })
       .setOrigin(0.5)
-      .setDepth(4002);
+      .setDepth(30002);
 
     // 서브텍스트
     /*const subText = this.add
@@ -8145,7 +8145,7 @@ class LobbyScene extends Phaser.Scene {
         .image(inviteBtnX, btnY, "uibtn")
         .setDisplaySize(width * 0.12, height * 0.05)
         .setTint(0x3498db)
-        .setDepth(4001)
+        .setDepth(30001)
         .setInteractive({ useHandCursor: true });
 
       const inviteBtnText = this.add
@@ -8156,7 +8156,7 @@ class LobbyScene extends Phaser.Scene {
           fontWeight: "bold",
         })
         .setOrigin(0.5)
-        .setDepth(4002);
+        .setDepth(30002);
 
       inviteBtn.on("pointerdown", () => {
         this.sound.play("btn", { volume: 0.1 });
@@ -8185,7 +8185,7 @@ class LobbyScene extends Phaser.Scene {
         "popupclose",
       )
       .setDisplaySize(width * 0.085, width * 0.085)
-      .setDepth(4002)
+      .setDepth(30002)
       .setInteractive({ useHandCursor: true });
 
     allObjects.push(closeBtn);
@@ -8206,7 +8206,7 @@ class LobbyScene extends Phaser.Scene {
     // 배경 어둡게
     const overlay = this.add
       .rectangle(centerX, centerY, width, height, 0x000000, 0.5)
-      .setDepth(4000)
+      .setDepth(30000)
       .setInteractive();
 
     // 팝업 배경 (popupbg 이미지)
@@ -8222,7 +8222,7 @@ class LobbyScene extends Phaser.Scene {
     const popupBg = this.add
       .image(centerX, centerY, "profilebg")
       .setDisplaySize(popupWidth, popupHeight)
-      .setDepth(4001);
+      .setDepth(30001);
 
     // 모든 객체 저장 배열
     const allObjects = [overlay, popupBg];
@@ -8285,7 +8285,7 @@ class LobbyScene extends Phaser.Scene {
         },
       )
       .setOrigin(0.5)
-      .setDepth(4002);
+      .setDepth(30002);
 
     /*const playerCountText = this.add
       .text(
@@ -8306,7 +8306,7 @@ class LobbyScene extends Phaser.Scene {
       .image(centerX - width * 0.15, centerY * 1.12, "uibtn")
       .setDisplaySize(width * 0.2, height * 0.06)
       .setTint(0x2ecc71)
-      .setDepth(4001)
+      .setDepth(30001)
       .setInteractive({ useHandCursor: true });
 
     const acceptBtnText = this.add
@@ -8317,14 +8317,14 @@ class LobbyScene extends Phaser.Scene {
         fontWeight: "bold",
       })
       .setOrigin(0.5)
-      .setDepth(4002);
+      .setDepth(30002);
 
     // 거절 버튼 (uibtn 이미지)
     const declineBtn = this.add
       .image(centerX + width * 0.15, centerY * 1.12, "uibtn")
       .setDisplaySize(width * 0.2, height * 0.06)
       .setTint(0xe74c3c)
-      .setDepth(4001)
+      .setDepth(30001)
       .setInteractive({ useHandCursor: true });
 
     const declineBtnText = this.add
@@ -8335,7 +8335,7 @@ class LobbyScene extends Phaser.Scene {
         fontWeight: "bold",
       })
       .setOrigin(0.5)
-      .setDepth(4002);
+      .setDepth(30002);
 
     allObjects.push(
       infoText,
@@ -18059,7 +18059,7 @@ class GameScene extends Phaser.Scene {
     const popupBg = this.add
       .image(centerX, centerY, "invitebg")
       .setDisplaySize(popupWidth, popupHeight)
-      .setDepth(300)
+      .setDepth(30000)
       .setInteractive();
 
     // 타이틀
@@ -18071,7 +18071,7 @@ class GameScene extends Phaser.Scene {
         fontWeight: "bold",
       })
       .setOrigin(0.5)
-      .setDepth(301);
+      .setDepth(30001);
 
     // 서브텍스트
     const subText = this.add
@@ -18087,7 +18087,7 @@ class GameScene extends Phaser.Scene {
         },
       )
       .setOrigin(0.5)
-      .setDepth(301);
+      .setDepth(30001);
 
     // 유저 리스트 컨테이너
     const listContainerY = centerY;
@@ -18109,7 +18109,7 @@ class GameScene extends Phaser.Scene {
           },
         )
         .setOrigin(0.5)
-        .setDepth(302);
+        .setDepth(30002);
 
       userButtons.push(emptyText);
     }
@@ -18142,7 +18142,7 @@ class GameScene extends Phaser.Scene {
             : this.getAvatarDisplayKey(baseUserAvatar) || "player_1_frame_1",
         )
         .setDisplaySize(height * 0.045, height * 0.045)
-        .setDepth(302);
+        .setDepth(30002);
 
       // 유저명 + 레벨 (한 줄)
       const userInfo = this.add
@@ -18153,7 +18153,7 @@ class GameScene extends Phaser.Scene {
           fontWeight: "bold",
         })
         .setOrigin(0.5)
-        .setDepth(302);
+        .setDepth(30002);
 
       // 초대 버튼
       const inviteBtn = this.add
@@ -18242,7 +18242,7 @@ class GameScene extends Phaser.Scene {
     const popupHeight = height * 0.35;
     const popupBg = this.add
       .rectangle(centerX, centerY, popupWidth, popupHeight, 0x1a1a2e, 0.95)
-      .setDepth(300)
+      .setDepth(30000)
       .setStrokeStyle(3, 0x3498db, 1);
 
     // 타이틀
@@ -18259,7 +18259,7 @@ class GameScene extends Phaser.Scene {
         },
       )
       .setOrigin(0.5)
-      .setDepth(301);
+      .setDepth(30001);
 
     // 초대 정보
     const infoText = this.add
@@ -18275,7 +18275,7 @@ class GameScene extends Phaser.Scene {
         },
       )
       .setOrigin(0.5)
-      .setDepth(301);
+      .setDepth(30001);
 
     const playerCountText = this.add
       .text(
@@ -18289,7 +18289,7 @@ class GameScene extends Phaser.Scene {
         },
       )
       .setOrigin(0.5)
-      .setDepth(301);
+      .setDepth(30001);
 
     // 수락 버튼
     const acceptBtn = this.add
@@ -18302,7 +18302,7 @@ class GameScene extends Phaser.Scene {
         1,
       )
       .setStrokeStyle(2, 0x27ae60, 1)
-      .setDepth(301)
+      .setDepth(30001)
       .setInteractive({ useHandCursor: true });
 
     const acceptBtnText = this.add
@@ -18318,7 +18318,7 @@ class GameScene extends Phaser.Scene {
         },
       )
       .setOrigin(0.5)
-      .setDepth(302);
+      .setDepth(30002);
 
     // 거절 버튼
     const declineBtn = this.add
@@ -18331,7 +18331,7 @@ class GameScene extends Phaser.Scene {
         1,
       )
       .setStrokeStyle(2, 0xc0392b, 1)
-      .setDepth(301)
+      .setDepth(30001)
       .setInteractive({ useHandCursor: true });
 
     const declineBtnText = this.add
@@ -18347,7 +18347,7 @@ class GameScene extends Phaser.Scene {
         },
       )
       .setOrigin(0.5)
-      .setDepth(302);
+      .setDepth(30002);
 
     // 자동 닫기 (15초)
     let autoCloseTimer = this.time.delayedCall(15000, () => {
