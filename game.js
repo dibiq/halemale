@@ -1223,6 +1223,77 @@ class LobbyScene extends Phaser.Scene {
       const ss = String(seconds).padStart(2, "0");
       return `${hh}:${mm}:${ss}`;
     };
+
+    // Weekly attendance state (for Monday-to-Sunday display)
+    this.getDailyRewardWeekKey = (date) => {
+      const kstNow = date
+        ? new Date(new Date(date).toLocaleString("en-US", { timeZone: "Asia/Seoul" }))
+        : this.getKstNow();
+      const dayOfWeek = (kstNow.getDay() + 6) % 7; // Monday=0
+      const weekStart = new Date(kstNow);
+      weekStart.setDate(weekStart.getDate() - dayOfWeek);
+      weekStart.setHours(0, 0, 0, 0);
+      return this.formatDateYmd(weekStart);
+    };
+
+    this.loadDailyRewardWeekState = () => {
+      try {
+        const raw = localStorage.getItem("weeklyDailyRewardState");
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === "object") {
+            return parsed;
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+      return { weekKey: null, days: {} };
+    };
+
+    this.saveDailyRewardWeekState = () => {
+      try {
+        localStorage.setItem(
+          "weeklyDailyRewardState",
+          JSON.stringify(this.dailyRewardWeekState || { weekKey: null, days: {} }),
+        );
+      } catch (e) {
+        // ignore
+      }
+    };
+
+    this.ensureWeeklyRewardState = () => {
+      const weekKey = this.getDailyRewardWeekKey();
+      const state = this.loadDailyRewardWeekState();
+      if (state.weekKey !== weekKey) {
+        state.weekKey = weekKey;
+        state.days = {};
+      }
+
+      // Mark any past days this week as missed if not claimed.
+      const today = this.formatDateYmd(this.getKstNow());
+      const weekStart = new Date(weekKey);
+      for (let i = 0; i < 7; i += 1) {
+        const d = new Date(weekStart);
+        d.setDate(weekStart.getDate() + i);
+        const str = this.formatDateYmd(d);
+        if (str < today && !state.days[str]) {
+          state.days[str] = "missed";
+        }
+      }
+
+      this.dailyRewardWeekState = state;
+      this.saveDailyRewardWeekState();
+    };
+
+    this.markDailyRewardClaimed = (dateStr) => {
+      if (!dateStr) return;
+      this.ensureWeeklyRewardState();
+      this.dailyRewardWeekState.days = this.dailyRewardWeekState.days || {};
+      this.dailyRewardWeekState.days[dateStr] = "claimed";
+      this.dailyRewardWeekState.weekKey = this.getDailyRewardWeekKey(dateStr);
+      this.saveDailyRewardWeekState();
+    };
     this.updateDailyRewardCountdownText = () => {
       if (
         !this.dailyRewardCountdownText ||
@@ -1655,6 +1726,16 @@ class LobbyScene extends Phaser.Scene {
         payload && payload.lastCheckinDate ? payload.lastCheckinDate : null;
       this.isDailyRewardClaimPending = false;
 
+      // Weekly state (claimed/missed) should persist across sessions and reset each Monday
+      try {
+        this.ensureWeeklyRewardState();
+        if (this.dailyRewardLastCheckinDate) {
+          this.markDailyRewardClaimed(this.dailyRewardLastCheckinDate);
+        }
+      } catch (e) {
+        // ignore
+      }
+
       if (typeof this.updateDailyRewardButtonState === "function") {
         this.updateDailyRewardButtonState();
       }
@@ -1698,6 +1779,16 @@ class LobbyScene extends Phaser.Scene {
           ? payload.date
           : this.dailyRewardLastCheckinDate;
       this.isDailyRewardClaimPending = false;
+
+      // Persist claimed status in weekly state
+      try {
+        if (payload && payload.date) {
+          this.markDailyRewardClaimed(payload.date);
+        }
+      } catch (e) {
+        // ignore
+      }
+
       if (typeof this.updateDailyRewardButtonState === "function") {
         this.updateDailyRewardButtonState();
       }
@@ -7633,6 +7724,18 @@ class LobbyScene extends Phaser.Scene {
       .setDepth(4002)
       .setInteractive({ useHandCursor: true });
 
+    // Ensure weekly attendance state is loaded and any missed days are marked
+    try {
+      this.ensureWeeklyRewardState();
+    } catch (e) {
+      // ignore
+    }
+    this.claimedDailyDates = new Set(
+      Object.entries(this.dailyRewardWeekState?.days || {})
+        .filter(([, status]) => status === "claimed")
+        .map(([date]) => date),
+    );
+
     const kstNow = this.getKstNow();
     const todayStr = this.dailyRewardTodayDate || this.formatDateYmd(kstNow);
     const lastCheckin = this.dailyRewardLastCheckinDate;
@@ -7677,6 +7780,7 @@ class LobbyScene extends Phaser.Scene {
 
       let isToday = false;
       let isClaimed = false;
+      let isMissed = false;
       let canClaim = false;
       let rowDateStr = null;
       if (!isVideo) {
@@ -7684,11 +7788,15 @@ class LobbyScene extends Phaser.Scene {
         rowDate.setDate(weekStart.getDate() + i);
         rowDateStr = this.formatDateYmd(rowDate);
         isToday = rowDateStr === todayStr;
-        // previously we only had lastCheckin; now track set
-        isClaimed =
-          this.claimedDailyDates.has(rowDateStr) ||
-          (lastCheckin && rowDateStr === lastCheckin);
-        canClaim = isToday && this.dailyRewardAvailable;
+
+        const status =
+          (this.dailyRewardWeekState && this.dailyRewardWeekState.days)
+            ? this.dailyRewardWeekState.days[rowDateStr]
+            : null;
+        isClaimed = status === "claimed";
+        isMissed = status === "missed";
+
+        canClaim = isToday && this.dailyRewardAvailable && !isClaimed;
       }
 
       let rowBg;
@@ -7754,10 +7862,10 @@ class LobbyScene extends Phaser.Scene {
           .setOrigin(0.5)
           .setDepth(4003);
       }
-      // status labels removed (받기/미수령 etc.)
+      // status labels: 획득 / 놓침
       let statusLabel = null;
 
-      // if already claimed (not video), show a red stamp
+      // already claimed
       if (isClaimed && !isVideo) {
         statusLabel = this.add
           .text(rowX, rowY, "획득", {
@@ -7765,6 +7873,31 @@ class LobbyScene extends Phaser.Scene {
               typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
             fontSize: `${width * 0.055}px`,
             color: "#ffffff",
+            fontWeight: "bold",
+            stroke: "#000000",
+            strokeThickness: 4,
+          })
+          .setOrigin(0.5)
+          .setDepth(4004)
+          .setScale(0);
+        statusLabel.setRotation(-0.3);
+
+        this.tweens.add({
+          targets: statusLabel,
+          scale: 1,
+          duration: 450,
+          ease: "Back.out",
+        });
+      }
+
+      // missed day (past days without claim)
+      if (!isClaimed && isMissed && !isVideo) {
+        statusLabel = this.add
+          .text(rowX, rowY, "놓침", {
+            fontFamily:
+              typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
+            fontSize: `${width * 0.055}px`,
+            color: "#b0bec5",
             fontWeight: "bold",
             stroke: "#000000",
             strokeThickness: 4,
@@ -7791,6 +7924,11 @@ class LobbyScene extends Phaser.Scene {
           // immediately mark this day claimed and add stamp
           if (rowDateStr) {
             this.claimedDailyDates.add(rowDateStr);
+            try {
+              this.markDailyRewardClaimed(rowDateStr);
+            } catch (e) {
+              // ignore
+            }
             const stamp = this.add
               .text(rowX, rowY, "획득", {
                 fontFamily:
@@ -7802,8 +7940,15 @@ class LobbyScene extends Phaser.Scene {
                 strokeThickness: 4,
               })
               .setOrigin(0.5)
-              .setDepth(4004);
+              .setDepth(4004)
+              .setScale(0);
             stamp.setRotation(-0.3);
+            this.tweens.add({
+              targets: stamp,
+              scale: 1,
+              duration: 450,
+              ease: "Back.out",
+            });
             rows.push(stamp);
           }
         });
