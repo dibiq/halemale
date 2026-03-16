@@ -4884,6 +4884,13 @@ io.on("connection", (socket) => {
 
     deck.sort(() => Math.random() - 0.5);
 
+    // Clear any leftover AI timers from previous matches (fix bot stalls)
+    clearAiTurnTimer(room);
+    clearAiBellTimers(room);
+    if (!room.aiTimers) {
+      room.aiTimers = { turn: null, bells: {} };
+    }
+
     room.isGameStarted = true;
     // Do not reset bell accuracy totals here; we want them to persist across matches.
     // (Each bell press will increment the existing totals.)
