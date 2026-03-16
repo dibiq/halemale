@@ -82,60 +82,61 @@ const QUEST_CONFIGS = [
     rewardCoins: 25,
   },
 ];
+
 const MULTI_QUEST_CONFIGS = [
+  {
+    key: "single_play",
+    type: "count",
+    titleTemplate: "싱글플레이 {target}회 참여",
+    descriptionTemplate: "싱글 플레이를 {target}회 시작해보세요.",
+    initialTarget: 1,
+    targetIncrement: 1,
+    rewardCoins: 300,
+  },
+  {
+    key: "single_win",
+    type: "count",
+    titleTemplate: "싱글플레이 {target}회 우승",
+    descriptionTemplate: "싱글 플레이에서 {target}회 승리하세요.",
+    initialTarget: 1,
+    targetIncrement: 1,
+    rewardCoins: 300,
+  },
   {
     key: "multi_play",
     type: "count",
-    titleTemplate: "멀티플레이 {target}판 참여",
-    descriptionTemplate: "멀티플레이에 {target}번 참여해보세요.",
-    initialTarget: 3,
-    targetIncrement: 2,
-    rewardCoins: 30,
-  },
-  {
-    key: "multi_first",
-    type: "count",
-    titleTemplate: "멀티 1등 {target}회 달성",
-    descriptionTemplate: "멀티플레이에서 1등을 {target}번 달성하세요.",
+    titleTemplate: "멀티플레이 {target}회 참여",
+    descriptionTemplate: "멀티 플레이를 {target}회 시작해보세요.",
     initialTarget: 1,
     targetIncrement: 1,
-    rewardCoins: 50,
+    rewardCoins: 300,
   },
   {
-    key: "multi_room",
+    key: "multi_win",
     type: "count",
-    titleTemplate: "방 만들기 {target}회",
-    descriptionTemplate: "멀티플레이 방을 {target}번 만들어보세요.",
-    initialTarget: 3,
+    titleTemplate: "멀티플레이 {target}회 우승",
+    descriptionTemplate: "멀티 플레이에서 {target}회 1위를 달성하세요.",
+    initialTarget: 1,
     targetIncrement: 1,
-    rewardCoins: 25,
+    rewardCoins: 300,
   },
   {
-    key: "multi_card_win",
+    key: "shop_buy",
     type: "count",
-    titleTemplate: "멀티에서 카드 {target}장 획득",
-    descriptionTemplate: "멀티플레이에서 카드 {target}장을 획득하세요.",
-    initialTarget: 5,
-    targetIncrement: 5,
-    rewardCoins: 35,
-  },
-  {
-    key: "multi_penalty",
-    type: "count",
-    titleTemplate: "멀티 패널티 {target}회",
-    descriptionTemplate: "멀티플레이에서 패널티를 {target}번 받아보세요.",
-    initialTarget: 3,
-    targetIncrement: 2,
-    rewardCoins: 25,
-  },
-  {
-    key: "multi_ad_reward",
-    type: "count",
-    titleTemplate: "광고 보상 {target}회 받기",
-    descriptionTemplate: "광고 보상을 {target}번 받아보세요.",
-    initialTarget: 3,
+    titleTemplate: "상점에서 아이템 {target}회 구매",
+    descriptionTemplate: "상점에서 아이템을 {target}회 구매하세요.",
+    initialTarget: 1,
     targetIncrement: 1,
-    rewardCoins: 20,
+    rewardCoins: 300,
+  },
+  {
+    key: "watch_ad",
+    type: "count",
+    titleTemplate: "광고보상 {target}회 시청",
+    descriptionTemplate: "광고 보상을 {target}회 시청하세요.",
+    initialTarget: 1,
+    targetIncrement: 1,
+    rewardCoins: 300,
   },
 ];
 const QUEST_CONFIG_MAP = QUEST_CONFIGS.reduce((acc, quest) => {
@@ -2311,6 +2312,9 @@ class LobbyScene extends Phaser.Scene {
         yoyo: true,
         onComplete: () => {
           this.showToast("광고 보상은 준비 중입니다!", "#38bdf8");
+          if (typeof this.incrementMultiQuestCounter === "function") {
+            this.incrementMultiQuestCounter("watch_ad", 1);
+          }
         },
       });
     });
@@ -2343,6 +2347,11 @@ class LobbyScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setVisible(false);
+
+    // expose badge elements for external updates
+    this.questBadge = questBadge;
+    this.questBadgeText = questBadgeText;
+
     questBtn.add([questBtnImg, questBtnText]);
     questBtnImg.on("pointerdown", () => {
       this.sound.play("btn", { volume: 0.1 });
@@ -2359,7 +2368,7 @@ class LobbyScene extends Phaser.Scene {
     });
     questBtn.add([questBadge, questBadgeText]);
 
-    const hasQuestRewardReady = () => {
+    this.hasQuestRewardReady = () => {
       try {
         const stored = JSON.parse(
           localStorage.getItem(MULTI_QUEST_PROGRESS_STORAGE_KEY) || "{}",
@@ -2373,15 +2382,28 @@ class LobbyScene extends Phaser.Scene {
       }
     };
 
-    const updateQuestBadgeState = () => {
-      const shouldShow = hasQuestRewardReady();
-      questBadge.setVisible(shouldShow);
-      questBadgeText.setVisible(shouldShow);
+    this.updateQuestBadgeState = () => {
+      const shouldShow = this.hasQuestRewardReady();
+      try {
+        const stored = JSON.parse(
+          localStorage.getItem(MULTI_QUEST_PROGRESS_STORAGE_KEY) || "{}",
+        );
+        console.log(
+          "[Quest Debug] updateQuestBadgeState: shouldShow=",
+          shouldShow,
+          "stored=",
+          stored,
+        );
+      } catch (e) {
+        console.warn("[Quest Debug] failed to read stored quest progress", e);
+      }
+      if (this.questBadge) this.questBadge.setVisible(shouldShow);
+      if (this.questBadgeText) this.questBadgeText.setVisible(shouldShow);
 
       if (shouldShow) {
         if (!this.questBadgeTween) {
           this.questBadgeTween = this.tweens.add({
-            targets: [questBadge, questBadgeText],
+            targets: [this.questBadge, this.questBadgeText],
             scaleX: "*=1.12",
             scaleY: "*=1.12",
             yoyo: true,
@@ -2393,12 +2415,12 @@ class LobbyScene extends Phaser.Scene {
       } else if (this.questBadgeTween) {
         this.questBadgeTween.stop();
         this.questBadgeTween = null;
-        questBadge.setScale(1);
-        questBadgeText.setScale(1);
+        if (this.questBadge) this.questBadge.setScale(1);
+        if (this.questBadgeText) this.questBadgeText.setScale(1);
       }
     };
 
-    updateQuestBadgeState();
+    this.updateQuestBadgeState();
 
     const multiBtnImg = this.add
       .image(0, 0, "uibtn")
@@ -2767,6 +2789,11 @@ class LobbyScene extends Phaser.Scene {
 
       if (typeof data?.itemMode !== "boolean") {
         data.itemMode = this.currentItemMode !== false;
+      }
+
+      // 멀티플레이 참여 퀘스트 카운트
+      if (typeof this.incrementMultiQuestCounter === "function") {
+        this.incrementMultiQuestCounter("multi_play", 1);
       }
 
       this.scene.start("GameScene", data);
@@ -5056,8 +5083,9 @@ class LobbyScene extends Phaser.Scene {
         const card = specialCards[tabIndexes.special];
         if (this.myProfile.coins >= card.price) {
           this.myProfile.coins -= card.price;
-
-          const specialCardsOwned =
+            if (typeof this.incrementMultiQuestCounter === "function") {
+              this.incrementMultiQuestCounter("shop_buy", 1);
+            }
             JSON.parse(localStorage.getItem("specialCards")) || {};
           if (!specialCardsOwned[card.id]) {
             specialCardsOwned[card.id] = 0;
@@ -5295,8 +5323,78 @@ class LobbyScene extends Phaser.Scene {
         MULTI_QUEST_PROGRESS_STORAGE_KEY,
         JSON.stringify(payload),
       );
+
+      // Debug: log when multi_win changes (uses localStorage content)
+      if (payload.multi_win) {
+        console.log(
+          "[Quest Debug] saved multi_win status",
+          payload.multi_win,
+        );
+      }
     } catch (e) {
       console.warn("failed to save multi quest progress", e);
+    }
+  }
+
+  incrementMultiQuestCounter(key, amount = 1) {
+    try {
+      console.log(`[Quest Debug] incrementMultiQuestCounter called: key=${key} amount=${amount}`);
+      const snapshot = this.buildQuestPopupSnapshot();
+      if (!snapshot) {
+        console.warn("[Quest Debug] missing snapshot in incrementMultiQuestCounter");
+        return;
+      }
+      if (!Object.prototype.hasOwnProperty.call(snapshot, key)) {
+        console.warn(
+          "[Quest Debug] snapshot missing key",
+          key,
+          "available=",
+          Object.keys(snapshot),
+        );
+        return;
+      }
+      const quest = MULTI_QUEST_CONFIGS.find((q) => q.key === key);
+      if (!quest) {
+        console.warn("[Quest Debug] QUEST_CONFIGS missing key", key);
+        return;
+      }
+
+      const entry = snapshot[key];
+      if (entry.ready) {
+        console.log("[Quest Debug] quest already ready, skipping", key);
+        return;
+      }
+
+      const runtime = buildQuestRuntime(quest, entry);
+      const newCount = Math.min(runtime.target, (entry.count || 0) + (Number(amount) || 0));
+      entry.count = newCount;
+
+      console.log(
+        `[Quest Debug] incrementMultiQuestCounter(${key}) => ${newCount}/${runtime.target} (ready=${entry.ready})`,
+      );
+      this.showToast(
+        `[Quest Debug] ${quest.titleTemplate.replace("{target}", runtime.target)}: ${newCount}/${runtime.target}`,
+        "#38bdf8",
+      );
+
+      if (newCount >= runtime.target) {
+        entry.ready = true;
+      }
+
+      snapshot[key] = entry;
+      this.saveMultiQuestProgressSnapshot(snapshot);
+
+      // Immediately update the badge state in case a new reward became available
+      if (typeof this.updateQuestBadgeState === "function") {
+        this.updateQuestBadgeState();
+      }
+
+      // If the quest became ready, show notification
+      if (entry.ready) {
+        this.showToast(`${runtime.title} 완료! 보상을 받으세요.`, "#22c55e");
+      }
+    } catch (e) {
+      console.warn("incrementMultiQuestCounter failed", e);
     }
   }
 
@@ -5456,10 +5554,31 @@ class LobbyScene extends Phaser.Scene {
               } catch (e) {}
               this.playQuestCoinBurst(claimX, claimY, quest.rewardCoins);
             }
-            this.rewardQuestCoins(quest.rewardCoins, runtime.title, quest.key);
-          } else {
-            if (!this.isSingle) {
-              this.showToast(`${runtime.title} 완료!`, "#22c55e");
+            if (typeof this.rewardQuestCoins === "function") {
+              this.rewardQuestCoins(quest.rewardCoins, runtime.title, quest.key);
+            } else {
+              // Fallback: some builds may lose method binding, so apply reward manually.
+              const amount = Number(quest.rewardCoins) || 0;
+              if (amount > 0) {
+                if (!this.myProfile) this.myProfile = {};
+                this.myProfile.coins = (Number(this.myProfile.coins) || 0) + amount;
+                if (typeof this.updateMyProfileUI === "function") {
+                  this.updateMyProfileUI();
+                }
+                if (!this.isSingle) {
+                  this.showToast(`퀘스트 보상 ${amount}💰 (${runtime.title})`, "#22c55e");
+                }
+                try {
+                  if (typeof this.safeSyncInventory === "function") {
+                    this.safeSyncInventory("questReward", {
+                      coins: amount,
+                      questKey: quest.key,
+                    });
+                  }
+                } catch (e) {
+                  console.warn("quest reward sync failed (fallback)", e);
+                }
+              }
             }
           }
 
@@ -5473,6 +5592,12 @@ class LobbyScene extends Phaser.Scene {
           if (nextRuntime?.title) {
             this.showToast(`${nextRuntime.title} 시작!`, "#38bdf8");
           }
+
+          // Update badge state immediately after claiming reward
+          if (typeof this.updateQuestBadgeState === "function") {
+            this.updateQuestBadgeState();
+          }
+
           this.closeQuestPopup();
           this.showQuestPopup();
         };
@@ -9180,6 +9305,9 @@ class GameScene extends Phaser.Scene {
     this.isTutorialMode = !!data.isTutorialMode;
     this.tutorialConfig = data.tutorialConfig || null;
 
+    // Reset tracking flags so each new game correctly counts single play progress.
+    this._hasIncrementedSinglePlayQuest = false;
+
     // 콤보 상태: 같은 플레이어가 연속 정답을 맞출 때 카운트
     this.comboState = {
       lastWinnerId: null,
@@ -9229,6 +9357,10 @@ class GameScene extends Phaser.Scene {
   async create() {
     // GameScene의 init 혹은 create 상단에 추가
     const gameScene = this;
+
+    // Track whether we've already incremented the main-menu quest for this single-run.
+    // This prevents double-counting if the same scene instance is reused between matches.
+    this._hasIncrementedSinglePlayQuest = false;
 
     // Ensure legacy code paths do not crash when the prototype method is missing.
     // (Some builds may drop method definitions due to bundling or reset.)
@@ -9516,6 +9648,15 @@ class GameScene extends Phaser.Scene {
       };
     });
 
+    // 싱글플레이 하드 모드에서는 AI가 정답을 판단하고 클릭하는 반응 속도를 추가로 느리게 한다.
+    // (원래 속도에 비해 약 1.5배 느리게)
+    if (this.isSingle && this.roundData?.aiDifficulty === "hard") {
+      this.aiSettings = this.aiSettings.map((ai) => ({
+        ...ai,
+        reactionTime: Math.round(ai.reactionTime * 1.5),
+      }));
+    }
+
     if (this.isSingle) {
       // 싱글플레이면 소켓 ID가 아닌 "PLAYER_ME" 혹은 players[0].id를 내 ID로 강제 지정
       this.myId = this.roundData.players[0].id;
@@ -9523,10 +9664,21 @@ class GameScene extends Phaser.Scene {
       this.isGameStarted = true;
       this.lastEliminationEffectAtByPlayer = {};
       this.initializeSingleDecks();
+
+      // 기존 싱글퀘스트 유지
       this.initQuestSystem();
+
+      // 싱글 플레이 참여 카운트는 게임이 정상 종료된 시점(승/패)에서만 올리도록 함
+      // (시작 후 바로 나갔다가 재입장하는 꼼수를 방지)
+      this._hasIncrementedSinglePlayQuest = false;
     } else {
       this.myId = socket.id;
       this.teardownQuestUI();
+
+      // Track multiplayer participation for quests
+      if (typeof this.incrementMultiQuestCounter === "function") {
+        this.incrementMultiQuestCounter("multi_play", 1);
+      }
     }
 
     this.isPopupOpen = false;
@@ -9882,9 +10034,10 @@ class GameScene extends Phaser.Scene {
               const current = this.roundData.players[this.turnIndex];
               if (!current || current.id !== aiPlayerId) return;
               const hasOpen = Array.isArray(current.openStack) && current.openStack.length > 0;
-              if (!hasOpen && socket && socket.connected) {
+              if (socket && socket.connected) {
+                // Even if openStack isn't empty, we may still be stuck; request server action.
                 try {
-                  socket.emit("requestAiMove", { playerId: aiPlayerId });
+                  socket.emit("requestAiMove", { playerId: aiPlayerId, hasOpenStack: hasOpen });
                 } catch (e) {
                   console.warn("emit requestAiMove failed", e);
                 }
@@ -9900,7 +10053,7 @@ class GameScene extends Phaser.Scene {
                 } else {
                   // final attempt: ask server with force flag (server may ignore)
                   try {
-                    socket.emit("requestAiMove", { playerId: aiPlayerId, force: true });
+                    socket.emit("requestAiMove", { playerId: aiPlayerId, force: true, hasOpenStack: hasOpen });
                   } catch (e) {}
                 }
               }
@@ -10749,6 +10902,23 @@ class GameScene extends Phaser.Scene {
 
     socket.off("gameEnded").on("gameEnded", (data) => {
       console.log("[CLIENT] gameEnded event", data);
+      const isMultiplayerWin = !this.isSingle && data && data.winnerId === socket.id;
+      console.log("[Quest Debug] gameEnded, isSingle=", this.isSingle, "socket.id=", socket.id, "winnerId=", data?.winnerId, "isMultiplayerWin=", isMultiplayerWin);
+      if (isMultiplayerWin) {
+        // Count multiplayer wins
+        if (typeof this.incrementMultiQuestCounter === "function") {
+          console.log("[Quest Debug] gameEnded calling incrementMultiQuestCounter for multi_win");
+          this.incrementMultiQuestCounter("multi_win", 1);
+        } else {
+          console.warn("[Quest Debug] incrementMultiQuestCounter not available on gameEnded");
+        }
+      } else if (!this.isSingle && data) {
+        // debug: report why win wasn't counted
+        this.showToast(
+          `[Quest Debug] win not counted (winnerId=${data.winnerId} socketId=${socket.id})`,
+          "#f97316",
+        );
+      }
       if (data && data.serverDebug) {
         console.log("[CLIENT] serverDebug:");
         data.serverDebug.forEach((ln) => console.log("  ", ln));
@@ -13023,8 +13193,36 @@ class GameScene extends Phaser.Scene {
     this.isGameStarted = false;
     this.isGameReady = false;
 
-    if (this.isSingle && !this.isTutorialMode && result === "WIN") {
-      this.handleQuestEvent("gameWin");
+    if (this.isSingle && !this.isTutorialMode) {
+      // Ensure participation is counted even if the start-time increment did not run.
+      if (
+        !this._hasIncrementedSinglePlayQuest &&
+        typeof this.incrementMultiQuestCounter === "function"
+      ) {
+        console.log(
+          "[Quest Debug] single_play condition met (game ended). Incrementing main-menu quest.",
+        );
+        this.showToast("[Quest Debug] single_play 카운트 증가", "#38bdf8");
+        this.incrementMultiQuestCounter("single_play", 1);
+        this._hasIncrementedSinglePlayQuest = true;
+      }
+
+      if (result === "WIN") {
+        this.handleQuestEvent("gameWin");
+        if (typeof this.incrementMultiQuestCounter === "function") {
+          console.log(
+            "[Quest Debug] single_win condition met (승리). Incrementing main-menu quest.",
+          );
+          this.showToast("[Quest Debug] single_win 카운트 증가", "#38bdf8");
+          this.incrementMultiQuestCounter("single_win", 1);
+        }
+      }
+    }
+    if (!this.isSingle && result === "WIN") {
+      // Multiplayer win
+      if (typeof this.incrementMultiQuestCounter === "function") {
+        this.incrementMultiQuestCounter("multi_win", 1);
+      }
     }
 
     // 💡 모든 타이머 중지 (AI의 뒤집기나 종치기 등)
@@ -14434,6 +14632,10 @@ class GameScene extends Phaser.Scene {
         this.incrementQuestCounter("final_victory", 1);
         break;
       default:
+        // keep backwards compatibility for any existing quest keys
+        if (typeof eventKey === "string") {
+          this.incrementQuestCounter(eventKey, 1);
+        }
         break;
     }
   }
@@ -16337,9 +16539,22 @@ class GameScene extends Phaser.Scene {
       const aiSetting = this.aiSettings.find((ai) => ai.id === nextPlayer.id);
       const baseDelay = aiSetting ? aiSetting.flipDelay : 1500;
 
+      // 싱글플레이에서는 난이도에 따라 봇 제출 속도를 조절
+      // - normal: 20% 빠르게
+      // - hard: 20% 느리게
+      let adjustedBaseDelay = baseDelay;
+      if (this.isSingle) {
+        const diff = this.roundData?.aiDifficulty;
+        if (diff === "normal") {
+          adjustedBaseDelay = Math.round(baseDelay * 0.8);
+        } else if (diff === "hard") {
+          adjustedBaseDelay = Math.round(baseDelay * 1.2);
+        }
+      }
+
       // Ensure AI doesn't flip again before its own reaction time (so bell can happen first)
       const minDelay = aiSetting ? aiSetting.reactionTime + 800 : 2200;
-      const delay = Math.max(baseDelay + Math.random() * 400, minDelay);
+      const delay = Math.max(adjustedBaseDelay + Math.random() * 400, minDelay);
 
       this.time.delayedCall(delay, () => {
         if (this.isGameStarted) {
