@@ -5324,6 +5324,9 @@ class LobbyScene extends Phaser.Scene {
         JSON.stringify(payload),
       );
 
+      // Debug: log what's being saved for easier troubleshooting
+      console.log("[Quest Debug] saveMultiQuestProgressSnapshot payload", payload);
+
       // Debug: log when multi_win changes (uses localStorage content)
       if (payload.multi_win) {
         console.log(
@@ -5340,6 +5343,7 @@ class LobbyScene extends Phaser.Scene {
     try {
       console.log(`[Quest Debug] incrementMultiQuestCounter called: key=${key} amount=${amount}`);
       const snapshot = this.buildQuestPopupSnapshot();
+      console.log("[Quest Debug] pre-increment snapshot", snapshot);
       if (!snapshot) {
         console.warn("[Quest Debug] missing snapshot in incrementMultiQuestCounter");
         return;
@@ -5408,13 +5412,22 @@ class LobbyScene extends Phaser.Scene {
 
   incrementMultiQuestCounterFallback(key, amount = 1) {
     try {
+      console.log(
+        `[Quest Debug] fallback incrementMultiQuestCounter called: key=${key} amount=${amount}`,
+      );
       const raw = localStorage.getItem(MULTI_QUEST_PROGRESS_STORAGE_KEY) || "{}";
       const stored = JSON.parse(raw);
       const quest = MULTI_QUEST_CONFIGS.find((q) => q.key === key);
-      if (!quest) return;
+      if (!quest) {
+        console.warn("[Quest Debug] fallback missing quest config", key);
+        return;
+      }
 
       const entry = stored[key] || { count: 0, stage: 0, ready: false };
-      if (entry.ready) return;
+      if (entry.ready) {
+        console.log("[Quest Debug] fallback skip because already ready", key);
+        return;
+      }
 
       const runtime = buildQuestRuntime(quest, entry);
       entry.count = Math.min(runtime.target, (entry.count || 0) + (Number(amount) || 0));
@@ -5424,6 +5437,11 @@ class LobbyScene extends Phaser.Scene {
 
       stored[key] = entry;
       localStorage.setItem(MULTI_QUEST_PROGRESS_STORAGE_KEY, JSON.stringify(stored));
+
+      console.log(
+        "[Quest Debug] fallback localStorage result:",
+        JSON.parse(localStorage.getItem(MULTI_QUEST_PROGRESS_STORAGE_KEY) || "{}"),
+      );
 
       if (typeof this.updateQuestBadgeState === "function") {
         this.updateQuestBadgeState();
@@ -9397,7 +9415,7 @@ class GameScene extends Phaser.Scene {
     // This prevents double-counting if the same scene instance is reused between matches.
     this._hasIncrementedSinglePlayQuest = false;
 
-    // Ensure legacy code paths do not crash when the prototype method is missing.
+    // Ensure legacy code paths do not crash when helper methods are missing.
     // (Some builds may drop method definitions due to bundling or reset.)
     if (typeof this.isPlayerAi !== "function") {
       this.isPlayerAi = (playerId) => {
@@ -9693,14 +9711,62 @@ class GameScene extends Phaser.Scene {
     }
 
     // Ensure quest counter helpers always exist (avoids `undefined` on certain builds)
+    // NOTE: we try not to override the class prototype methods so the real
+    // implementation (with logging + save logic) can execute.
+    const sharedIncrement = LobbyScene?.prototype?.incrementMultiQuestCounter;
+    if (typeof sharedIncrement === "function") {
+      // Use the LobbyScene implementation when GameScene doesn't have it.
+      if (typeof this.incrementMultiQuestCounter !== "function") {
+        console.log(
+          "[Quest Debug] attaching shared incrementMultiQuestCounter implementation",
+        );
+        this.incrementMultiQuestCounter = sharedIncrement.bind(this);
+      }
+    }
+
+    const sharedFallback = LobbyScene?.prototype?.incrementMultiQuestCounterFallback;
+    if (typeof sharedFallback === "function") {
+      if (typeof this.incrementMultiQuestCounterFallback !== "function") {
+        console.log(
+          "[Quest Debug] attaching shared incrementMultiQuestCounterFallback implementation",
+        );
+        this.incrementMultiQuestCounterFallback = sharedFallback.bind(this);
+      }
+    }
+
+    // Ensure helper methods called by the shared implementation are also available
+    const sharedBuildSnapshot = LobbyScene?.prototype?.buildQuestPopupSnapshot;
+    if (typeof sharedBuildSnapshot === "function" && typeof this.buildQuestPopupSnapshot !== "function") {
+      console.log(
+        "[Quest Debug] attaching shared buildQuestPopupSnapshot implementation",
+      );
+      this.buildQuestPopupSnapshot = sharedBuildSnapshot.bind(this);
+    }
+
+    const sharedSaveSnapshot = LobbyScene?.prototype?.saveMultiQuestProgressSnapshot;
+    if (typeof sharedSaveSnapshot === "function" && typeof this.saveMultiQuestProgressSnapshot !== "function") {
+      console.log(
+        "[Quest Debug] attaching shared saveMultiQuestProgressSnapshot implementation",
+      );
+      this.saveMultiQuestProgressSnapshot = sharedSaveSnapshot.bind(this);
+    }
+
+    // Last resort: attach a no-op if nothing is available
     if (typeof this.incrementMultiQuestCounter !== "function") {
+      console.warn(
+        "[Quest Debug] incrementMultiQuestCounter missing on instance; attaching fallback",
+      );
       this.incrementMultiQuestCounter = (key, amount = 1) => {
         if (typeof this.incrementMultiQuestCounterFallback === "function") {
           this.incrementMultiQuestCounterFallback(key, amount);
         }
       };
     }
+
     if (typeof this.incrementMultiQuestCounterFallback !== "function") {
+      console.warn(
+        "[Quest Debug] incrementMultiQuestCounterFallback missing on instance; attaching no-op",
+      );
       this.incrementMultiQuestCounterFallback = (key, amount = 1) => {
         // fallback no-op if method missing
       };
@@ -10986,13 +11052,25 @@ class GameScene extends Phaser.Scene {
       console.log("[Quest Debug] gameEnded, isSingle=", this.isSingle, "socket.id=", socket.id, "winnerId=", data?.winnerId, "isMultiplayerWin=", isMultiplayerWin);
       if (isMultiplayerWin) {
         // Count multiplayer wins
-        const inc =
-          typeof this.incrementMultiQuestCounter === "function"
-            ? this.incrementMultiQuestCounter.bind(this)
-            : (key, amount) => this.incrementMultiQuestCounterFallback(key, amount);
-
         console.log("[Quest Debug] gameEnded calling incrementMultiQuestCounter for multi_win");
-        inc("multi_win", 1);
+        console.log("[Quest Debug] incrementMultiQuestCounter refs", {
+          protoInc: GameScene?.prototype?.incrementMultiQuestCounter,
+          instanceInc: this.incrementMultiQuestCounter,
+          fallbackInc: this.incrementMultiQuestCounterFallback,
+        });
+
+        // Use the class prototype method if possible (to avoid instance overrides).
+        const protoInc =
+          GameScene?.prototype?.incrementMultiQuestCounter ||
+          LobbyScene?.prototype?.incrementMultiQuestCounter;
+        if (typeof protoInc === "function") {
+          protoInc.call(this, "multi_win", 1);
+        } else if (typeof this.incrementMultiQuestCounter === "function") {
+          this.incrementMultiQuestCounter("multi_win", 1);
+        } else {
+          this.incrementMultiQuestCounterFallback("multi_win", 1);
+        }
+
         console.log(
           "[Quest Debug] multiQuestProgress after increment:",
           localStorage.getItem(MULTI_QUEST_PROGRESS_STORAGE_KEY),
