@@ -5406,6 +5406,33 @@ class LobbyScene extends Phaser.Scene {
     }
   }
 
+  incrementMultiQuestCounterFallback(key, amount = 1) {
+    try {
+      const raw = localStorage.getItem(MULTI_QUEST_PROGRESS_STORAGE_KEY) || "{}";
+      const stored = JSON.parse(raw);
+      const quest = MULTI_QUEST_CONFIGS.find((q) => q.key === key);
+      if (!quest) return;
+
+      const entry = stored[key] || { count: 0, stage: 0, ready: false };
+      if (entry.ready) return;
+
+      const runtime = buildQuestRuntime(quest, entry);
+      entry.count = Math.min(runtime.target, (entry.count || 0) + (Number(amount) || 0));
+      if (entry.count >= runtime.target) {
+        entry.ready = true;
+      }
+
+      stored[key] = entry;
+      localStorage.setItem(MULTI_QUEST_PROGRESS_STORAGE_KEY, JSON.stringify(stored));
+
+      if (typeof this.updateQuestBadgeState === "function") {
+        this.updateQuestBadgeState();
+      }
+    } catch (e) {
+      console.warn("incrementMultiQuestCounterFallback failed", e);
+    }
+  }
+
   showQuestPopup() {
     this.isJoinPopupOpen = true;
     this.setLobbyChatInputHidden(true);
@@ -9665,6 +9692,20 @@ class GameScene extends Phaser.Scene {
       }));
     }
 
+    // Ensure quest counter helpers always exist (avoids `undefined` on certain builds)
+    if (typeof this.incrementMultiQuestCounter !== "function") {
+      this.incrementMultiQuestCounter = (key, amount = 1) => {
+        if (typeof this.incrementMultiQuestCounterFallback === "function") {
+          this.incrementMultiQuestCounterFallback(key, amount);
+        }
+      };
+    }
+    if (typeof this.incrementMultiQuestCounterFallback !== "function") {
+      this.incrementMultiQuestCounterFallback = (key, amount = 1) => {
+        // fallback no-op if method missing
+      };
+    }
+
     if (this.isSingle) {
       // 싱글플레이면 소켓 ID가 아닌 "PLAYER_ME" 혹은 players[0].id를 내 ID로 강제 지정
       this.myId = this.roundData.players[0].id;
@@ -10945,12 +10986,17 @@ class GameScene extends Phaser.Scene {
       console.log("[Quest Debug] gameEnded, isSingle=", this.isSingle, "socket.id=", socket.id, "winnerId=", data?.winnerId, "isMultiplayerWin=", isMultiplayerWin);
       if (isMultiplayerWin) {
         // Count multiplayer wins
-        if (typeof this.incrementMultiQuestCounter === "function") {
-          console.log("[Quest Debug] gameEnded calling incrementMultiQuestCounter for multi_win");
-          this.incrementMultiQuestCounter("multi_win", 1);
-        } else {
-          console.warn("[Quest Debug] incrementMultiQuestCounter not available on gameEnded");
-        }
+        const inc =
+          typeof this.incrementMultiQuestCounter === "function"
+            ? this.incrementMultiQuestCounter.bind(this)
+            : (key, amount) => this.incrementMultiQuestCounterFallback(key, amount);
+
+        console.log("[Quest Debug] gameEnded calling incrementMultiQuestCounter for multi_win");
+        inc("multi_win", 1);
+        console.log(
+          "[Quest Debug] multiQuestProgress after increment:",
+          localStorage.getItem(MULTI_QUEST_PROGRESS_STORAGE_KEY),
+        );
       } else if (!this.isSingle && data) {
         // debug: report why win wasn't counted
         this.showToast(

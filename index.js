@@ -872,7 +872,7 @@ function getFruitTotals(players) {
   return totals;
 }
 
-const TIME_ATTACK_DURATION_MS = 3 * 60 * 1000; // 3분
+const TIME_ATTACK_DURATION_MS = 30 * 1000; // 30초
 
 function clearTimeAttackTimer(room) {
   if (!room) return;
