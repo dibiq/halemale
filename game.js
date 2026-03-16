@@ -10067,32 +10067,63 @@ class GameScene extends Phaser.Scene {
               }
             };
 
+            const scheduleHostSkip = () => {
+              if (!socket || !socket.connected) return;
+              const isHost = socket.id === this.roundData.hostId;
+              if (!isHost) return;
+              // If the bot doesn't respond, ask server to skip this turn.
+              try {
+                socket.emit("forceSkipTurn", {
+                  roomId: this.roundData.roomId,
+                  playerId: aiPlayerId,
+                });
+              } catch (e) {
+                console.warn("emit forceSkipTurn failed", e);
+              }
+            };
+
             // initial wait to allow animations/latency, then attempt
             try {
               this._aiTurnWatchTimer = this.time.delayedCall(8000, attemptAiRequest);
             } catch (e) {
               this._aiTurnWatchTimer = null;
             }
-              // Also schedule a short notify aligned with player auto-timer (6s)
-              try {
-                if (this._aiAutoNotifyTimer) {
-                  try { this._aiAutoNotifyTimer.remove(); } catch (e) {}
-                  this._aiAutoNotifyTimer = null;
-                }
-                this._aiAutoNotifyTimer = this.time.delayedCall(6000, () => {
-                  const current = this.roundData.players[this.turnIndex];
-                  if (!current || current.id !== aiPlayerId) return;
-                  if (socket && socket.connected) {
-                    try {
-                      socket.emit("requestAiMove", { playerId: aiPlayerId, reason: "auto_timeout" });
-                    } catch (e) {
-                      console.warn("emit requestAiMove(auto_timeout) failed", e);
-                    }
-                  }
-                });
-              } catch (e) {
+
+            // If the AI is still stuck after a longer delay, ask the host to force-skip.
+            try {
+              if (this._botSkipTimer) {
+                try {
+                  this._botSkipTimer.remove();
+                } catch (e) {}
+                this._botSkipTimer = null;
+              }
+              this._botSkipTimer = this.time.delayedCall(13000, scheduleHostSkip);
+            } catch (e) {
+              this._botSkipTimer = null;
+            }
+
+            // Also schedule a short notify aligned with player auto-timer (6s)
+            try {
+              if (this._aiAutoNotifyTimer) {
+                try {
+                  this._aiAutoNotifyTimer.remove();
+                } catch (e) {}
                 this._aiAutoNotifyTimer = null;
               }
+              this._aiAutoNotifyTimer = this.time.delayedCall(6000, () => {
+                const current = this.roundData.players[this.turnIndex];
+                if (!current || current.id !== aiPlayerId) return;
+                if (socket && socket.connected) {
+                  try {
+                    socket.emit("requestAiMove", { playerId: aiPlayerId, reason: "auto_timeout" });
+                  } catch (e) {
+                    console.warn("emit requestAiMove(auto_timeout) failed", e);
+                  }
+                }
+              });
+            } catch (e) {
+              this._aiAutoNotifyTimer = null;
+            }
           }
         } catch (e) {
           console.warn("ai watchdog error", e);

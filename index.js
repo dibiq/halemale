@@ -4364,6 +4364,21 @@ io.on("connection", (socket) => {
     });
   });
 
+  socket.on("forceSkipTurn", (data) => {
+    const room = rooms[socket.roomId];
+    if (!room || !room.isGameStarted) return;
+    // only the host can force turn skipping
+    if (room.host !== socket.id) return;
+
+    console.log(
+      `[SERVER] forceSkipTurn requested by host ${socket.id} in room ${socket.roomId}`,
+      data,
+    );
+
+    // Attempt to advance the turn if the current player is stuck.
+    processSkipTurn(room, io);
+  });
+
   socket.on("lobbyChatMessage", (data) => {
     const roomId = socket.roomId;
     const room = rooms[roomId];
