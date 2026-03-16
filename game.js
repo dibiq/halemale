@@ -5708,6 +5708,12 @@ class LobbyScene extends Phaser.Scene {
             .setOrigin(0.5);
 
           const onTabClick = () => {
+            // 방 만들기 탭을 이미 보고 있을 때, 다시 누르면 방 생성 트리거
+            if (tabName === "create" && currentTab === "create") {
+              attemptCreateRoom();
+              return;
+            }
+
             currentTab = tabName;
             this.sound.play("btn", { volume: 0.1 });
 
@@ -5787,6 +5793,43 @@ class LobbyScene extends Phaser.Scene {
           if (currentContent) {
             this.joinPopupContainer.add(currentContent);
           }
+        };
+
+        // Create form state (persist across tab toggles)
+        const createFormState = {
+          roomName: "",
+          isPublic: true,
+          password: "",
+          isItemMode: true,
+          isTimeAttack: false,
+        };
+
+        const attemptCreateRoom = () => {
+          const myNickname = localStorage.getItem("nickname") || "요리사";
+          const roomName = createFormState.roomName.trim() || `${myNickname}의 방`;
+          const password = createFormState.isPublic
+            ? null
+            : createFormState.password.trim();
+
+          if (!createFormState.isPublic && (!password || password.length < 4)) {
+            this.showToast("비밀번호 4자리를 입력해주세요!", "#e74c3c");
+            return false;
+          }
+
+          this.currentItemMode = createFormState.isItemMode;
+          this.showLoading("방 생성 중...");
+          socket.emit("createRoom", {
+            nickname: myNickname,
+            avatarKey: this.getSelectedAvatarKey(),
+            maxPlayers: 4,
+            isPublic: createFormState.isPublic,
+            itemMode: createFormState.isItemMode,
+            gameMode: createFormState.isTimeAttack ? "timeattack" : "allin",
+            roomName,
+            password,
+          });
+          closePopupWithCleanup();
+          return true;
         };
 
         // 콘텐츠 표시 함수들
@@ -6027,6 +6070,7 @@ class LobbyScene extends Phaser.Scene {
             .setDepth(1102);
           const nameEl = roomNameInput.node;
           nameEl.placeholder = "방 이름 입력 (선택, 최대10자)";
+          nameEl.value = createFormState.roomName;
           Object.assign(nameEl.style, {
             width: `${width * 0.5}px`,
             height: "90px",
@@ -6042,12 +6086,13 @@ class LobbyScene extends Phaser.Scene {
           nameEl.addEventListener("input", () => {
             if (nameEl.value.length > 10)
               nameEl.value = nameEl.value.substring(0, 10);
+            createFormState.roomName = nameEl.value;
           });
 
           // 공개/비공개 각각 버튼
-          let isPublic = true;
-          let isItemMode = true;
-          let isTimeAttack = false;
+          let isPublic = createFormState.isPublic;
+          let isItemMode = createFormState.isItemMode;
+          let isTimeAttack = createFormState.isTimeAttack;
           const btnGapX = width * 0.12; // 간격 줄임
 
           const publicBtnImg = this.add
@@ -6085,6 +6130,7 @@ class LobbyScene extends Phaser.Scene {
           const pwEl = pwInput.node;
           pwEl.placeholder = "비밀번호 (숫자 4자리)";
           pwEl.type = "password";
+          pwEl.value = createFormState.password;
           Object.assign(pwEl.style, {
             width: `${width * 0.4}px`,
             height: "65px",
@@ -6100,16 +6146,21 @@ class LobbyScene extends Phaser.Scene {
           });
           pwEl.addEventListener("input", () => {
             pwEl.value = pwEl.value.replace(/[^0-9]/g, "").substring(0, 4);
+            createFormState.password = pwEl.value;
           });
 
           pwInput.setVisible(false);
           const updateToggle = (pub) => {
             isPublic = pub;
+            createFormState.isPublic = pub;
             publicBtnImg.setTint(pub ? 0x3498db : 0x7f8c8d);
             privateBtnImg.setTint(pub ? 0x7f8c8d : 0xe67e22);
             pwEl.style.display = pub ? "none" : "block";
             pwInput.setVisible(!pub);
-            if (pub) pwEl.value = "";
+            if (pub) {
+              pwEl.value = "";
+              createFormState.password = "";
+            }
           };
 
           publicBtnImg.on("pointerdown", () => {
@@ -6150,6 +6201,7 @@ class LobbyScene extends Phaser.Scene {
             .setOrigin(0.5);
 
           const updateItemToggle = () => {
+            createFormState.isItemMode = isItemMode;
             itemToggleImg.setTint(isItemMode ? 0x2ecc71 : 0x7f8c8d);
             itemToggleText.setText(isItemMode ? "🎯 아이템전" : "🚫 노템전");
           };
@@ -6196,6 +6248,7 @@ class LobbyScene extends Phaser.Scene {
             .setOrigin(0.5);
 
           const updateModeToggle = () => {
+            createFormState.isTimeAttack = isTimeAttack;
             modeToggleImg.setTint(isTimeAttack ? 0xf1c40f : 0x7f8c8d);
             modeToggleText.setText(isTimeAttack ? "⏱ 타임어택" : "💰 올인");
           };
@@ -6221,57 +6274,7 @@ class LobbyScene extends Phaser.Scene {
             }
           });
 
-          // 방 만들기 버튼
-          const createBtnImg = this.add
-            .image(0, createBtnY, "uibtn")
-            .setDisplaySize(width * 0.25, height * 0.06)
-            .setTint(0x2ecc71)
-            .setInteractive({ useHandCursor: true });
-          const createBtnText = this.add
-            .text(0, createBtnY, "만들기", {
-              fontFamily: "Jua",
-              fontSize: `${width * 0.042}px`,
-              color: "#ffffff",
-              fontWeight: "bold",
-            })
-            .setOrigin(0.5);
-
-          createBtnImg.on("pointerdown", () => {
-            this.sound.play("btn", { volume: 0.1 });
-            this.tweens.add({
-              targets: [createBtnImg, createBtnText],
-              scaleX: "*=0.95",
-              scaleY: "*=0.95",
-              duration: 50,
-              yoyo: true,
-              onComplete: () => {
-                const myNickname = localStorage.getItem("nickname") || "요리사";
-                const roomName = nameEl.value.trim() || `${myNickname}의 방`;
-                const password = isPublic ? null : pwEl.value.trim();
-
-                if (!isPublic && (!password || password.length < 4)) {
-                  this.showToast("비밀번호 4자리를 입력해주세요!", "#e74c3c");
-                  return;
-                }
-
-                this.currentItemMode = isItemMode;
-
-                this.showLoading("방 생성 중...");
-                socket.emit("createRoom", {
-                  nickname: myNickname,
-                  avatarKey: this.getSelectedAvatarKey(),
-                  maxPlayers: 4,
-                  isPublic: isPublic,
-                  itemMode: isItemMode,
-                  gameMode: isTimeAttack ? "timeattack" : "allin",
-                  roomName: roomName,
-                  password: password,
-                });
-                closePopupWithCleanup();
-              },
-            });
-          });
-
+          // 방 만들기 UI (버튼은 탭 클릭으로 대체)
           container.add([
             roomNameInput,
             publicBtnImg,
@@ -6283,8 +6286,6 @@ class LobbyScene extends Phaser.Scene {
             modeToggleImg,
             modeToggleText,
             pwInput,
-            createBtnImg,
-            createBtnText,
           ]);
         };
 
@@ -6406,6 +6407,12 @@ class LobbyScene extends Phaser.Scene {
           tab.img.removeAllListeners("pointerdown");
           tab.text.removeAllListeners("pointerdown");
           const onTabClick = () => {
+            // 방 만들기 탭을 이미 보고 있을 때 다시 누르면 방 생성 시도
+            if (tab.name === "create" && currentTab === "create") {
+              attemptCreateRoom();
+              return;
+            }
+
             this.sound.play("btn", { volume: 0.1 });
             allTabs.forEach((t) => {
               t.img.setTint(t.name === tab.name ? activeTabTint : 0x7f8c8d);
@@ -9900,7 +9907,12 @@ class GameScene extends Phaser.Scene {
             const correct = Number(data.bellCorrect) || 0;
             const total = Number(data.bellTotal) || 0;
             this.bellStats = { correct, total };
-            const ratio = total > 0 ? Math.round((correct / total) * 100) : 0;
+              const ratio = total > 0 ? Math.round((correct / total) * 100) : 0;
+            const myId = socket?.id;
+            const isSelfBell =
+              !this.isSingle &&
+              (data.winnerId === myId || data.penaltyId === myId);
+
             this.myProfile = this.myProfile || {};
             const prevRatioVal = Number(this.myProfile.ratio || 0);
             this.myProfile.ratio = ratio;
@@ -9913,43 +9925,45 @@ class GameScene extends Phaser.Scene {
               if (oldText !== newText) {
                 this.profileRatioTxt.setText(newText);
 
-                // 색상 애니메이션: 상승=빨강, 하락=파랑
-                let highlightColor = "#ffffff";
-                if (ratio > prevRatioVal) {
-                  highlightColor = "#ff4d4d";
-                } else if (ratio < prevRatioVal) {
-                  highlightColor = "#4da6ff";
-                }
+                if (isSelfBell) {
+                  // 색상 애니메이션: 상승=빨강, 하락=파랑
+                  let highlightColor = "#ffffff";
+                  if (ratio > prevRatioVal) {
+                    highlightColor = "#ff4d4d";
+                  } else if (ratio < prevRatioVal) {
+                    highlightColor = "#4da6ff";
+                  }
 
-                try {
-                  this.tweens.killTweensOf(this.profileRatioTxt);
-                  if (this._ratioColorTimeout) {
-                    clearTimeout(this._ratioColorTimeout);
-                    this._ratioColorTimeout = null;
-                  }
-                  this.profileRatioTxt.setScale(1);
-                  if (highlightColor !== "#ffffff") {
-                    this.profileRatioTxt.setColor(highlightColor);
-                    this._ratioColorTimeout = setTimeout(() => {
-                      if (
-                        this.profileRatioTxt &&
-                        typeof this.profileRatioTxt.setColor === "function"
-                      ) {
-                        this.profileRatioTxt.setColor("#ffffff");
-                      }
+                  try {
+                    this.tweens.killTweensOf(this.profileRatioTxt);
+                    if (this._ratioColorTimeout) {
+                      clearTimeout(this._ratioColorTimeout);
                       this._ratioColorTimeout = null;
-                    }, 550);
+                    }
+                    this.profileRatioTxt.setScale(1);
+                    if (highlightColor !== "#ffffff") {
+                      this.profileRatioTxt.setColor(highlightColor);
+                      this._ratioColorTimeout = setTimeout(() => {
+                        if (
+                          this.profileRatioTxt &&
+                          typeof this.profileRatioTxt.setColor === "function"
+                        ) {
+                          this.profileRatioTxt.setColor("#ffffff");
+                        }
+                        this._ratioColorTimeout = null;
+                      }, 550);
+                    }
+                    this.tweens.add({
+                      targets: this.profileRatioTxt,
+                      scaleX: 1.15,
+                      scaleY: 1.15,
+                      duration: 140,
+                      yoyo: true,
+                      ease: "Sine.easeOut",
+                    });
+                  } catch (e) {
+                    // ignore if tweens unavailable
                   }
-                  this.tweens.add({
-                    targets: this.profileRatioTxt,
-                    scaleX: 1.15,
-                    scaleY: 1.15,
-                    duration: 140,
-                    yoyo: true,
-                    ease: "Sine.easeOut",
-                  });
-                } catch (e) {
-                  // ignore if tweens unavailable
                 }
               }
             }
