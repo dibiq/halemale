@@ -8542,11 +8542,23 @@ class GameScene extends Phaser.Scene {
         }
         try {
           if (color !== "#ffffff") {
-            this.profileRatioTxt.setColor(color);
-            setTimeout(() => {
-              if (this.profileRatioTxt && typeof this.profileRatioTxt.setColor === "function") {
-                this.profileRatioTxt.setColor("#ffffff");
+            try {
+              this.profileRatioTxt.setColor(color);
+            } catch (e) {
+              // ignore if text object is invalid/destroyed
+            }
+            this._ratioColorTimeout = setTimeout(() => {
+              try {
+                if (
+                  this.profileRatioTxt &&
+                  typeof this.profileRatioTxt.setColor === "function"
+                ) {
+                  this.profileRatioTxt.setColor("#ffffff");
+                }
+              } catch (e) {
+                // ignore errors when object is gone
               }
+              this._ratioColorTimeout = null;
             }, 550);
           }
         } catch (e) {
@@ -9114,6 +9126,18 @@ class GameScene extends Phaser.Scene {
         if (this.timeAttackUrgentTween) {
           this.timeAttackUrgentTween.stop();
           this.timeAttackUrgentTween = null;
+        }
+        if (this._timeAttackOverTween) {
+          this._timeAttackOverTween.stop();
+          this._timeAttackOverTween = null;
+        }
+        if (this._timeAttackOverBlinkTween) {
+          this._timeAttackOverBlinkTween.stop();
+          this._timeAttackOverBlinkTween = null;
+        }
+        if (this._ratioColorTimeout) {
+          clearTimeout(this._ratioColorTimeout);
+          this._ratioColorTimeout = null;
         }
         this.timeAttackText = null;
       });
