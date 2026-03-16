@@ -4163,7 +4163,8 @@ class LobbyScene extends Phaser.Scene {
     const myNickname = localStorage.getItem("nickname") || "나";
 
     // 싱글플레이에서 사용하는 초기 카드 수 (이 값이 전체 카드 총합의 기준입니다)
-    this.singleInitialCardCount = 20;
+    // (디버깅용으로 6장으로 설정)
+    this.singleInitialCardCount = 6;
 
     const singleGameData = {
       roomId: "SINGLE",
@@ -4177,7 +4178,7 @@ class LobbyScene extends Phaser.Scene {
         {
           id: myId,
           nickname: myNickname,
-          cards: 20,
+          cards: 6,
           isReady: true,
           openCard: null,
           openCardStack: [],
@@ -4185,7 +4186,7 @@ class LobbyScene extends Phaser.Scene {
         {
           id: "AI_1",
           nickname: "초보 요리사",
-          cards: 20,
+          cards: 6,
           isReady: true,
           openCard: null,
           openCardStack: [],
@@ -4193,7 +4194,7 @@ class LobbyScene extends Phaser.Scene {
         {
           id: "AI_2",
           nickname: "중급 요리사",
-          cards: 20,
+          cards: 6,
           isReady: true,
           openCard: null,
           openCardStack: [],
@@ -4201,7 +4202,7 @@ class LobbyScene extends Phaser.Scene {
         {
           id: "AI_3",
           nickname: "천재 요리사",
-          cards: 20,
+          cards: 6,
           isReady: true,
           openCard: null,
           openCardStack: [],
@@ -5342,6 +5343,16 @@ class LobbyScene extends Phaser.Scene {
   incrementMultiQuestCounter(key, amount = 1) {
     try {
       console.log(`[Quest Debug] incrementMultiQuestCounter called: key=${key} amount=${amount}`);
+
+      // If the helper methods are missing for any reason (bundling differences),
+      // fall back to the safe localStorage path.
+      if (typeof this.buildQuestPopupSnapshot !== "function" || typeof this.saveMultiQuestProgressSnapshot !== "function") {
+        console.warn(
+          "[Quest Debug] buildQuestPopupSnapshot/saveMultiQuestProgressSnapshot missing, using fallback",
+        );
+        return this.incrementMultiQuestCounterFallback(key, amount);
+      }
+
       const snapshot = this.buildQuestPopupSnapshot();
       console.log("[Quest Debug] pre-increment snapshot", snapshot);
       if (!snapshot) {
