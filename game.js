@@ -9139,6 +9139,16 @@ class GameScene extends Phaser.Scene {
           clearTimeout(this._ratioColorTimeout);
           this._ratioColorTimeout = null;
         }
+        if (this._aiRingTimers) {
+          Object.values(this._aiRingTimers).forEach((t) => {
+            try {
+              if (t) t.remove();
+            } catch (e) {
+              // ignore
+            }
+          });
+          this._aiRingTimers = null;
+        }
         this.timeAttackText = null;
       });
     }
@@ -9310,8 +9320,9 @@ class GameScene extends Phaser.Scene {
     });
 
     const difficultyMultipliers = {
-      easy: 1.35,
-      normal: 0.9,
+      // slower AI speeds to give players more time to react
+      easy: 1.45,
+      normal: 1.2,
       hard: 1.05,
     };
     const aiMultiplier =
@@ -15314,17 +15325,42 @@ class GameScene extends Phaser.Scene {
     const successWindow = hasThunder || (hasNot5 ? !isFive : isFive);
 
     if (successWindow) {
+      this._aiRingTimers = this._aiRingTimers || {};
       this.aiSettings.forEach((ai) => {
         const aiData = this.roundData.players.find((p) => p.id === ai.id);
         // 카드가 있는(>0) AI이면서 탈락 상태가 아닌 경우에만 종을 침
         if (aiData && Number(aiData.cards) > 0 && !aiData.isEliminated) {
-          // 기존 예약된 타이머가 있다면 취소하거나 겹치지 않게 관리
-          const delay = ai.reactionTime + Math.random() * 1000;
-          this.time.delayedCall(delay, () => {
+          // 한 번 예약된 타이머가 있으면 그대로 두고, 없으면 새로 예약
+          if (this._aiRingTimers[ai.id]) return;
+
+          // AI가 정답을 인지하고 반응하는 딜레이
+          const baseReaction = ai.reactionTime || 1200;
+          // 최대 delay가 너무 길면 플레이어가 반응할 기회를 잃으므로 적당히 제한
+          const delay = Math.max(
+            500,
+            Math.min(2200, Math.round(baseReaction * 0.9 + Math.random() * 400)),
+          );
+
+          this._aiRingTimers[ai.id] = this.time.delayedCall(delay, () => {
+            this._aiRingTimers[ai.id] = null;
             this.handleAiRingBell(ai.id);
           });
         }
       });
+    } else {
+      // successWindow가 꺼지면 예약된 AI 벨 타이머 취소
+      if (this._aiRingTimers) {
+        Object.values(this._aiRingTimers).forEach((t) => {
+          if (t) {
+            try {
+              t.remove();
+            } catch (e) {
+              // ignore
+            }
+          }
+        });
+        this._aiRingTimers = null;
+      }
     }
   }
 
@@ -16155,7 +16191,10 @@ class GameScene extends Phaser.Scene {
     if (this.isPlayerAi(nextPlayer.id)) {
       const aiSetting = this.aiSettings.find((ai) => ai.id === nextPlayer.id);
       const baseDelay = aiSetting ? aiSetting.flipDelay : 1500;
-      const delay = baseDelay + Math.random() * 400;
+
+      // Ensure AI doesn't flip again before its own reaction time (so bell can happen first)
+      const minDelay = aiSetting ? aiSetting.reactionTime + 800 : 2200;
+      const delay = Math.max(baseDelay + Math.random() * 400, minDelay);
 
       this.time.delayedCall(delay, () => {
         if (this.isGameStarted) {
