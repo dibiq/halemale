@@ -5384,6 +5384,14 @@ class LobbyScene extends Phaser.Scene {
       snapshot[key] = entry;
       this.saveMultiQuestProgressSnapshot(snapshot);
 
+      // Keep UI in sync if the quest popup is open
+      if (this.questState && this.questState.progress && this.questState.progress[key]) {
+        this.questState.progress[key] = entry;
+        if (typeof this.refreshQuestRow === "function") {
+          this.refreshQuestRow(key);
+        }
+      }
+
       // Immediately update the badge state in case a new reward became available
       if (typeof this.updateQuestBadgeState === "function") {
         this.updateQuestBadgeState();
