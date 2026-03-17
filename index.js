@@ -5681,6 +5681,14 @@ io.on("connection", (socket) => {
   function handleRingForSocket(sock) {
     const room = rooms[sock.roomId];
     if (!room || !room.isGameStarted) return;
+
+    // Prevent duplicate ring events (e.g. spam tapping the bell) from
+    // causing repeated penalty logic / auto-lock handling.
+    if (room.bellPending) {
+      console.log("[DEBUG] handleRingForSocket ignored because bellPending");
+      return;
+    }
+
     // prevent AI actions while we evaluate this ring
     room.bellPending = true;
 
@@ -5688,423 +5696,433 @@ io.on("connection", (socket) => {
     // the file for reasoning.
     clearAiTurnTimer(room);
 
-    if (room.bellLocked) return;
-
-    // during any special-card pause we normally ignore bell presses, but
-    // a lightning card on the table should override the pause and allow
-    // an immediate ring.  compute the thunder state early so we can make
-    // that decision before returning.
-    const pauseRemaining = getSpecialPauseRemaining(room);
-    const thunderNow = hasThunderCardOnTable(room.players);
-    if (pauseRemaining > 0 && !thunderNow) return;
-
-    // clear pending AI bell timers once we are actually going to evaluate
-    // the ring.  doing it earlier (prior to the pause check) could clear
-    // timers even when the ring is ignored, allowing bots to still fire
-    // during the pause window.
-    clearAiBellTimers(room);
-
-    // If a flip is currently being processed, normally wait and retry
-    if (room.isFlipping) {
-      // but if a thunder card is already on the table we can still process
-      const thunderNow = hasThunderCardOnTable(room.players);
-      if (!thunderNow) {
-        setTimeout(() => handleRingForSocket(sock), 50);
-        return;
-      }
-      // otherwise fall through and evaluate normally (optimistic success)
-    }
-
-    const hasOpenCards = room.players.some((player) => {
-      const hasOpenStack =
-        Array.isArray(player.openCardStack) && player.openCardStack.length > 0;
-      const hasOpenCard = Boolean(player.openCard);
-      return hasOpenStack || hasOpenCard;
-    });
-    if (!hasOpenCards) {
+    if (room.bellLocked) {
+      room.bellPending = false;
       return;
     }
 
-    const totals = getFruitTotals(room.players);
-    const isFive = Object.values(totals).some((t) => t === 5);
-    const hasThunder = hasThunderCardOnTable(room.players);
-    const hasBomb = hasBombCardOnTable(room.players);
-    const hasNot5 = hasNot5CardOnTable(room.players);
-    // bomb가 테이블에 있으면 어떤 경우에도 종은 실패(패널티)
-    // not5가 있으면 정답 조건이 반전: 합이 5가 아닌 경우가 정답
-    const isCorrectBell =
-      !hasBomb && (hasThunder || (hasNot5 ? !isFive : isFive));
-    if (hasBomb) {
-      emitServerDebug(room, "bomb.presentOnTable", {
-        ts: Date.now(),
-        roomId: room.roomId,
-      });
-    }
-    if (hasNot5) {
-      emitServerDebug(room, "not5.presentOnTable", {
-        ts: Date.now(),
-        roomId: room.roomId,
-      });
-    }
+    try {
+      // during any special-card pause we normally ignore bell presses, but
+      // a lightning card on the table should override the pause and allow
+      // an immediate ring.  compute the thunder state early so we can make
+      // that decision before returning.
+      const pauseRemaining = getSpecialPauseRemaining(room);
+      const thunderNow = hasThunderCardOnTable(room.players);
+      if (pauseRemaining > 0 && !thunderNow) return;
 
-    if (isCorrectBell) {
-      // record bell timestamp for flip-timer comparisons
-      room.lastBellTime = Date.now();
-      // lock as soon as we know the bell was right (it may already have
-      // been cleared above but doing it again keeps the meaning clear)
-      room.bellLocked = true;
-      // ensure no stray timer survives
-      clearAiTurnTimer(room);
-      // also clear any flip lock so AI scheduling isn’t blocked
-      room.isFlipping = false;
+      // clear pending AI bell timers once we are actually going to evaluate
+      // the ring.  doing it earlier (prior to the pause check) could clear
+      // timers even when the ring is ignored, allowing bots to still fire
+      // during the pause window.
+      clearAiBellTimers(room);
 
-      // 만약 시작하자마자 종을 누르는 경우를 대비해 기본값 0 설정
-      const reactionTimeMs = room.lastFlipTime
-        ? Date.now() - room.lastFlipTime
-        : 0;
-      const reactionTimeSec = (reactionTimeMs / 1000).toFixed(2);
-
-      // Track human reaction times to calibrate AI speed next match.
-      if (!room.reactionSamples) room.reactionSamples = {};
-      const winnerId = sock.id;
-      if (!room.reactionSamples[winnerId]) room.reactionSamples[winnerId] = [];
-      if (reactionTimeMs > 0) {
-        room.reactionSamples[winnerId].push(reactionTimeMs);
-        if (room.reactionSamples[winnerId].length > 5) {
-          room.reactionSamples[winnerId].shift();
+      // If a flip is currently being processed, normally wait and retry
+      if (room.isFlipping) {
+        // but if a thunder card is already on the table we can still process
+        const thunderNow = hasThunderCardOnTable(room.players);
+        if (!thunderNow) {
+          setTimeout(() => handleRingForSocket(sock), 50);
+          return;
         }
-        console.log("[DEBUG] recorded reaction sample", {
-          player: sock.nickname || sock.id,
-          ms: reactionTimeMs,
-          samples: room.reactionSamples[winnerId].slice(),
-        });
-      } else {
-        console.log("[DEBUG] reactionTimeMs was 0, not recorded", {
-          player: sock.nickname || sock.id,
-        });
+        // otherwise fall through and evaluate normally (optimistic success)
       }
 
-      // --- [성공 시나리오] ---
-      let collected = [];
-      room.players.forEach((p) => {
-        collected = [...collected, ...p.openCardStack];
-        p.openCardStack = [];
-        p.openCard = null;
-        // no plus1 flag to clear
+      const hasOpenCards = room.players.some((player) => {
+        const hasOpenStack =
+          Array.isArray(player.openCardStack) &&
+          player.openCardStack.length > 0;
+        const hasOpenCard = Boolean(player.openCard);
+        return hasOpenStack || hasOpenCard;
       });
-
-      const winnerIdx = room.players.findIndex((p) => p.id === socket.id);
-      const winner = room.players[winnerIdx];
-
-      // 카드 획득 및 다음 턴을 승리자로 고정
-      winner.myDeck = [...collected, ...winner.myDeck];
-      room.turnIndex = winnerIdx;
-
-      // 종을 뺏긴 사람들 중 카드가 0장인 사람 확인 (탈락 처리)
-      room.players.forEach((p) => {
-        // 1. 실제 덱 길이를 cards 속성에 반영 (이게 없어서 숫자가 리셋됨)
-        p.cards = p.myDeck.length;
-
-        if (p.cards === 0) {
-          p.isEliminated = true;
-        } else {
-          // 카드가 생겼다면(승자 등) 다시 생존 처리
-          p.isEliminated = false;
-        }
-      });
-
-      // 기록: 벨 정답/오답 통계 (서버측에도 저장하여 게임 종료 시 DB에 반영)
-      if (!room.bellStats) room.bellStats = {};
-      if (!room.bellStats[socket.id]) {
-        room.bellStats[socket.id] = {
-          correct: Number(socket.bellCorrect) || 0,
-          total: Number(socket.bellTotal) || 0,
-        };
-      }
-      room.bellStats[socket.id].correct += 1;
-      room.bellStats[socket.id].total += 1;
-
-      // keep socket-level totals in sync so disconnect/save works correctly
-      socket.bellCorrect = (Number(socket.bellCorrect) || 0) + 1;
-      socket.bellTotal = (Number(socket.bellTotal) || 0) + 1;
-      io.to(room.roomId).emit("bellResult", {
-        success: true,
-        winnerId: socket.id,
-        winnerNickname: winner.nickname,
-        players: room.players,
-        nextTurnId: winner.id,
-        collectedCount: collected.length,
-        reactionTime: reactionTimeSec, // 💡 추가: 반응 속도(초)
-        // provide accurate totals so clients can display consistent accuracy
-        bellCorrect: Number(socket.bellCorrect) || 0,
-        bellTotal: Number(socket.bellTotal) || 0,
-      });
-
-      // leave bellLocked true until processSkipTurn clears it; that way
-      // any AI flip arriving between result emission and turn advancement
-      // will be ignored.
-      processSkipTurn(room, io);
-    } else {
-      const p = room.players.find((pl) => pl.id === sock.id);
-      const others = room.players.filter(
-        (pl) => pl.id !== sock.id && !pl.isEliminated,
-      );
-
-      // 서버측 정확도 통계 업데이트 (틀리면 total++, 정답은 위쪽에서 correct++)
-      if (!room.bellStats) room.bellStats = {};
-      if (p && p.id) {
-        room.bellStats[p.id] = room.bellStats[p.id] || {
-          correct: Number(sock.bellCorrect) || 0,
-          total: Number(sock.bellTotal) || 0,
-        };
-        room.bellStats[p.id].total += 1;
-
-        // keep socket-side totals in sync for disconnection persistence
-        sock.bellTotal = (Number(sock.bellTotal) || 0) + 1;
+      if (!hasOpenCards) {
+        return;
       }
 
-      // 자동 자물쇠 처리: 패널티 적용 전에 해당 플레이어 소켓에 lock(id=4)이 있으면 소모하고 패널티를 건너뜁니다.
-      if (room.itemMode !== false) {
-        try {
-          // ensure our room snapshot has up-to-date specialCards values by
-          // refreshing from live sockets (same helper used elsewhere)
-          const refreshRoomSpecialCards = (room) => {
-            if (!room || !Array.isArray(room.players)) return;
-            room.players.forEach((p) => {
-              if (!p || !p.id) return;
-              const s = io.sockets.sockets.get(p.id);
-              const sockCards = s && s.specialCards ? s.specialCards : {};
-              // console.log(`[debug] refreshRoomSpecialCards player=${p.nickname} id=${p.id} socketCards=${JSON.stringify(sockCards)}`);
-              if (s && s.specialCards) {
-                p.specialCards = { ...s.specialCards };
-              }
-            });
-          };
-          refreshRoomSpecialCards(room);
-
-          const penalizedSocket = io.sockets.sockets.get(sock.id) || sock;
-          console.log(
-            "[auto-lock check] socketId=",
-            sock.id,
-            "specialCards=",
-            penalizedSocket.specialCards,
-          );
-          if (
-            penalizedSocket &&
-            penalizedSocket.specialCards &&
-            Number(penalizedSocket.specialCards[4] || 0) > 0
-          ) {
-            // 차감
-            penalizedSocket.specialCards[4] =
-              Number(penalizedSocket.specialCards[4] || 0) - 1;
-            if (penalizedSocket.specialCards[4] <= 0)
-              delete penalizedSocket.specialCards[4];
-
-            // DB 동기화 (비동기)
-            const mergedItems = {
-              items: Array.isArray(penalizedSocket.items)
-                ? penalizedSocket.items
-                : [],
-              specialCards: penalizedSocket.specialCards || {},
-            };
-            savePlayer(
-              penalizedSocket.nickname,
-              penalizedSocket.level || 1,
-              penalizedSocket.coins || 0,
-              mergedItems,
-              penalizedSocket.experience || 0,
-              penalizedSocket.ownedCharacters || ["player_1"],
-              penalizedSocket.currentCharacter ||
-                penalizedSocket.avatarKey ||
-                "player_1",
-              null,
-              typeof penalizedSocket.avetime === "number" &&
-                penalizedSocket.avetime > 0
-                ? penalizedSocket.avetime
-                : null,
-            ).catch((e) => console.warn("savePlayer error on auto-lock", e));
-
-            // 해당 플레이어에게 프로필 업데이트 전송
-            try {
-              penalizedSocket.emit("myProfile", {
-                nickname: penalizedSocket.nickname,
-                level: Number(penalizedSocket.level) || 1,
-                coins: Number(penalizedSocket.coins) || 0,
-                items: Array.isArray(penalizedSocket.items)
-                  ? penalizedSocket.items
-                  : [],
-                experience: Number(penalizedSocket.experience) || 0,
-                ratio: Number(penalizedSocket.ratio) || 0,
-                bellCorrect: Number(penalizedSocket.bellCorrect) || 0,
-                bellTotal: Number(penalizedSocket.bellTotal) || 0,
-                avetime: Number(penalizedSocket.avetime) || 0,
-                avatarKey:
-                  penalizedSocket.currentCharacter ||
-                  penalizedSocket.avatarKey ||
-                  "player_1",
-                specialCards: penalizedSocket.specialCards || {},
-                owned_characters: penalizedSocket.ownedCharacters || [
-                  "player_1",
-                ],
-                current_character:
-                  penalizedSocket.currentCharacter || "player_1",
-              });
-            } catch (e) {
-              console.warn("emit myProfile error on auto-lock", e);
-            }
-
-            // 룸에 패널티 면제 알림 전송 (recipients 빈 배열로 전달)
-            io.to(room.roomId).emit("bellResult", {
-              success: false,
-              penaltyId: null,
-              message: `${penalizedSocket.nickname}님이 자물쇠로 패널티를 면제했습니다.`,
-              players: room.players,
-              recipients: [],
-              penaltyPerRecipient: 0,
-              autoLockUsedBy: penalizedSocket.id,
-              bellCorrect: Number(penalizedSocket.bellCorrect) || 0,
-              bellTotal: Number(penalizedSocket.bellTotal) || 0,
-            });
-
-            // also broadcast a specialUsed event so clients can show lock effect
-            io.to(room.roomId).emit("specialUsed", {
-              cardId: 4,
-              by: penalizedSocket.id,
-              players: room.players,
-              recipients: [],
-              shielded: [],
-              message: `${penalizedSocket.nickname}님이 자물쇠를 사용했습니다!`,
-            });
-
-            processSkipTurn(room, io);
-            return;
-          }
-        } catch (e) {
-          console.warn("auto-lock check error", e);
-        }
-      }
-
-      const recipients = []; // 💡 카드를 실제 받은 사람 ID를 담을 배열
-
-      const hasPen = hasPenCardOnTable(room.players);
+      const totals = getFruitTotals(room.players);
+      const isFive = Object.values(totals).some((t) => t === 5);
+      const hasThunder = hasThunderCardOnTable(room.players);
+      const hasBomb = hasBombCardOnTable(room.players);
       const hasNot5 = hasNot5CardOnTable(room.players);
-      let penaltyPerRecipient = null; // for response payload - if not5 active, will be set to given count
-
-      // not5가 활성화된 경우: 패널티는 틀린 사람의 덱 절반이 꼴찌(가장 적은 카드 보유자)에게 이동
-      if (hasNot5) {
-        emitServerDebug(room, "not5.penaltyApplied", {
+      // bomb가 테이블에 있으면 어떤 경우에도 종은 실패(패널티)
+      // not5가 있으면 정답 조건이 반전: 합이 5가 아닌 경우가 정답
+      const isCorrectBell =
+        !hasBomb && (hasThunder || (hasNot5 ? !isFive : isFive));
+      if (hasBomb) {
+        emitServerDebug(room, "bomb.presentOnTable", {
           ts: Date.now(),
           roomId: room.roomId,
         });
+      }
+      if (hasNot5) {
+        emitServerDebug(room, "not5.presentOnTable", {
+          ts: Date.now(),
+          roomId: room.roomId,
+        });
+      }
 
-        const candidates = room.players.filter(
-          (pl) => pl.id !== p.id && !pl.isEliminated,
-        );
-        if (candidates.length > 0) {
-          // 꼴찌(덱 수 최소) 선택
-          candidates.sort(
-            (a, b) => (a.myDeck?.length || 0) - (b.myDeck?.length || 0),
-          );
-          const loser = candidates[0];
-          let givenAny = false;
-          const giveCount = Math.floor((p.myDeck.length || 0) / 2);
-          for (let k = 0; k < giveCount; k += 1) {
-            if (p.myDeck.length > 0) {
-              const card = p.myDeck.pop();
-              loser.myDeck.unshift(card);
-              givenAny = true;
-            }
+      if (isCorrectBell) {
+        // record bell timestamp for flip-timer comparisons
+        room.lastBellTime = Date.now();
+        // lock as soon as we know the bell was right (it may already have
+        // been cleared above but doing it again keeps the meaning clear)
+        room.bellLocked = true;
+        // ensure no stray timer survives
+        clearAiTurnTimer(room);
+        // also clear any flip lock so AI scheduling isn’t blocked
+        room.isFlipping = false;
+
+        // 만약 시작하자마자 종을 누르는 경우를 대비해 기본값 0 설정
+        const reactionTimeMs = room.lastFlipTime
+          ? Date.now() - room.lastFlipTime
+          : 0;
+        const reactionTimeSec = (reactionTimeMs / 1000).toFixed(2);
+
+        // Track human reaction times to calibrate AI speed next match.
+        if (!room.reactionSamples) room.reactionSamples = {};
+        const winnerId = sock.id;
+        if (!room.reactionSamples[winnerId])
+          room.reactionSamples[winnerId] = [];
+        if (reactionTimeMs > 0) {
+          room.reactionSamples[winnerId].push(reactionTimeMs);
+          if (room.reactionSamples[winnerId].length > 5) {
+            room.reactionSamples[winnerId].shift();
           }
-          penaltyPerRecipient = giveCount;
-          if (givenAny) recipients.push(loser.id);
+          console.log("[DEBUG] recorded reaction sample", {
+            player: sock.nickname || sock.id,
+            ms: reactionTimeMs,
+            samples: room.reactionSamples[winnerId].slice(),
+          });
+        } else {
+          console.log("[DEBUG] reactionTimeMs was 0, not recorded", {
+            player: sock.nickname || sock.id,
+          });
         }
+
+        // --- [성공 시나리오] ---
+        let collected = [];
+        room.players.forEach((p) => {
+          collected = [...collected, ...p.openCardStack];
+          p.openCardStack = [];
+          p.openCard = null;
+          // no plus1 flag to clear
+        });
+
+        const winnerIdx = room.players.findIndex((p) => p.id === socket.id);
+        const winner = room.players[winnerIdx];
+
+        // 카드 획득 및 다음 턴을 승리자로 고정
+        winner.myDeck = [...collected, ...winner.myDeck];
+        room.turnIndex = winnerIdx;
+
+        // 종을 뺏긴 사람들 중 카드가 0장인 사람 확인 (탈락 처리)
+        room.players.forEach((p) => {
+          // 1. 실제 덱 길이를 cards 속성에 반영 (이게 없어서 숫자가 리셋됨)
+          p.cards = p.myDeck.length;
+
+          if (p.cards === 0) {
+            p.isEliminated = true;
+          } else {
+            // 카드가 생겼다면(승자 등) 다시 생존 처리
+            p.isEliminated = false;
+          }
+        });
+
+        // 기록: 벨 정답/오답 통계 (서버측에도 저장하여 게임 종료 시 DB에 반영)
+        if (!room.bellStats) room.bellStats = {};
+        if (!room.bellStats[socket.id]) {
+          room.bellStats[socket.id] = {
+            correct: Number(socket.bellCorrect) || 0,
+            total: Number(socket.bellTotal) || 0,
+          };
+        }
+        room.bellStats[socket.id].correct += 1;
+        room.bellStats[socket.id].total += 1;
+
+        // keep socket-level totals in sync so disconnect/save works correctly
+        socket.bellCorrect = (Number(socket.bellCorrect) || 0) + 1;
+        socket.bellTotal = (Number(socket.bellTotal) || 0) + 1;
+        io.to(room.roomId).emit("bellResult", {
+          success: true,
+          winnerId: socket.id,
+          winnerNickname: winner.nickname,
+          players: room.players,
+          nextTurnId: winner.id,
+          collectedCount: collected.length,
+          reactionTime: reactionTimeSec, // 💡 추가: 반응 속도(초)
+          // provide accurate totals so clients can display consistent accuracy
+          bellCorrect: Number(socket.bellCorrect) || 0,
+          bellTotal: Number(socket.bellTotal) || 0,
+        });
+
+        // leave bellLocked true until processSkipTurn clears it; that way
+        // any AI flip arriving between result emission and turn advancement
+        // will be ignored.
+        processSkipTurn(room, io);
       } else {
-        penaltyPerRecipient = hasPen ? 2 : 1;
-        if (hasPen) {
-          emitServerDebug(room, "pen.presentOnTable", {
+        const p = room.players.find((pl) => pl.id === sock.id);
+        const others = room.players.filter(
+          (pl) => pl.id !== sock.id && !pl.isEliminated,
+        );
+
+        // 서버측 정확도 통계 업데이트 (틀리면 total++, 정답은 위쪽에서 correct++)
+        if (!room.bellStats) room.bellStats = {};
+        if (p && p.id) {
+          room.bellStats[p.id] = room.bellStats[p.id] || {
+            correct: Number(sock.bellCorrect) || 0,
+            total: Number(sock.bellTotal) || 0,
+          };
+          room.bellStats[p.id].total += 1;
+
+          // keep socket-side totals in sync for disconnection persistence
+          sock.bellTotal = (Number(sock.bellTotal) || 0) + 1;
+        }
+
+        // 자동 자물쇠 처리: 패널티 적용 전에 해당 플레이어 소켓에 lock(id=4)이 있으면 소모하고 패널티를 건너뜁니다.
+        if (room.itemMode !== false) {
+          try {
+            // ensure our room snapshot has up-to-date specialCards values by
+            // refreshing from live sockets (same helper used elsewhere)
+            const refreshRoomSpecialCards = (room) => {
+              if (!room || !Array.isArray(room.players)) return;
+              room.players.forEach((p) => {
+                if (!p || !p.id) return;
+                const s = io.sockets.sockets.get(p.id);
+                const sockCards = s && s.specialCards ? s.specialCards : {};
+                // console.log(`[debug] refreshRoomSpecialCards player=${p.nickname} id=${p.id} socketCards=${JSON.stringify(sockCards)}`);
+                if (s && s.specialCards) {
+                  p.specialCards = { ...s.specialCards };
+                }
+              });
+            };
+            refreshRoomSpecialCards(room);
+
+            const penalizedSocket = io.sockets.sockets.get(sock.id) || sock;
+            console.log(
+              "[auto-lock check] socketId=",
+              sock.id,
+              "specialCards=",
+              penalizedSocket.specialCards,
+            );
+            if (
+              penalizedSocket &&
+              penalizedSocket.specialCards &&
+              Number(penalizedSocket.specialCards[4] || 0) > 0
+            ) {
+              // 차감
+              penalizedSocket.specialCards[4] =
+                Number(penalizedSocket.specialCards[4] || 0) - 1;
+              if (penalizedSocket.specialCards[4] <= 0)
+                delete penalizedSocket.specialCards[4];
+
+              // DB 동기화 (비동기)
+              const mergedItems = {
+                items: Array.isArray(penalizedSocket.items)
+                  ? penalizedSocket.items
+                  : [],
+                specialCards: penalizedSocket.specialCards || {},
+              };
+              savePlayer(
+                penalizedSocket.nickname,
+                penalizedSocket.level || 1,
+                penalizedSocket.coins || 0,
+                mergedItems,
+                penalizedSocket.experience || 0,
+                penalizedSocket.ownedCharacters || ["player_1"],
+                penalizedSocket.currentCharacter ||
+                  penalizedSocket.avatarKey ||
+                  "player_1",
+                null,
+                typeof penalizedSocket.avetime === "number" &&
+                  penalizedSocket.avetime > 0
+                  ? penalizedSocket.avetime
+                  : null,
+              ).catch((e) => console.warn("savePlayer error on auto-lock", e));
+
+              // 해당 플레이어에게 프로필 업데이트 전송
+              try {
+                penalizedSocket.emit("myProfile", {
+                  nickname: penalizedSocket.nickname,
+                  level: Number(penalizedSocket.level) || 1,
+                  coins: Number(penalizedSocket.coins) || 0,
+                  items: Array.isArray(penalizedSocket.items)
+                    ? penalizedSocket.items
+                    : [],
+                  experience: Number(penalizedSocket.experience) || 0,
+                  ratio: Number(penalizedSocket.ratio) || 0,
+                  bellCorrect: Number(penalizedSocket.bellCorrect) || 0,
+                  bellTotal: Number(penalizedSocket.bellTotal) || 0,
+                  avetime: Number(penalizedSocket.avetime) || 0,
+                  avatarKey:
+                    penalizedSocket.currentCharacter ||
+                    penalizedSocket.avatarKey ||
+                    "player_1",
+                  specialCards: penalizedSocket.specialCards || {},
+                  owned_characters: penalizedSocket.ownedCharacters || [
+                    "player_1",
+                  ],
+                  current_character:
+                    penalizedSocket.currentCharacter || "player_1",
+                });
+              } catch (e) {
+                console.warn("emit myProfile error on auto-lock", e);
+              }
+
+              // 룸에 패널티 면제 알림 전송 (recipients 빈 배열로 전달)
+              io.to(room.roomId).emit("bellResult", {
+                success: false,
+                penaltyId: null,
+                message: `${penalizedSocket.nickname}님이 자물쇠로 패널티를 면제했습니다.`,
+                players: room.players,
+                recipients: [],
+                penaltyPerRecipient: 0,
+                autoLockUsedBy: penalizedSocket.id,
+                bellCorrect: Number(penalizedSocket.bellCorrect) || 0,
+                bellTotal: Number(penalizedSocket.bellTotal) || 0,
+              });
+
+              // also broadcast a specialUsed event so clients can show lock effect
+              io.to(room.roomId).emit("specialUsed", {
+                cardId: 4,
+                by: penalizedSocket.id,
+                players: room.players,
+                recipients: [],
+                shielded: [],
+                message: `${penalizedSocket.nickname}님이 자물쇠를 사용했습니다!`,
+              });
+
+              processSkipTurn(room, io);
+              return;
+            }
+          } catch (e) {
+            console.warn("auto-lock check error", e);
+          }
+        }
+
+        const recipients = []; // 💡 카드를 실제 받은 사람 ID를 담을 배열
+
+        const hasPen = hasPenCardOnTable(room.players);
+        const hasNot5 = hasNot5CardOnTable(room.players);
+        let penaltyPerRecipient = null; // for response payload - if not5 active, will be set to given count
+
+        // not5가 활성화된 경우: 패널티는 틀린 사람의 덱 절반이 꼴찌(가장 적은 카드 보유자)에게 이동
+        if (hasNot5) {
+          emitServerDebug(room, "not5.penaltyApplied", {
             ts: Date.now(),
             roomId: room.roomId,
           });
-        }
 
-        // 추가 디버그: 패널티가 2일 때 각 플레이어의 탑 카드 타입을 전송
-        if (penaltyPerRecipient > 1) {
-          const topTypes = room.players.map((pl) => {
-            const top =
-              Array.isArray(pl.openCardStack) && pl.openCardStack.length > 0
-                ? pl.openCardStack[pl.openCardStack.length - 1]
-                : pl.openCard;
-            return {
-              playerId: pl.id,
-              nickname: pl.nickname,
-              topType:
-                top && top.type ? top.type : `${top?.fruit}_${top?.count}`,
-            };
-          });
-          emitServerDebug(room, "pen.debugTopCards", { topTypes });
-        }
-
-        if (others.length > 0) {
-          others.forEach((recipient) => {
+          const candidates = room.players.filter(
+            (pl) => pl.id !== p.id && !pl.isEliminated,
+          );
+          if (candidates.length > 0) {
+            // 꼴찌(덱 수 최소) 선택
+            candidates.sort(
+              (a, b) => (a.myDeck?.length || 0) - (b.myDeck?.length || 0),
+            );
+            const loser = candidates[0];
             let givenAny = false;
-            for (let k = 0; k < penaltyPerRecipient; k += 1) {
+            const giveCount = Math.floor((p.myDeck.length || 0) / 2);
+            for (let k = 0; k < giveCount; k += 1) {
               if (p.myDeck.length > 0) {
                 const card = p.myDeck.pop();
-                recipient.myDeck.unshift(card);
+                loser.myDeck.unshift(card);
                 givenAny = true;
               }
             }
-            if (givenAny) recipients.push(recipient.id);
+            penaltyPerRecipient = giveCount;
+            if (givenAny) recipients.push(loser.id);
+          }
+        } else {
+          penaltyPerRecipient = hasPen ? 2 : 1;
+          if (hasPen) {
+            emitServerDebug(room, "pen.presentOnTable", {
+              ts: Date.now(),
+              roomId: room.roomId,
+            });
+          }
+
+          // 추가 디버그: 패널티가 2일 때 각 플레이어의 탑 카드 타입을 전송
+          if (penaltyPerRecipient > 1) {
+            const topTypes = room.players.map((pl) => {
+              const top =
+                Array.isArray(pl.openCardStack) && pl.openCardStack.length > 0
+                  ? pl.openCardStack[pl.openCardStack.length - 1]
+                  : pl.openCard;
+              return {
+                playerId: pl.id,
+                nickname: pl.nickname,
+                topType:
+                  top && top.type ? top.type : `${top?.fruit}_${top?.count}`,
+              };
+            });
+            emitServerDebug(room, "pen.debugTopCards", { topTypes });
+          }
+
+          if (others.length > 0) {
+            others.forEach((recipient) => {
+              let givenAny = false;
+              for (let k = 0; k < penaltyPerRecipient; k += 1) {
+                if (p.myDeck.length > 0) {
+                  const card = p.myDeck.pop();
+                  recipient.myDeck.unshift(card);
+                  givenAny = true;
+                }
+              }
+              if (givenAny) recipients.push(recipient.id);
+            });
+          }
+        }
+
+        // 💡 [중요 추가] 모든 플레이어의 cards 속성을 현재 덱 길이에 맞춰 갱신
+        room.players.forEach((player) => {
+          player.cards = player.myDeck.length;
+          if (player.cards === 0) {
+            player.isEliminated = true;
+          }
+        });
+
+        // 벌칙 후 본인 덱이 0장이면 즉시 탈락 및 게임 종료 체크
+        if (p.myDeck.length === 0) {
+          p.isEliminated = true;
+
+          io.to(room.roomId).emit("bellResult", {
+            success: false,
+            penaltyId: socket.id,
+            message: `${p.nickname}님 카드 소진으로 탈락!`,
+            players: room.players,
+            recipients,
+            penaltyPerRecipient,
+            bellCorrect: Number(socket.bellCorrect) || 0,
+            bellTotal: Number(socket.bellTotal) || 0,
+          });
+
+          if (checkGameOver(room, io)) return;
+        } else {
+          // 카드가 남은 경우 일반 벌칙 알림
+          io.to(room.roomId).emit("bellResult", {
+            success: false,
+            penaltyId: socket.id,
+            message: `${p.nickname}님 틀렸습니다!`,
+            players: room.players,
+            recipients,
+            penaltyPerRecipient,
+            bellCorrect: Number(socket.bellCorrect) || 0,
+            bellTotal: Number(socket.bellTotal) || 0,
           });
         }
+
+        processSkipTurn(room, io);
       }
-
-      // 💡 [중요 추가] 모든 플레이어의 cards 속성을 현재 덱 길이에 맞춰 갱신
-      room.players.forEach((player) => {
-        player.cards = player.myDeck.length;
-        if (player.cards === 0) {
-          player.isEliminated = true;
-        }
-      });
-
-      // 벌칙 후 본인 덱이 0장이면 즉시 탈락 및 게임 종료 체크
-      if (p.myDeck.length === 0) {
-        p.isEliminated = true;
-
-        io.to(room.roomId).emit("bellResult", {
-          success: false,
-          penaltyId: socket.id,
-          message: `${p.nickname}님 카드 소진으로 탈락!`,
-          players: room.players,
-          recipients,
-          penaltyPerRecipient,
-          bellCorrect: Number(socket.bellCorrect) || 0,
-          bellTotal: Number(socket.bellTotal) || 0,
-        });
-
-        if (checkGameOver(room, io)) return;
-      } else {
-        // 카드가 남은 경우 일반 벌칙 알림
-        io.to(room.roomId).emit("bellResult", {
-          success: false,
-          penaltyId: socket.id,
-          message: `${p.nickname}님 틀렸습니다!`,
-          players: room.players,
-          recipients,
-          penaltyPerRecipient,
-          bellCorrect: Number(socket.bellCorrect) || 0,
-          bellTotal: Number(socket.bellTotal) || 0,
-        });
-      }
-
-      processSkipTurn(room, io);
+      // ring handling done, allow AI again after a brief grace period
+      // this prevents flips that would otherwise fire within a few dozen
+      // milliseconds of the result being emitted.
+    } finally {
+      setTimeout(() => {
+        if (room) room.bellPending = false;
+      }, 500);
     }
-    // ring handling done, allow AI again after a brief grace period
-    // this prevents flips that would otherwise fire within a few dozen
-    // milliseconds of the result being emitted.
-    setTimeout(() => {
-      if (room) room.bellPending = false;
-    }, 500);
+
+    // end handleRingForSocket
   }
 
   socket.on("ringBell", () => handleRingForSocket(socket));

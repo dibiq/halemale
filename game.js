@@ -5237,18 +5237,28 @@ class LobbyScene extends Phaser.Scene {
         const price = Number(card.price) || 0;
         if (currentCoins >= price) {
           this.myProfile.coins = currentCoins - price;
-          if (typeof this.incrementMultiQuestCounter === "function") {
-            this.incrementMultiQuestCounter("shop_buy", 1);
+
+          // Quest counter update should never block the purchase flow.
+          try {
+            if (typeof this.incrementMultiQuestCounter === "function") {
+              this.incrementMultiQuestCounter("shop_buy", 1);
+            }
+          } catch (e) {
+            console.warn("incrementMultiQuestCounter failed", e);
           }
 
           if (!specialCardsOwned[card.id]) {
             specialCardsOwned[card.id] = 0;
           }
           specialCardsOwned[card.id] += 1;
-          localStorage.setItem(
-            "specialCards",
-            JSON.stringify(specialCardsOwned),
-          );
+          try {
+            localStorage.setItem(
+              "specialCards",
+              JSON.stringify(specialCardsOwned),
+            );
+          } catch (e) {
+            console.warn("localStorage specialCards write failed", e);
+          }
 
           this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
           this.updateMyProfileUI();
