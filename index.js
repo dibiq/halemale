@@ -3541,8 +3541,15 @@ io.on("connection", (socket) => {
 
     // notify everyone in the same room that one player's profile changed
     if (socket.roomId && rooms[socket.roomId]) {
+      const room = rooms[socket.roomId];
+      const player = room.players.find((p) => p.id === socket.id);
+      if (player) {
+        player.avatarKey = characterKey;
+        player.currentCharacter = characterKey;
+      }
+
       io.to(socket.roomId).emit("playerUpdated", {
-        players: rooms[socket.roomId].players,
+        players: room.players,
       });
     }
   });
