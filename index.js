@@ -4022,6 +4022,11 @@ io.on("connection", (socket) => {
     broadcastPublicRooms();
   });
 
+  socket.on("requestPublicRooms", () => {
+    // 클라이언트가 요청할 때 즉시 최신 공개 방 목록 전송
+    socket.emit("publicRoomsUpdated", getRoomListPayload());
+  });
+
   socket.on("joinRoom", async (data) => {
     console.log("🚪 joinRoom 호출됨, 받은 data:", JSON.stringify(data));
     const roomId = (

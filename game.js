@@ -5946,6 +5946,9 @@ class LobbyScene extends Phaser.Scene {
       .then((rooms) => {
         console.log("[RoomList] fetched rooms", rooms?.length);
         this.hideLoading(); // ✅ 방 목록 로드 완료 시 로딩창 닫기
+
+        // 안전장치: 서버에서 방 생성 이벤트를 놓쳤을 때도 요청 가능
+        socket.emit("requestPublicRooms");
         // 1. 기존 팝업 닫기
         if (this.joinPopupContainer) this.joinPopupContainer.destroy();
         this.joinPopupContainer = this.add.container(0, 0).setDepth(1100); // 로비 UI보다 높게
@@ -8441,9 +8444,18 @@ class LobbyScene extends Phaser.Scene {
       allObjects.push(emptyText);
     }
 
-    users.forEach((user, index) => {
+    // Ensure users is an array (defensive) and add safe defaults
+    const safeUsers = Array.isArray(users) ? users : [];
+    safeUsers.forEach((user, index) => {
+      const safeUser = {
+        id: user?.id || null,
+        nickname: user?.nickname || user?.name || "알 수 없는 요리사",
+        level: Number(user?.level) || 1,
+        avatarKey: user?.avatarKey || "player_1",
+      };
+
       const btnY =
-        listContainerY - listH / 2 + (index + 1) * (listH / (users.length + 1));
+        listContainerY - listH / 2 + (index + 1) * (listH / (safeUsers.length + 1));
       const userIconX = centerX - popupWidth * 0.28;
       const userTextX = centerX - popupWidth * 0.05;
       const inviteBtnX = centerX + popupWidth * 0.25;
@@ -8456,8 +8468,8 @@ class LobbyScene extends Phaser.Scene {
         .setInteractive({ useHandCursor: true });
 
       // 유저 아이콘
-      const baseUserAvatar = /^player_[1-4]$/.test(user.avatarKey)
-        ? user.avatarKey
+      const baseUserAvatar = /^player_[1-4]$/.test(safeUser.avatarKey)
+        ? safeUser.avatarKey
         : "player_1";
 
       const userIcon = this.add
@@ -8473,7 +8485,7 @@ class LobbyScene extends Phaser.Scene {
 
       // 유저명 + 레벨 (한 줄)
       const userInfo = this.add
-        .text(userTextX, btnY, `Lv.${user.level} ${user.nickname}`, {
+        .text(userTextX, btnY, `Lv.${safeUser.level} ${safeUser.nickname}`, {
           fontFamily: GAME_FONTS.main,
           fontSize: `${width * 0.032}px`,
           color: "#fff",
