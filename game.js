@@ -8140,12 +8140,19 @@ class LobbyScene extends Phaser.Scene {
           .setStrokeStyle(1, 0x475569, 0.7);
       }
 
+      const isMissedGrey = !isClaimed && isMissed && !isVideo;
+      const baseTextColor = isToday
+        ? "#facc15"
+        : isMissedGrey
+        ? "#888888"
+        : "#ffffff";
+
       const dayText = this.add
         .text(rowX, rowY - rowHeight * 0.35, dayLabels[i], {
           fontFamily:
             typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
           fontSize: `${width * 0.04}px`,
-          color: isToday ? "#facc15" : "#ffffff",
+          color: baseTextColor,
           fontWeight: "bold",
           stroke: "#000000",
           strokeThickness: 3,
@@ -8182,13 +8189,17 @@ class LobbyScene extends Phaser.Scene {
             fontFamily:
               typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
             fontSize: `${width * 0.04}px`,
-            color: "#ffffff",
+            color: isMissedGrey ? "#888888" : "#ffffff",
             fontWeight: "bold",
             stroke: "#000000",
             strokeThickness: 3,
           })
           .setOrigin(0.5)
           .setDepth(4003);
+
+        if (isMissedGrey) {
+          coinImg.setTint(0x888888);
+        }
       }
       // status labels: 획득 / 놓침
       let statusLabel = null;
@@ -8219,20 +8230,9 @@ class LobbyScene extends Phaser.Scene {
       }
 
       // missed day (past days without claim)
+      // (no longer display a '놓침' label; instead greys out the day icon/text)
       if (!isClaimed && isMissed && !isVideo) {
-        statusLabel = this.add
-          .text(rowX, rowY, "놓침", {
-            fontFamily:
-              typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
-            fontSize: `${width * 0.055}px`,
-            color: "#b0bec5",
-            fontWeight: "bold",
-            stroke: "#000000",
-            strokeThickness: 4,
-          })
-          .setOrigin(0.5)
-          .setDepth(4004);
-        statusLabel.setRotation(-0.3);
+        // intentional no-op
       }
 
       if (canClaim || isVideo) {
