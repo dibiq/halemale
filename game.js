@@ -3810,6 +3810,7 @@ class LobbyScene extends Phaser.Scene {
     const finalize = () => {
       this.hideLoading();
       this.isRoomOpen = false;
+      this.isLeavingRoom = false;
       this.currentRoomId = null;
       this.currentPlayers = [];
       this.currentMax = null;
@@ -5232,12 +5233,14 @@ class LobbyScene extends Phaser.Scene {
 
       if (currentTab === "special") {
         const card = specialCards[tabIndexes.special];
-        if (this.myProfile.coins >= card.price) {
-          this.myProfile.coins -= card.price;
-            if (typeof this.incrementMultiQuestCounter === "function") {
-              this.incrementMultiQuestCounter("shop_buy", 1);
-            }
-            JSON.parse(localStorage.getItem("specialCards")) || {};
+        const currentCoins = Number(this.myProfile.coins) || 0;
+        const price = Number(card.price) || 0;
+        if (currentCoins >= price) {
+          this.myProfile.coins = currentCoins - price;
+          if (typeof this.incrementMultiQuestCounter === "function") {
+            this.incrementMultiQuestCounter("shop_buy", 1);
+          }
+
           if (!specialCardsOwned[card.id]) {
             specialCardsOwned[card.id] = 0;
           }

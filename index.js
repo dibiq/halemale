@@ -2826,6 +2826,14 @@ io.on("connection", (socket) => {
             message: `${socket.nickname}님이 자물쇠를 사용했습니다!`,
           });
 
+          // Ensure the room advances to the next turn (clear any bell lock state)
+          // so bots can resume play after auto-lock prevents a penalty.
+          try {
+            processSkipTurn(room, io);
+          } catch (e) {
+            console.warn("auto-lock processSkipTurn error", e);
+          }
+
           if (typeof cb === "function")
             cb({
               success: true,
