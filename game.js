@@ -290,28 +290,18 @@ socket.off("serverDebug").on("serverDebug", (payload) => {
   const event = payload?.event || "unknown";
   const roomId = payload?.roomId || "-";
   const ts = payload?.ts ? new Date(payload.ts).toLocaleTimeString() : "-";
-  //console.log(`🛰️ [serverDebug][${ts}][room:${roomId}] ${event}`, payload);
 });
 
 socket.off("connect").on("connect", () => {
-  /*console.log("🔌 socket connected", {
-    serverUrl: SERVER_URL,
-    socketId: socket.id,
-  });*/
+
 });
 
 socket.off("disconnect").on("disconnect", (reason) => {
-  /*console.warn("🔌 socket disconnected", {
-    serverUrl: SERVER_URL,
-    reason,
-  });*/
+
 });
 
 socket.off("serverHello").on("serverHello", (payload) => {
-  /*console.log("🧭 serverHello", {
-    serverUrl: SERVER_URL,
-    ...payload,
-  });*/
+
 });
 
 // -----------------------------------------------------------------------------
@@ -320,18 +310,15 @@ socket.off("serverHello").on("serverHello", (payload) => {
 function ensurePlayer2Frames(scene) {
   try {
     if (!scene || !scene.textures) {
-      //console.log("[ensurePlayer2Frames] no scene/textures");
       return;
     }
     // must have the base sprite loaded first
     if (!scene.textures.exists("player_2_sprite")) {
-      // console.log("[ensurePlayer2Frames] base sprite not yet available");
       return;
     }
     const tex = scene.textures.get("player_2_sprite");
     const img = tex.getSourceImage();
     if (!img || !img.width || !img.height) {
-      // console.log("[ensurePlayer2Frames] invalid image");
       return;
     }
 
@@ -374,9 +361,7 @@ function ensurePlayer2Frames(scene) {
         created++;
       }
     }
-    // console.log("[ensurePlayer2Frames] created", created, "frames");
   } catch (e) {
-    // console.error("[ensurePlayer2Frames] error", e);
   }
 }
 
@@ -469,7 +454,6 @@ function ensureMainbgFrames(scene) {
       skipEmpty: true,
     });
   } catch (e) {
-    // console.error("[ensureMainbgFrames] error", e);
   }
 }
 
@@ -751,7 +735,7 @@ class LobbyScene extends Phaser.Scene {
       // 진행률 표시 (선택사항 - % 숫자가 올라감)
       onLoadProgress = (value) => {
         if (!loadingText || !loadingText.active) return;
-        loadingText.setText(`로딩 중...(처음 접속시 시간이 걸릴 수 있습니다) ${Math.floor(value * 100)}%`);
+        loadingText.setText(`로딩 중...(처음 접속시 시간이 걸릴 수 있습니다)\n ${Math.floor(value * 100)}%`);
       };
       this.load.on("progress", onLoadProgress);
     }
@@ -2486,14 +2470,8 @@ class LobbyScene extends Phaser.Scene {
         const stored = JSON.parse(
           localStorage.getItem(MULTI_QUEST_PROGRESS_STORAGE_KEY) || "{}",
         );
-        console.log(
-          "[Quest Debug] updateQuestBadgeState: shouldShow=",
-          shouldShow,
-          "stored=",
-          stored,
-        );
+
       } catch (e) {
-        console.warn("[Quest Debug] failed to read stored quest progress", e);
       }
       if (this.questBadge) this.questBadge.setVisible(shouldShow);
       if (this.questBadgeText) this.questBadgeText.setVisible(shouldShow);
@@ -3430,7 +3408,6 @@ class LobbyScene extends Phaser.Scene {
         this.anims.remove(animKey);
       }
       const frames = frameKeys.map((key) => ({ key }));
-      console.log("[ensureMybgAnimation] creating animation", animKey, "frames", frames.length);
       this.anims.create({
         key: animKey,
         frames,
@@ -3541,10 +3518,6 @@ class LobbyScene extends Phaser.Scene {
 
     // Re-apply avatar animation if the frames are now available.
     if (this.profileImage && typeof this.updateProfileAvatarUI === "function") {
-      console.log("[deferred] reapplying profile avatar animation");
-      console.log("[deferred] texture exists: player_1_frame_1=", this.textures.exists("player_1_frame_1"));
-      console.log("[deferred] texture exists: player_1_frame_2=", this.textures.exists("player_1_frame_2"));
-      console.log("[deferred] texture exists: player_1_frame_3=", this.textures.exists("player_1_frame_3"));
 
       const baseKey = this.getSelectedAvatarKey();
 
@@ -3563,14 +3536,7 @@ class LobbyScene extends Phaser.Scene {
         } catch (e) {
           console.warn("failed to play avatar animation", e);
         }
-        console.log(
-          "[deferred] avatar anim key=",
-          newAnimKey,
-          "frames=",
-          this.anims.get(newAnimKey)?.frames.length,
-          "isPlaying=",
-          this.profileImage.anims.isPlaying,
-        );
+
       }
     }
   }
@@ -3858,13 +3824,31 @@ class LobbyScene extends Phaser.Scene {
         this.lobbyUIContainer.destroy();
         this.lobbyUIContainer = null;
       }
+      if (this.lobbyChatInputElement) {
+        try {
+          this.lobbyChatInputElement.destroy();
+        } catch (e) {
+          // ignore
+        }
+        this.lobbyChatInputElement = null;
+      }
       if (socket && socket.roomId === roomId) {
         socket.roomId = null;
       }
 
-      // When leaving a multiplayer room, reload the lobby scene to ensure a clean state.
-      // This avoids stale listeners/state that can prevent new game starts.
-      this.scene.start("LobbyScene");
+      // When leaving a multiplayer room, show the main lobby UI without restarting the scene.
+      // This avoids reloading the room screen (it can feel like a refresh) and keeps state
+      // like selected avatar, settings, and any cached UI intact.
+      if (this.mainUIContainer) {
+        try {
+          this.mainUIContainer.setVisible(true).setActive(true);
+        } catch (e) {
+          // if it was destroyed for some reason, fall back to restarting.
+          this.scene.start("LobbyScene");
+        }
+      } else {
+        this.scene.start("LobbyScene");
+      }
     };
 
     this.isLeavingRoom = true;
@@ -5492,14 +5476,10 @@ class LobbyScene extends Phaser.Scene {
       );
 
       // Debug: log what's being saved for easier troubleshooting
-      console.log("[Quest Debug] saveMultiQuestProgressSnapshot payload", payload);
 
       // Debug: log when multi_win changes (uses localStorage content)
       if (payload.multi_win) {
-        console.log(
-          "[Quest Debug] saved multi_win status",
-          payload.multi_win,
-        );
+
       }
     } catch (e) {
       console.warn("failed to save multi quest progress", e);
@@ -5508,41 +5488,29 @@ class LobbyScene extends Phaser.Scene {
 
   incrementMultiQuestCounter(key, amount = 1) {
     try {
-      console.log(`[Quest Debug] incrementMultiQuestCounter called: key=${key} amount=${amount}`);
 
       // If the helper methods are missing for any reason (bundling differences),
       // fall back to the safe localStorage path.
       if (typeof this.buildQuestPopupSnapshot !== "function" || typeof this.saveMultiQuestProgressSnapshot !== "function") {
-        console.warn(
-          "[Quest Debug] buildQuestPopupSnapshot/saveMultiQuestProgressSnapshot missing, using fallback",
-        );
+
         return this.incrementMultiQuestCounterFallback(key, amount);
       }
 
       const snapshot = this.buildQuestPopupSnapshot();
-      console.log("[Quest Debug] pre-increment snapshot", snapshot);
       if (!snapshot) {
-        console.warn("[Quest Debug] missing snapshot in incrementMultiQuestCounter");
         return;
       }
       if (!Object.prototype.hasOwnProperty.call(snapshot, key)) {
-        console.warn(
-          "[Quest Debug] snapshot missing key",
-          key,
-          "available=",
-          Object.keys(snapshot),
-        );
+
         return;
       }
       const quest = MULTI_QUEST_CONFIGS.find((q) => q.key === key);
       if (!quest) {
-        console.warn("[Quest Debug] QUEST_CONFIGS missing key", key);
         return;
       }
 
       const entry = snapshot[key];
       if (entry.ready) {
-        console.log("[Quest Debug] quest already ready, skipping", key);
         return;
       }
 
@@ -5550,13 +5518,6 @@ class LobbyScene extends Phaser.Scene {
       const newCount = Math.min(runtime.target, (entry.count || 0) + (Number(amount) || 0));
       entry.count = newCount;
 
-      console.log(
-        `[Quest Debug] incrementMultiQuestCounter(${key}) => ${newCount}/${runtime.target} (ready=${entry.ready})`,
-      );
-      this.showToast(
-        `[Quest Debug] ${quest.titleTemplate.replace("{target}", runtime.target)}: ${newCount}/${runtime.target}`,
-        "#38bdf8",
-      );
 
       if (newCount >= runtime.target) {
         entry.ready = true;
@@ -5589,20 +5550,16 @@ class LobbyScene extends Phaser.Scene {
 
   incrementMultiQuestCounterFallback(key, amount = 1) {
     try {
-      console.log(
-        `[Quest Debug] fallback incrementMultiQuestCounter called: key=${key} amount=${amount}`,
-      );
+
       const raw = localStorage.getItem(MULTI_QUEST_PROGRESS_STORAGE_KEY) || "{}";
       const stored = JSON.parse(raw);
       const quest = MULTI_QUEST_CONFIGS.find((q) => q.key === key);
       if (!quest) {
-        console.warn("[Quest Debug] fallback missing quest config", key);
         return;
       }
 
       const entry = stored[key] || { count: 0, stage: 0, ready: false };
       if (entry.ready) {
-        console.log("[Quest Debug] fallback skip because already ready", key);
         return;
       }
 
@@ -5614,11 +5571,6 @@ class LobbyScene extends Phaser.Scene {
 
       stored[key] = entry;
       localStorage.setItem(MULTI_QUEST_PROGRESS_STORAGE_KEY, JSON.stringify(stored));
-
-      console.log(
-        "[Quest Debug] fallback localStorage result:",
-        JSON.parse(localStorage.getItem(MULTI_QUEST_PROGRESS_STORAGE_KEY) || "{}"),
-      );
 
       if (typeof this.updateQuestBadgeState === "function") {
         this.updateQuestBadgeState();
@@ -6109,7 +6061,6 @@ class LobbyScene extends Phaser.Scene {
         return res.json();
       })
       .then((rooms) => {
-        console.log("[RoomList] fetched rooms", rooms?.length);
         this.hideLoading(); // ✅ 방 목록 로드 완료 시 로딩창 닫기
 
         // 안전장치: 서버에서 방 생성 이벤트를 놓쳤을 때도 요청 가능
@@ -6521,13 +6472,13 @@ class LobbyScene extends Phaser.Scene {
 
           // 방 이름 입력창 (DOM 절대 좌표)
           const roomNameInput = this.add
-            .dom(centerX * -0.36, roomNameInputY, "input")
+            .dom(centerX * -0.32, roomNameInputY, "input")
             .setDepth(1102);
           const nameEl = roomNameInput.node;
           nameEl.placeholder = "방 이름 입력 (선택, 최대10자)";
           nameEl.value = createFormState.roomName;
           Object.assign(nameEl.style, {
-            width: `${width * 0.5}px`,
+            width: `${width * 0.45}px`,
             height: "90px",
             fontSize: "40px",
             fontFamily: "'Jua', sans-serif",
@@ -6580,7 +6531,7 @@ class LobbyScene extends Phaser.Scene {
 
           // 비밀번호 입력창 (비공개 선택 시 표시)
           const pwInput = this.add
-            .dom(centerX * -0.35, passwordInputY, "input")
+            .dom(centerX * -0.32, passwordInputY, "input")
             .setDepth(1102);
           const pwEl = pwInput.node;
           pwEl.placeholder = "비밀번호 (숫자 4자리)";
@@ -7288,10 +7239,14 @@ class LobbyScene extends Phaser.Scene {
     const { width, height } = this.cameras.main;
     const centerX = width / 2;
 
-    // 1. 메인 화면 UI 파괴
+    // 1. 메인 화면 UI 숨기기 (나중에 다시 보여줄 수 있도록 파괴하지 않음)
     if (this.mainUIContainer) {
-      this.mainUIContainer.destroy();
-      this.mainUIContainer = null;
+      try {
+        this.mainUIContainer.setVisible(false).setActive(false);
+      } catch (e) {
+        // in case the container was destroyed elsewhere
+        this.mainUIContainer = null;
+      }
     }
     if (this.joinPopupContainer) {
       this.joinPopupContainer.destroy();
@@ -9077,7 +9032,6 @@ class GameScene extends Phaser.Scene {
         }
       } catch (e) {
         // ignore phantom errors when the object is partially destroyed
-        console.warn("[Quest Debug] safeSetText failed", e);
       }
     };
 
@@ -9335,18 +9289,9 @@ class GameScene extends Phaser.Scene {
     if (!scene || typeof scene.getAvatarAnimKey !== "function") {
       scene = this;
     }
-    /*console.log(
-      "[ensureAvatarAnimation] scene=",
-      scene,
-      "this=",
-      this,
-      "constructor=",
-      this && this.constructor && this.constructor.name,
-    );*/
+
     const animKey = scene.getAvatarAnimKey(baseKey);
-    //console.log("[ensureAvatarAnimation] request", baseKey, animKey);
-    // We want to recreate the animation if more frames become available later
-    // (deferred loading). We'll compare available frames count.
+
 
     try {
       if (baseKey === "player_1") {
@@ -9364,25 +9309,13 @@ class GameScene extends Phaser.Scene {
           }
 
           if (frames.length > 0) {
-            console.log(
-              "[ensureAvatarAnimation]",
-              baseKey,
-              "computed frames",
-              frames.length,
-              "exists2=",
-              this.textures.exists("player_1_frame_2"),
-              "exists3=",
-              this.textures.exists("player_1_frame_3"),
-            );
+ 
             const existingAnim = scene.anims.get(animKey);
             if (existingAnim) {
               const existingLen = existingAnim.frames
                 ? existingAnim.frames.length
                 : 0;
-              console.log(
-                "[ensureAvatarAnimation] existing anim frames",
-                existingLen,
-              );
+
               if (existingLen >= frames.length) {
                 return animKey;
               }
@@ -9416,12 +9349,7 @@ class GameScene extends Phaser.Scene {
           }
 
           if (frames.length > 0) {
-            console.log(
-              "[ensureAvatarAnimation]",
-              baseKey,
-              "found frames",
-              frames.length,
-            );
+
             const existingAnim = scene.anims.get(animKey);
             if (existingAnim) {
               scene.anims.remove(animKey);
@@ -9492,7 +9420,6 @@ class GameScene extends Phaser.Scene {
 
       return animKey;
     } catch (err) {
-      //console.error("[ensureAvatarAnimation] error", err);
       return null;
     }
   }
@@ -9500,16 +9427,7 @@ class GameScene extends Phaser.Scene {
   applyAvatarAnimation(target, baseKey) {
     // ensure we operate on the scene rather than whatever `this` may be
     const scene = target && target.scene ? target.scene : this;
-    /*console.log(
-      "[applyAvatarAnimation] scene=",
-      scene,
-      "this=",
-      this,
-      "baseKey=",
-      baseKey,
-      "target=",
-      target,
-    );*/
+
     if (!scene || !scene.add) {
       // console.warn("[applyAvatarAnimation] invalid scene, abort");
       return;
@@ -10015,9 +9933,7 @@ class GameScene extends Phaser.Scene {
     if (typeof sharedIncrement === "function") {
       // Use the LobbyScene implementation when GameScene doesn't have it.
       if (typeof this.incrementMultiQuestCounter !== "function") {
-        console.log(
-          "[Quest Debug] attaching shared incrementMultiQuestCounter implementation",
-        );
+
         this.incrementMultiQuestCounter = sharedIncrement.bind(this);
       }
     }
@@ -10025,9 +9941,7 @@ class GameScene extends Phaser.Scene {
     const sharedFallback = LobbyScene?.prototype?.incrementMultiQuestCounterFallback;
     if (typeof sharedFallback === "function") {
       if (typeof this.incrementMultiQuestCounterFallback !== "function") {
-        console.log(
-          "[Quest Debug] attaching shared incrementMultiQuestCounterFallback implementation",
-        );
+
         this.incrementMultiQuestCounterFallback = sharedFallback.bind(this);
       }
     }
@@ -10035,25 +9949,19 @@ class GameScene extends Phaser.Scene {
     // Ensure helper methods called by the shared implementation are also available
     const sharedBuildSnapshot = LobbyScene?.prototype?.buildQuestPopupSnapshot;
     if (typeof sharedBuildSnapshot === "function" && typeof this.buildQuestPopupSnapshot !== "function") {
-      console.log(
-        "[Quest Debug] attaching shared buildQuestPopupSnapshot implementation",
-      );
+
       this.buildQuestPopupSnapshot = sharedBuildSnapshot.bind(this);
     }
 
     const sharedSaveSnapshot = LobbyScene?.prototype?.saveMultiQuestProgressSnapshot;
     if (typeof sharedSaveSnapshot === "function" && typeof this.saveMultiQuestProgressSnapshot !== "function") {
-      console.log(
-        "[Quest Debug] attaching shared saveMultiQuestProgressSnapshot implementation",
-      );
+
       this.saveMultiQuestProgressSnapshot = sharedSaveSnapshot.bind(this);
     }
 
     // Last resort: attach a no-op if nothing is available
     if (typeof this.incrementMultiQuestCounter !== "function") {
-      console.warn(
-        "[Quest Debug] incrementMultiQuestCounter missing on instance; attaching fallback",
-      );
+
       this.incrementMultiQuestCounter = (key, amount = 1) => {
         if (typeof this.incrementMultiQuestCounterFallback === "function") {
           this.incrementMultiQuestCounterFallback(key, amount);
@@ -10062,9 +9970,7 @@ class GameScene extends Phaser.Scene {
     }
 
     if (typeof this.incrementMultiQuestCounterFallback !== "function") {
-      console.warn(
-        "[Quest Debug] incrementMultiQuestCounterFallback missing on instance; attaching no-op",
-      );
+
       this.incrementMultiQuestCounterFallback = (key, amount = 1) => {
         // fallback no-op if method missing
       };
@@ -11382,25 +11288,16 @@ class GameScene extends Phaser.Scene {
     socket.off("gameEnded").on("gameEnded", (data) => {
       console.log("[CLIENT] gameEnded event", data);
       const isMultiplayerWin = !this.isSingle && data && data.winnerId === socket.id;
-      console.log("[Quest Debug] gameEnded, isSingle=", this.isSingle, "socket.id=", socket.id, "winnerId=", data?.winnerId, "isMultiplayerWin=", isMultiplayerWin);
       // Count multiplayer participation once per match. It should only increase when
       // the match has fully ended (to prevent double-counting due to rejoining/restarting).
       if (!this.isSingle && !this._hasCountedMultiPlayForMatch) {
         this._hasCountedMultiPlayForMatch = true;
         if (typeof this.incrementMultiQuestCounter === "function") {
-          console.log("[Quest Debug] gameEnded incrementing multi_play");
           this.incrementMultiQuestCounter("multi_play", 1);
         }
       }
 
       if (isMultiplayerWin) {
-        // Count multiplayer wins
-        console.log("[Quest Debug] gameEnded calling incrementMultiQuestCounter for multi_win");
-        console.log("[Quest Debug] incrementMultiQuestCounter refs", {
-          protoInc: GameScene?.prototype?.incrementMultiQuestCounter,
-          instanceInc: this.incrementMultiQuestCounter,
-          fallbackInc: this.incrementMultiQuestCounterFallback,
-        });
 
         // Use the class prototype method if possible (to avoid instance overrides).
         const protoInc =
@@ -11414,16 +11311,8 @@ class GameScene extends Phaser.Scene {
           this.incrementMultiQuestCounterFallback("multi_win", 1);
         }
 
-        console.log(
-          "[Quest Debug] multiQuestProgress after increment:",
-          localStorage.getItem(MULTI_QUEST_PROGRESS_STORAGE_KEY),
-        );
       } else if (!this.isSingle && data) {
         // debug: report why win wasn't counted
-        this.showToast(
-          `[Quest Debug] win not counted (winnerId=${data.winnerId} socketId=${socket.id})`,
-          "#f97316",
-        );
       }
       if (data && data.serverDebug) {
         console.log("[CLIENT] serverDebug:");
@@ -13709,10 +13598,6 @@ class GameScene extends Phaser.Scene {
         !this._hasIncrementedSinglePlayQuest &&
         typeof this.incrementMultiQuestCounter === "function"
       ) {
-        console.log(
-          "[Quest Debug] single_play condition met (game ended). Incrementing main-menu quest.",
-        );
-        this.showToast("[Quest Debug] single_play 카운트 증가", "#38bdf8");
         this.incrementMultiQuestCounter("single_play", 1);
         this._hasIncrementedSinglePlayQuest = true;
       }
@@ -13720,10 +13605,7 @@ class GameScene extends Phaser.Scene {
       if (result === "WIN") {
         this.handleQuestEvent("gameWin");
         if (typeof this.incrementMultiQuestCounter === "function") {
-          console.log(
-            "[Quest Debug] single_win condition met (승리). Incrementing main-menu quest.",
-          );
-          this.showToast("[Quest Debug] single_win 카운트 증가", "#38bdf8");
+
           this.incrementMultiQuestCounter("single_win", 1);
         }
       }
@@ -14319,7 +14201,9 @@ class GameScene extends Phaser.Scene {
             //this.showToast("종을 눌렀습니다. 결과를 기다리는 중...", "#f1c40f");
           } catch (e) {}
         } else {
-          this.playFailureEffect();
+          // 실패가 예상되었지만, 실제 패널티가 발생할지는 서버 판단에 따릅니다.
+          // 따라서 '땡' 애니메이션은 서버에서 패널티가 확정된 후에만 재생됩니다.
+          this.playFeedback(false, "틀렸습니다.");
         }
       } catch (e) {
         console.warn("handleRingBell optimistic feedback failed", e);
