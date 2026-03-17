@@ -8741,6 +8741,26 @@ class LobbyScene extends Phaser.Scene {
   showInviteReceivePopup(inviteData) {
     this.isJoinPopupOpen = true;
 
+    // If other popups are open (tutorial / daily reward / quest / shop), close them first.
+    if (typeof this.currentTutorialCloseHandler === "function") {
+      try {
+        this.currentTutorialCloseHandler();
+      } catch (e) {}
+      this.currentTutorialCloseHandler = null;
+    }
+    if (typeof this.currentJoinPopupCloseHandler === "function") {
+      try {
+        this.currentJoinPopupCloseHandler();
+      } catch (e) {}
+      this.currentJoinPopupCloseHandler = null;
+    }
+    if (typeof this.currentShopPopupCloseHandler === "function") {
+      try {
+        this.currentShopPopupCloseHandler();
+      } catch (e) {}
+      this.currentShopPopupCloseHandler = null;
+    }
+
     const { width, height, centerX, centerY } = this.cameras.main;
 
     this.setLobbyChatInputHidden(true);
@@ -10212,6 +10232,110 @@ class GameScene extends Phaser.Scene {
       this.showToast(msg, "#e74c3c");
     });
 
+    // Helper: if the next turn belongs to a bot, ensure a watchdog is running
+    // so that the game never gets stuck waiting for a bot move.
+    const scheduleAiWatchdog = (nextTurnId) => {
+      try {
+        if (this._aiTurnWatchTimer) {
+          try {
+            this._aiTurnWatchTimer.remove();
+          } catch (e) {}
+          this._aiTurnWatchTimer = null;
+          this._aiTurnWatchRetries = 0;
+        }
+        if (typeof nextTurnId === "string" && isPlayerAiLocal(nextTurnId)) {
+          if (this._aiPaused) {
+            // AI temporarily paused (e.g. during results), do not schedule watchdog
+            return;
+          }
+          const aiPlayerId = nextTurnId;
+          this._aiTurnWatchRetries = 0;
+
+          const attemptAiRequest = () => {
+            const current = this.roundData.players[this.turnIndex];
+            if (!current || current.id !== aiPlayerId) return;
+            const hasOpen = Array.isArray(current.openStack) && current.openStack.length > 0;
+            if (socket && socket.connected) {
+              try {
+                socket.emit("requestAiMove", { playerId: aiPlayerId, hasOpenStack: hasOpen });
+              } catch (e) {
+                console.warn("emit requestAiMove failed", e);
+              }
+              this.showToast("AI 응답 지연, 서버에 요청을 보냈습니다.", "#f39c12");
+              this._aiTurnWatchRetries += 1;
+              if (this._aiTurnWatchRetries < 3) {
+                try {
+                  this._aiTurnWatchTimer = this.time.delayedCall(5000, attemptAiRequest);
+                } catch (e) {
+                  this._aiTurnWatchTimer = null;
+                }
+              } else {
+                try {
+                  socket.emit("requestAiMove", { playerId: aiPlayerId, force: true, hasOpenStack: hasOpen });
+                } catch (e) {}
+              }
+            }
+          };
+
+          const scheduleHostSkip = () => {
+            if (!socket || !socket.connected) return;
+            const isHost = socket.id === this.roundData.hostId;
+            if (!isHost) return;
+            try {
+              socket.emit("forceSkipTurn", {
+                roomId: this.roundData.roomId,
+                playerId: aiPlayerId,
+              });
+            } catch (e) {
+              console.warn("emit forceSkipTurn failed", e);
+            }
+          };
+
+          try {
+            this._aiTurnWatchTimer = this.time.delayedCall(8000, attemptAiRequest);
+          } catch (e) {
+            this._aiTurnWatchTimer = null;
+          }
+
+          try {
+            if (this._botSkipTimer) {
+              try {
+                this._botSkipTimer.remove();
+              } catch (e) {}
+              this._botSkipTimer = null;
+            }
+            this._botSkipTimer = this.time.delayedCall(13000, scheduleHostSkip);
+          } catch (e) {
+            this._botSkipTimer = null;
+          }
+
+          try {
+            if (this._aiAutoNotifyTimer) {
+              try {
+                this._aiAutoNotifyTimer.remove();
+              } catch (e) {}
+              this._aiAutoNotifyTimer = null;
+            }
+            this._aiAutoNotifyTimer = this.time.delayedCall(6000, () => {
+              const current = this.roundData.players[this.turnIndex];
+              if (!current || current.id !== aiPlayerId) return;
+              if (socket && socket.connected) {
+                try {
+                  socket.emit("requestAiMove", { playerId: aiPlayerId, reason: "auto_timeout" });
+                } catch (e) {
+                  console.warn("emit requestAiMove(auto_timeout) failed", e);
+                }
+              }
+            });
+          } catch (e) {
+            this._aiAutoNotifyTimer = null;
+          }
+        }
+      } catch (e) {
+        console.warn("ai watchdog error", e);
+      }
+    };
+
     // ============================================
     // 2. 할리갈리 전용 소켓 리스너
     // ============================================
@@ -10339,6 +10463,10 @@ class GameScene extends Phaser.Scene {
       // 게임 시작 시 모든 플레이어의 특수 사용 플래그 초기화
       this.specialUsedThisTurn = {};
 
+      // Track last flip time for bot stuck detection
+      this._lastCardFlipAt = Date.now();
+      this._lastAiStuckRequestAt = 0;
+
       // 3. 연출 시작: 클릭 금지 후 애니메이션 및 Ready-Go 예약
       this.canClick = false; // 💡 시작 직후엔 클릭 금지
       this.playOpeningAnimation();
@@ -10367,9 +10495,43 @@ class GameScene extends Phaser.Scene {
 
       // 연출 시작 시점에 맞춰 테이블 갱신
       this.renderTable(this.roundData.players);
+
+      // If the next turn belongs to a bot, ensure watchdog is scheduled even if
+      // no turnChanged event has fired yet.
+      scheduleAiWatchdog(this.roundData.players[this.turnIndex]?.id);
+
+      // Periodically probe for stuck bot turns even when the server fails to
+      // emit a turnChanged event.
+      if (!this._aiStuckChecker) {
+        this._aiStuckChecker = this.time.addEvent({
+          delay: 4000,
+          loop: true,
+          callback: () => {
+            if (!this.isGameStarted || this._aiPaused) return;
+            const current = this.roundData.players[this.turnIndex];
+            if (!current || !isPlayerAiLocal(current.id)) return;
+
+            const now = Date.now();
+            if (!this._lastCardFlipAt) this._lastCardFlipAt = now;
+            if (now - this._lastCardFlipAt < 5000) return;
+
+            // prevent spam
+            if (now - (this._lastAiStuckRequestAt || 0) < 4000) return;
+            this._lastAiStuckRequestAt = now;
+
+            if (socket && socket.connected) {
+              socket.emit("requestAiMove", {
+                playerId: current.id,
+                reason: "stuck_watchdog",
+                hasOpenStack: Array.isArray(current.openStack) && current.openStack.length > 0,
+              });
+              this.showToast("AI가 멈췄습니다. 서버에 요청 중...", "#f39c12");
+            }
+          },
+        });
+      }
     });
 
-    // gameStart 리스너 근처에 추가하세요.
     socket.off("turnChanged").on("turnChanged", (data) => {
       const nextIdx = this.roundData.players.findIndex(
         (p) => p.id === data.nextTurnId,
@@ -10402,115 +10564,7 @@ class GameScene extends Phaser.Scene {
         }
 
         this.renderTable(this.roundData.players);
-
-        // If the next turn belongs to an AI player, start a watchdog timer
-        // that requests the server to run the AI if no flip arrives.
-        try {
-          if (this._aiTurnWatchTimer) {
-            try {
-              this._aiTurnWatchTimer.remove();
-            } catch (e) {}
-            this._aiTurnWatchTimer = null;
-            this._aiTurnWatchRetries = 0;
-          }
-          if (typeof data.nextTurnId === "string" && isPlayerAiLocal(data.nextTurnId)) {
-            if (this._aiPaused) {
-              // AI temporarily paused (e.g. during result screen), do not schedule watchdog
-              return;
-            }
-            const aiPlayerId = data.nextTurnId;
-            this._aiTurnWatchRetries = 0;
-
-            const attemptAiRequest = () => {
-              const current = this.roundData.players[this.turnIndex];
-              if (!current || current.id !== aiPlayerId) return;
-              const hasOpen = Array.isArray(current.openStack) && current.openStack.length > 0;
-              if (socket && socket.connected) {
-                // Even if openStack isn't empty, we may still be stuck; request server action.
-                try {
-                  socket.emit("requestAiMove", { playerId: aiPlayerId, hasOpenStack: hasOpen });
-                } catch (e) {
-                  console.warn("emit requestAiMove failed", e);
-                }
-                this.showToast("AI 응답 지연, 서버에 요청을 보냈습니다.", "#f39c12");
-                this._aiTurnWatchRetries += 1;
-                if (this._aiTurnWatchRetries < 3) {
-                  // schedule another retry after short delay
-                  try {
-                    this._aiTurnWatchTimer = this.time.delayedCall(5000, attemptAiRequest);
-                  } catch (e) {
-                    this._aiTurnWatchTimer = null;
-                  }
-                } else {
-                  // final attempt: ask server with force flag (server may ignore)
-                  try {
-                    socket.emit("requestAiMove", { playerId: aiPlayerId, force: true, hasOpenStack: hasOpen });
-                  } catch (e) {}
-                }
-              }
-            };
-
-            const scheduleHostSkip = () => {
-              if (!socket || !socket.connected) return;
-              const isHost = socket.id === this.roundData.hostId;
-              if (!isHost) return;
-              // If the bot doesn't respond, ask server to skip this turn.
-              try {
-                socket.emit("forceSkipTurn", {
-                  roomId: this.roundData.roomId,
-                  playerId: aiPlayerId,
-                });
-              } catch (e) {
-                console.warn("emit forceSkipTurn failed", e);
-              }
-            };
-
-            // initial wait to allow animations/latency, then attempt
-            try {
-              this._aiTurnWatchTimer = this.time.delayedCall(8000, attemptAiRequest);
-            } catch (e) {
-              this._aiTurnWatchTimer = null;
-            }
-
-            // If the AI is still stuck after a longer delay, ask the host to force-skip.
-            try {
-              if (this._botSkipTimer) {
-                try {
-                  this._botSkipTimer.remove();
-                } catch (e) {}
-                this._botSkipTimer = null;
-              }
-              this._botSkipTimer = this.time.delayedCall(13000, scheduleHostSkip);
-            } catch (e) {
-              this._botSkipTimer = null;
-            }
-
-            // Also schedule a short notify aligned with player auto-timer (6s)
-            try {
-              if (this._aiAutoNotifyTimer) {
-                try {
-                  this._aiAutoNotifyTimer.remove();
-                } catch (e) {}
-                this._aiAutoNotifyTimer = null;
-              }
-              this._aiAutoNotifyTimer = this.time.delayedCall(6000, () => {
-                const current = this.roundData.players[this.turnIndex];
-                if (!current || current.id !== aiPlayerId) return;
-                if (socket && socket.connected) {
-                  try {
-                    socket.emit("requestAiMove", { playerId: aiPlayerId, reason: "auto_timeout" });
-                  } catch (e) {
-                    console.warn("emit requestAiMove(auto_timeout) failed", e);
-                  }
-                }
-              });
-            } catch (e) {
-              this._aiAutoNotifyTimer = null;
-            }
-          }
-        } catch (e) {
-          console.warn("ai watchdog error", e);
-        }
+        scheduleAiWatchdog(data.nextTurnId);
       }
     });
 
@@ -10522,6 +10576,9 @@ class GameScene extends Phaser.Scene {
         : typeof socket !== "undefined"
         ? socket.id
         : null;
+
+      // record last flip time so periodic watchdog knows activity occurred
+      this._lastCardFlipAt = Date.now();
 
       // clear any AI watchdog when any card flip arrives
       try {
@@ -11396,6 +11453,10 @@ class GameScene extends Phaser.Scene {
         if (this._aiAutoNotifyTimer) {
           try { this._aiAutoNotifyTimer.remove(); } catch (e) {}
           this._aiAutoNotifyTimer = null;
+        }
+        if (this._aiStuckChecker) {
+          try { this._aiStuckChecker.remove(); } catch (e) {}
+          this._aiStuckChecker = null;
         }
         this._aiTurnWatchRetries = 0;
         // mark AI as paused while showing results
@@ -18515,6 +18576,10 @@ class GameScene extends Phaser.Scene {
       // stop any playing gameover sound immediately when user leaves result
       try {
         if (this._currentGameoverSound) {
+          try {
+            // Ensure any tweens targeting the sound are killed before destroying
+            this.tweens.killTweensOf(this._currentGameoverSound);
+          } catch (e) {}
           try {
             this._currentGameoverSound.stop();
           } catch (e) {}
