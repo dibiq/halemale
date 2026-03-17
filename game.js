@@ -11576,6 +11576,24 @@ class GameScene extends Phaser.Scene {
   }
 
   renderTable(players) {
+    // Prevent renderTable from being called repeatedly in the same frame.
+    // This reduces stutter when many network updates arrive quickly.
+    if (this._renderTableScheduled) {
+      this._renderTableLatestPlayers = players;
+      return;
+    }
+    this._renderTableScheduled = true;
+    this._renderTableLatestPlayers = players;
+
+    this.time.delayedCall(0, () => {
+      this._renderTableScheduled = false;
+      if (this._renderTableLatestPlayers) {
+        this._renderTableImmediate(this._renderTableLatestPlayers);
+      }
+    });
+  }
+
+  _renderTableImmediate(players) {
     if (
       !players ||
       !this.playerTableGroup ||
