@@ -7729,6 +7729,14 @@ class LobbyScene extends Phaser.Scene {
       this.lobbyUIContainer.add([startBtnImg, startBtnText]);
 
       startBtnImg.on("pointerdown", () => {
+        if (this._deferredAssetsLoading) {
+          this.showToast(
+            "추가 에셋 로딩 중입니다. 로딩이 완료될 때까지 기다려주세요.",
+            "#f1c40f",
+          );
+          return;
+        }
+
         this.sound.play("btn", { volume: 0.1 });
         this.tweens.add({
           targets: [startBtnImg, startBtnText],
