@@ -2518,6 +2518,21 @@ io.on("connection", (socket) => {
         current_character: socket.currentCharacter || "player_1",
       });
 
+      // 방에 있을 경우, 서버측 room 플레이어 정보를 즉시 갱신하고 클라이언트에 알림
+      if (socket.roomId && rooms[socket.roomId]) {
+        const room = rooms[socket.roomId];
+        const player = room.players.find(
+          (p) => p.id === socket.id || p.nickname === targetPlayerId,
+        );
+        if (player) {
+          player.avatarKey = socket.currentCharacter;
+          player.currentCharacter = socket.currentCharacter;
+        }
+        io.to(socket.roomId).emit("playerUpdated", {
+          players: room.players,
+        });
+      }
+
       console.log(
         `✅ ${targetPlayerId} 캐릭터 구매 완료: ${characterKey}, 남은 코인 ${socket.coins}`,
       );
@@ -2615,8 +2630,16 @@ io.on("connection", (socket) => {
 
       // inform other players in the room about the change as well
       if (socket.roomId && rooms[socket.roomId]) {
+        const room = rooms[socket.roomId];
+        const player = room.players.find(
+          (p) => p.id === socket.id || p.nickname === resolvedNickname,
+        );
+        if (player) {
+          player.avatarKey = socket.currentCharacter;
+          player.currentCharacter = socket.currentCharacter;
+        }
         io.to(socket.roomId).emit("playerUpdated", {
-          players: rooms[socket.roomId].players,
+          players: room.players,
         });
       }
     } catch (e) {
