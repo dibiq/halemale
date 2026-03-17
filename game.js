@@ -735,7 +735,7 @@ class LobbyScene extends Phaser.Scene {
       // 진행률 표시 (선택사항 - % 숫자가 올라감)
       onLoadProgress = (value) => {
         if (!loadingText || !loadingText.active) return;
-        loadingText.setText(`로딩 중...(처음 접속시 시간이 걸릴 수 있습니다)\n ${Math.floor(value * 100)}%`);
+        loadingText.setText(`로딩 중... ${Math.floor(value * 100)}%`);
       };
       this.load.on("progress", onLoadProgress);
     }
@@ -5652,7 +5652,6 @@ class LobbyScene extends Phaser.Scene {
           .setStrokeStyle(1, 0x475569, 0.7);
       }
 
-      const rewardText = quest.rewardCoins ? ` · +${quest.rewardCoins}💰` : "";
       const rowText = this.add
         .text(centerX - rowWidth * 0.38, rowY - rowHeight * 0.12, "", {
           fontFamily: GAME_FONTS.main,
@@ -5662,7 +5661,7 @@ class LobbyScene extends Phaser.Scene {
           strokeThickness: 3,
         })
         .setOrigin(0, 0.5);
-      rowText.setText(`${runtime.title}${rewardText}`);
+      rowText.setText(runtime.title);
 
       const barX = centerX - rowWidth * 0.38;
       const barY = rowY + rowHeight * 0.22;
@@ -5712,10 +5711,14 @@ class LobbyScene extends Phaser.Scene {
           )
           .setStrokeStyle(2, 0x15803d, 0.9);
       }
+      const rewardLabel =
+        typeof quest.rewardCoins === "number" && quest.rewardCoins > 0
+          ? `💰${quest.rewardCoins}`
+          : "받기";
       const claimText = this.add
-        .text(claimX, claimY, "받기", {
+        .text(claimX, claimY, rewardLabel, {
           fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.035}px`,
+          fontSize: `${width * 0.032}px`,
           color: entry.ready ? "#f8fafc" : "#94a3b8",
           fontWeight: "bold",
         })
