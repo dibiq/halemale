@@ -2791,10 +2791,9 @@ class LobbyScene extends Phaser.Scene {
         data.itemMode = this.currentItemMode !== false;
       }
 
-      // 멀티플레이 참여 퀘스트 카운트
-      if (typeof this.incrementMultiQuestCounter === "function") {
-        this.incrementMultiQuestCounter("multi_play", 1);
-      }
+      // 멀티플레이 참여 퀘스트 카운트는 게임 종료 시에만 올립니다.
+      // (시작 시 카운트하면 재접속/재시작 시 중복 집계가 됩니다.)
+      // this.incrementMultiQuestCounter("multi_play", 1);
 
       this.scene.start("GameScene", data);
     });
@@ -2959,6 +2958,16 @@ class LobbyScene extends Phaser.Scene {
       this.reactionTimes = [this.myProfile.avetime];
     }
 
+    const safeSetText = (txtObj, value) => {
+      try {
+        if (txtObj && txtObj.active && typeof txtObj.setText === 'function') {
+          txtObj.setText(value);
+        }
+      } catch (e) {
+        console.warn('[safeSetText] text update failed', e);
+      }
+    };
+
     if (
       !this.profileIdText ||
       !this.profileCoinText ||
@@ -2966,33 +2975,22 @@ class LobbyScene extends Phaser.Scene {
       !this.profileExpText
     ) {
       // still update game-screen profile if exists
-      if (this.profileNameTxt) {
-        this.profileNameTxt.setText(this.myProfile.nickname || "");
-      }
-      if (this.profileLevelTxt) {
-        this.profileLevelTxt.setText(`Lv ${this.myProfile.level}`);
-      }
-      if (this.profileCoinsTxt) {
-        this.profileCoinsTxt.setText(`Coins: ${this.myProfile.coins}`);
-      }
+      safeSetText(this.profileNameTxt, this.myProfile.nickname || '');
+      safeSetText(this.profileLevelTxt, `Lv ${this.myProfile.level}`);
+      safeSetText(this.profileCoinsTxt, `Coins: ${this.myProfile.coins}`);
       return;
     }
 
-    // update combined level+nickname text
-    this.profileIdText.setText(
+    // update combined level+nickname text (safe)
+    safeSetText(
+      this.profileIdText,
       `LV.${this.myProfile.level} ${this.myProfile.nickname}`,
     );
-    this.profileCoinText.setText(`X ${this.myProfile.coins}`);
+    safeSetText(this.profileCoinText, `X ${this.myProfile.coins}`);
     // also update game-screen card if present
-    if (this.profileNameTxt) {
-      this.profileNameTxt.setText(this.myProfile.nickname || "");
-    }
-    if (this.profileLevelTxt) {
-      this.profileLevelTxt.setText(`Lv ${this.myProfile.level}`);
-    }
-    if (this.profileCoinsTxt) {
-      this.profileCoinsTxt.setText(`Coins: ${this.myProfile.coins}`);
-    }
+    safeSetText(this.profileNameTxt, this.myProfile.nickname || "");
+    safeSetText(this.profileLevelTxt, `Lv ${this.myProfile.level}`);
+    safeSetText(this.profileCoinsTxt, `Coins: ${this.myProfile.coins}`);
 
     // 경험치 바 업데이트
     const currentExp = this.myProfile.experience % XP_PER_LEVEL;
@@ -3698,7 +3696,10 @@ class LobbyScene extends Phaser.Scene {
       if (socket && socket.roomId === roomId) {
         socket.roomId = null;
       }
-      this.scene.restart({ skipLobbyLoading: true });
+
+      // When leaving a multiplayer room, reload the lobby scene to ensure a clean state.
+      // This avoids stale listeners/state that can prevent new game starts.
+      this.scene.start("LobbyScene");
     };
 
     this.isLeavingRoom = true;
@@ -5923,6 +5924,11 @@ class LobbyScene extends Phaser.Scene {
 
   showPublicRoomsPopup() {
     this.isJoinPopupOpen = true;
+
+    // Ensure we always start with a fresh room list when opening the popup.
+    if (typeof rooms !== "undefined") {
+      rooms = [];
+    }
 
     const { width, height } = this.cameras.main;
     const centerX = width / 2;
@@ -8761,8 +8767,9 @@ class GameScene extends Phaser.Scene {
 
   // replicate lobby's profile updater so GameScene has its own
   updateMyProfileUI(profile = {}) {
-    // identical logic to LobbyScene version; keeps game UI in sync
-    const prev = this.myProfile || {};
+    try {
+      // identical logic to LobbyScene version; keeps game UI in sync
+      const prev = this.myProfile || {};
     const prevLevel = Number(prev.level) || 1;
     const hasIncomingStats =
       typeof profile.level !== "undefined" ||
@@ -8924,6 +8931,9 @@ class GameScene extends Phaser.Scene {
     }
 
     // combine with lobby-style text if present (rare inside GameScene but safe)
+  } catch (e) {
+    console.warn("[updateMyProfileUI] exception swallowed", e);
+  }
     if (this.profileIdText) {
       this.profileIdText.setText(`LV.${this.myProfile.level} ${this.myProfile.nickname}`);
     }
@@ -9809,10 +9819,8 @@ class GameScene extends Phaser.Scene {
       this.myId = socket.id;
       this.teardownQuestUI();
 
-      // Track multiplayer participation for quests
-      if (typeof this.incrementMultiQuestCounter === "function") {
-        this.incrementMultiQuestCounter("multi_play", 1);
-      }
+      // Multiplayer play count will be tracked when the match ends.
+      this._hasCountedMultiPlayForMatch = false;
     }
 
     this.isPopupOpen = false;
@@ -11069,6 +11077,16 @@ class GameScene extends Phaser.Scene {
       console.log("[CLIENT] gameEnded event", data);
       const isMultiplayerWin = !this.isSingle && data && data.winnerId === socket.id;
       console.log("[Quest Debug] gameEnded, isSingle=", this.isSingle, "socket.id=", socket.id, "winnerId=", data?.winnerId, "isMultiplayerWin=", isMultiplayerWin);
+      // Count multiplayer participation once per match. It should only increase when
+      // the match has fully ended (to prevent double-counting due to rejoining/restarting).
+      if (!this.isSingle && !this._hasCountedMultiPlayForMatch) {
+        this._hasCountedMultiPlayForMatch = true;
+        if (typeof this.incrementMultiQuestCounter === "function") {
+          console.log("[Quest Debug] gameEnded incrementing multi_play");
+          this.incrementMultiQuestCounter("multi_play", 1);
+        }
+      }
+
       if (isMultiplayerWin) {
         // Count multiplayer wins
         console.log("[Quest Debug] gameEnded calling incrementMultiQuestCounter for multi_win");
