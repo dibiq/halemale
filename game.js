@@ -8348,6 +8348,9 @@ class LobbyScene extends Phaser.Scene {
 
     const { width, height, centerX, centerY } = this.cameras.main;
 
+    // Debug: show what users list looks like (helps find missing nickname problems)
+    console.log("[Invite] showInvitePopup users:", users);
+
     this.setLobbyChatInputHidden(true);
 
     // 배경 어둡게
@@ -8456,15 +8459,16 @@ class LobbyScene extends Phaser.Scene {
 
       const btnY =
         listContainerY - listH / 2 + (index + 1) * (listH / (safeUsers.length + 1));
-      const userIconX = centerX - popupWidth * 0.28;
-      const userTextX = centerX - popupWidth * 0.05;
-      const inviteBtnX = centerX + popupWidth * 0.25;
+      const userIconX = centerX - popupWidth * 0.31;
+      // 아이콘 오른쪽에 여유를 두고 텍스트 배치
+      const userTextX = userIconX + height * 0.045 / 2 + width * 0.03;
+      const inviteBtnX = centerX + popupWidth * 0.26;
 
       // 유저 배경 (roombg 이미지)
       const userBg = this.add
         .image(centerX, btnY, "roombg")
         .setDisplaySize(popupWidth * 0.8, height * 0.083)
-        .setDepth(4001)
+        .setDepth(30002)
         .setInteractive({ useHandCursor: true });
 
       // 유저 아이콘
@@ -8481,25 +8485,36 @@ class LobbyScene extends Phaser.Scene {
             : this.getAvatarDisplayKey(baseUserAvatar) || "player_1_frame_1",
         )
         .setDisplaySize(height * 0.045, height * 0.045)
-        .setDepth(4002);
+        .setDepth(30003);
 
       // 유저명 + 레벨 (한 줄)
+      console.log("[Invite] rendering user", safeUser);
       const userInfo = this.add
         .text(userTextX, btnY, `Lv.${safeUser.level} ${safeUser.nickname}`, {
           fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.032}px`,
-          color: "#fff",
+          fontSize: `${width * 0.044}px`,
+          color: "#ffffff",
+          stroke: "#000000",
+          strokeThickness: 4,
           fontWeight: "bold",
+          shadow: {
+            offsetX: 1,
+            offsetY: 1,
+            color: "#000000",
+            blur: 2,
+            stroke: true,
+            fill: true,
+          },
         })
-        .setOrigin(0.5)
-        .setDepth(4002);
+        .setOrigin(0, 0.5)
+        .setDepth(30004);
 
       // 초대 버튼 (uibtn 이미지)
       const inviteBtn = this.add
         .image(inviteBtnX, btnY, "uibtn")
         .setDisplaySize(width * 0.12, height * 0.05)
         .setTint(0x3498db)
-        .setDepth(30001)
+        .setDepth(30005)
         .setInteractive({ useHandCursor: true });
 
       const inviteBtnText = this.add
@@ -8510,7 +8525,7 @@ class LobbyScene extends Phaser.Scene {
           fontWeight: "bold",
         })
         .setOrigin(0.5)
-        .setDepth(30002);
+        .setDepth(30006);
 
       inviteBtn.on("pointerdown", () => {
         this.sound.play("btn", { volume: 0.1 });
@@ -8522,8 +8537,8 @@ class LobbyScene extends Phaser.Scene {
           yoyo: true,
           ease: "Quad.easeInOut",
           onComplete: () => {
-            socket.emit("inviteUser", { targetId: user.id });
-            this.showToast(`${user.nickname}님을 초대했습니다!`, "#3498db");
+            socket.emit("inviteUser", { targetId: safeUser.id });
+            this.showToast(`${safeUser.nickname}님을 초대했습니다!`, "#3498db");
           },
         });
       });
@@ -18823,6 +18838,12 @@ class GameScene extends Phaser.Scene {
   showInvitePopup(users, roomName) {
     const { width, height, centerX, centerY } = this.cameras.main;
 
+    // 로그로 전달받은 유저 목록 확인
+    console.log("[Invite] showInvitePopup users:", users);
+
+    // 기본값 보장 (undefined / null 대응)
+    const safeUsers = Array.isArray(users) ? users : [];
+
     // 배경
     const popupWidth = width * 0.85;
     const popupHeight = height * 0.55;
@@ -18884,11 +18905,18 @@ class GameScene extends Phaser.Scene {
       userButtons.push(emptyText);
     }
 
-    users.forEach((user, index) => {
+    safeUsers.forEach((user, index) => {
+      const safeUser = {
+        id: user?.id || null,
+        nickname: user?.nickname || user?.name || "알 수 없는 요리사",
+        level: Number(user?.level) || 1,
+        avatarKey: user?.avatarKey || "player_1",
+      };
+
       const btnY =
-        listContainerY - listH / 2 + (index + 1) * (listH / (users.length + 1));
+        listContainerY - listH / 2 + (index + 1) * (listH / (safeUsers.length + 1));
       const userIconX = centerX - popupWidth * 0.31;
-      const userTextX = centerX - popupWidth * 0.21;
+      const userTextX = userIconX + width * 0.08; // ensure text is right of icon
       const inviteBtnX = centerX + popupWidth * 0.26;
 
       // 유저 배경
@@ -18899,8 +18927,8 @@ class GameScene extends Phaser.Scene {
         .setInteractive({ useHandCursor: true });
 
       // 유저 아이콘
-      const baseUserAvatar = /^player_[1-4]$/.test(user.avatarKey)
-        ? user.avatarKey
+      const baseUserAvatar = /^player_[1-4]$/.test(safeUser.avatarKey)
+        ? safeUser.avatarKey
         : "player_1";
 
       const userIcon = this.add
@@ -18916,10 +18944,12 @@ class GameScene extends Phaser.Scene {
 
       // 유저명 + 레벨 (한 줄)
       const userInfo = this.add
-        .text(userTextX, btnY, `Lv.${user.level} ${user.nickname}`, {
+        .text(userTextX, btnY, `Lv.${safeUser.level} ${safeUser.nickname}`, {
           fontFamily: GAME_FONTS.main,
           fontSize: `${width * 0.032}px`,
-          color: "#fff",
+          color: "#ffffff",
+          stroke: "#000000",
+          strokeThickness: 3,
           fontWeight: "bold",
         })
         .setOrigin(0.5)
@@ -18952,8 +18982,8 @@ class GameScene extends Phaser.Scene {
           yoyo: true,
           ease: "Quad.easeInOut",
           onComplete: () => {
-            socket.emit("inviteUser", { targetId: user.id });
-            this.showToast(`${user.nickname}님을 초대했습니다!`, "#3498db");
+            socket.emit("inviteUser", { targetId: safeUser.id });
+            this.showToast(`${safeUser.nickname}님을 초대했습니다!`, "#3498db");
             this.time.delayedCall(500, () => {
               popupBg.destroy();
               titleText.destroy();
