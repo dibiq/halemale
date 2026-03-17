@@ -797,7 +797,22 @@ class LobbyScene extends Phaser.Scene {
     );
 
     // NOTE: mainbg frames are deferred to avoid blocking initial load.
-    // They will be loaded in the background after the lobby is shown.
+    // We still load the *first frame* so the lobby can show a valid texture
+    // while the rest loads in the background.
+    this.load.image(
+      "mainbg_frame_1",
+      `assets/images/bg_sprite/1.png${VERSION}`,
+    );
+    this.load.image(
+      "player_1_frame_1",
+      `assets/images/player_1_sprite/1.png${PLAYER1_SPRITE_VERSION}`,
+    );
+    this.load.image(
+      "player_2_frame_1",
+      `assets/images/player_2_sprite/1.png${PLAYER2_SPRITE_VERSION}`,
+    );
+
+    // Remaining frames are deferred and loaded in loadDeferredAssets().
     // If `mainbg_frame_1` is not available, the code will fall back to `mainbg`.
     // (See loadDeferredAssets())
 
@@ -1021,21 +1036,24 @@ class LobbyScene extends Phaser.Scene {
       : "?p2=20260227_1";
 
     // deferred frame loads (reduces initial startup time)
-    for (let i = 1; i <= 47; i += 1) {
+    // We already loaded frame 1 early for placeholders.
+    for (let i = 2; i <= 47; i += 1) {
       this.load.image(
         `mainbg_frame_${i}`,
         `assets/images/bg_sprite/${i}.png${VERSION}`,
       );
     }
 
-    for (let i = 1; i <= 91; i += 1) {
+    // Frame 1 is loaded early so the avatar has a valid placeholder.
+    for (let i = 2; i <= 91; i += 1) {
       this.load.image(
         `player_1_frame_${i}`,
         `assets/images/player_1_sprite/${i}.png${PLAYER1_SPRITE_VERSION}`,
       );
     }
 
-    for (let i = 1; i <= 91; i += 1) {
+    // Frame 1 is loaded early so the avatar has a valid placeholder.
+    for (let i = 2; i <= 91; i += 1) {
       this.load.image(
         `player_2_frame_${i}`,
         `assets/images/player_2_sprite/${i}.png${PLAYER2_SPRITE_VERSION}`,
@@ -1048,6 +1066,15 @@ class LobbyScene extends Phaser.Scene {
       }
       this._deferredAssetsLoaded = true;
       this._deferredAssetsLoading = false;
+
+      // Refresh any animations that depend on the newly loaded frames.
+      try {
+        if (typeof this._applyDeferredAnimations === "function") {
+          this._applyDeferredAnimations();
+        }
+      } catch (e) {
+        console.warn("Deferred animation refresh failed", e);
+      }
     });
 
     this.load.start();
@@ -1520,6 +1547,11 @@ class LobbyScene extends Phaser.Scene {
       });
 
       bgContainer.add(quadSprites);
+
+      // Keep reference so we can refresh animation once deferred assets finish loading
+      this._lobbyBgSprites = quadSprites;
+      this._lobbyBgIsSplit = true;
+      this._lobbyBgSize = { width: totalBgW, height: totalBgH };
     } else {
       const fallbackTexture = this.textures.exists("mainbg_frame_1")
         ? "mainbg_frame_1"
@@ -1539,6 +1571,10 @@ class LobbyScene extends Phaser.Scene {
         lobbyBg.play(mybgAnimKey, true);
         lobbyBg.setDisplaySize(totalBgW, totalBgH);
       }
+
+      this._lobbyBgSprites = [lobbyBg];
+      this._lobbyBgIsSplit = false;
+      this._lobbyBgSize = { width: totalBgW, height: totalBgH };
     }
 
     socket.off("hostChanged").on("hostChanged", (data) => {
@@ -2251,6 +2287,12 @@ class LobbyScene extends Phaser.Scene {
 
     this.updateMyProfileUI();
     this.updateProfileAvatarUI();
+
+    // If deferred assets already finished while create() was running,
+    // ensure animations are updated.
+    if (this._deferredAssetsLoaded && typeof this._applyDeferredAnimations === "function") {
+      this._applyDeferredAnimations();
+    }
 
     const dailyRewardBtn = this.add.container(
       dailyRewardBtnX,
@@ -3383,15 +3425,19 @@ class LobbyScene extends Phaser.Scene {
 
     if (frameKeys.length > 0) {
       const animKey = this.getMybgAnimKey();
-      if (!this.anims.exists(animKey)) {
-        this.anims.create({
-          key: animKey,
-          frames: frameKeys.map((key) => ({ key })),
-          frameRate: 12,
-          skipMissedFrames: false,
-          repeat: -1,
-        });
+      if (this.anims.exists(animKey)) {
+        // Recreate animation if new frames arrived.
+        this.anims.remove(animKey);
       }
+      const frames = frameKeys.map((key) => ({ key }));
+      console.log("[ensureMybgAnimation] creating animation", animKey, "frames", frames.length);
+      this.anims.create({
+        key: animKey,
+        frames,
+        frameRate: 12,
+        skipMissedFrames: false,
+        repeat: -1,
+      });
       return animKey;
     }
 
@@ -3464,6 +3510,69 @@ class LobbyScene extends Phaser.Scene {
     });
 
     return animKey;
+  }
+
+  _applyDeferredAnimations() {
+    // When deferred assets finish loading, make sure any created animation
+    // gets re-applied to the lobby background / avatar sprites.
+    const mybgAnimKey = this.ensureMybgAnimation();
+
+    if (mybgAnimKey && Array.isArray(this._lobbyBgSprites)) {
+      if (Array.isArray(mybgAnimKey)) {
+        this._lobbyBgSprites.forEach((sprite, idx) => {
+          const key = mybgAnimKey[idx];
+          if (sprite && key) {
+            sprite.play(key, true);
+            if (this._lobbyBgSize) {
+              sprite.setDisplaySize(this._lobbyBgSize.width / 2, this._lobbyBgSize.height / 2);
+            }
+          }
+        });
+      } else {
+        this._lobbyBgSprites.forEach((sprite) => {
+          if (!sprite) return;
+          sprite.play(mybgAnimKey, true);
+          if (this._lobbyBgSize) {
+            sprite.setDisplaySize(this._lobbyBgSize.width, this._lobbyBgSize.height);
+          }
+        });
+      }
+    }
+
+    // Re-apply avatar animation if the frames are now available.
+    if (this.profileImage && typeof this.updateProfileAvatarUI === "function") {
+      console.log("[deferred] reapplying profile avatar animation");
+      console.log("[deferred] texture exists: player_1_frame_1=", this.textures.exists("player_1_frame_1"));
+      console.log("[deferred] texture exists: player_1_frame_2=", this.textures.exists("player_1_frame_2"));
+      console.log("[deferred] texture exists: player_1_frame_3=", this.textures.exists("player_1_frame_3"));
+
+      const baseKey = this.getSelectedAvatarKey();
+
+      // Force recreate animation to ensure newly loaded frames are used.
+      const animKey = this.getAvatarAnimKey(baseKey);
+      if (this.anims.exists(animKey)) {
+        this.anims.remove(animKey);
+      }
+      const newAnimKey = this.ensureAvatarAnimation(baseKey);
+
+      // Re-apply pose/animation to existing sprite
+      this.updateProfileAvatarUI();
+      if (newAnimKey && this.profileImage && this.profileImage.anims) {
+        try {
+          this.profileImage.play(newAnimKey, true);
+        } catch (e) {
+          console.warn("failed to play avatar animation", e);
+        }
+        console.log(
+          "[deferred] avatar anim key=",
+          newAnimKey,
+          "frames=",
+          this.anims.get(newAnimKey)?.frames.length,
+          "isPlaying=",
+          this.profileImage.anims.isPlaying,
+        );
+      }
+    }
   }
 
   getAvatarAnimKey(baseKey) {
@@ -9208,10 +9317,8 @@ class GameScene extends Phaser.Scene {
     );*/
     const animKey = scene.getAvatarAnimKey(baseKey);
     //console.log("[ensureAvatarAnimation] request", baseKey, animKey);
-    if (scene.anims.exists(animKey)) {
-      //console.log("[ensureAvatarAnimation] already exists");
-      return animKey;
-    }
+    // We want to recreate the animation if more frames become available later
+    // (deferred loading). We'll compare available frames count.
 
     try {
       if (baseKey === "player_1") {
@@ -9229,6 +9336,30 @@ class GameScene extends Phaser.Scene {
           }
 
           if (frames.length > 0) {
+            console.log(
+              "[ensureAvatarAnimation]",
+              baseKey,
+              "computed frames",
+              frames.length,
+              "exists2=",
+              this.textures.exists("player_1_frame_2"),
+              "exists3=",
+              this.textures.exists("player_1_frame_3"),
+            );
+            const existingAnim = scene.anims.get(animKey);
+            if (existingAnim) {
+              const existingLen = existingAnim.frames
+                ? existingAnim.frames.length
+                : 0;
+              console.log(
+                "[ensureAvatarAnimation] existing anim frames",
+                existingLen,
+              );
+              if (existingLen >= frames.length) {
+                return animKey;
+              }
+              scene.anims.remove(animKey);
+            }
             this.anims.create({
               key: animKey,
               frames,
@@ -9257,6 +9388,16 @@ class GameScene extends Phaser.Scene {
           }
 
           if (frames.length > 0) {
+            console.log(
+              "[ensureAvatarAnimation]",
+              baseKey,
+              "found frames",
+              frames.length,
+            );
+            const existingAnim = scene.anims.get(animKey);
+            if (existingAnim) {
+              scene.anims.remove(animKey);
+            }
             this.anims.create({
               key: animKey,
               frames,
@@ -9280,6 +9421,17 @@ class GameScene extends Phaser.Scene {
           break;
         }
         if (frames.length > 0) {
+          const existingAnim = scene.anims.get(animKey);
+          if (
+            existingAnim &&
+            existingAnim.frames &&
+            existingAnim.frames.length >= frames.length
+          ) {
+            return animKey;
+          }
+          if (existingAnim) {
+            scene.anims.remove(animKey);
+          }
           this.anims.create({
             key: animKey,
             frames,
@@ -9396,6 +9548,12 @@ class GameScene extends Phaser.Scene {
         // intermittent freezes reported by players.
         const playAnim = () => {
           if (target && target.anims && animKey) {
+            console.log("[applyAvatarAnimation] play", animKey, {
+              targetActive: target.active,
+              currentAnim: target.anims.currentAnim && target.anims.currentAnim.key,
+              isPlaying: target.anims.isPlaying,
+              frame: target.anims.currentFrame && target.anims.currentFrame.index,
+            });
             target.play(animKey, true);
           }
         };
