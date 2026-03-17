@@ -751,7 +751,7 @@ class LobbyScene extends Phaser.Scene {
       // 진행률 표시 (선택사항 - % 숫자가 올라감)
       onLoadProgress = (value) => {
         if (!loadingText || !loadingText.active) return;
-        loadingText.setText(`로딩 중... ${Math.floor(value * 100)}%`);
+        loadingText.setText(`로딩 중...(처음 접속시 시간이 걸릴 수 있습니다) ${Math.floor(value * 100)}%`);
       };
       this.load.on("progress", onLoadProgress);
     }
@@ -763,6 +763,12 @@ class LobbyScene extends Phaser.Scene {
       }
       if (loadingContainer && loadingContainer.active) {
         loadingContainer.destroy();
+      }
+
+      // Load deferred/heavy assets in the background once the lobby is visible.
+      if (typeof this.loadDeferredAssets === "function") {
+        // Small delay lets the initial scene render before starting more IO.
+        setTimeout(() => this.loadDeferredAssets(), 50);
       }
     });
 
@@ -790,12 +796,10 @@ class LobbyScene extends Phaser.Scene {
       `${ASSET_SERVER}/images/popupclose.png${VERSION}`,
     );
 
-    for (let i = 1; i <= 47; i += 1) {
-      this.load.image(
-        `mainbg_frame_${i}`,
-        `assets/images/bg_sprite/${i}.png${VERSION}`,
-      );
-    }
+    // NOTE: mainbg frames are deferred to avoid blocking initial load.
+    // They will be loaded in the background after the lobby is shown.
+    // If `mainbg_frame_1` is not available, the code will fall back to `mainbg`.
+    // (See loadDeferredAssets())
 
     this.load.image("gamebg", `${ASSET_SERVER}/images/gamebg.png${VERSION}`);
     this.load.image(
@@ -912,19 +916,13 @@ class LobbyScene extends Phaser.Scene {
     this.load.image("slide", `${ASSET_SERVER}/images/slide.png${VERSION}`);
     this.load.image("storebg", `${ASSET_SERVER}/images/storebg.png${VERSION}`);
 
-    for (let i = 1; i <= 91; i += 1) {
-      this.load.image(
-        `player_1_frame_${i}`,
-        `assets/images/player_1_sprite/${i}.png${PLAYER1_SPRITE_VERSION}`,
-      );
-    }
+    // NOTE: player_1 animation frames are deferred to avoid long initial loading.
+    // They will be loaded in the background after the lobby UI is ready.
+    // (See loadDeferredAssets())
 
-    for (let i = 1; i <= 91; i += 1) {
-      this.load.image(
-        `player_2_frame_${i}`,
-        `assets/images/player_2_sprite/${i}.png${PLAYER2_SPRITE_VERSION}`,
-      );
-    }
+    // NOTE: player_2 animation frames are deferred to avoid long initial loading.
+    // They will be loaded in the background after the lobby UI is ready.
+    // (See loadDeferredAssets())
 
     // 플레이어 애니메이션용 이미지
     this.load.image(`${ASSET_SERVER}/images/player_3_1.png${VERSION}`);
@@ -995,6 +993,64 @@ class LobbyScene extends Phaser.Scene {
       "gameover",
       `${ASSET_SERVER}/sounds/gameover.mp3${VERSION}`,
     );
+  }
+
+  loadDeferredAssets() {
+    if (this._deferredAssetsLoading || this._deferredAssetsLoaded) return;
+    this._deferredAssetsLoading = true;
+
+    const { width, height, centerX } = this.cameras.main;
+
+    const loadingText = this.add
+      .text(centerX, height * 0.9, "추가 에셋 로딩 중...", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.035}px`,
+        color: "#ffffff",
+      })
+      .setOrigin(0.5)
+      .setDepth(5000);
+
+    const ASSET_SERVER = "https://halemale.onrender.com/assets";
+    const VERSION = "?v=2";
+
+    const PLAYER1_SPRITE_VERSION = VERSION
+      ? `${VERSION}&p1=20260221_8`
+      : "?p1=20260221_8";
+    const PLAYER2_SPRITE_VERSION = VERSION
+      ? `${VERSION}&p2=20260227_1`
+      : "?p2=20260227_1";
+
+    // deferred frame loads (reduces initial startup time)
+    for (let i = 1; i <= 47; i += 1) {
+      this.load.image(
+        `mainbg_frame_${i}`,
+        `assets/images/bg_sprite/${i}.png${VERSION}`,
+      );
+    }
+
+    for (let i = 1; i <= 91; i += 1) {
+      this.load.image(
+        `player_1_frame_${i}`,
+        `assets/images/player_1_sprite/${i}.png${PLAYER1_SPRITE_VERSION}`,
+      );
+    }
+
+    for (let i = 1; i <= 91; i += 1) {
+      this.load.image(
+        `player_2_frame_${i}`,
+        `assets/images/player_2_sprite/${i}.png${PLAYER2_SPRITE_VERSION}`,
+      );
+    }
+
+    this.load.once("complete", () => {
+      if (loadingText && loadingText.active) {
+        loadingText.destroy();
+      }
+      this._deferredAssetsLoaded = true;
+      this._deferredAssetsLoading = false;
+    });
+
+    this.load.start();
   }
 
   async create() {
