@@ -182,10 +182,12 @@ async function savePlayer(
   if (!pool) return;
 
   const normalizedOwnedCharacters = Array.isArray(ownedCharacters)
-    ? ownedCharacters.filter((key) => /^player_[1-4]$/.test(String(key)))
+    ? ownedCharacters.filter((key) =>
+        /^(player_[1-4]|premium_bear)$/.test(String(key)),
+      )
     : null;
 
-  const normalizedCurrentCharacter = /^player_[1-4]$/.test(
+  const normalizedCurrentCharacter = /^(player_[1-4]|premium_bear)$/.test(
     String(currentCharacter || ""),
   )
     ? currentCharacter

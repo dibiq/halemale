@@ -24,6 +24,8 @@ const SINGLE_NOT5_CARD_COUNT = 0;
 const TUTORIAL_STATE_KEY = "tutorialCompleted";
 const TUTORIAL_PROGRESS_KEY = "tutorialProgress";
 
+const PREMIUM_BEAR_KEY = "premium_bear";
+
 function loadTutorialProgress() {
   try {
     const raw = localStorage.getItem(TUTORIAL_PROGRESS_KEY) || "";
@@ -1216,7 +1218,9 @@ class LobbyScene extends Phaser.Scene {
             this.myProfile && this.myProfile.owned_characters,
           )
             ? this.myProfile.owned_characters.filter(
-                (key) => typeof key === "string" && /^player_[1-4]$/.test(key),
+                (key) =>
+                  typeof key === "string" &&
+                  (/^player_[1-4]$/.test(key) || key === PREMIUM_BEAR_KEY),
               )
             : [];
           if (ownedCharacters.length > 0) {
@@ -1227,7 +1231,7 @@ class LobbyScene extends Phaser.Scene {
           const currentCharacter = this.getSelectedAvatarKey();
           if (
             typeof currentCharacter === "string" &&
-            /^player_[1-4]$/.test(currentCharacter)
+            (/^(player_[1-4]|premium_bear)$/.test(currentCharacter))
           ) {
             payload.currentCharacter = currentCharacter;
             payload.current_character = currentCharacter;
@@ -1244,6 +1248,9 @@ class LobbyScene extends Phaser.Scene {
         console.warn("inventory emit failed", e);
       }
     };
+
+    // allow other methods to sync inventory (e.g. reward unlocks)
+    this.emitInventory = emitInventory;
 
     if (!savedNickname) {
       // 2. 저장된 닉네임이 없으면 팝업 표시
@@ -1293,13 +1300,13 @@ class LobbyScene extends Phaser.Scene {
       }
     }
 
-    this.profileAvatarKeys = ["player_1", "player_2", "player_3", "player_4"];
+    this.profileAvatarKeys = ["player_1", "player_2", "player_3", "player_4", PREMIUM_BEAR_KEY];
     const savedAvatarKey = localStorage.getItem("profileAvatarKey");
     const savedAvatarIndex = this.profileAvatarKeys.indexOf(savedAvatarKey);
     this.profileAvatarIndex = savedAvatarIndex >= 0 ? savedAvatarIndex : 0;
     const initialAvatarKey =
       typeof savedAvatarKey === "string" &&
-      /^player_[1-4]$/.test(savedAvatarKey)
+      (/^(player_[1-4]|premium_bear)$/.test(savedAvatarKey))
         ? savedAvatarKey
         : this.profileAvatarKeys[this.profileAvatarIndex] || "player_1";
 
@@ -3191,6 +3198,199 @@ class LobbyScene extends Phaser.Scene {
 
     const ownedKeys = allKeys.filter((key) => ownedSet.has(key));
     return ownedKeys.length > 0 ? ownedKeys : ["player_1"];
+  }
+
+  isPremiumBearUnlocked() {
+    return (
+      Array.isArray(this.myProfile?.owned_characters) &&
+      this.myProfile.owned_characters.includes(PREMIUM_BEAR_KEY)
+    );
+  }
+
+  unlockPremiumBear() {
+    if (!this.myProfile) this.myProfile = {};
+    if (!Array.isArray(this.myProfile.owned_characters)) {
+      this.myProfile.owned_characters = [];
+    }
+    if (!this.myProfile.owned_characters.includes(PREMIUM_BEAR_KEY)) {
+      this.myProfile.owned_characters.push(PREMIUM_BEAR_KEY);
+    }
+    try {
+      localStorage.setItem(
+        "ownedCharacters",
+        JSON.stringify(this.myProfile.owned_characters),
+      );
+    } catch (e) {
+      // ignore
+    }
+    if (typeof this.emitInventory === "function") {
+      this.emitInventory("premiumBearUnlocked", { requireServerProfile: false });
+    }
+  }
+
+  showPremiumBearOfferPopup(onConfirm) {
+    if (this._premiumBearOfferPopup) return;
+
+    const { width, height } = this.cameras.main;
+    const overlay = this.add
+      .rectangle(width / 2, height / 2, width, height, 0x000000, 0.92)
+      .setInteractive();
+
+    const panel = this.add
+      .rectangle(width / 2, height / 2, width * 0.78, height * 0.65, 0x111111, 0.96)
+      .setStrokeStyle(2, 0xffffff, 0.25);
+
+    const title = this.add
+      .text(width / 2, height * 0.27, "명품곰돌이 보상!", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.06}px`,
+        color: "#ffd700",
+        fontWeight: "bold",
+        stroke: "#000000",
+        strokeThickness: 6,
+      })
+      .setOrigin(0.5);
+
+    const desc = this.add
+      .text(
+        width / 2,
+        height * 0.35,
+        "싱글플레이에서 1등하면 명품곰돌이를 획득할 수 있어요!",
+        {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.037}px`,
+          color: "#ffffff",
+          align: "center",
+          wordWrap: { width: width * 0.64 },
+          stroke: "#000000",
+          strokeThickness: 4,
+        },
+      )
+      .setOrigin(0.5);
+
+    const imgKey = this.textures.exists(PREMIUM_BEAR_KEY)
+      ? PREMIUM_BEAR_KEY
+      : "player_1";
+    const icon = this.add
+      .image(width / 2, height * 0.52, imgKey)
+      .setDisplaySize(width * 0.42, width * 0.42)
+      .setDepth(10001);
+
+    const btn = this.add
+      .image(width / 2, height * 0.8, "ui_btn")
+      .setDisplaySize(width * 0.38, height * 0.08)
+      .setTint(0x22c55e)
+      .setInteractive({ useHandCursor: true });
+    const btnTxt = this.add
+      .text(width / 2, height * 0.8, "획득", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.05}px`,
+        color: "#ffffff",
+        fontWeight: "bold",
+        stroke: "#000000",
+        strokeThickness: 5,
+      })
+      .setOrigin(0.5);
+
+    const container = this.add.container(0, 0, [overlay, panel, title, desc, icon, btn, btnTxt]);
+    container.setDepth(12000);
+    this._premiumBearOfferPopup = container;
+
+    const close = () => {
+      if (this._premiumBearOfferPopup) {
+        this._premiumBearOfferPopup.destroy();
+        this._premiumBearOfferPopup = null;
+      }
+    };
+
+    btn.on("pointerdown", () => {
+      this.sound.play("btn", { volume: 0.12 });
+      close();
+      if (typeof onConfirm === "function") onConfirm();
+    });
+  }
+
+  showPremiumBearAcquiredPopup(onConfirm) {
+    if (this._premiumBearAcquiredPopup) return;
+
+    const { width, height } = this.cameras.main;
+    const overlay = this.add
+      .rectangle(width / 2, height / 2, width, height, 0x000000, 0.92)
+      .setInteractive();
+
+    const panel = this.add
+      .rectangle(width / 2, height / 2, width * 0.78, height * 0.65, 0x111111, 0.96)
+      .setStrokeStyle(2, 0xffffff, 0.25);
+
+    const title = this.add
+      .text(width / 2, height * 0.27, "획득 완료!", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.06}px`,
+        color: "#22c55e",
+        fontWeight: "bold",
+        stroke: "#000000",
+        strokeThickness: 6,
+      })
+      .setOrigin(0.5);
+
+    const desc = this.add
+      .text(
+        width / 2,
+        height * 0.35,
+        "1등을 달성해서 명품곰돌이를 획득했어요!",
+        {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.037}px`,
+          color: "#ffffff",
+          align: "center",
+          wordWrap: { width: width * 0.64 },
+          stroke: "#000000",
+          strokeThickness: 4,
+        },
+      )
+      .setOrigin(0.5);
+
+    const imgKey = this.textures.exists(PREMIUM_BEAR_KEY)
+      ? PREMIUM_BEAR_KEY
+      : "player_1";
+    const icon = this.add
+      .image(width / 2, height * 0.52, imgKey)
+      .setDisplaySize(width * 0.42, width * 0.42)
+      .setDepth(10001);
+
+    const btn = this.add
+      .image(width / 2, height * 0.8, "ui_btn")
+      .setDisplaySize(width * 0.38, height * 0.08)
+      .setTint(0x22c55e)
+      .setInteractive({ useHandCursor: true });
+    const btnTxt = this.add
+      .text(width / 2, height * 0.8, "획득", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.05}px`,
+        color: "#ffffff",
+        fontWeight: "bold",
+        stroke: "#000000",
+        strokeThickness: 5,
+      })
+      .setOrigin(0.5);
+
+    const container = this.add.container(0, 0, [overlay, panel, title, desc, icon, btn, btnTxt]);
+    container.setDepth(12000);
+    this._premiumBearAcquiredPopup = container;
+
+    const close = () => {
+      if (this._premiumBearAcquiredPopup) {
+        this._premiumBearAcquiredPopup.destroy();
+        this._premiumBearAcquiredPopup = null;
+      }
+    };
+
+    btn.on("pointerdown", () => {
+      this.sound.play("btn", { volume: 0.12 });
+      close();
+      this.unlockPremiumBear();
+      if (typeof onConfirm === "function") onConfirm();
+    });
   }
 
   changeProfileAvatar(step) {
@@ -13847,6 +14047,16 @@ class GameScene extends Phaser.Scene {
       this.showResultOverlay(sortedPlayers.slice(0, 3), false, {
         result,
       });
+
+      const myId = this.myId || "PLAYER_ME";
+      if (
+        result === "WIN" &&
+        sortedPlayers[0] &&
+        sortedPlayers[0].id === myId &&
+        !this.isPremiumBearUnlocked()
+      ) {
+        this.showPremiumBearAcquiredPopup();
+      }
     });
   }
 
@@ -16083,12 +16293,21 @@ class GameScene extends Phaser.Scene {
       this.time.removeAllEvents();
 
       container.destroy();
-      this.scene.start("LobbyScene", {
-        fromTutorial: true,
-        tutorialCompleted: true,
-        rewardCoins: reward,
-        autoStartSingle: true,
-      });
+
+      const beginSingleEasy = () => {
+        this.scene.start("LobbyScene", {
+          fromTutorial: true,
+          tutorialCompleted: true,
+          rewardCoins: reward,
+          autoStartSingle: true,
+        });
+      };
+
+      if (!this.isPremiumBearUnlocked()) {
+        this.showPremiumBearOfferPopup(beginSingleEasy);
+      } else {
+        beginSingleEasy();
+      }
     };
 
     confirmBtn.on("pointerdown", () => {
