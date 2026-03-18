@@ -9048,7 +9048,14 @@ class GameScene extends Phaser.Scene {
     // update any game-screen text refs (wrapped safely to prevent crashes if the text object has been destroyed)
     const safeSetText = (txtObj, value) => {
       try {
-        if (txtObj && txtObj.active && typeof txtObj.setText === "function") {
+        // Some Phaser text objects can become invalid/destroyed during scene
+        // transitions. Guard against that to avoid noisy console warnings.
+        if (
+          txtObj &&
+          !txtObj.destroyed &&
+          txtObj.active &&
+          typeof txtObj.setText === "function"
+        ) {
           txtObj.setText(value);
         }
       } catch (e) {
@@ -10862,6 +10869,13 @@ class GameScene extends Phaser.Scene {
         if (data.autoLockUsedBy) {
           try {
             const nick = this.getNicknameById(data.autoLockUsedBy);
+
+            // Prevent duplicate toast when the server also emits a specialUsed event.
+            this._suppressNextLockToast = {
+              id: data.autoLockUsedBy,
+              timestamp: Date.now(),
+            };
+
             this.showToast(
               `${nick}님이 자물쇠로 패널티를 면제했습니다!`,
               "#2ecc71",
@@ -11273,7 +11287,20 @@ class GameScene extends Phaser.Scene {
           });
           this.renderTable(this.roundData.players);
         }
-        if (data.message) this.showToast(data.message, "#2ecc71");
+        if (data.message) {
+          // For auto-lock, bellResult already shows a toast; suppress the
+          // duplicate toast from specialUsed.
+          if (
+            Number(data.cardId) === 4 &&
+            this._suppressNextLockToast &&
+            this._suppressNextLockToast.id === data.by &&
+            Date.now() - (this._suppressNextLockToast.timestamp || 0) < 2000
+          ) {
+            this._suppressNextLockToast = null;
+          } else {
+            this.showToast(data.message, "#2ecc71");
+          }
+        }
       } catch (e) {
         console.warn("specialUsed handler error", e);
       }
