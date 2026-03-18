@@ -10020,6 +10020,16 @@ class GameScene extends Phaser.Scene {
       };
     });
 
+    // 싱글플레이에서는 AI 제출 속도를 더 빠르게 만든다 (약 30% 빠르게).
+    // (기존 delay 값에 0.7을 곱해 속도를 높임)
+    if (this.isSingle) {
+      this.aiSettings = this.aiSettings.map((ai) => ({
+        ...ai,
+        reactionTime: Math.max(120, Math.round(ai.reactionTime * 0.7)),
+        flipDelay: Math.max(250, Math.round(ai.flipDelay * 0.7)),
+      }));
+    }
+
     // 싱글플레이 하드 모드에서는 AI가 정답을 판단하고 클릭하는 반응 속도를 추가로 느리게 한다.
     // (원래 속도에 비해 약 1.5배 느리게)
     if (this.isSingle && this.roundData?.aiDifficulty === "hard") {
@@ -13122,8 +13132,8 @@ class GameScene extends Phaser.Scene {
       targets: tempCard,
       x: startPos.x + Math.cos(rad) * dist * 0.7 + targetOffsetX,
       y: startPos.y + Math.sin(rad) * dist + targetOffsetY,
-      duration: 300,
-      ease: "Cubic.out",
+      duration: 100, // 더 빠른 카드 제출 연출
+      ease: "Power2.out",
       onComplete: () => {
         // 💡 애니메이션 종료 후: 싱글플레이는 이미 openStack에 추가되어 있으므로
         // 추가/대체 로직을 실행하지 않습니다.
@@ -13205,6 +13215,12 @@ class GameScene extends Phaser.Scene {
 
         // 마지막으로 전체(새 카드 포함) 렌더링
         this.renderTable(this.roundData.players);
+
+        // 싱글플레이 시, 카드가 바닥에 깔린 직후에 AI가 종을 칠지 평가합니다.
+        // (카드가 실제로 반영된 이후로 호출되어야 합니다.)
+        if (this.isSingle) {
+          this.checkFruitCountForAI();
+        }
       },
     });
   }
