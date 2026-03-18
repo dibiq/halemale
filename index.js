@@ -879,6 +879,20 @@ function getFruitTotals(players) {
   return totals;
 }
 
+function setPlayerElimination(player, eliminated) {
+  if (!player) return;
+  const now = Date.now();
+  if (eliminated) {
+    if (!player.isEliminated) {
+      player.eliminatedAt = now;
+    }
+    player.isEliminated = true;
+  } else {
+    player.isEliminated = false;
+    player.eliminatedAt = null;
+  }
+}
+
 const TIME_ATTACK_DURATION_MS = 30 * 1000; // 30초
 
 function clearTimeAttackTimer(room) {
@@ -1182,9 +1196,21 @@ function handleTimeAttackExpiry(room, io) {
     console.log("[AI] scheduleAiTurn: room 없음 또는 게임 미시작");
     return;
   }
-  const sorted = [...room.players].sort(
-    (a, b) => (b.myDeck?.length || 0) - (a.myDeck?.length || 0),
-  );
+  const sorted = [...room.players].sort((a, b) => {
+    const aElim = Boolean(a.isEliminated);
+    const bElim = Boolean(b.isEliminated);
+
+    if (aElim !== bElim) return aElim ? 1 : -1;
+    if (!aElim && !bElim) {
+      return (b.myDeck?.length || 0) - (a.myDeck?.length || 0);
+    }
+    const aTime = Number(a.eliminatedAt) || 0;
+    const bTime = Number(b.eliminatedAt) || 0;
+    if (aTime !== bTime) return bTime - aTime;
+    const deckDiff = (b.myDeck?.length || 0) - (a.myDeck?.length || 0);
+    if (deckDiff !== 0) return deckDiff;
+    return String(a.id || "").localeCompare(String(b.id || ""));
+  });
   const winner = sorted[0] || room.players[0];
   finalizeGame(room, io, {
     winner,
@@ -1215,14 +1241,17 @@ function checkGameOver(room, io, options = {}) {
     if (hasNoDeck) {
       // Bots should not stall the match when they run out of cards.
       if (p && p.isBot) {
-        p.isEliminated = true;
+        setPlayerElimination(p, true);
       } else {
         // Only mark eliminated when there is no active success window
         // unless forced (e.g., thief steals all remaining cards)
-        p.isEliminated = forceEliminateZeroDeck ? true : !isBellSuccessWindow;
+        setPlayerElimination(
+          p,
+          forceEliminateZeroDeck ? true : !isBellSuccessWindow,
+        );
       }
     } else {
-      p.isEliminated = false;
+      setPlayerElimination(p, false);
     }
   });
 
@@ -1251,9 +1280,32 @@ function checkGameOver(room, io, options = {}) {
       : survivors.length === 1
         ? survivors[0]
         : room.players[0];
-    const sorted = [...room.players].sort(
-      (a, b) => (b.myDeck?.length || 0) - (a.myDeck?.length || 0),
-    );
+    const sorted = [...room.players].sort((a, b) => {
+      const aElim = Boolean(a.isEliminated);
+      const bElim = Boolean(b.isEliminated);
+
+      // Survivors should rank higher than eliminated players.
+      if (aElim !== bElim) {
+        return aElim ? 1 : -1;
+      }
+
+      // If both are still in the game, rank by remaining cards (more is better).
+      if (!aElim && !bElim) {
+        return (b.myDeck?.length || 0) - (a.myDeck?.length || 0);
+      }
+
+      // Both eliminated -> rank by elimination time (later elimination is better).
+      const aTime = Number(a.eliminatedAt) || 0;
+      const bTime = Number(b.eliminatedAt) || 0;
+      if (aTime !== bTime) {
+        return bTime - aTime;
+      }
+
+      // Fallback: compare remaining cards (should be 0) then stable id ordering.
+      const deckDiff = (b.myDeck?.length || 0) - (a.myDeck?.length || 0);
+      if (deckDiff !== 0) return deckDiff;
+      return String(a.id || "").localeCompare(String(b.id || ""));
+    });
 
     finalizeGame(room, io, {
       winner,
@@ -1762,10 +1814,8 @@ function handleAiFlip(room, io, playerId) {
   const isBellSuccessWindow = isFive || hasThunder;
 
   if (p.myDeck.length === 0) {
-    if (isBotPlayer(p)) {
-      p.isEliminated = true;
-    } else if (!isBellSuccessWindow) {
-      p.isEliminated = true;
+    if (isBotPlayer(p) || !isBellSuccessWindow) {
+      setPlayerElimination(p, true);
     }
   }
 
@@ -1876,11 +1926,7 @@ function handleAiBell(room, io, playerId) {
 
   room.players.forEach((pl) => {
     pl.cards = pl.myDeck.length;
-    if (pl.cards === 0) {
-      pl.isEliminated = true;
-    } else {
-      pl.isEliminated = false;
-    }
+    setPlayerElimination(pl, pl.cards === 0);
   });
 
   if (checkGameOver(room, io)) return;
@@ -3431,7 +3477,9 @@ io.on("connection", (socket) => {
           // 모든 플레이어의 cards 속성 갱신
           room.players.forEach((pl) => {
             pl.cards = pl.myDeck ? pl.myDeck.length : 0;
-            if (pl.cards === 0) pl.isEliminated = true;
+            if (pl.cards === 0) {
+              setPlayerElimination(pl, true);
+            }
           });
 
           // DB 동기화: 사용자의 specialCards 변경사항 저장
@@ -4990,7 +5038,7 @@ io.on("connection", (socket) => {
       p.openCard = null;
       p.openCardStack = [];
       p.isReady = p.isBot ? true : false;
-      p.isEliminated = false; // 시작할 때 초기화
+      setPlayerElimination(p, false); // 시작할 때 초기화
       // initialize per-player bell accuracy stats if missing
       if (!room.bellStats) room.bellStats = {};
       if (!room.bellStats[p.id]) {
@@ -5603,7 +5651,7 @@ io.on("connection", (socket) => {
     if (p.myDeck.length === 0) {
       if (!isBellSuccessWindow) {
         console.log(`💀 ${p.nickname} 즉시 탈락 (덱 0 & 5 아님)`);
-        p.isEliminated = true;
+        setPlayerElimination(p, true);
       } else {
         console.log(
           `🔔 ${p.nickname} 기사회생 기회 부여 (덱 0 & 5/썬더 조건 충족)`,
@@ -5819,12 +5867,7 @@ io.on("connection", (socket) => {
           // 1. 실제 덱 길이를 cards 속성에 반영 (이게 없어서 숫자가 리셋됨)
           p.cards = p.myDeck.length;
 
-          if (p.cards === 0) {
-            p.isEliminated = true;
-          } else {
-            // 카드가 생겼다면(승자 등) 다시 생존 처리
-            p.isEliminated = false;
-          }
+          setPlayerElimination(p, p.cards === 0);
         });
 
         // 기록: 벨 정답/오답 통계 (서버측에도 저장하여 게임 종료 시 DB에 반영)
@@ -6077,13 +6120,13 @@ io.on("connection", (socket) => {
         room.players.forEach((player) => {
           player.cards = player.myDeck.length;
           if (player.cards === 0) {
-            player.isEliminated = true;
+            setPlayerElimination(player, true);
           }
         });
 
         // 벌칙 후 본인 덱이 0장이면 즉시 탈락 및 게임 종료 체크
         if (p.myDeck.length === 0) {
-          p.isEliminated = true;
+          setPlayerElimination(p, true);
 
           io.to(room.roomId).emit("bellResult", {
             success: false,
