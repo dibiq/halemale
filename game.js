@@ -5235,6 +5235,11 @@ class LobbyScene extends Phaser.Scene {
         const card = specialCards[tabIndexes.special];
         const currentCoins = Number(this.myProfile.coins) || 0;
         const price = Number(card.price) || 0;
+
+        // Keep inventory state in sync with localStorage
+        const specialCardsOwned =
+          JSON.parse(localStorage.getItem("specialCards") || "{}") || {};
+
         if (currentCoins >= price) {
           this.myProfile.coins = currentCoins - price;
 
