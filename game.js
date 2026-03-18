@@ -731,6 +731,11 @@ class LobbyScene extends Phaser.Scene {
       ? Date.now() + 5000
       : null;
     this.currentRoomNumber = null;
+
+    // If we came from the tutorial completion flow, record that request so
+    // we can immediately start a single easy match instead of staying in the lobby.
+    this.autoStartSingleAfterTutorial =
+      data && data.fromTutorial && data.autoStartSingle;
   }
 
   async checkConnection() {
@@ -1266,6 +1271,14 @@ class LobbyScene extends Phaser.Scene {
       emitInventory();
       // (선택 사항) 로딩 중이라면 바로 메인 화면으로 진입하는 로직 실행
       console.log(`반가워요, ${savedNickname} 요리사님!`);
+
+      // If we arrived from a completed tutorial, automatically start the
+      // easy single-player game.
+      if (this.autoStartSingleAfterTutorial && this.hasCompletedTutorial) {
+        this.startSingleGame("easy");
+        return;
+      }
+
       this.scheduleTutorialOverlay();
 
       // If a tutorial is in progress (not completed), resume it immediately.
@@ -9955,8 +9968,9 @@ class GameScene extends Phaser.Scene {
     });
 
     const difficultyMultipliers = {
-      // slower AI speeds to give players more time to react
-      easy: 1.45,
+      // slower AI speeds to give players more time to react.
+      // Easy mode is currently a bit too slow, so make it slightly faster.
+      easy: 1.15,
       normal: 1.2,
       hard: 1.05,
     };
@@ -11775,13 +11789,13 @@ class GameScene extends Phaser.Scene {
       this.drawPlayerDeck(p, layout); // 💡 여기서 숫자가 그려짐
       this.drawSpecialCards(p, layout); // 특수카드 표시
 
-      if (p.openStack && p.openStack.length > 0) {
-        // During flip animation, the last card is still part of the stack
-        // even if it is being animated. Show it as slightly transparent so
-        // the displayed total matches what will be collected.
-        const stackToRender = p.openStack;
-        this.drawOpenCard(stackToRender, layout, { isFlipping: p.isFlipping });
-      }
+      // Always render the open stack + current open card (if exists).
+      // This prevents the open card from disappearing mid-flip.
+      const stackToRender = Array.isArray(p.openStack) ? p.openStack : [];
+      this.drawOpenCard(stackToRender, layout, {
+        isFlipping: p.isFlipping,
+        currentCard: p.openCard,
+      });
     });
 
     // =============================================
@@ -12472,12 +12486,13 @@ class GameScene extends Phaser.Scene {
   }*/
 
   drawOpenCard(openStack, layout, options = {}) {
-    if (!openStack || !Array.isArray(openStack)) return;
+    if (!Array.isArray(openStack)) return;
     const { width } = this.cameras.main;
 
     const player = this.roundData.players.find(
       (p) => p.openStack === openStack,
     );
+    const currentCard = options.currentCard || (player ? player.openCard : null);
 
     const activeBlockIds = Array.isArray(this.blockEffects)
       ? new Set(this.blockEffects.map((e) => e.id))
@@ -12507,6 +12522,9 @@ class GameScene extends Phaser.Scene {
     // blockcard가 항상 최상단에 보이도록, 일반 카드와 blockcard를 분리하여 그립니다.
     const normalCards = cardsToDraw.filter((c) => !(c && c.type === "blockcard"));
     const blockCards = cardsToDraw.filter((c) => c && c.type === "blockcard");
+
+    // If there is a current card (not yet added to the stack), draw it last.
+    // (currentCard variable is already set above)
 
     // 일반 카드 먼저 그리기
     normalCards.forEach((card, idx) => {
@@ -12560,6 +12578,21 @@ class GameScene extends Phaser.Scene {
         this.playerTableGroup.add([thunderCardBg, thunderIcon]);
       }
     });
+
+    // 3) 현재 오픈 카드(아직 스택에 들어가지 않은 카드)가 있다면
+    //    열어둔 카드 위에 새로 표시합니다. (플립 애니메이션 후에 설정됩니다)
+    if (currentCard) {
+      const cardKey = this.getCardKey(currentCard);
+      const offsetX = 0;
+      const offsetY = 0;
+      if (this.textures.exists(cardKey)) {
+        const openCardImg = this.add
+          .image(baseX + offsetX, baseY + offsetY, cardKey)
+          .setDisplaySize(width * 0.18, width * 0.25)
+          .setDepth(160 + (normalCards.length || 0));
+        this.playerTableGroup.add(openCardImg);
+      }
+    }
 
     // 그 다음 blockcard들을 그립니다. 항상 최상단이 되도록 높은 depth를 설정.
     const BLOCKCARD_BASE_DEPTH = 500000;
@@ -13109,29 +13142,32 @@ class GameScene extends Phaser.Scene {
 
 // 싱글플레이는 openStack이 이미 업데이트되어 있으므로 별도 처리가 필요 없습니다.
 
-        tempCard.destroy();
-
         // Apply pending cards after animation finishes.
         if (data.playerId) {
           const p = this.roundData.players.find((pl) => pl.id === data.playerId);
           if (p) {
             // 1) If singleplayer had a pending flip, apply it.
             if (this.isSingle) {
-              const pending = this._pendingSingleFlip && this._pendingSingleFlip[data.playerId];
+              const pending =
+                this._pendingSingleFlip && this._pendingSingleFlip[data.playerId];
               if (pending) {
                 if (!p.openStack || !Array.isArray(p.openStack)) p.openStack = [];
                 p.openStack.push(pending);
-                p.openCard = null;
+                p.openCard = pending; // apply the card after animation completes
                 delete this._pendingSingleFlip[data.playerId];
               }
             }
 
             // 2) For multiplayer: if server sent an open stack earlier, apply it now.
             if (!this.isSingle) {
-              this._pendingServerOpenStackById = this._pendingServerOpenStackById || {};
-              const pendingStack = this._pendingServerOpenStackById[data.playerId];
+              this._pendingServerOpenStackById =
+                this._pendingServerOpenStackById || {};
+              const pendingStack =
+                this._pendingServerOpenStackById[data.playerId];
               if (pendingStack) {
-                p.openStack = Array.isArray(pendingStack) ? pendingStack.slice() : [];
+                p.openStack = Array.isArray(pendingStack)
+                  ? pendingStack.slice()
+                  : [];
                 delete this._pendingServerOpenStackById[data.playerId];
               } else {
                 // fallback: if server didn't send a stack, push the card from animation data
@@ -13146,6 +13182,25 @@ class GameScene extends Phaser.Scene {
         // In singleplayer, allow another flip animation after this one finishes.
         if (this.isSingle && data.playerId && this._singleFlipInProgress) {
           delete this._singleFlipInProgress[data.playerId];
+        }
+
+        // Show the actual face of the flipped card briefly before cleaning up.
+        const frontKey = this.getCardKey(data.card);
+        if (frontKey && this.textures.exists(frontKey)) {
+          tempCard.setTexture(frontKey);
+          tempCard.setDisplaySize(width * 0.18, width * 0.25);
+          const openStackLength = player ? (player.openStack?.length || 0) : 0;
+          tempCard.setDepth(150 + openStackLength + 1);
+          this.tweens.add({
+            targets: tempCard,
+            alpha: 1,
+            duration: 120,
+            onComplete: () => {
+              tempCard.destroy();
+            },
+          });
+        } else {
+          tempCard.destroy();
         }
 
         // 마지막으로 전체(새 카드 포함) 렌더링
@@ -16016,6 +16071,7 @@ class GameScene extends Phaser.Scene {
         fromTutorial: true,
         tutorialCompleted: true,
         rewardCoins: reward,
+        autoStartSingle: true,
       });
     };
 
@@ -16345,20 +16401,15 @@ class GameScene extends Phaser.Scene {
       }
     }
 
-    // 즉시 현재 보여지는 카드로 설정
-    player.openCard = randomCard;
+    // 카드 애니메이션이 끝난 뒤에 openCard를 갱신하도록 대기
+    this._pendingSingleFlip = this._pendingSingleFlip || {};
+    this._pendingSingleFlip[playerId] = randomCard;
 
     // In singleplayer we don't wait for server confirmations, so don't use optimistic
     // flip state tracking. The flip animation will complete and update state directly.
     // (This keeps the singleplayer flip animation from being skipped.)
 
     const specialPauseMs = this.showSpecialCardToast(randomCard, playerId);
-
-    // 싱글플레이에서는 카드가 실제로 바닥에 놓이는 시점을
-    // "플립 애니메이션 완료 시점"으로 맞춥니다.
-    // (즉, 애니메이션 중엔 아직 바닥 스택에 카드가 표시되지 않도록)
-    this._pendingSingleFlip = this._pendingSingleFlip || {};
-    this._pendingSingleFlip[playerId] = randomCard;
 
 
     if (randomCard?.type === COIN_CARD_TYPE) {
@@ -16413,10 +16464,8 @@ class GameScene extends Phaser.Scene {
     };
 
     // 4. 애니메이션 및 UI 갱신
+    // `playCardFlipAnimation` will render at the end of the animation.
     this.playCardFlipAnimation(animationData);
-
-    // 즉시 렌더링 (새 카드가 기존 스택 위에 쌓인 것을 바로 보여줌)
-    this.renderTable(this.roundData.players);
 
     if (this.isTutorialMode) {
       this.handleTutorialAfterFlip(playerId, randomCard);
