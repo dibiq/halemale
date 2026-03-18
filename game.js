@@ -22,6 +22,49 @@ const SINGLE_PLUS2_CARD_COUNT = 0;
 const NOT5_CARD_TYPE = "not5";
 const SINGLE_NOT5_CARD_COUNT = 0;
 const TUTORIAL_STATE_KEY = "tutorialCompleted";
+const TUTORIAL_PROGRESS_KEY = "tutorialProgress";
+
+function loadTutorialProgress() {
+  try {
+    const raw = localStorage.getItem(TUTORIAL_PROGRESS_KEY) || "";
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    if (!Number.isInteger(parsed.stageIndex)) parsed.stageIndex = 0;
+    if (!Array.isArray(parsed.completedStages)) parsed.completedStages = [];
+    parsed.completedStages = parsed.completedStages.filter(
+      (x) => typeof x === "string",
+    );
+    return parsed;
+  } catch (e) {
+    console.warn("loadTutorialProgress failed", e);
+    return null;
+  }
+}
+
+function saveTutorialProgress(progress) {
+  try {
+    if (!progress || typeof progress !== "object") return;
+    const payload = {
+      stageIndex: Number(progress.stageIndex) || 0,
+      completedStages: Array.isArray(progress.completedStages)
+        ? [...progress.completedStages]
+        : [],
+    };
+    localStorage.setItem(TUTORIAL_PROGRESS_KEY, JSON.stringify(payload));
+  } catch (e) {
+    console.warn("saveTutorialProgress failed", e);
+  }
+}
+
+function clearTutorialProgress() {
+  try {
+    localStorage.removeItem(TUTORIAL_PROGRESS_KEY);
+  } catch (e) {
+    console.warn("clearTutorialProgress failed", e);
+  }
+}
+
 const QUEST_PROGRESS_STORAGE_KEY = "singleQuestProgress";
 const MULTI_QUEST_PROGRESS_STORAGE_KEY = "multiQuestProgress";
 const QUEST_CONFIGS = [
@@ -1224,6 +1267,17 @@ class LobbyScene extends Phaser.Scene {
       // (선택 사항) 로딩 중이라면 바로 메인 화면으로 진입하는 로직 실행
       console.log(`반가워요, ${savedNickname} 요리사님!`);
       this.scheduleTutorialOverlay();
+
+      // If a tutorial is in progress (not completed), resume it immediately.
+      const savedTutorial = loadTutorialProgress();
+      if (
+        !this.hasCompletedTutorial &&
+        savedTutorial &&
+        !this.isRoomOpen &&
+        !this.currentRoomId
+      ) {
+        this.startTutorialGame();
+      }
     }
 
     this.profileAvatarKeys = ["player_1", "player_2", "player_3", "player_4"];
@@ -3164,24 +3218,14 @@ class LobbyScene extends Phaser.Scene {
   }
 
   scheduleTutorialOverlay() {
+    // 튜토리얼은 닉네임 입력 직후 바로 시작
     if (this.hasCompletedTutorial) return;
-    if (this.tutorialOverlayScheduled || this.tutorialOverlayContainer) return;
     if (this.isRoomOpen || this.currentRoomId) return;
+    if (!this.scene.isActive("LobbyScene")) return;
 
-    this.tutorialOverlayScheduled = true;
-    this.time.delayedCall(400, () => {
-      this.tutorialOverlayScheduled = false;
-      if (
-        !this.scene.isActive("LobbyScene") ||
-        this.isRoomOpen ||
-        this.currentRoomId ||
-        this.hasCompletedTutorial ||
-        this.tutorialOverlayContainer
-      ) {
-        return;
-      }
-      this.showTutorialOverlay();
-    });
+    // 방금 닉네임 입력 후 초기 진입 시 호출되는 경우에만 실행.
+    // (이미 튜토리얼이 진행 중이거나 완료된 상태라면 스킵)
+    this.startTutorialGame();
   }
 
   showTutorialOverlay() {
@@ -3379,6 +3423,13 @@ class LobbyScene extends Phaser.Scene {
       localStorage.setItem(TUTORIAL_STATE_KEY, "true");
     } catch (e) {
       console.warn("failed to persist tutorial state", e);
+    }
+
+    // Restore lobby exit button once tutorial finishes
+    if (this.tutorialExitBtn) {
+      this.tutorialExitBtn
+        .setVisible(true)
+        .setInteractive({ useHandCursor: true });
     }
   }
 
@@ -4366,6 +4417,16 @@ class LobbyScene extends Phaser.Scene {
   }
 
   startTutorialGame() {
+    // If socket isn't ready yet (e.g. on a fresh reload), defer tutorial start.
+    if (!socket || !socket.connected) {
+      this.time.delayedCall(200, () => {
+        if (!this.hasCompletedTutorial) {
+          this.startTutorialGame();
+        }
+      });
+      return;
+    }
+
     const myId = socket.id || "PLAYER_ME";
     const myNickname = localStorage.getItem("nickname") || "나";
     const tutorId = "AI_TUTOR";
@@ -11492,6 +11553,14 @@ class GameScene extends Phaser.Scene {
       .setInteractive({ useHandCursor: true })
       .setDepth(100);
 
+    // During tutorial, hide/disable the lobby exit button to prevent leaving mid-tutorial.
+    if (this.isTutorialMode) {
+      exitBtn.setVisible(false).disableInteractive();
+    }
+
+    // Keep a ref so we can restore it after tutorial completes.
+    this.tutorialExitBtn = exitBtn;
+
     exitBtn.on("pointerdown", moveToLobby);
 
     try {
@@ -14283,16 +14352,25 @@ class GameScene extends Phaser.Scene {
     if (!this.isTutorialMode) return;
 
     const rewardCoins = Number(this.tutorialConfig?.rewardCoins);
+
+    // Load progress from localStorage so the player can resume where they left off.
+    const savedProgress = this.loadTutorialProgress();
+
     this.tutorialState = {
-      stageIndex: 0,
-      currentStageKey: TUTORIAL_STAGE_CONFIGS[0]?.key || "flip",
+      stageIndex: savedProgress?.stageIndex ?? 0,
+      currentStageKey:
+        TUTORIAL_STAGE_CONFIGS[savedProgress?.stageIndex ?? 0]?.key || "flip",
       pointerObjects: [],
       rewardCoins: Number.isFinite(rewardCoins) ? rewardCoins : 80,
       requireBellSuccess: false,
       expectedBellType: null,
       forbidBell: false,
       stageRewardsTotal: 0,
-      completedStages: new Set(),
+      completedStages: new Set(
+        Array.isArray(savedProgress?.completedStages)
+          ? savedProgress.completedStages
+          : [],
+      ),
       pendingTimers: [],
       pendingBombFollowup: false,
       awaitingPreThunderFlip: false,
@@ -14302,7 +14380,7 @@ class GameScene extends Phaser.Scene {
       requireWrongBellPenalty: false,
     };
 
-    this.setTutorialStage(0);
+    this.setTutorialStage(this.tutorialState.stageIndex || 0);
   }
 
   getTutorialStageConfig(index = this.tutorialState?.stageIndex || 0) {
@@ -14332,6 +14410,9 @@ class GameScene extends Phaser.Scene {
     this.tutorialState.awaitingWrongBellAiFlip = false;
     this.tutorialState.requireWrongBellPenalty = false;
     this.clearTutorialPendingTimers();
+
+    // Persist progress so reloads reconnect to the same stage.
+    this.saveTutorialProgress();
 
     if (stageConfig) {
       this.showTutorialMessage(stageConfig);
@@ -14393,6 +14474,7 @@ class GameScene extends Phaser.Scene {
       this.tutorialState.currentStageKey = null;
       this.tutorialState.requireBellSuccess = false;
       this.tutorialState.expectedBellType = null;
+      this.clearTutorialProgress();
       this.showTutorialCompletionOverlay();
     }
   }
@@ -14715,6 +14797,18 @@ class GameScene extends Phaser.Scene {
     } catch (e) {
       console.warn("failed to save quest progress", e);
     }
+  }
+
+  loadTutorialProgress() {
+    return loadTutorialProgress();
+  }
+
+  saveTutorialProgress() {
+    saveTutorialProgress(this.tutorialState);
+  }
+
+  clearTutorialProgress() {
+    clearTutorialProgress();
   }
 
   getQuestRuntimeState(key) {
@@ -15824,15 +15918,23 @@ class GameScene extends Phaser.Scene {
       .setOrigin(0.5);*/
 
     const reward = this.tutorialState.rewardCoins || 80;
+    const awardedItems = {
+      4: 1, // 자물쇠 1개
+    };
     const rewardText = this.add
-      .text(width / 2, height * 0.53, `추가보상: +${reward} 코인`, {
-        fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.05}px`,
-        color: "#22c55e",
-        fontWeight: "bold",
-        stroke: "#000",
-        strokeThickness: 5,
-      })
+      .text(
+        width / 2,
+        height * 0.53,
+        `추가보상: +${reward} 코인 + 자물쇠 1개`,
+        {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.05}px`,
+          color: "#22c55e",
+          fontWeight: "bold",
+          stroke: "#000",
+          strokeThickness: 5,
+        },
+      )
       .setOrigin(0.5);
 
     const confirmBtn = this.add
@@ -15872,9 +15974,37 @@ class GameScene extends Phaser.Scene {
       }
 
       try {
-        this.safeSyncInventory("tutorialReward", { coins: reward });
+        // Give coins + a starter special card (lock) for completing the tutorial.
+        this.safeSyncInventory("tutorialReward", {
+          coins: reward,
+          specialCards: awardedItems,
+        });
+
+        // Also persist locally for immediate UI state.
+        try {
+          const localSpecial =
+            JSON.parse(localStorage.getItem("specialCards") || "{}") || {};
+          Object.entries(awardedItems).forEach(([id, count]) => {
+            localSpecial[id] = (Number(localSpecial[id]) || 0) + Number(count);
+          });
+          localStorage.setItem("specialCards", JSON.stringify(localSpecial));
+        } catch (e) {
+          console.warn("failed to persist tutorial special cards", e);
+        }
       } catch (e) {
         console.warn("tutorial reward sync failed", e);
+      }
+
+      // 화면 중앙에서 코인 폭발 애니메이션 실행 (토스트 제거)
+      try {
+        const centerX = this.cameras.main.centerX;
+        const centerY = this.cameras.main.centerY;
+        const burstAmount = Math.min(25, Math.max(12, Math.round(reward / 4)));
+        if (typeof this.playQuestCoinBurst === "function") {
+          this.playQuestCoinBurst(centerX, centerY, burstAmount);
+        }
+      } catch (e) {
+        console.warn("tutorial coin burst failed", e);
       }
 
       this.isGameStarted = false;
