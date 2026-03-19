@@ -24,7 +24,8 @@ const SINGLE_NOT5_CARD_COUNT = 0;
 const TUTORIAL_STATE_KEY = "tutorialCompleted";
 const TUTORIAL_PROGRESS_KEY = "tutorialProgress";
 
-const PREMIUM_BEAR_KEY = "premium_bear";
+// Reward character key (저장/잠금 해제에 사용되는 아이디)
+const PREMIUM_BEAR_KEY = "player_2"; // 보상으로 지급되는 캐릭터 키 (player_2)
 
 function loadTutorialProgress() {
   try {
@@ -221,7 +222,7 @@ const TUTORIAL_STAGE_CONFIGS = [
   {
     key: "flip",
     title: "1단계 · 카드 제출",
-    description: "내 카드를 눌러 카드를 제출해보세요!",
+    description: "카드를 눌러 제출해보세요!",
     pointer: "deck",
     reward: 20,
   },
@@ -243,7 +244,7 @@ const TUTORIAL_STAGE_CONFIGS = [
     key: "bomb",
     title: "4단계 · 특수카드: 폭탄",
     description:
-      "폭탄이 열린 동안엔 합이 5여도 종을 누르면 안돼요. 카드만 제출하세요!",
+      "폭탄이 나오면 합이 5여도 종을 누르면 안돼요. 카드만 제출하세요!",
     pointer: "deck",
     reward: 20,
   },
@@ -738,6 +739,135 @@ class LobbyScene extends Phaser.Scene {
     // we can immediately start a single easy match instead of staying in the lobby.
     this.autoStartSingleAfterTutorial =
       data && data.fromTutorial && data.autoStartSingle;
+
+    // Ensure reward popup helpers are bound to the instance if they exist.
+    if (typeof this.showPremiumBearIntroPopup === "function") {
+      this.showPremiumBearIntroPopup = this.showPremiumBearIntroPopup.bind(this);
+    }
+    if (typeof this.showPremiumBearOfferPopup === "function") {
+      this.showPremiumBearOfferPopup = this.showPremiumBearOfferPopup.bind(this);
+    }
+    if (typeof this.showPremiumBearAcquiredPopup === "function") {
+      this.showPremiumBearAcquiredPopup = this.showPremiumBearAcquiredPopup.bind(this);
+    }
+    if (typeof this.isPremiumBearUnlocked === "function") {
+      this.isPremiumBearUnlocked = this.isPremiumBearUnlocked.bind(this);
+    }
+
+    // Provide an instance helper to always be able to render the acquired popup
+    // even if the prototype method is missing due to build ordering.
+    this.createInlinePremiumBearPopup = () => {
+      try {
+        console.debug('[premium] createInlinePremiumBearPopup invoked');
+        const w = this.cameras.main.width;
+        const h = this.cameras.main.height;
+        const ov = this.add.rectangle(w / 2, h / 2, w, h, 0x000000, 0.92).setInteractive();
+        try { ov.on('pointerdown', (e) => { e.stopPropagation && e.stopPropagation(); }); } catch (e) {}
+
+        let key = null;
+        try {
+          key = this.getAvatarDisplayKey(PREMIUM_BEAR_KEY) || (this.textures.exists(PREMIUM_BEAR_KEY) ? PREMIUM_BEAR_KEY : null) || 'player_1';
+        } catch (e) {
+          key = this.textures.exists(PREMIUM_BEAR_KEY) ? PREMIUM_BEAR_KEY : 'player_1';
+        }
+
+        const iconSz = Math.min(w * 0.5, h * 0.45);
+        const ic = this.add.image(w / 2, h * 0.45, key).setDisplaySize(iconSz, iconSz).setDepth(50002).setOrigin(0.5);
+        const by = h * 0.78;
+        const b = this.add.image(w / 2, by, 'ui_btn').setDisplaySize(w * 0.36, h * 0.08).setTint(0x22c55e);
+        const bt = this.add.text(w / 2, by, '받기', {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${Math.max(18, w * 0.05)}px`,
+          color: '#ffffff',
+          fontWeight: 'bold',
+          stroke: '#000000',
+          strokeThickness: 5,
+        }).setOrigin(0.5).setDepth(50003);
+
+        const cont = this.add.container(0, 0, [ov, ic, b, bt]).setDepth(50001);
+        const closeInline = () => { try { if (cont) { cont.destroy(); } } catch (e) {} };
+
+        const enableInline = () => {
+          try {
+            b.setInteractive({ useHandCursor: true });
+            b.on('pointerdown', () => {
+              try { this.sound.play('btn', { volume: 0.12 }); } catch (e) {}
+              closeInline();
+              try { this.unlockPremiumBear(); } catch (e) { console.warn('[premium] inline unlock failed', e); }
+            });
+          } catch (e) {
+            console.warn('[premium] inline enable failed', e);
+            try { this.unlockPremiumBear(); closeInline(); } catch (err) {}
+          }
+        };
+
+        if (this.time && typeof this.time.delayedCall === 'function') {
+          this.time.delayedCall(150, enableInline);
+        } else {
+          setTimeout(enableInline, 150);
+        }
+      } catch (e) {
+        console.warn('[premium] createInlinePremiumBearPopup error', e);
+      }
+    };
+    // If the proper method is missing for any reason, point it to the inline helper
+    try {
+      if (typeof this.showPremiumBearAcquiredPopup !== 'function') {
+        this.showPremiumBearAcquiredPopup = this.createInlinePremiumBearPopup;
+      }
+    } catch (e) {}
+
+    // Expose a global, scene-agnostic helper to force-show the acquired popup.
+    try {
+      try { window.__HalemaleLastGameScene = this; } catch (e) {}
+      window.__halemale_showPremiumBearAcquiredPopup = () => {
+        try {
+          const gs = (typeof window !== 'undefined' && window.game && window.game.scene && window.game.scene.keys && window.game.scene.keys['GameScene']) || window.__HalemaleLastGameScene || null;
+          if (gs) {
+            if (typeof gs.showPremiumBearAcquiredPopup === 'function') {
+              try { gs.showPremiumBearAcquiredPopup(); return; } catch (e) { console.warn('[premium] global helper -> instance fn failed', e); }
+            }
+            if (typeof gs.createInlinePremiumBearPopup === 'function') {
+              try { gs.createInlinePremiumBearPopup(); return; } catch (e) { console.warn('[premium] global helper -> inline fn failed', e); }
+            }
+          }
+
+          // DOM fallback: create a minimal overlay so user sees the reward.
+          try {
+            const id = 'halemale-premium-dom-popup';
+            if (document.getElementById(id)) return;
+            const wrapper = document.createElement('div');
+            wrapper.id = id;
+            Object.assign(wrapper.style, {
+              position: 'fixed', left: '0', top: '0', right: '0', bottom: '0',
+              background: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2147483646,
+            });
+            const inner = document.createElement('div');
+            inner.style.textAlign = 'center';
+            inner.style.color = '#fff';
+            inner.style.maxWidth = '640px';
+            inner.style.padding = '24px';
+            inner.innerHTML = '<h2 style="color:#ffd700;margin-bottom:12px">플레이어 2 획득!</h2><p style="margin-bottom:18px">싱글 플레이 1등 보상입니다. 받기를 눌러 잠금 해제하세요.</p>';
+            const btn = document.createElement('button');
+            btn.textContent = '받기';
+            Object.assign(btn.style, { padding: '10px 18px', fontSize: '16px', cursor: 'pointer' });
+            btn.addEventListener('click', () => {
+              try { localStorage.setItem('ownedCharacters', JSON.stringify([PREMIUM_BEAR_KEY])); } catch (e) {}
+              try { if (gs && typeof gs.unlockPremiumBear === 'function') gs.unlockPremiumBear(); } catch (e) {}
+              try { document.body.removeChild(wrapper); } catch (e) {}
+            });
+            inner.appendChild(btn);
+            wrapper.appendChild(inner);
+            document.body.appendChild(wrapper);
+          } catch (e) {
+            console.warn('[premium] DOM fallback failed', e);
+          }
+
+        } catch (e) {
+          console.warn('[premium] __halemale_showPremiumBearAcquiredPopup failed', e);
+        }
+      };
+    } catch (e) {}
   }
 
   async checkConnection() {
@@ -1048,7 +1178,10 @@ class LobbyScene extends Phaser.Scene {
     if (this._deferredAssetsLoading || this._deferredAssetsLoaded) return;
     this._deferredAssetsLoading = true;
 
-    const { width, height, centerX } = this.cameras.main;
+    const cam = (this.cameras && this.cameras.main) || null;
+    const width = cam?.width || (this.scale && this.scale.width) || 0;
+    const height = cam?.height || (this.scale && this.scale.height) || 0;
+    const centerX = width ? width * 0.5 : 0;
 
     const loadingText = this.add
       .text(centerX, height * 0.9, "추가 에셋 로딩 중...", {
@@ -1282,6 +1415,8 @@ class LobbyScene extends Phaser.Scene {
       // If we arrived from a completed tutorial, automatically start the
       // easy single-player game.
       if (this.autoStartSingleAfterTutorial && this.hasCompletedTutorial) {
+        // 플래그를 초기화하여 한 번만 자동 시작되도록 보장합니다.
+        this.autoStartSingleAfterTutorial = false;
         this.startSingleGame("easy");
         return;
       }
@@ -1300,22 +1435,42 @@ class LobbyScene extends Phaser.Scene {
       }
     }
 
+
+
     this.profileAvatarKeys = ["player_1", "player_2", "player_3", "player_4", PREMIUM_BEAR_KEY];
     const savedAvatarKey = localStorage.getItem("profileAvatarKey");
     const savedAvatarIndex = this.profileAvatarKeys.indexOf(savedAvatarKey);
     this.profileAvatarIndex = savedAvatarIndex >= 0 ? savedAvatarIndex : 0;
     const initialAvatarKey =
       typeof savedAvatarKey === "string" &&
-      (/^(player_[1-4]|premium_bear)$/.test(savedAvatarKey))
+      (/^(player_[1-4]|player_2)$/.test(savedAvatarKey))
         ? savedAvatarKey
         : this.profileAvatarKeys[this.profileAvatarIndex] || "player_1";
+
+    const storedOwnedCharacters = (() => {
+      try {
+        const raw = localStorage.getItem("ownedCharacters");
+        const parsed = JSON.parse(raw || "[]");
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (e) {
+        return [];
+      }
+    })();
+
+    const initialOwnedCharacters = Array.from(
+      new Set(
+        ["player_1", ...storedOwnedCharacters].filter(
+          (key) => typeof key === "string" && /^(player_[1-4]|player_2)$/.test(key),
+        ),
+      ),
+    );
 
     this.myProfile = {
       nickname: this.myNickname || savedNickname || "요리사",
       level: 1,
       coins: 0,
       experience: 0,
-      owned_characters: ["player_1"],
+      owned_characters: initialOwnedCharacters,
       current_character: initialAvatarKey || "player_1",
       avatarKey: initialAvatarKey || "player_1",
     };
@@ -1762,13 +1917,19 @@ class LobbyScene extends Phaser.Scene {
 
         if (Array.isArray(rawValue)) {
           rawValue.forEach((key) => {
-            if (typeof key === "string" && /^player_[1-4]$/.test(key)) {
+            if (
+              typeof key === "string" &&
+              /^(player_[1-4]|player_2)$/.test(key)
+            ) {
               normalized[key] = true;
             }
           });
         } else if (rawValue && typeof rawValue === "object") {
           Object.entries(rawValue).forEach(([key, value]) => {
-            if (typeof key === "string" && /^player_[1-4]$/.test(key)) {
+            if (
+              typeof key === "string" &&
+              /^(player_[1-4]|player_2)$/.test(key)
+            ) {
               normalized[key] = !!value;
             }
           });
@@ -1783,7 +1944,10 @@ class LobbyScene extends Phaser.Scene {
       if (profile && Array.isArray(profile.owned_characters)) {
         const ownedCharactersFromServer = {};
         profile.owned_characters.forEach((key) => {
-          if (typeof key === "string" && /^player_[1-4]$/.test(key)) {
+          if (
+            typeof key === "string" &&
+            /^(player_[1-4]|player_2)$/.test(key)
+          ) {
             ownedCharactersFromServer[key] = true;
           }
         });
@@ -2948,6 +3112,7 @@ class LobbyScene extends Phaser.Scene {
       this.scene.start("GameScene", data);
     });
 
+
     if (this.pendingRoomData) {
       const data = this.pendingRoomData;
       this.pendingRoomData = null;
@@ -3002,7 +3167,9 @@ class LobbyScene extends Phaser.Scene {
       typeof profile.experience !== "undefined";
 
     const normalizeCharacterKey = (value) =>
-      typeof value === "string" && /^player_[1-4]$/.test(value) ? value : null;
+      typeof value === "string" && /^(player_[1-4]|premium_bear)$/.test(value)
+        ? value
+        : null;
 
     const incomingOwnedCharacters = Array.isArray(profile.owned_characters)
       ? profile.owned_characters
@@ -3014,7 +3181,8 @@ class LobbyScene extends Phaser.Scene {
       new Set(
         ["player_1"].concat(
           incomingOwnedCharacters.filter(
-            (key) => typeof key === "string" && /^player_[1-4]$/.test(key),
+            (key) =>
+              typeof key === "string" && /^(player_[1-4]|premium_bear)$/.test(key),
           ),
         ),
       ),
@@ -3145,7 +3313,9 @@ class LobbyScene extends Phaser.Scene {
     // 경험치 바 업데이트
     const currentExp = this.myProfile.experience % XP_PER_LEVEL;
     const expRatio = currentExp / XP_PER_LEVEL;
-    const { width } = this.cameras.main;
+    const cam = (this.cameras && this.cameras.main) || null;
+    const width = cam?.width || (this.scale && this.scale.width) || 0;
+    const height = cam?.height || (this.scale && this.scale.height) || 0;
     const profileSize = width * 0.2;
     const expBarWidth = profileSize * 0.9;
     const expBarHeight = width * 0.032;
@@ -3201,10 +3371,27 @@ class LobbyScene extends Phaser.Scene {
   }
 
   isPremiumBearUnlocked() {
-    return (
-      Array.isArray(this.myProfile?.owned_characters) &&
-      this.myProfile.owned_characters.includes(PREMIUM_BEAR_KEY)
-    );
+    try {
+      const profileHas = Array.isArray(this.myProfile?.owned_characters)
+        ? this.myProfile.owned_characters.includes(PREMIUM_BEAR_KEY)
+        : false;
+
+      // Fallback: check local storage for persisted unlock state.
+      let storedHas = false;
+      try {
+        const stored = JSON.parse(localStorage.getItem("ownedCharacters") || "[]");
+        storedHas = Array.isArray(stored) && stored.includes(PREMIUM_BEAR_KEY);
+      } catch (err) {
+        storedHas = false;
+      }
+
+      const result = profileHas || storedHas;
+      console.debug("[premium] isPremiumBearUnlocked ->", { profileHas, storedHas, result });
+      return result;
+    } catch (e) {
+      console.warn("[premium] isPremiumBearUnlocked failed", e);
+      return false;
+    }
   }
 
   unlockPremiumBear() {
@@ -3224,8 +3411,135 @@ class LobbyScene extends Phaser.Scene {
       // ignore
     }
     if (typeof this.emitInventory === "function") {
+      // Emit immediately (fallback) so local persistence is synced even if
+      // server profile snapshot isn't ready.
       this.emitInventory("premiumBearUnlocked", { requireServerProfile: false });
+
+      // Also attempt a full sync that requires server profile when available.
+      setTimeout(() => {
+        try {
+          if (typeof this.emitInventory === "function") {
+            this.emitInventory("premiumBearUnlocked");
+          }
+        } catch (e) {
+          /* ignore */
+        }
+      }, 250);
     }
+    // Update avatar UI so owned characters reflect immediately
+    try {
+      if (typeof this.updateProfileAvatarUI === "function") {
+        this.updateProfileAvatarUI();
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    // If the shop is open, refresh its content so the unlocked character appears immediately.
+    try {
+      if (this.isShopOpen && typeof renderShopContent === "function") {
+        renderShopContent();
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  // Shows a *reward intro* popup after tutorial completes.
+  // The user must press 확인 to proceed to single-play start.
+  showPremiumBearIntroPopup(onConfirm) {
+    if (this._premiumBearIntroPopup) return;
+
+    const { width, height } = this.cameras.main;
+
+    // Full-screen black overlay (semi-opaque)
+    const overlay = this.add
+      .rectangle(width / 2, height / 2, width, height, 0x000000, 0.92)
+      .setInteractive();
+
+    // Large centered character image (premium bear)
+    const iconSize = Math.min(width * 0.5, height * 0.45);
+
+    const createBearIcon = () => {
+      const possibleKeys = [
+        "player_2_frame_1",
+        "player_2_1",
+        "player_2_2",
+        "player_2_sprite",
+        "player_2",
+      ];
+      const resolvedKey = possibleKeys.find((k) => this.textures && typeof this.textures.exists === 'function' && this.textures.exists(k));
+      if (resolvedKey) {
+        return this.add
+          .image(width / 2, height * 0.45, resolvedKey)
+          .setDisplaySize(iconSize, iconSize)
+          .setDepth(12001)
+          .setOrigin(0.5);
+      }
+
+      const g = this.add.graphics().setDepth(12001);
+      const cx = width / 2;
+      const cy = height * 0.45;
+      const r = iconSize * 0.42;
+      const earR = r * 0.28;
+
+      g.fillStyle(0xd7b06b, 1);
+      g.fillCircle(cx, cy, r);
+      g.fillCircle(cx - r * 0.5, cy - r * 0.55, earR);
+      g.fillCircle(cx + r * 0.5, cy - r * 0.55, earR);
+
+      g.fillStyle(0x4c3028, 1);
+      g.fillCircle(cx - r * 0.2, cy + r * 0.05, r * 0.15);
+      g.fillCircle(cx + r * 0.2, cy + r * 0.05, r * 0.15);
+
+      g.fillStyle(0x2c1b10, 1);
+      g.fillCircle(cx, cy + r * 0.2, r * 0.2);
+
+      return g;
+    };
+
+    const icon = createBearIcon();
+
+    // Confirm button below the character
+    const btnY = height * 0.78;
+    const btn = this.add
+      .image(width / 2, btnY, "ui_btn")
+      .setDisplaySize(width * 0.36, height * 0.08)
+      .setTint(0x22c55e);
+    const btnTxt = this.add
+      .text(width / 2, btnY, "확인", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${Math.max(18, width * 0.05)}px`,
+        color: "#ffffff",
+        fontWeight: "bold",
+        stroke: "#000000",
+        strokeThickness: 5,
+      })
+      .setOrigin(0.5)
+      .setDepth(12002);
+
+    const container = this.add.container(0, 0, [overlay, icon, btn, btnTxt]);
+    // Ensure acquired popup is above result overlay and other UI
+    container.setDepth(40001);
+    this._premiumBearIntroPopup = container;
+
+    const close = () => {
+      if (this._premiumBearIntroPopup) {
+        this._premiumBearIntroPopup.destroy();
+        this._premiumBearIntroPopup = null;
+      }
+    };
+
+    // Prevent immediate tap-through by delaying interaction enablement
+    this.time.delayedCall(150, () => {
+      if (!btn || !btn.active) return;
+      btn.setInteractive({ useHandCursor: true });
+      btn.on("pointerdown", () => {
+        this.sound.play("btn", { volume: 0.12 });
+        close();
+        if (typeof onConfirm === "function") onConfirm();
+      });
+    });
   }
 
   showPremiumBearOfferPopup(onConfirm) {
@@ -3241,7 +3555,7 @@ class LobbyScene extends Phaser.Scene {
       .setStrokeStyle(2, 0xffffff, 0.25);
 
     const title = this.add
-      .text(width / 2, height * 0.27, "명품곰돌이 보상!", {
+      .text(width / 2, height * 0.27, "플레이어 2 보상!", {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.06}px`,
         color: "#ffd700",
@@ -3255,7 +3569,7 @@ class LobbyScene extends Phaser.Scene {
       .text(
         width / 2,
         height * 0.35,
-        "싱글플레이에서 1등하면 명품곰돌이를 획득할 수 있어요!",
+        "싱글플레이에서 1등하면 플레이어 2를 획득할 수 있어요!",
         {
           fontFamily: GAME_FONTS.main,
           fontSize: `${width * 0.037}px`,
@@ -3268,12 +3582,20 @@ class LobbyScene extends Phaser.Scene {
       )
       .setOrigin(0.5);
 
-    const imgKey = this.textures.exists(PREMIUM_BEAR_KEY)
-      ? PREMIUM_BEAR_KEY
-      : "player_1";
+    const offerIconSize = Math.min(width * 0.42, width * 0.42);
+    const offerKeyCandidates = [
+      "player_2_frame_1",
+      "player_2_1",
+      "player_2_2",
+      "player_2_sprite",
+      "player_2",
+    ];
+    const offerKey = offerKeyCandidates.find(
+      (k) => this.textures && typeof this.textures.exists === "function" && this.textures.exists(k),
+    );
     const icon = this.add
-      .image(width / 2, height * 0.52, imgKey)
-      .setDisplaySize(width * 0.42, width * 0.42)
+      .image(width / 2, height * 0.52, offerKey || "player_1")
+      .setDisplaySize(offerIconSize, offerIconSize)
       .setDepth(10001);
 
     const btn = this.add
@@ -3310,23 +3632,36 @@ class LobbyScene extends Phaser.Scene {
     });
   }
 
-  showPremiumBearAcquiredPopup(onConfirm) {
+  showPremiumBearAcquiredPopup(onConfirm, alreadyOwned = false) {
     if (this._premiumBearAcquiredPopup) return;
+
+    console.debug("[premium] showPremiumBearAcquiredPopup called");
 
     const { width, height } = this.cameras.main;
     const overlay = this.add
       .rectangle(width / 2, height / 2, width, height, 0x000000, 0.92)
       .setInteractive();
+    // prevent underlying handlers from receiving pointer events
+    try {
+      overlay.on("pointerdown", (e) => {
+        e.stopPropagation && e.stopPropagation();
+      });
+    } catch (e) {}
 
-    const panel = this.add
-      .rectangle(width / 2, height / 2, width * 0.78, height * 0.65, 0x111111, 0.96)
-      .setStrokeStyle(2, 0xffffff, 0.25);
+    
+
+    // Centered character image and a bottom confirm button
+    const iconSize = Math.min(width * 0.5, height * 0.45);
+    const titleText = alreadyOwned ? "플레이어 2 보유 중" : "플레이어 2 획득!";
+    const subtitleText = alreadyOwned
+      ? "이미 보유 중입니다. 계속 진행하세요."
+      : "1등 보상으로 획득할 수 있습니다!";
 
     const title = this.add
-      .text(width / 2, height * 0.27, "획득 완료!", {
+      .text(width / 2, height * 0.27, titleText, {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.06}px`,
-        color: "#22c55e",
+        color: "#ffd700",
         fontWeight: "bold",
         stroke: "#000000",
         strokeThickness: 6,
@@ -3334,47 +3669,75 @@ class LobbyScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     const desc = this.add
-      .text(
-        width / 2,
-        height * 0.35,
-        "1등을 달성해서 명품곰돌이를 획득했어요!",
-        {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.037}px`,
-          color: "#ffffff",
-          align: "center",
-          wordWrap: { width: width * 0.64 },
-          stroke: "#000000",
-          strokeThickness: 4,
-        },
-      )
+      .text(width / 2, height * 0.35, subtitleText, {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.037}px`,
+        color: "#ffffff",
+        align: "center",
+        wordWrap: { width: width * 0.64 },
+        stroke: "#000000",
+        strokeThickness: 4,
+      })
       .setOrigin(0.5);
 
-    const imgKey = this.textures.exists(PREMIUM_BEAR_KEY)
-      ? PREMIUM_BEAR_KEY
-      : "player_1";
-    const icon = this.add
-      .image(width / 2, height * 0.52, imgKey)
-      .setDisplaySize(width * 0.42, width * 0.42)
-      .setDepth(10001);
+    const createBearIcon = () => {
+      const possibleKeys = [
+        "player_2_frame_1",
+        "player_2_1",
+        "player_2_2",
+        "player_2_sprite",
+        "player_2",
+      ];
+      const resolvedKey = possibleKeys.find((k) => this.textures && typeof this.textures.exists === 'function' && this.textures.exists(k));
+      if (resolvedKey) {
+        return this.add
+          .image(width / 2, height * 0.45, resolvedKey)
+          .setDisplaySize(iconSize, iconSize)
+          .setDepth(40002)
+          .setOrigin(0.5);
+      }
 
+      const g = this.add.graphics().setDepth(40002);
+      const cx = width / 2;
+      const cy = height * 0.45;
+      const r = iconSize * 0.42;
+      const earR = r * 0.28;
+
+      g.fillStyle(0xd7b06b, 1);
+      g.fillCircle(cx, cy, r);
+      g.fillCircle(cx - r * 0.5, cy - r * 0.55, earR);
+      g.fillCircle(cx + r * 0.5, cy - r * 0.55, earR);
+
+      g.fillStyle(0x4c3028, 1);
+      g.fillCircle(cx - r * 0.2, cy + r * 0.05, r * 0.15);
+      g.fillCircle(cx + r * 0.2, cy + r * 0.05, r * 0.15);
+
+      g.fillStyle(0x2c1b10, 1);
+      g.fillCircle(cx, cy + r * 0.2, r * 0.2);
+
+      return g;
+    };
+
+    const icon = createBearIcon();
+
+    const btnY = height * 0.78;
     const btn = this.add
-      .image(width / 2, height * 0.8, "ui_btn")
-      .setDisplaySize(width * 0.38, height * 0.08)
-      .setTint(0x22c55e)
-      .setInteractive({ useHandCursor: true });
+      .image(width / 2, btnY, "ui_btn")
+      .setDisplaySize(width * 0.36, height * 0.08)
+      .setTint(0x22c55e);
     const btnTxt = this.add
-      .text(width / 2, height * 0.8, "획득", {
+      .text(width / 2, btnY, "받기", {
         fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.05}px`,
+        fontSize: `${Math.max(18, width * 0.05)}px`,
         color: "#ffffff",
         fontWeight: "bold",
         stroke: "#000000",
         strokeThickness: 5,
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setDepth(40003);
 
-    const container = this.add.container(0, 0, [overlay, panel, title, desc, icon, btn, btnTxt]);
+    const container = this.add.container(0, 0, [overlay, icon, btn, btnTxt]);
     container.setDepth(12000);
     this._premiumBearAcquiredPopup = container;
 
@@ -3385,12 +3748,35 @@ class LobbyScene extends Phaser.Scene {
       }
     };
 
-    btn.on("pointerdown", () => {
-      this.sound.play("btn", { volume: 0.12 });
-      close();
-      this.unlockPremiumBear();
-      if (typeof onConfirm === "function") onConfirm();
-    });
+    // Enable interactive after short delay to avoid click-through from
+    // the same input that triggered the win/confirm.
+    const enableBtn = () => {
+      try {
+        btn.setInteractive({ useHandCursor: true });
+        btn.on("pointerdown", () => {
+          this.sound.play("btn", { volume: 0.12 });
+          close();
+          try {
+            this.unlockPremiumBear();
+          } catch (e) {
+            console.warn("unlockPremiumBear failed", e);
+          }
+        });
+      } catch (e) {
+        // fallback: immediately call unlock if interactive couldn't be set
+        console.warn("[premium] enableBtn failed", e);
+        try {
+          this.unlockPremiumBear();
+          close();
+        } catch (err) {}
+      }
+    };
+
+    if (this.time && typeof this.time.delayedCall === "function") {
+      this.time.delayedCall(150, enableBtn);
+    } else {
+      setTimeout(enableBtn, 150);
+    }
   }
 
   changeProfileAvatar(step) {
@@ -3432,12 +3818,20 @@ class LobbyScene extends Phaser.Scene {
 
   scheduleTutorialOverlay() {
     // 튜토리얼은 닉네임 입력 직후 바로 시작
+    console.debug("[DEBUG] scheduleTutorialOverlay called", {
+      hasCompletedTutorial: this.hasCompletedTutorial,
+      isRoomOpen: this.isRoomOpen,
+      currentRoomId: this.currentRoomId,
+      sceneActive: this.scene ? this.scene.isActive("LobbyScene") : false,
+    });
+
     if (this.hasCompletedTutorial) return;
     if (this.isRoomOpen || this.currentRoomId) return;
     if (!this.scene.isActive("LobbyScene")) return;
 
     // 방금 닉네임 입력 후 초기 진입 시 호출되는 경우에만 실행.
     // (이미 튜토리얼이 진행 중이거나 완료된 상태라면 스킵)
+    console.debug("[DEBUG] scheduleTutorialOverlay -> starting tutorial");
     this.startTutorialGame();
   }
 
@@ -4626,6 +5020,17 @@ class LobbyScene extends Phaser.Scene {
       // ... 나머지 recipes 로직
     };
 
+    // If the lobby was entered from the tutorial completion flow, mark
+    // the upcoming single game as tutorial-origin so debug helpers appear.
+    try {
+      if (this.autoStartSingleAfterTutorial) {
+        singleGameData.isTutorialMode = true;
+        singleGameData.fromTutorial = true;
+        // clear the flag so it doesn't persist for future games
+        this.autoStartSingleAfterTutorial = false;
+      }
+    } catch (e) {}
+
     this.scene.start("GameScene", singleGameData);
   }
 
@@ -4937,13 +5342,13 @@ class LobbyScene extends Phaser.Scene {
 
       if (Array.isArray(rawValue)) {
         rawValue.forEach((key) => {
-          if (typeof key === "string" && /^player_[1-4]$/.test(key)) {
+          if (typeof key === "string" && /^(player_[1-4]|premium_bear)$/.test(key)) {
             normalized[key] = true;
           }
         });
       } else if (rawValue && typeof rawValue === "object") {
         Object.entries(rawValue).forEach(([key, value]) => {
-          if (typeof key === "string" && /^player_[1-4]$/.test(key)) {
+          if (typeof key === "string" && /^(player_[1-4]|premium_bear)$/.test(key)) {
             normalized[key] = !!value;
           }
         });
@@ -4957,7 +5362,10 @@ class LobbyScene extends Phaser.Scene {
       const owned = {};
       if (this.myProfile && Array.isArray(this.myProfile.owned_characters)) {
         this.myProfile.owned_characters.forEach((key) => {
-          if (typeof key === "string" && /^player_[1-4]$/.test(key)) {
+          if (
+            typeof key === "string" &&
+            /^(player_[1-4]|premium_bear)$/.test(key)
+          ) {
             owned[key] = true;
           }
         });
@@ -9247,7 +9655,9 @@ class GameScene extends Phaser.Scene {
       typeof profile.experience !== "undefined";
 
     const normalizeCharacterKey = (value) =>
-      typeof value === "string" && /^player_[1-4]$/.test(value) ? value : null;
+      typeof value === "string" && /^(player_[1-4]|premium_bear)$/.test(value)
+        ? value
+        : null;
 
     const incomingOwnedCharacters = Array.isArray(profile.owned_characters)
       ? profile.owned_characters
@@ -9530,6 +9940,28 @@ class GameScene extends Phaser.Scene {
     }
     const sheetKey = `${baseKey}_sprite_a`;
     if (this.textures.exists(sheetKey)) return sheetKey;
+    return null;
+  }
+
+  getValidCharacterTextureKey(baseKey) {
+    const candidates = [
+      this.getAvatarDisplayKey && this.getAvatarDisplayKey(baseKey),
+      baseKey,
+      `${baseKey}_1`,
+      `${baseKey}_sprite_a`,
+      `${baseKey}_frame_1`,
+      `${baseKey}_frame_2`,
+    ];
+
+    for (const k of candidates) {
+      if (!k) continue;
+      try {
+        if (this.textures && typeof this.textures.exists === "function" && this.textures.exists(k)) {
+          return k;
+        }
+      } catch (e) {}
+    }
+
     return null;
   }
 
@@ -10335,11 +10767,209 @@ class GameScene extends Phaser.Scene {
     // 플레이어/카드들을 담을 그룹
     this.playerTableGroup = this.add.container(0, 0).setDepth(100);
 
+    // Debug: add force-win button for tutorial-started single games
+    if (
+      this.isSingle &&
+      (this.isTutorialMode || this.roundData?.roomId === "TUTORIAL" || this.roundData?.isTutorialMode || this.tutorialConfig)
+    ) {
+      try {
+        // ensure top-level debug container exists and is above toasts
+        if (!this.debugUI || !this.debugUI.scene) {
+          this.debugUI = this.add.container(0, 0).setDepth(999999999);
+          this.debugUI.setScrollFactor(0);
+          this.debugUI.setVisible(true);
+          this.debugUI.setAlpha(1);
+        }
+        const btnX = this.cameras.main.width - 80;
+        const btnY = 40;
+        const forceBtn = this.add
+          .image(btnX, btnY, "ui_btn")
+          .setDisplaySize(140, 46)
+          .setInteractive({ useHandCursor: true });
+        const forceTxt = this.add
+          .text(btnX, btnY, "강제승리", {
+            fontFamily: GAME_FONTS.main,
+            fontSize: `${Math.max(12, this.cameras.main.width * 0.012)}px`,
+            color: "#ffffff",
+            fontWeight: "bold",
+          })
+          .setOrigin(0.5);
+        this.debugUI.add([forceBtn, forceTxt]);
+        this.children.bringToTop(this.debugUI);
+        this._debugForceWinBtn = forceBtn;
+        this._debugForceWinTxt = forceTxt;
+        forceBtn.on("pointerdown", () => {
+          this.sound.play("btn", { volume: 0.12 });
+          console.debug("[debug] tutorial force-win pressed");
+          try {
+            if (typeof this.endSingleGame === "function") {
+              this.endSingleGame("WIN");
+            } else {
+              const proto = GameScene?.prototype?.endSingleGame;
+              if (typeof proto === "function") proto.call(this, "WIN");
+            }
+          } catch (e) {
+            console.warn("[debug] force-win failed", e);
+          }
+        });
+      } catch (e) {
+        console.warn("[debug] failed to create force-win button", e);
+      }
+    }
+
+    // Debug: add 'complete tutorial' button to directly show completion overlay
+    if (
+      this.isSingle &&
+      (this.isTutorialMode || this.roundData?.roomId === "TUTORIAL" || this.roundData?.isTutorialMode || this.tutorialConfig)
+    ) {
+      try {
+        if (!this.debugUI || !this.debugUI.scene) {
+          this.debugUI = this.add.container(0, 0).setDepth(999999999);
+          this.debugUI.setScrollFactor(0);
+          this.debugUI.setVisible(true);
+          this.debugUI.setAlpha(1);
+        }
+        const cbtnX = this.cameras.main.width - 80;
+        const cbtnY = 100;
+        const completeBtn = this.add
+          .image(cbtnX, cbtnY, "ui_btn")
+          .setDisplaySize(140, 46)
+          .setInteractive({ useHandCursor: true });
+        const completeTxt = this.add
+          .text(cbtnX, cbtnY, "튜토리얼 완료", {
+            fontFamily: GAME_FONTS.main,
+            fontSize: `${Math.max(12, this.cameras.main.width * 0.012)}px`,
+            color: "#ffffff",
+            fontWeight: "bold",
+          })
+          .setOrigin(0.5);
+        this.debugUI.add([completeBtn, completeTxt]);
+        this.children.bringToTop(this.debugUI);
+        this._debugCompleteTutorialBtn = completeBtn;
+        this._debugCompleteTutorialTxt = completeTxt;
+
+        completeBtn.on("pointerdown", () => {
+          this.sound.play("btn", { volume: 0.12 });
+          console.debug("[debug] complete tutorial pressed");
+          try {
+            if (typeof this.showTutorialCompletionOverlay === "function") {
+              this.showTutorialCompletionOverlay();
+            } else if (typeof this.completeTutorialStage === "function") {
+              try {
+                this.hasCompletedTutorial = true;
+                localStorage.setItem(TUTORIAL_STATE_KEY, "true");
+              } catch (err) {}
+            }
+          } catch (e) {
+            console.warn("[debug] complete tutorial failed", e);
+          }
+        });
+      } catch (e) {
+        console.warn("[debug] failed to create complete-tutorial button", e);
+      }
+    }
+
     // 연출 실행
     this.playOpeningAnimation();
     this.time.delayedCall(800, () => {
       this.showReadyGo();
     });
+
+    // Ensure debug UI stays on top after opening animations that may reorder depths.
+    try {
+      if (this.time && typeof this.time.delayedCall === "function") {
+        // multiple delayed attempts to ensure debugUI stays above dynamically-created UI
+        [200, 1200, 3000].forEach((d) => {
+          try {
+            this.time.delayedCall(d, () => {
+              try {
+                if (this.debugUI && this.debugUI.scene) {
+                  this.debugUI.setDepth(999999999);
+                  this.debugUI.setVisible(true);
+                  this.children.bringToTop(this.debugUI);
+                  console.debug(`[debug] brought debugUI to top after ${d}ms`);
+                }
+              } catch (e) {
+                console.warn('[debug] bringToTop debugUI failed', e);
+              }
+            });
+          } catch (e) {}
+        });
+      }
+    } catch (e) {}
+
+    // Persistent DOM debug overlay to survive Phaser scene replacements.
+    try {
+      (function createPersistentDebugOverlay(scene) {
+        try { window.__HalemaleLastGameScene = scene; } catch (e) {}
+        const id = "halemale-debug-overlay";
+        if (!document.getElementById(id)) {
+          const wrapper = document.createElement("div");
+          wrapper.id = id;
+          Object.assign(wrapper.style, {
+            position: "fixed",
+            top: "12px",
+            right: "12px",
+            zIndex: "2147483647",
+            pointerEvents: "none",
+          });
+
+          const makeBtn = (text, onClick) => {
+            const b = document.createElement("button");
+            b.textContent = text;
+            Object.assign(b.style, {
+              display: "block",
+              marginBottom: "8px",
+              width: "140px",
+              height: "40px",
+              fontSize: "13px",
+              pointerEvents: "auto",
+              opacity: "0.95",
+              cursor: "pointer",
+            });
+            b.addEventListener("click", (ev) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+              const s = window.__HalemaleLastGameScene || (window.game && window.game.scene && window.game.scene.keys && window.game.scene.keys["GameScene"]);
+              if (s) onClick(s);
+            });
+            return b;
+          };
+
+          const btnWin = makeBtn("강제승리 (DOM)", (s) => {
+            try {
+              if (typeof s.endSingleGame === "function") s.endSingleGame("WIN");
+              else {
+                const proto = GameScene?.prototype?.endSingleGame;
+                if (typeof proto === "function") proto.call(s, "WIN");
+              }
+            } catch (e) {
+              console.warn("DOM force-win failed", e);
+            }
+          });
+
+          const btnComplete = makeBtn("튜토리얼 완료 (DOM)", (s) => {
+            try {
+              if (typeof s.showTutorialCompletionOverlay === "function") s.showTutorialCompletionOverlay();
+              else {
+                s.hasCompletedTutorial = true;
+                try { localStorage.setItem(TUTORIAL_STATE_KEY, "true"); } catch (e) {}
+              }
+            } catch (e) {
+              console.warn("DOM complete-tutorial failed", e);
+            }
+          });
+
+          wrapper.appendChild(btnWin);
+          wrapper.appendChild(btnComplete);
+          document.body.appendChild(wrapper);
+        } else {
+          try { window.__HalemaleLastGameScene = scene; } catch (e) {}
+        }
+      })(this);
+    } catch (e) {
+      console.warn("failed to create persistent DOM debug overlay", e);
+    }
 
     // ============================================
     // 1. 공통 소켓 리스너 (방 관리)
@@ -14048,15 +14678,231 @@ class GameScene extends Phaser.Scene {
         result,
       });
 
-      const myId = this.myId || "PLAYER_ME";
-      if (
-        result === "WIN" &&
-        sortedPlayers[0] &&
-        sortedPlayers[0].id === myId &&
-        !this.isPremiumBearUnlocked()
-      ) {
-        this.showPremiumBearAcquiredPopup();
+      const myId = this.myId || socket?.id || "PLAYER_ME";
+      const hasPremiumBear =
+        typeof this.isPremiumBearUnlocked === "function"
+          ? this.isPremiumBearUnlocked()
+          : false;
+
+      // More robust detection + diagnostics when tutorial-origin single games
+      const winnerId = sortedPlayers[0] && sortedPlayers[0].id;
+      const playersList = Array.isArray(this.roundData?.players) ? this.roundData.players.map(p => ({ id: p.id, nickname: p.nickname })) : [];
+      const resolvedMyId = myId || (playersList[0] && playersList[0].id) || null;
+
+      const normalizedResult = typeof result === 'string' ? result.toUpperCase() : result;
+      const isWin = normalizedResult === 'WIN' || normalizedResult === 'WON';
+
+      console.debug('[premium] win check', { result, normalizedResult, isWin, myId, socketId: socket?.id, resolvedMyId, winnerId, playersList, hasPremiumBear, isTutorialMode: !!this.isTutorialMode, roomId: this.roundData?.roomId });
+
+      const iAmWinner = !!(
+        winnerId &&
+        resolvedMyId &&
+        String(winnerId) === String(resolvedMyId)
+      );
+
+      // If winner detected as me, show reward popup (even if already owned).
+      if (isWin && iAmWinner) {
+        console.debug("[premium] confirmed win -> showing acquired popup", { winnerId, resolvedMyId, hasPremiumBear });
+        const alreadyOwned = !!hasPremiumBear;
+
+        const createRewardPopup = () => {
+          console.log('[premium] createRewardPopup');
+          try {
+            const w = this.cameras.main.width;
+            const h = this.cameras.main.height;
+            const overlay = this.add
+              .rectangle(w / 2, h / 2, w, h, 0x000000, 0.92)
+              .setInteractive();
+            try {
+              overlay.on('pointerdown', (e) => {
+                e.stopPropagation && e.stopPropagation();
+              });
+            } catch (e) {}
+
+            const iconSize = Math.min(w * 0.5, h * 0.45);
+            const titleText = alreadyOwned ? "플레이어 2 이미 보유" : "플레이어 2 획득!";
+            const descText = alreadyOwned
+              ? "이미 보유 중입니다. 계속 진행하세요."
+              : "1등 보상으로 플레이어 2를 획득할 수 있습니다!";
+            const candidateKeys = [
+              'player_2_frame_1',
+              'player_2_1',
+              'player_2_2',
+              'player_2_sprite',
+              'player_2',
+            ];
+            const resolvedKey = candidateKeys.find(
+              (k) => this.textures && typeof this.textures.exists === 'function' && this.textures.exists(k),
+            );
+
+            const title = this.add
+              .text(w / 2, h * 0.27, titleText, {
+                fontFamily: GAME_FONTS.main,
+                fontSize: `${w * 0.06}px`,
+                color: "#ffd700",
+                fontWeight: "bold",
+                stroke: "#000000",
+                strokeThickness: 6,
+              })
+              .setOrigin(0.5);
+
+            const desc = this.add
+              .text(w / 2, h * 0.35, descText, {
+                fontFamily: GAME_FONTS.main,
+                fontSize: `${w * 0.037}px`,
+                color: "#ffffff",
+                align: "center",
+                wordWrap: { width: w * 0.64 },
+                stroke: "#000000",
+                strokeThickness: 4,
+              })
+              .setOrigin(0.5);
+
+            const icon = resolvedKey
+              ? this.add
+                  .image(w / 2, h * 0.45, resolvedKey)
+                  .setDisplaySize(iconSize, iconSize)
+                  .setDepth(40002)
+                  .setOrigin(0.5)
+              : (() => {
+                  const g = this.add.graphics().setDepth(40002);
+                  const cx = w / 2;
+                  const cy = h * 0.45;
+                  const r = iconSize * 0.42;
+                  const earR = r * 0.28;
+                  g.fillStyle(0xd7b06b, 1);
+                  g.fillCircle(cx, cy, r);
+                  g.fillCircle(cx - r * 0.5, cy - r * 0.55, earR);
+                  g.fillCircle(cx + r * 0.5, cy - r * 0.55, earR);
+                  g.fillStyle(0x4c3028, 1);
+                  g.fillCircle(cx - r * 0.2, cy + r * 0.05, r * 0.15);
+                  g.fillCircle(cx + r * 0.2, cy + r * 0.05, r * 0.15);
+                  g.fillStyle(0x2c1b10, 1);
+                  g.fillCircle(cx, cy + r * 0.2, r * 0.2);
+                  return g;
+                })();
+
+            const btnY = h * 0.78;
+            const btn = this.add
+              .image(w / 2, btnY, 'ui_btn')
+              .setDisplaySize(w * 0.36, h * 0.08)
+              .setTint(0x22c55e);
+            const btnTxt = this.add
+              .text(w / 2, btnY, '받기', {
+                fontFamily: GAME_FONTS.main,
+                fontSize: `${Math.max(18, w * 0.05)}px`,
+                color: '#ffffff',
+                fontWeight: 'bold',
+                stroke: '#000000',
+                strokeThickness: 5,
+              })
+              .setOrigin(0.5)
+              .setDepth(40003);
+
+            const container = this.add.container(0, 0, [overlay, icon, btn, btnTxt]);
+            container.setDepth(12000);
+            this._premiumBearAcquiredPopup = container;
+
+            const close = () => {
+              if (this._premiumBearAcquiredPopup) {
+                this._premiumBearAcquiredPopup.destroy();
+                this._premiumBearAcquiredPopup = null;
+              }
+            };
+
+            const enableBtn = () => {
+              try {
+                btn.setInteractive({ useHandCursor: true });
+                btn.on('pointerdown', () => {
+                  this.sound.play('btn', { volume: 0.12 });
+                  close();
+                  try {
+                    this.unlockPremiumBear();
+                  } catch (e) {
+                    console.warn('unlockPremiumBear failed', e);
+                  }
+                });
+              } catch (e) {
+                console.warn('[premium] enableBtn failed', e);
+                try {
+                  this.unlockPremiumBear();
+                  close();
+                } catch (err) {}
+              }
+            };
+
+            if (this.time && typeof this.time.delayedCall === 'function') {
+              this.time.delayedCall(150, enableBtn);
+            } else {
+              setTimeout(enableBtn, 150);
+            }
+          } catch (e) {
+            console.warn('[premium] create reward popup failed', e);
+          }
+        };
+        // Wait for avatar texture to be available to avoid showing missing-texture box.
+        const showAcquiredPopupWithRetry = (attempts = 0) => {
+          try {
+            const candidates = [
+              (this.getAvatarDisplayKey && this.getAvatarDisplayKey(PREMIUM_BEAR_KEY)),
+              PREMIUM_BEAR_KEY,
+              PREMIUM_BEAR_KEY + '_1',
+              PREMIUM_BEAR_KEY + '_sprite_a',
+              PREMIUM_BEAR_KEY + '_frame_1',
+              'player_1',
+            ];
+            let found = false;
+            for (const k of candidates) {
+              if (!k) continue;
+              try {
+                if (this.textures && typeof this.textures.exists === 'function' && this.textures.exists(k)) {
+                  found = true;
+                  break;
+                }
+              } catch (e) {}
+            }
+
+            if (found || attempts >= 20) {
+              // proceed to show popup (either valid texture found or max attempts reached)
+              createRewardPopup();
+              return;
+            }
+
+            // retry shortly to wait for assets to load
+            const delay = 100; // ms
+            if (this.time && typeof this.time.delayedCall === 'function') {
+              this.time.delayedCall(delay, () => showAcquiredPopupWithRetry(attempts + 1));
+            } else {
+              setTimeout(() => showAcquiredPopupWithRetry(attempts + 1), delay);
+            }
+          } catch (e) {
+            // On error, fall back to direct call
+            try { createRewardPopup(); } catch (err) {}
+          }
+        };
+
+        showAcquiredPopupWithRetry(0);
       }
+
+      // Force-show for tutorial-origin single games as a fallback if popup didn't appear.
+      try {
+        if (this.isTutorialMode && isWin && iAmWinner && !this._premiumBearPopupForcedShown) {
+          console.debug('[premium] forcing acquired popup for tutorial game');
+          this._premiumBearPopupForcedShown = true;
+          try {
+            if (typeof this.showPremiumBearAcquiredPopup === "function") {
+              // small delay to allow result overlay animations to finish
+              if (this.time && typeof this.time.delayedCall === "function") {
+                this.time.delayedCall(200, () => { try { this.showPremiumBearAcquiredPopup(); } catch (e) {} });
+              } else {
+                setTimeout(() => { try { this.showPremiumBearAcquiredPopup(); } catch (e) {} }, 200);
+              }
+            }
+          } catch (e) {
+            console.warn('[premium] force show failed', e);
+          }
+        }
+      } catch (e) {}
     });
   }
 
@@ -14379,10 +15225,6 @@ class GameScene extends Phaser.Scene {
       return;
     }
 
-    if (this.isTutorialMode && this.tutorialState?.requireBellSuccess) {
-      this.showToast("먼저 종을 눌러보세요!", "#f1c40f");
-      return;
-    }
 
     // 내 차례 검증이 끝난 뒤에만 입력 잠금
     this.canClick = false;
@@ -15882,7 +16724,7 @@ class GameScene extends Phaser.Scene {
     });
   }
 
-  handleTutorialAfterFlip(playerId) {
+  handleTutorialAfterFlip(playerId, card) {
     if (!this.isTutorialMode || !this.tutorialState) return;
 
     const myId = this.myId || "PLAYER_ME";
@@ -15911,7 +16753,36 @@ class GameScene extends Phaser.Scene {
       }
 
       if (!isMe && this.tutorialState.expectingAiFive) {
+        // The card for this flip may not yet be reflected in openCard/openStack
+        // when this handler runs, so we add it manually for tutorial checks.
         const totals = this.calculateTotalFruits();
+        const player = this.roundData.players.find((p) => p.id === playerId);
+        const plus1Active = this.hasPlus1OnTable();
+        const plus2Active = this.hasPlus2OnTable ? this.hasPlus2OnTable() : false;
+        const extraPerCard = (plus1Active ? 1 : 0) + (plus2Active ? 2 : 0);
+
+        const applyCard = (card, sign = 1) => {
+          if (
+            !card ||
+            !Number.isFinite(Number(card.fruit)) ||
+            !Number.isFinite(Number(card.count))
+          )
+            return;
+          const fruit = Number(card.fruit);
+          const count = Number(card.count);
+          totals[fruit] = Math.max(0, (totals[fruit] || 0) + sign * (count + extraPerCard));
+        };
+
+        // Subtract the current top card's contribution if it exists.
+        const currentTop =
+          player && Array.isArray(player.openStack) && player.openStack.length > 0
+            ? player.openStack[player.openStack.length - 1]
+            : player && player.openCard
+            ? player.openCard
+            : null;
+        applyCard(currentTop, -1);
+        applyCard(card || null, 1);
+
         const hasFive = Object.values(totals).some((count) => count === 5);
         const hasBomb = this.hasBombOnTable();
         if (hasFive && !hasBomb) {
@@ -15997,7 +16868,47 @@ class GameScene extends Phaser.Scene {
       !isMe &&
       this.tutorialState.waitingForPlusOneBell
     ) {
-      const totals = this.calculateTotalFruits();
+      // When an AI flips a card, openStack/openCard may not yet include it.
+      // We need to calculate totals as if the flip is already visible.
+      const cardTotal = (c) => {
+        if (
+          !c ||
+          !Number.isFinite(Number(c.fruit)) ||
+          !Number.isFinite(Number(c.count))
+        )
+          return null;
+        return { fruit: Number(c.fruit), count: Number(c.count) };
+      };
+
+      const plus1Active =
+        this.hasPlus1OnTable() || (card && card.type === PLUS1_CARD_TYPE);
+      const plus2Active =
+        (this.hasPlus2OnTable ? this.hasPlus2OnTable() : false) ||
+        (card && card.type === PLUS2_CARD_TYPE);
+      const extraPerCard = (plus1Active ? 1 : 0) + (plus2Active ? 2 : 0);
+
+      const totals = { 1: 0, 2: 0, 3: 0, 4: 0 };
+      const applyTotals = (c) => {
+        const t = cardTotal(c);
+        if (!t) return;
+        totals[t.fruit] = (totals[t.fruit] || 0) + t.count + extraPerCard;
+      };
+
+      // count current visible table
+      this.roundData.players.forEach((p) => {
+        if (!p) return;
+        const top =
+          Array.isArray(p.openStack) && p.openStack.length > 0
+            ? p.openStack[p.openStack.length - 1]
+            : p.openCard;
+        applyTotals(top);
+      });
+
+      // Ensure the flipped card is considered if it affects totals (e.g. fruit card)
+      if (card && card.type !== PLUS1_CARD_TYPE && card.type !== PLUS2_CARD_TYPE) {
+        applyTotals(card);
+      }
+
       const hasFive = Object.values(totals).some((count) => count === 5);
       const hasBomb = this.hasBombOnTable();
       if (hasFive && !hasBomb) {
@@ -16141,6 +17052,8 @@ class GameScene extends Phaser.Scene {
     if (!this.isTutorialMode || !this.tutorialState) return;
     if (this.tutorialState.completionShown) return;
     this.tutorialState.completionShown = true;
+
+    const self = this;
 
     this.updateTutorialPointer(null);
     this.clearTutorialPendingTimers();
@@ -16303,10 +17216,108 @@ class GameScene extends Phaser.Scene {
         });
       };
 
-      if (!this.isPremiumBearUnlocked()) {
-        this.showPremiumBearOfferPopup(beginSingleEasy);
+      // 항상 튜토리얼 완료 후에는 보상 안내 팝업을 보여주고
+      // 확인 버튼을 누른 뒤에 싱글플레이가 시작되도록 합니다.
+      if (typeof self.showPremiumBearIntroPopup === "function") {
+        self.showPremiumBearIntroPopup(beginSingleEasy);
       } else {
-        beginSingleEasy();
+        // 폴백: helper가 없는 경우 간단한 확인 팝업을 직접 띄워서
+        // 사용자가 명시적으로 확인할 때만 싱글이 시작되게 합니다.
+        try {
+          const { width, height } = this.cameras.main;
+          const overlay = this.add
+            .rectangle(width / 2, height / 2, width, height, 0x000000, 0.92)
+            .setInteractive();
+          const panel = this.add
+            .rectangle(width / 2, height / 2, width * 0.78, height * 0.65, 0x111111, 0.96)
+            .setStrokeStyle(2, 0xffffff, 0.25);
+          const txt = this.add
+            .text(
+              width / 2,
+              height * 0.35,
+              "싱글플레이에서 1등을 하면 플레이어 2를 획득할 수 있어요!\n확인 버튼을 누르면 싱글플레이가 시작됩니다.",
+              {
+                fontFamily: GAME_FONTS.main,
+                fontSize: `${width * 0.037}px`,
+                color: "#ffffff",
+                align: "center",
+                wordWrap: { width: width * 0.64 },
+                stroke: "#000000",
+                strokeThickness: 4,
+              },
+            )
+            .setOrigin(0.5);
+          const btn = this.add
+            .image(width / 2, height * 0.8, "ui_btn")
+            .setDisplaySize(width * 0.38, height * 0.08)
+            .setTint(0x22c55e)
+            .setInteractive({ useHandCursor: true });
+          const btnTxt = this.add
+            .text(width / 2, height * 0.8, "확인", {
+              fontFamily: GAME_FONTS.main,
+              fontSize: `${width * 0.05}px`,
+              color: "#ffffff",
+              fontWeight: "bold",
+              stroke: "#000000",
+              strokeThickness: 5,
+            })
+            .setOrigin(0.5);
+
+          // Show player_2 icon in the reward intro fallback.
+          const createFallbackRewardIcon = () => {
+            const iconSize = Math.min(width * 0.5, height * 0.45);
+            const resolvedKey =
+              typeof this.getValidCharacterTextureKey === "function"
+                ? this.getValidCharacterTextureKey("player_2")
+                : null;
+            if (resolvedKey) {
+              return this.add
+                .image(width / 2, height * 0.45, resolvedKey)
+                .setDisplaySize(iconSize, iconSize)
+                .setDepth(12001)
+                .setOrigin(0.5);
+            }
+
+            const g = this.add.graphics().setDepth(12001);
+            const cx = width / 2;
+            const cy = height * 0.45;
+            const r = iconSize * 0.42;
+            const earR = r * 0.28;
+
+            g.fillStyle(0xd7b06b, 1);
+            g.fillCircle(cx, cy, r);
+            g.fillCircle(cx - r * 0.5, cy - r * 0.55, earR);
+            g.fillCircle(cx + r * 0.5, cy - r * 0.55, earR);
+
+            g.fillStyle(0x4c3028, 1);
+            g.fillCircle(cx - r * 0.2, cy + r * 0.05, r * 0.15);
+            g.fillCircle(cx + r * 0.2, cy + r * 0.05, r * 0.15);
+
+            g.fillStyle(0x2c1b10, 1);
+            g.fillCircle(cx, cy + r * 0.2, r * 0.2);
+            return g;
+          };
+
+          const fallbackIcon = createFallbackRewardIcon();
+          const tmpContainer = this.add.container(0, 0, [overlay, panel, txt, fallbackIcon, btn, btnTxt]);
+          tmpContainer.setDepth(12000);
+
+          const closeTmp = () => {
+            if (tmpContainer) {
+              tmpContainer.destroy();
+            }
+          };
+
+          btn.on("pointerdown", () => {
+            this.sound.play("btn", { volume: 0.12 });
+            closeTmp();
+            beginSingleEasy();
+          });
+        } catch (e) {
+          // 만약 팝업 생성조차 실패하면 최후의 수단으로 바로 시작
+          console.warn("premium intro fallback failed", e);
+          beginSingleEasy();
+        }
       }
     };
 
