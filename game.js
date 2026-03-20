@@ -740,6 +740,13 @@ class LobbyScene extends Phaser.Scene {
     this.autoStartSingleAfterTutorial =
       data && data.fromTutorial && data.autoStartSingle;
 
+    // Allow callers to explicitly prevent automatic single-start (e.g. when
+    // returning from a single match via back/navigation). This prevents a
+    // loop where the lobby auto-starts a new single match on every return.
+    this.preventAutoStartSingleAfterTutorial = !!(
+      data && data.preventAutoStartSingleAfterTutorial
+    );
+
     // Ensure reward popup helpers are bound to the instance if they exist.
     if (typeof this.showPremiumBearIntroPopup === "function") {
       this.showPremiumBearIntroPopup = this.showPremiumBearIntroPopup.bind(this);
@@ -1184,7 +1191,7 @@ class LobbyScene extends Phaser.Scene {
     const centerX = width ? width * 0.5 : 0;
 
     const loadingText = this.add
-      .text(centerX, height * 0.9, "추가 에셋 로딩 중...", {
+      .text(centerX, height * 0.9, "케릭터 잠 깨는 중...", {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.035}px`,
         color: "#ffffff",
@@ -1347,19 +1354,33 @@ class LobbyScene extends Phaser.Scene {
             payload.experience = safeExperience;
           }
 
-          const ownedCharacters = Array.isArray(
-            this.myProfile && this.myProfile.owned_characters,
-          )
-            ? this.myProfile.owned_characters.filter(
+          // Include owned characters in the payload.
+        // If the server profile isn't fully available yet, use locally stored owned characters.
+        const filterOwnedKeys = (keys) =>
+          Array.isArray(keys)
+            ? keys.filter(
                 (key) =>
                   typeof key === "string" &&
                   (/^player_[1-4]$/.test(key) || key === PREMIUM_BEAR_KEY),
               )
             : [];
-          if (ownedCharacters.length > 0) {
-            payload.ownedCharacters = ownedCharacters;
-            payload.owned_characters = ownedCharacters;
-          }
+
+        const localOwnedChars = filterOwnedKeys(
+          JSON.parse(localStorage.getItem("ownedCharacters") || "[]") || [],
+        );
+
+        const ownedCharacters = filterOwnedKeys(
+          this.myProfile && this.myProfile.owned_characters,
+        );
+
+        const mergedOwnedCharacters = Array.from(
+          new Set([...ownedCharacters, ...localOwnedChars]),
+        );
+
+        if (mergedOwnedCharacters.length > 0) {
+          payload.ownedCharacters = mergedOwnedCharacters;
+          payload.owned_characters = mergedOwnedCharacters;
+        }
 
           const currentCharacter = this.getSelectedAvatarKey();
           if (
@@ -1414,9 +1435,14 @@ class LobbyScene extends Phaser.Scene {
 
       // If we arrived from a completed tutorial, automatically start the
       // easy single-player game.
-      if (this.autoStartSingleAfterTutorial && this.hasCompletedTutorial) {
+      if (
+        this.autoStartSingleAfterTutorial &&
+        this.hasCompletedTutorial &&
+        !this.preventAutoStartSingleAfterTutorial
+      ) {
         // 플래그를 초기화하여 한 번만 자동 시작되도록 보장합니다.
         this.autoStartSingleAfterTutorial = false;
+        this.preventAutoStartSingleAfterTutorial = false;
         this.startSingleGame("easy");
         return;
       }
@@ -1940,6 +1966,29 @@ class LobbyScene extends Phaser.Scene {
       };
 
       let mergedOwnedCharacters = normalizeOwnedCharacters({});
+
+      // Local storage can contain owned characters (e.g. rewards granted in the app)
+      // that haven't yet been reflected in the server snapshot.
+      try {
+        const stored = JSON.parse(localStorage.getItem("ownedCharacters") || "[]");
+        if (Array.isArray(stored) && stored.length > 0) {
+          const localOwned = {};
+          stored.forEach((key) => {
+            if (
+              typeof key === "string" &&
+              /^(player_[1-4]|player_2)$/.test(key)
+            ) {
+              localOwned[key] = true;
+            }
+          });
+          mergedOwnedCharacters = normalizeOwnedCharacters({
+            ...mergedOwnedCharacters,
+            ...localOwned,
+          });
+        }
+      } catch (e) {
+        // ignore invalid/malformed local data
+      }
 
       if (profile && Array.isArray(profile.owned_characters)) {
         const ownedCharactersFromServer = {};
@@ -3361,10 +3410,24 @@ class LobbyScene extends Phaser.Scene {
       return ["player_1"];
     }
 
-    const ownedList = Array.isArray(this.myProfile?.owned_characters)
+    const ownedFromProfile = Array.isArray(this.myProfile?.owned_characters)
       ? this.myProfile.owned_characters
       : [];
-    const ownedSet = new Set(["player_1", ...ownedList]);
+
+    const ownedFromStorage = (() => {
+      try {
+        const stored = JSON.parse(localStorage.getItem("ownedCharacters") || "[]");
+        return Array.isArray(stored) ? stored : [];
+      } catch (e) {
+        return [];
+      }
+    })();
+
+    const ownedSet = new Set([
+      "player_1",
+      ...ownedFromProfile,
+      ...ownedFromStorage,
+    ]);
 
     const ownedKeys = allKeys.filter((key) => ownedSet.has(key));
     return ownedKeys.length > 0 ? ownedKeys : ["player_1"];
@@ -3402,6 +3465,7 @@ class LobbyScene extends Phaser.Scene {
     if (!this.myProfile.owned_characters.includes(PREMIUM_BEAR_KEY)) {
       this.myProfile.owned_characters.push(PREMIUM_BEAR_KEY);
     }
+
     try {
       localStorage.setItem(
         "ownedCharacters",
@@ -3410,6 +3474,39 @@ class LobbyScene extends Phaser.Scene {
     } catch (e) {
       // ignore
     }
+
+    // 바로 서버 저장 시도 (싱글플레이에서는 서버 연결이 없으므로 스킵)
+    try {
+      if (!this.isSingle && socket && socket.connected) {
+        const resolvedPlayerId =
+          this.myProfile.nickname ||
+          localStorage.getItem("nickname") ||
+          this.myNickname ||
+          "요리사";
+
+        const characterId =
+          typeof this.getCharacterIdFromKey === "function"
+            ? this.getCharacterIdFromKey(PREMIUM_BEAR_KEY)
+            : 2;
+
+        socket.emit("buyCharacter", {
+          id: resolvedPlayerId,
+          userId: resolvedPlayerId,
+          player_id: resolvedPlayerId,
+          nickname: this.myProfile.nickname || resolvedPlayerId,
+          playerId: socket.id,
+          characterKey: PREMIUM_BEAR_KEY,
+          characterId,
+          characterPrice: 0,
+          currentCharacter: PREMIUM_BEAR_KEY,
+          current_character: PREMIUM_BEAR_KEY,
+          coins: Number(this.myProfile.coins) || 0,
+        });
+      }
+    } catch (e) {
+      console.warn("[premium] server unlock attempt failed", e);
+    }
+
     if (typeof this.emitInventory === "function") {
       // Emit immediately (fallback) so local persistence is synced even if
       // server profile snapshot isn't ready.
@@ -3657,6 +3754,28 @@ class LobbyScene extends Phaser.Scene {
       ? "이미 보유 중입니다. 계속 진행하세요."
       : "1등 보상으로 획득할 수 있습니다!";
 
+    const celebrationTitle = this.add
+      .text(width / 2, height * 0.18, "축하합니다!", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${Math.max(24, width * 0.055)}px`,
+        color: "#ffed4a",
+        fontWeight: "bold",
+        stroke: "#ba3f00",
+        strokeThickness: 8,
+      })
+      .setOrigin(0.5)
+      .setDepth(40005);
+
+    this.tweens.add({
+      targets: celebrationTitle,
+      scale: { from: 0.8, to: 1.1 },
+      angle: { from: -4, to: 4 },
+      duration: 500,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.easeInOut",
+    });
+
     const title = this.add
       .text(width / 2, height * 0.27, titleText, {
         fontFamily: GAME_FONTS.main,
@@ -3720,7 +3839,29 @@ class LobbyScene extends Phaser.Scene {
 
     const icon = createBearIcon();
 
-    const btnY = height * 0.78;
+    // 축하용 파티클/스파클 효과
+    const sparkleTimer = this.time.addEvent({
+      delay: 120,
+      loop: true,
+      callback: () => {
+        const sx = width / 2 + Phaser.Math.FloatBetween(-iconSize * 0.45, iconSize * 0.45);
+        const sy = height * 0.45 + Phaser.Math.FloatBetween(-iconSize * 0.48, iconSize * 0.48);
+        const spark = this.add
+          .star(sx, sy, 5, 2, 6, Phaser.Display.Color.RandomRGB().color)
+          .setDepth(40004)
+          .setScale(0.4)
+          .setAlpha(0.9);
+        this.tweens.add({
+          targets: spark,
+          alpha: 0,
+          scale: 0.1,
+          duration: 600,
+          onComplete: () => spark.destroy(),
+        });
+      },
+    });
+
+    const btnY = height * 0.63;
     const btn = this.add
       .image(width / 2, btnY, "ui_btn")
       .setDisplaySize(width * 0.36, height * 0.08)
@@ -3742,6 +3883,9 @@ class LobbyScene extends Phaser.Scene {
     this._premiumBearAcquiredPopup = container;
 
     const close = () => {
+      if (sparkleTimer) {
+        sparkleTimer.remove(false);
+      }
       if (this._premiumBearAcquiredPopup) {
         this._premiumBearAcquiredPopup.destroy();
         this._premiumBearAcquiredPopup = null;
@@ -5360,16 +5504,30 @@ class LobbyScene extends Phaser.Scene {
 
     const getOwnedCharacters = () => {
       const owned = {};
+
+      // 1) 서버 프로필에서 소유 캐릭터 가져오기
       if (this.myProfile && Array.isArray(this.myProfile.owned_characters)) {
         this.myProfile.owned_characters.forEach((key) => {
-          if (
-            typeof key === "string" &&
-            /^(player_[1-4]|premium_bear)$/.test(key)
-          ) {
+          if (typeof key === "string" && /^(player_[1-4])$/.test(key)) {
             owned[key] = true;
           }
         });
       }
+
+      // 2) 로컬 저장소에서 획득한 캐릭터도 보장
+      try {
+        const stored = JSON.parse(localStorage.getItem("ownedCharacters") || "[]");
+        if (Array.isArray(stored)) {
+          stored.forEach((key) => {
+            if (typeof key === "string" && /^(player_[1-4])$/.test(key)) {
+              owned[key] = true;
+            }
+          });
+        }
+      } catch (e) {
+        // ignore malformed storage
+      }
+
       owned.player_1 = true;
       return owned;
     };
@@ -5379,11 +5537,20 @@ class LobbyScene extends Phaser.Scene {
       const ownedList = Object.keys(normalized).filter(
         (key) => normalized[key],
       );
+
       if (!this.myProfile) {
         this.myProfile = {};
       }
       if (this.myProfile) {
         this.myProfile.owned_characters = ownedList;
+      }
+
+      // Persist to local storage so reward-based unlocks are preserved even
+      // if the server profile doesn't yet include them.
+      try {
+        localStorage.setItem("ownedCharacters", JSON.stringify(ownedList));
+      } catch (e) {
+        // ignore
       }
     };
 
@@ -9920,10 +10087,24 @@ class GameScene extends Phaser.Scene {
       return ["player_1"];
     }
 
-    const ownedList = Array.isArray(this.myProfile?.owned_characters)
+    const ownedFromProfile = Array.isArray(this.myProfile?.owned_characters)
       ? this.myProfile.owned_characters
       : [];
-    const ownedSet = new Set(["player_1", ...ownedList]);
+
+    const ownedFromStorage = (() => {
+      try {
+        const stored = JSON.parse(localStorage.getItem("ownedCharacters") || "[]");
+        return Array.isArray(stored) ? stored : [];
+      } catch (e) {
+        return [];
+      }
+    })();
+
+    const ownedSet = new Set([
+      "player_1",
+      ...ownedFromProfile,
+      ...ownedFromStorage,
+    ]);
 
     const ownedKeys = allKeys.filter((key) => ownedSet.has(key));
     return ownedKeys.length > 0 ? ownedKeys : ["player_1"];
@@ -12390,13 +12571,35 @@ class GameScene extends Phaser.Scene {
     this.createHaliGaliButtons(height);
 
     const moveToLobby = () => {
+      console.debug("[moveToLobby] 호출", {
+        isSingle: this.isSingle,
+        isRoomOpen: this.isRoomOpen,
+        roundRoomId: this.roundData?.roomId,
+        currentRoomId: this.currentRoomId,
+      });
+
       if (typeof this.currentGamePopupCloseHandler === "function") {
         this.currentGamePopupCloseHandler();
         return;
       }
 
       this.showCustomAlert("코인 및 경험치를 포기하고\n로비로 이동합니다!", () => {
-        this.returnToLobby({ rejoinRoom: false, leaveRoom: true });
+        if (this.isSingle) {
+          console.debug("[moveToLobby] 싱글모드 -> GameScene returnToLobby 호출");
+          if (typeof this.returnToLobby === "function") {
+            this.returnToLobby({ rejoinRoom: false, leaveRoom: true });
+          } else {
+            this.scene.start("LobbyScene");
+          }
+          return;
+        }
+
+        console.debug("[moveToLobby] 멀티모드 -> returnToLobby 호출");
+        if (typeof this.returnToLobby === "function") {
+          this.returnToLobby({ rejoinRoom: false, leaveRoom: true });
+        } else {
+          this.scene.start("LobbyScene");
+        }
       });
     };
 
@@ -14705,8 +14908,54 @@ class GameScene extends Phaser.Scene {
         console.debug("[premium] confirmed win -> showing acquired popup", { winnerId, resolvedMyId, hasPremiumBear });
         const alreadyOwned = !!hasPremiumBear;
 
-        const createRewardPopup = () => {
-          console.log('[premium] createRewardPopup');
+        // Ensure reward is unlocked locally even if user doesn't click the popup.
+        if (!alreadyOwned) {
+          const safeUnlockPremiumBear = () => {
+            try {
+              if (typeof this.unlockPremiumBear === "function") {
+                this.unlockPremiumBear();
+                return;
+              }
+            } catch (e) {
+              console.warn("[premium] auto-unlock failed (method)", e);
+            }
+
+            // Fallback: directly update profile + localStorage
+            try {
+              if (!this.myProfile) this.myProfile = {};
+              if (!Array.isArray(this.myProfile.owned_characters)) {
+                this.myProfile.owned_characters = [];
+              }
+              if (!this.myProfile.owned_characters.includes(PREMIUM_BEAR_KEY)) {
+                this.myProfile.owned_characters.push(PREMIUM_BEAR_KEY);
+              }
+              try {
+                localStorage.setItem(
+                  "ownedCharacters",
+                  JSON.stringify(this.myProfile.owned_characters),
+                );
+              } catch (e) {
+                // ignore
+              }
+            } catch (e) {
+              console.warn("[premium] auto-unlock failed (fallback)", e);
+            }
+          };
+
+          safeUnlockPremiumBear();
+        }
+
+        const showPremiumPopupWithFallback = () => {
+          if (typeof this.showPremiumBearAcquiredPopup === 'function') {
+            try {
+              this.showPremiumBearAcquiredPopup(null, alreadyOwned);
+              return;
+            } catch (e) {
+              console.warn('[premium] showPremiumBearAcquiredPopup failed', e);
+            }
+          }
+
+          console.log('[premium] createRewardPopup fallback');
           try {
             const w = this.cameras.main.width;
             const h = this.cameras.main.height;
@@ -14864,7 +15113,7 @@ class GameScene extends Phaser.Scene {
 
             if (found || attempts >= 20) {
               // proceed to show popup (either valid texture found or max attempts reached)
-              createRewardPopup();
+              showPremiumPopupWithFallback();
               return;
             }
 
@@ -14877,7 +15126,7 @@ class GameScene extends Phaser.Scene {
             }
           } catch (e) {
             // On error, fall back to direct call
-            try { createRewardPopup(); } catch (err) {}
+            try { showPremiumPopupWithFallback(); } catch (err) {}
           }
         };
 
@@ -14913,17 +15162,37 @@ class GameScene extends Phaser.Scene {
         : !this.isSingle;
     const shouldLeaveRoom = options.leaveRoom === true;
 
+    const preventAutoStart = () => {
+      try {
+        const lobbyScene = this.scene.get("LobbyScene");
+        if (lobbyScene) {
+          lobbyScene.preventAutoStartSingleAfterTutorial = true;
+        }
+      } catch (e) {
+        // ignore if lobby scene isn't available
+      }
+    };
+
     if (
       shouldLeaveRoom &&
       this.roundData &&
-      this.roundData.roomId &&
-      socket &&
-      socket.connected
+      this.roundData.roomId
     ) {
       const roomId = this.roundData.roomId;
-      socket.emit("leaveRoom", { roomId }, () => {
-        this.scene.start("LobbyScene");
-      });
+
+      const startLobbyScene = () => {
+        preventAutoStart();
+        this.scene.start("LobbyScene", {
+          preventAutoStartSingleAfterTutorial: true,
+        });
+      };
+
+      if (socket && socket.connected) {
+        socket.emit("leaveRoom", { roomId }, startLobbyScene);
+      } else {
+        console.debug("[returnToLobby] socket 미연결, 바로 lobby로 이동");
+        startLobbyScene();
+      }
       return;
     }
 
@@ -14934,7 +15203,10 @@ class GameScene extends Phaser.Scene {
       !socket ||
       !socket.connected
     ) {
-      this.scene.start("LobbyScene");
+      preventAutoStart();
+      this.scene.start("LobbyScene", {
+        preventAutoStartSingleAfterTutorial: true,
+      });
       return;
     }
 
@@ -17119,7 +17391,7 @@ class GameScene extends Phaser.Scene {
       .text(
         width / 2,
         height * 0.53,
-        `추가보상: +${reward} 코인 + 자물쇠 1개`,
+        `우승하고 보상을 받아보세요`,
         {
           fontFamily: GAME_FONTS.main,
           fontSize: `${width * 0.05}px`,
@@ -17228,14 +17500,14 @@ class GameScene extends Phaser.Scene {
           const overlay = this.add
             .rectangle(width / 2, height / 2, width, height, 0x000000, 0.92)
             .setInteractive();
-          const panel = this.add
+          /*const panel = this.add
             .rectangle(width / 2, height / 2, width * 0.78, height * 0.65, 0x111111, 0.96)
-            .setStrokeStyle(2, 0xffffff, 0.25);
+            .setStrokeStyle(2, 0xffffff, 0.25);*/
           const txt = this.add
             .text(
               width / 2,
-              height * 0.35,
-              "싱글플레이에서 1등을 하면 플레이어 2를 획득할 수 있어요!\n확인 버튼을 누르면 싱글플레이가 시작됩니다.",
+              height * 0.63,
+              "싱글플레이에서 1등을 하면 획득할 수 있어요!",
               {
                 fontFamily: GAME_FONTS.main,
                 fontSize: `${width * 0.037}px`,
@@ -17248,12 +17520,12 @@ class GameScene extends Phaser.Scene {
             )
             .setOrigin(0.5);
           const btn = this.add
-            .image(width / 2, height * 0.8, "ui_btn")
+            .image(width / 2, height * 0.73, "ui_btn")
             .setDisplaySize(width * 0.38, height * 0.08)
             .setTint(0x22c55e)
             .setInteractive({ useHandCursor: true });
           const btnTxt = this.add
-            .text(width / 2, height * 0.8, "확인", {
+            .text(width / 2, height * 0.73, "확인", {
               fontFamily: GAME_FONTS.main,
               fontSize: `${width * 0.05}px`,
               color: "#ffffff",
@@ -17299,7 +17571,7 @@ class GameScene extends Phaser.Scene {
           };
 
           const fallbackIcon = createFallbackRewardIcon();
-          const tmpContainer = this.add.container(0, 0, [overlay, panel, txt, fallbackIcon, btn, btnTxt]);
+          const tmpContainer = this.add.container(0, 0, [overlay, txt, fallbackIcon, btn, btnTxt]);
           tmpContainer.setDepth(12000);
 
           const closeTmp = () => {
