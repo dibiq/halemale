@@ -3732,194 +3732,206 @@ class LobbyScene extends Phaser.Scene {
   showPremiumBearAcquiredPopup(onConfirm, alreadyOwned = false) {
     if (this._premiumBearAcquiredPopup) return;
 
-    console.debug("[premium] showPremiumBearAcquiredPopup called");
+    console.debug("[premium] showPremiumBearAcquiredPopup called", { alreadyOwned });
 
-    const { width, height } = this.cameras.main;
-    const overlay = this.add
-      .rectangle(width / 2, height / 2, width, height, 0x000000, 0.92)
-      .setInteractive();
-    // prevent underlying handlers from receiving pointer events
     try {
-      overlay.on("pointerdown", (e) => {
-        e.stopPropagation && e.stopPropagation();
-      });
-    } catch (e) {}
+      const { width, height } = this.cameras.main;
+      const overlay = this.add
+        .rectangle(width / 2, height / 2, width, height, 0x000000, 0.92)
+        .setInteractive();
+      try {
+        overlay.on("pointerdown", (e) => {
+          e.stopPropagation && e.stopPropagation();
+        });
+      } catch (e) {}
 
-    
+      // Centered character image and a bottom confirm button
+      const iconSize = Math.min(width * 0.5, height * 0.45);
+      const titleText = alreadyOwned ? "플레이어 2 보유 중" : "플레이어 2 획득!";
+      /*const subtitleText = alreadyOwned
+        ? "이미 보유 중입니다. 계속 진행하세요."
+        : "1등 보상으로 획득할 수 있습니다!";*/
 
-    // Centered character image and a bottom confirm button
-    const iconSize = Math.min(width * 0.5, height * 0.45);
-    const titleText = alreadyOwned ? "플레이어 2 보유 중" : "플레이어 2 획득!";
-    const subtitleText = alreadyOwned
-      ? "이미 보유 중입니다. 계속 진행하세요."
-      : "1등 보상으로 획득할 수 있습니다!";
+   
+      const title = this.add
+        .text(width / 2, height * 0.27, titleText, {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.06}px`,
+          color: "#ffd700",
+          fontWeight: "bold",
+          stroke: "#000000",
+          strokeThickness: 6,
+        })
+        .setOrigin(0.5);
 
-    const celebrationTitle = this.add
-      .text(width / 2, height * 0.18, "축하합니다!", {
-        fontFamily: GAME_FONTS.main,
-        fontSize: `${Math.max(24, width * 0.055)}px`,
-        color: "#ffed4a",
-        fontWeight: "bold",
-        stroke: "#ba3f00",
-        strokeThickness: 8,
-      })
-      .setOrigin(0.5)
-      .setDepth(40005);
+      /*const desc = this.add
+        .text(width / 2, height * 0.35, subtitleText, {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${width * 0.037}px`,
+          color: "#ffffff",
+          align: "center",
+          wordWrap: { width: width * 0.64 },
+          stroke: "#000000",
+          strokeThickness: 4,
+        })
+        .setOrigin(0.5);*/
 
-    this.tweens.add({
-      targets: celebrationTitle,
-      scale: { from: 0.8, to: 1.1 },
-      angle: { from: -4, to: 4 },
-      duration: 500,
-      yoyo: true,
-      repeat: -1,
-      ease: "Sine.easeInOut",
-    });
+      const createBearIcon = () => {
+        // Prefer premium bear frames if available; fallback to player_1 if missing.
+        const possibleKeys = [
+          "player_2_frame_1",
+          "player_2_1",
+          "player_2_2",
+          "player_2_sprite",
+          "player_2",
+        ];
+        const resolvedKey = possibleKeys.find(
+          (k) => this.textures && typeof this.textures.exists === "function" && this.textures.exists(k),
+        );
+        const textureKey = resolvedKey || "player_1";
 
-    const title = this.add
-      .text(width / 2, height * 0.27, titleText, {
-        fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.06}px`,
-        color: "#ffd700",
-        fontWeight: "bold",
-        stroke: "#000000",
-        strokeThickness: 6,
-      })
-      .setOrigin(0.5);
-
-    const desc = this.add
-      .text(width / 2, height * 0.35, subtitleText, {
-        fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.037}px`,
-        color: "#ffffff",
-        align: "center",
-        wordWrap: { width: width * 0.64 },
-        stroke: "#000000",
-        strokeThickness: 4,
-      })
-      .setOrigin(0.5);
-
-    const createBearIcon = () => {
-      const possibleKeys = [
-        "player_2_frame_1",
-        "player_2_1",
-        "player_2_2",
-        "player_2_sprite",
-        "player_2",
-      ];
-      const resolvedKey = possibleKeys.find((k) => this.textures && typeof this.textures.exists === 'function' && this.textures.exists(k));
-      if (resolvedKey) {
-        return this.add
-          .image(width / 2, height * 0.45, resolvedKey)
+        const sprite = this.add
+          .sprite(width / 2, height * 0.45, textureKey)
           .setDisplaySize(iconSize, iconSize)
           .setDepth(40002)
           .setOrigin(0.5);
-      }
 
-      const g = this.add.graphics().setDepth(40002);
-      const cx = width / 2;
-      const cy = height * 0.45;
-      const r = iconSize * 0.42;
-      const earR = r * 0.28;
+        try {
+          if (typeof this.applyAvatarAnimation === "function") {
+            this.applyAvatarAnimation(sprite, PREMIUM_BEAR_KEY);
+          }
+        } catch (e) {
+          console.warn("[premium] applyAvatarAnimation failed", e);
+          if (textureKey && this.textures.exists(textureKey)) {
+            sprite.setTexture(textureKey);
+          }
+        }
 
-      g.fillStyle(0xd7b06b, 1);
-      g.fillCircle(cx, cy, r);
-      g.fillCircle(cx - r * 0.5, cy - r * 0.55, earR);
-      g.fillCircle(cx + r * 0.5, cy - r * 0.55, earR);
+        return sprite;
+      };
 
-      g.fillStyle(0x4c3028, 1);
-      g.fillCircle(cx - r * 0.2, cy + r * 0.05, r * 0.15);
-      g.fillCircle(cx + r * 0.2, cy + r * 0.05, r * 0.15);
+      const icon = createBearIcon();
 
-      g.fillStyle(0x2c1b10, 1);
-      g.fillCircle(cx, cy + r * 0.2, r * 0.2);
+      const particleTimer = this.time.addEvent({
+        delay: 120,
+        loop: true,
+        callback: () => {
+          const count = Phaser.Math.Between(5, 8);
+          for (let i = 0; i < count; i += 1) {
+            const color = Phaser.Display.Color.RandomRGB();
+            const particle = this.add
+              .star(
+                width / 2 + Phaser.Math.FloatBetween(-iconSize * 0.5, iconSize * 0.5),
+                height * 0.55 + Phaser.Math.FloatBetween(-iconSize * 0.08, iconSize * 0.08),
+                5,
+                Phaser.Math.FloatBetween(12, 18),
+                Phaser.Math.FloatBetween(16, 22),
+                color.color,
+              )
+              .setDepth(40001)
+              .setScale(1.1)
+              .setAlpha(0.92);
 
-      return g;
-    };
+            const destinationX = width / 2 + Phaser.Math.FloatBetween(-iconSize * 0.9, iconSize * 0.9);
+            const destinationY = height * 0.15 + Phaser.Math.FloatBetween(-20, 20);
 
-    const icon = createBearIcon();
+            this.tweens.add({
+              targets: particle,
+              x: destinationX,
+              y: destinationY,
+              alpha: 0,
+              angle: Phaser.Math.Between(160, 560),
+              duration: Phaser.Math.Between(750, 1100),
+              ease: "Cubic.out",
+              onComplete: () => {
+                try {
+                  particle.destroy();
+                } catch (e) {}
+              },
+            });
+          }
+        },
+      });
 
-    // 축하용 파티클/스파클 효과
-    const sparkleTimer = this.time.addEvent({
-      delay: 120,
-      loop: true,
-      callback: () => {
-        const sx = width / 2 + Phaser.Math.FloatBetween(-iconSize * 0.45, iconSize * 0.45);
-        const sy = height * 0.45 + Phaser.Math.FloatBetween(-iconSize * 0.48, iconSize * 0.48);
-        const spark = this.add
-          .star(sx, sy, 5, 2, 6, Phaser.Display.Color.RandomRGB().color)
-          .setDepth(40004)
-          .setScale(0.4)
-          .setAlpha(0.9);
-        this.tweens.add({
-          targets: spark,
-          alpha: 0,
-          scale: 0.1,
-          duration: 600,
-          onComplete: () => spark.destroy(),
-        });
-      },
-    });
+      // Keep reference to clear with close
+      const confettiTimer = particleTimer;
 
-    const btnY = height * 0.63;
-    const btn = this.add
-      .image(width / 2, btnY, "ui_btn")
-      .setDisplaySize(width * 0.36, height * 0.08)
-      .setTint(0x22c55e);
-    const btnTxt = this.add
-      .text(width / 2, btnY, "받기", {
-        fontFamily: GAME_FONTS.main,
-        fontSize: `${Math.max(18, width * 0.05)}px`,
-        color: "#ffffff",
-        fontWeight: "bold",
-        stroke: "#000000",
-        strokeThickness: 5,
-      })
-      .setOrigin(0.5)
-      .setDepth(40003);
+      const btnY = height * 0.63;
+      const btn = this.add
+        .image(width / 2, btnY, "ui_btn")
+        .setDisplaySize(width * 0.36, height * 0.08)
+        .setTint(0x22c55e);
+      const btnTxt = this.add
+        .text(width / 2, btnY, "받기", {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${Math.max(18, width * 0.05)}px`,
+          color: "#ffffff",
+          fontWeight: "bold",
+          stroke: "#000000",
+          strokeThickness: 5,
+        })
+        .setOrigin(0.5)
+        .setDepth(40003);
 
-    const container = this.add.container(0, 0, [overlay, icon, btn, btnTxt]);
-    container.setDepth(12000);
-    this._premiumBearAcquiredPopup = container;
+      const container = this.add.container(0, 0, [overlay, title, icon, btn, btnTxt]);
+      container.setDepth(12000);
+      this._premiumBearAcquiredPopup = container;
 
-    const close = () => {
-      if (sparkleTimer) {
-        sparkleTimer.remove(false);
-      }
-      if (this._premiumBearAcquiredPopup) {
-        this._premiumBearAcquiredPopup.destroy();
-        this._premiumBearAcquiredPopup = null;
-      }
-    };
+      const close = () => {
+        try {
+          if (particleTimer) {
+            particleTimer.remove(false);
+          }
+        } catch (e) {}
+        if (this._premiumBearAcquiredPopup) {
+          this._premiumBearAcquiredPopup.destroy();
+          this._premiumBearAcquiredPopup = null;
+        }
+      };
 
-    // Enable interactive after short delay to avoid click-through from
-    // the same input that triggered the win/confirm.
-    const enableBtn = () => {
-      try {
-        btn.setInteractive({ useHandCursor: true });
-        btn.on("pointerdown", () => {
-          this.sound.play("btn", { volume: 0.12 });
-          close();
+      const enableBtn = () => {
+        try {
+          btn.setInteractive({ useHandCursor: true });
+          btn.on("pointerdown", () => {
+            this.sound.play("btn", { volume: 0.12 });
+            close();
+            try {
+              this.unlockPremiumBear();
+            } catch (e) {
+              console.warn("unlockPremiumBear failed", e);
+            }
+            if (typeof onConfirm === 'function') {
+              onConfirm();
+            }
+          });
+        } catch (e) {
+          console.warn("[premium] enableBtn failed", e);
           try {
             this.unlockPremiumBear();
-          } catch (e) {
-            console.warn("unlockPremiumBear failed", e);
-          }
-        });
-      } catch (e) {
-        // fallback: immediately call unlock if interactive couldn't be set
-        console.warn("[premium] enableBtn failed", e);
-        try {
-          this.unlockPremiumBear();
-          close();
-        } catch (err) {}
-      }
-    };
+            close();
+            if (typeof onConfirm === 'function') {
+              onConfirm();
+            }
+          } catch (err) {}
+        }
+      };
 
-    if (this.time && typeof this.time.delayedCall === "function") {
-      this.time.delayedCall(150, enableBtn);
-    } else {
-      setTimeout(enableBtn, 150);
+      if (this.time && typeof this.time.delayedCall === "function") {
+        this.time.delayedCall(150, enableBtn);
+      } else {
+        setTimeout(enableBtn, 150);
+      }
+    } catch (e) {
+      console.warn("[premium] showPremiumBearAcquiredPopup failed", e);
+      // fallback minimal popup so at least it's visible.
+      this.add
+        .text(this.cameras.main.width / 2, this.cameras.main.height / 2, "새로운 캐릭터 획득!", {
+          fontFamily: GAME_FONTS.main,
+          fontSize: "24px",
+          color: "#ffffff",
+        })
+        .setOrigin(0.5)
+        .setDepth(11000);
     }
   }
 
@@ -10572,6 +10584,25 @@ class GameScene extends Phaser.Scene {
         return false;
       }
     };
+
+    // Ensure premium bear popup helpers are available in GameScene (copy from LobbyScene if needed).
+    try {
+      if (typeof this.createInlinePremiumBearPopup !== 'function' && typeof LobbyScene !== 'undefined' && typeof LobbyScene.prototype.createInlinePremiumBearPopup === 'function') {
+        this.createInlinePremiumBearPopup = LobbyScene.prototype.createInlinePremiumBearPopup.bind(this);
+      }
+      if (typeof this.showPremiumBearAcquiredPopup !== 'function' && typeof LobbyScene !== 'undefined' && typeof LobbyScene.prototype.showPremiumBearAcquiredPopup === 'function') {
+        this.showPremiumBearAcquiredPopup = LobbyScene.prototype.showPremiumBearAcquiredPopup.bind(this);
+      }
+      if (typeof this.isPremiumBearUnlocked !== 'function' && typeof LobbyScene !== 'undefined' && typeof LobbyScene.prototype.isPremiumBearUnlocked === 'function') {
+        this.isPremiumBearUnlocked = LobbyScene.prototype.isPremiumBearUnlocked.bind(this);
+      }
+      if (typeof this.unlockPremiumBear !== 'function' && typeof LobbyScene !== 'undefined' && typeof LobbyScene.prototype.unlockPremiumBear === 'function') {
+        this.unlockPremiumBear = LobbyScene.prototype.unlockPremiumBear.bind(this);
+      }
+    } catch (e) {
+      console.warn('[premium] GameScene premium helper bind failed', e);
+    }
+
     if (this.resultContainer) {
       this.resultContainer.destroy();
       this.resultContainer = null;
@@ -14946,147 +14977,88 @@ class GameScene extends Phaser.Scene {
         }
 
         const showPremiumPopupWithFallback = () => {
-          if (typeof this.showPremiumBearAcquiredPopup === 'function') {
-            try {
-              this.showPremiumBearAcquiredPopup(null, alreadyOwned);
-              return;
-            } catch (e) {
-              console.warn('[premium] showPremiumBearAcquiredPopup failed', e);
-            }
-          }
+          console.log('[premium] showPremiumPopupWithFallback - using local reward popup');
+          console.log('[premium] this:', {
+            className: this?.constructor?.name,
+            showPremiumBearAcquiredPopup: typeof this.showPremiumBearAcquiredPopup,
+            createInlinePremiumBearPopup: typeof this.createInlinePremiumBearPopup,
+            hasAvailableMethod: typeof this.showPremiumBearAcquiredPopup === 'function' || typeof this.createInlinePremiumBearPopup === 'function',
+          });
 
-          console.log('[premium] createRewardPopup fallback');
           try {
-            const w = this.cameras.main.width;
-            const h = this.cameras.main.height;
-            const overlay = this.add
-              .rectangle(w / 2, h / 2, w, h, 0x000000, 0.92)
-              .setInteractive();
-            try {
-              overlay.on('pointerdown', (e) => {
-                e.stopPropagation && e.stopPropagation();
-              });
-            } catch (e) {}
-
-            const iconSize = Math.min(w * 0.5, h * 0.45);
-            const titleText = alreadyOwned ? "플레이어 2 이미 보유" : "플레이어 2 획득!";
-            const descText = alreadyOwned
-              ? "이미 보유 중입니다. 계속 진행하세요."
-              : "1등 보상으로 플레이어 2를 획득할 수 있습니다!";
-            const candidateKeys = [
-              'player_2_frame_1',
-              'player_2_1',
-              'player_2_2',
-              'player_2_sprite',
-              'player_2',
-            ];
-            const resolvedKey = candidateKeys.find(
-              (k) => this.textures && typeof this.textures.exists === 'function' && this.textures.exists(k),
-            );
-
-            const title = this.add
-              .text(w / 2, h * 0.27, titleText, {
-                fontFamily: GAME_FONTS.main,
-                fontSize: `${w * 0.06}px`,
-                color: "#ffd700",
-                fontWeight: "bold",
-                stroke: "#000000",
-                strokeThickness: 6,
-              })
-              .setOrigin(0.5);
-
-            const desc = this.add
-              .text(w / 2, h * 0.35, descText, {
-                fontFamily: GAME_FONTS.main,
-                fontSize: `${w * 0.037}px`,
-                color: "#ffffff",
-                align: "center",
-                wordWrap: { width: w * 0.64 },
-                stroke: "#000000",
-                strokeThickness: 4,
-              })
-              .setOrigin(0.5);
-
-            const icon = resolvedKey
-              ? this.add
-                  .image(w / 2, h * 0.45, resolvedKey)
-                  .setDisplaySize(iconSize, iconSize)
-                  .setDepth(40002)
-                  .setOrigin(0.5)
-              : (() => {
-                  const g = this.add.graphics().setDepth(40002);
-                  const cx = w / 2;
-                  const cy = h * 0.45;
-                  const r = iconSize * 0.42;
-                  const earR = r * 0.28;
-                  g.fillStyle(0xd7b06b, 1);
-                  g.fillCircle(cx, cy, r);
-                  g.fillCircle(cx - r * 0.5, cy - r * 0.55, earR);
-                  g.fillCircle(cx + r * 0.5, cy - r * 0.55, earR);
-                  g.fillStyle(0x4c3028, 1);
-                  g.fillCircle(cx - r * 0.2, cy + r * 0.05, r * 0.15);
-                  g.fillCircle(cx + r * 0.2, cy + r * 0.05, r * 0.15);
-                  g.fillStyle(0x2c1b10, 1);
-                  g.fillCircle(cx, cy + r * 0.2, r * 0.2);
-                  return g;
-                })();
-
-            const btnY = h * 0.78;
-            const btn = this.add
-              .image(w / 2, btnY, 'ui_btn')
-              .setDisplaySize(w * 0.36, h * 0.08)
-              .setTint(0x22c55e);
-            const btnTxt = this.add
-              .text(w / 2, btnY, '받기', {
-                fontFamily: GAME_FONTS.main,
-                fontSize: `${Math.max(18, w * 0.05)}px`,
-                color: '#ffffff',
-                fontWeight: 'bold',
-                stroke: '#000000',
-                strokeThickness: 5,
-              })
-              .setOrigin(0.5)
-              .setDepth(40003);
-
-            const container = this.add.container(0, 0, [overlay, icon, btn, btnTxt]);
-            container.setDepth(12000);
-            this._premiumBearAcquiredPopup = container;
-
-            const close = () => {
-              if (this._premiumBearAcquiredPopup) {
-                this._premiumBearAcquiredPopup.destroy();
-                this._premiumBearAcquiredPopup = null;
-              }
-            };
-
-            const enableBtn = () => {
-              try {
-                btn.setInteractive({ useHandCursor: true });
-                btn.on('pointerdown', () => {
-                  this.sound.play('btn', { volume: 0.12 });
-                  close();
-                  try {
-                    this.unlockPremiumBear();
-                  } catch (e) {
-                    console.warn('unlockPremiumBear failed', e);
-                  }
-                });
-              } catch (e) {
-                console.warn('[premium] enableBtn failed', e);
-                try {
-                  this.unlockPremiumBear();
-                  close();
-                } catch (err) {}
-              }
-            };
-
-            if (this.time && typeof this.time.delayedCall === 'function') {
-              this.time.delayedCall(150, enableBtn);
-            } else {
-              setTimeout(enableBtn, 150);
+            if (typeof this.showPremiumBearAcquiredPopup === 'function') {
+              console.log('[premium] calling showPremiumBearAcquiredPopup');
+              this.showPremiumBearAcquiredPopup();
+              return;
             }
           } catch (e) {
-            console.warn('[premium] create reward popup failed', e);
+            console.warn('[premium] showPremiumBearAcquiredPopup call failed', e);
+          }
+
+          const fallbackToInline = () => {
+            if (typeof this.createInlinePremiumBearPopup === 'function') {
+              try {
+                console.log('[premium] calling createInlinePremiumBearPopup fallback');
+                this.createInlinePremiumBearPopup();
+                return true;
+              } catch (e) {
+                console.warn('[premium] createInlinePremiumBearPopup fallback failed', e);
+              }
+            }
+
+            if (typeof window !== 'undefined' && typeof window.__halemale_showPremiumBearAcquiredPopup === 'function') {
+              try {
+                console.log('[premium] calling window.__halemale_showPremiumBearAcquiredPopup fallback');
+                window.__halemale_showPremiumBearAcquiredPopup();
+                return true;
+              } catch (e) {
+                console.warn('[premium] global fallback popup call failed', e);
+              }
+            }
+
+            console.warn('[premium] final fallback: DOM-based temporary popup');
+            if (typeof document !== 'undefined') {
+              try {
+                const id = 'halemale-premium-popup-fallback';
+                if (!document.getElementById(id)) {
+                  const wrapper = document.createElement('div');
+                  wrapper.id = id;
+                  Object.assign(wrapper.style, {
+                    position: 'fixed',
+                    left: '0',
+                    top: '0',
+                    right: '0',
+                    bottom: '0',
+                    background: 'rgba(0,0,0,0.92)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 2147483647,
+                    color: '#fff',
+                    padding: '20px',
+                    textAlign: 'center',
+                  });
+                  const inner = document.createElement('div');
+                  inner.innerHTML = '<div style="font-size:22px;margin-bottom:12px;color:#ffd700;">플레이어 2 획득!</div><div style="margin-bottom:18px;">싱글 승리 보상입니다. 계속하려면 닫기 버튼을 눌러주세요.</div>';
+                  const button = document.createElement('button');
+                  button.textContent = '닫기';
+                  Object.assign(button.style, { padding: '10px 16px', fontSize: '16px', borderRadius: '4px', cursor: 'pointer' });
+                  button.addEventListener('click', () => { wrapper.remove(); });
+                  inner.appendChild(button);
+                  wrapper.appendChild(inner);
+                  document.body.appendChild(wrapper);
+                }
+                return true;
+              } catch (e) {
+                console.warn('[premium] DOM fallback failed', e);
+              }
+            }
+            return false;
+          };
+
+          const didFallback = fallbackToInline();
+          if (!didFallback) {
+            console.warn('[premium] no reward popup function available after fallback');
           }
         };
         // Wait for avatar texture to be available to avoid showing missing-texture box.
