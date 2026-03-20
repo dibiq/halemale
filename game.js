@@ -14249,6 +14249,9 @@ class GameScene extends Phaser.Scene {
                 if (!data.openCardStack) p.openStack.push(data.card);
                 else p.openStack = data.openCardStack;
               }
+
+              // Match singleplayer behavior: set current openCard to played card.
+              p.openCard = data.card;
             }
           }
         }
@@ -14309,6 +14312,9 @@ class GameScene extends Phaser.Scene {
     } else {
       player.openStack.push(data.card);
     }
+
+    // Keep current card in sync as in singleplayer.
+    player.openCard = data.card;
 
     player.isFlipping = false;
     this.renderTable(this.roundData.players);
