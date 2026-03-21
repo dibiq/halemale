@@ -3142,6 +3142,11 @@ class LobbyScene extends Phaser.Scene {
     });
 
     socket.off("gameStart").on("gameStart", (data) => {
+      // mark that lobby received gameStart (used by start request fallback)
+      try {
+        this._gameStartReceived = true;
+      } catch (e) {}
+
       // 🔹 중요: 게임이 시작되면 로비 관련 경고 리스너들을 미리 끕니다.
       socket.off("startBlocked");
       socket.off("readyStatusUpdated");
@@ -3154,10 +3159,24 @@ class LobbyScene extends Phaser.Scene {
         data.itemMode = this.currentItemMode !== false;
       }
 
+      // 안전: 서버가 players를 보내지 않을 수 있으므로 이전 플레이어 목록을 보존
+      if (!Array.isArray(data.players) || !data.players.length) {
+        data.players = Array.isArray(this.roundData?.players) ? this.roundData.players : [];
+      }
+
       // 멀티플레이 참여 퀘스트 카운트는 게임 종료 시에만 올립니다.
       // (시작 시 카운트하면 재접속/재시작 시 중복 집계가 됩니다.)
       // this.incrementMultiQuestCounter("multi_play", 1);
 
+      console.log("LobbyScene: received gameStart, starting GameScene", {playersLen: Array.isArray(data.players)?data.players.length:0});
+      // Ensure stale GameScene state is fully reset before new match.
+      try {
+        if (this.scene.isActive("GameScene")) {
+          this.scene.stop("GameScene");
+        }
+      } catch (e) {
+        console.warn("LobbyScene: stop GameScene failed", e);
+      }
       this.scene.start("GameScene", data);
     });
 
@@ -8611,6 +8630,39 @@ class LobbyScene extends Phaser.Scene {
               socket.emit("startGameRequest", (ackPayload) => {
                 ackArrived = true;
                 console.log("🛰️ startGameRequest ack", ackPayload);
+                try {
+                  // If server accepted start but never emits `gameStart` back
+                  // within a short window, fallback to starting the GameScene
+                  // locally using the current lobby player list so UI doesn't
+                  // remain blank.
+                  const self = this;
+                  setTimeout(() => {
+                    const received = !!self._gameStartReceived;
+                    if (!received) {
+                      console.warn("startGameRequest ack received but no gameStart event; falling back to local start", { ackPayload });
+                      const fallbackPlayers = (self.currentPlayers || []).map((p) => ({
+                        id: p.id,
+                        nickname: p.nickname || p.name || p.playerName || p.id,
+                        cards: p.cards ?? p.remainingCards ?? (p.myDeck ? p.myDeck.length : 0),
+                        myDeck: p.myDeck || [],
+                      }));
+                      const data = {
+                        players: fallbackPlayers,
+                        hostId: ackPayload.hostId || socket.id,
+                        roomId: ackPayload.roomId || self.currentRoomNumber || null,
+                        nextTurnId: ackPayload.nextTurnId || null,
+                        itemMode: typeof ackPayload.itemMode === 'boolean' ? ackPayload.itemMode : self.currentItemMode,
+                      };
+                      try {
+                        self.scene.start("GameScene", data);
+                      } catch (e) {
+                        console.warn("fallback scene.start failed", e);
+                      }
+                    }
+                  }, 1200);
+                } catch (e) {
+                  console.warn("startGameRequest ack handler fallback failed", e);
+                }
               });
               setTimeout(() => {
                 if (!ackArrived) {
@@ -10484,19 +10536,34 @@ class GameScene extends Phaser.Scene {
     }
   }
   init(data) {
+    // Prefer incoming players, but fall back to existing GameScene roundData
+    // or LobbyScene.roundData when available (defensive against missing payloads).
+    const lobbyScene = this.scene && typeof this.scene.get === 'function' ? this.scene.get('LobbyScene') : null;
+    const lobbyPlayers = Array.isArray(lobbyScene?.roundData?.players) ? lobbyScene.roundData.players : [];
+    const existingPlayers = Array.isArray(this.roundData?.players) ? this.roundData.players : lobbyPlayers;
+    const incomingPlayers = Array.isArray(data.players) && data.players.length ? data.players : existingPlayers;
+    if (!Array.isArray(incomingPlayers) || incomingPlayers.length === 0) {
+      console.warn("GameScene.init: players missing or empty; falling back to existing/lobby players", {
+        existingPlayersLen: Array.isArray(existingPlayers) ? existingPlayers.length : 0,
+        lobbyPlayersLen: Array.isArray(lobbyPlayers) ? lobbyPlayers.length : 0,
+        dataPlayersLen: Array.isArray(data.players) ? data.players.length : null,
+      });
+    }
+
     this.roundData = {
-      players: data.players || [],
-      hostId: data.hostId || null,
-      roomId: data.roomId,
-      roomName: data.roomName || "대기실",
-      maxPlayers: data.maxPlayers || data.max || 4,
+      players: incomingPlayers,
+      hostId: data.hostId ?? this.roundData?.hostId ?? null,
+      roomId: data.roomId ?? this.roundData?.roomId ?? null,
+      roomName: data.roomName || this.roundData?.roomName || "대기실",
+      maxPlayers: data.maxPlayers || data.max || this.roundData?.maxPlayers || 4,
       turnIndex: 0,
       isGameStarted: false,
-      aiDifficulty: data.aiDifficulty || "normal",
-      itemMode: data.itemMode !== false,
-      gameMode: data.gameMode || "allin",
-      timeAttackEndsAt: data.timeAttackEndsAt || null,
+      aiDifficulty: data.aiDifficulty || this.roundData?.aiDifficulty || "normal",
+      itemMode: typeof data.itemMode === "boolean" ? data.itemMode : this.roundData?.itemMode !== false,
+      gameMode: data.gameMode || this.roundData?.gameMode || "allin",
+      timeAttackEndsAt: data.timeAttackEndsAt || this.roundData?.timeAttackEndsAt || null,
     };
+    this.pendingGameStartData = data && Array.isArray(this.roundData.players) && this.roundData.players.length ? data : null;
 
     this.isTutorialMode = !!data.isTutorialMode;
     this.tutorialConfig = data.tutorialConfig || null;
@@ -10528,6 +10595,9 @@ class GameScene extends Phaser.Scene {
     if (this.isSingle) {
       this.reactionTimes = [];
     }
+    // renderTable 예약 플래그 초기화 (게임 시작 시 항상 false)
+    this._renderTableScheduled = false;
+    this._renderTableLatestPlayers = null;
     this.isGameReady = false;
     this.resultContainer = null;
 
@@ -10976,8 +11046,54 @@ class GameScene extends Phaser.Scene {
       .setDepth(-1)
       .setAlpha(0.9);
 
+    // 이전 게임 결과/UI 잔상을 제거 (재시작 시 안전)
+    try {
+      if (this.resultContainer) {
+        this.resultContainer.destroy();
+        this.resultContainer = null;
+      }
+    } catch (e) {
+      console.warn("GameScene.create: clearing old resultContainer failed", e);
+    }
+
+    try {
+      if (this.playerTableGroup) {
+        this.playerTableGroup.destroy();
+      }
+    } catch (e) {
+      console.warn("GameScene.create: destroying old playerTableGroup failed", e);
+    }
+
     // 플레이어/카드들을 담을 그룹
     this.playerTableGroup = this.add.container(0, 0).setDepth(100);
+    try {
+      this.playerTableGroup.setVisible(true).setAlpha(1);
+      this.children.bringToTop(this.playerTableGroup);
+    } catch (e) {
+      console.warn("GameScene.create: restoring playerTableGroup visibility/depth failed", e);
+    }
+
+    // renderTable scheduling reset as extra safety
+    this._renderTableScheduled = false;
+    this._renderTableLatestPlayers = null;
+
+    // If scene was started with player data (e.g. via LobbyScene.scene.start),
+    // render immediately so the UI is not blank.
+    try {
+      const playersAtStart = Array.isArray(this.roundData?.players) ? this.roundData.players : [];
+      console.log("GameScene.create: starting with players", { len: playersAtStart.length, ids: playersAtStart.map(p => p && p.id) });
+      if (playersAtStart.length) {
+        this.renderTable(playersAtStart);
+      }
+    } catch (e) {
+      console.warn("GameScene.create: renderTable fallback failed", e);
+    }
+
+    // If LobbyScene transitioned directly with a gameStart payload, apply it.
+    if (this.pendingGameStartData && typeof this.applyGameStartPayload === 'function') {
+      this.applyGameStartPayload(this.pendingGameStartData);
+      this.pendingGameStartData = null;
+    }
 
     // Debug: add force-win button for tutorial-started single games
     if (
@@ -11400,8 +11516,103 @@ class GameScene extends Phaser.Scene {
     // ============================================
     // 2. 할리갈리 전용 소켓 리스너
     // ============================================
+
+    this.applyGameStartPayload = (data) => {
+      try {
+        if (!data || !Array.isArray(data.players) || data.players.length === 0) {
+          return;
+        }
+
+        this.resultGameoverPlayed = false;
+        this._lastResultPlayersHash = null;
+
+        this.blockEffects = [];
+        this.blockActive = false;
+        this.blockBy = null;
+
+        this.specialCardPauseUntil = 0;
+        this.allowBellBecauseThunder = false;
+        this.optimisticBellHandled = false;
+        this.specialUsedThisTurn = {};
+        this._optimisticFlipById = {};
+        this._pendingServerOpenStackById = {};
+
+        if (this._aiTurnWatchTimer) {
+          try { this._aiTurnWatchTimer.remove(); } catch (e) {}
+          this._aiTurnWatchTimer = null;
+          this._aiTurnWatchRetries = 0;
+        }
+        if (this.myTurnTimer) {
+          this.myTurnTimer.remove();
+          this.myTurnTimer = null;
+        }
+        if (this.specialCardPauseTimer) {
+          try { this.specialCardPauseTimer.remove(); } catch (e) {}
+          this.specialCardPauseTimer = null;
+        }
+
+        this._aiPaused = false;
+        this._aiTurnWatchRetries = 0;
+
+        if (this.resultContainer) {
+          try {
+            this.resultContainer.destroy();
+          } catch (e) {
+            console.warn("applyGameStartPayload: resultContainer destroy failed", e);
+          }
+          this.resultContainer = null;
+        }
+
+        this.isSingle = false;
+        this.isGameStarted = true;
+        this.isGameReady = true;
+        this.lastEliminationEffectAtByPlayer = {};
+
+        const initialTurnIndex = data.players.findIndex((p) => p.id === data.nextTurnId);
+        this.turnIndex = initialTurnIndex >= 0 ? initialTurnIndex : 0;
+        this.latestNextTurnId = data.nextTurnId;
+
+        this.roundData.players = data.players.map((p) => ({
+          ...p,
+          cards: p.cards ?? (p.myDeck ? p.myDeck.length : 0),
+          openStack: Array.isArray(p.openStack) ? p.openStack : [],
+          openCard: p.openCard ?? null,
+          isEliminated: p.isEliminated ?? false,
+        }));
+
+        this.roundData.hostId = data.hostId || this.roundData.hostId;
+        if (typeof data.itemMode === "boolean") this.roundData.itemMode = data.itemMode;
+        if (typeof data.gameMode === "string") this.roundData.gameMode = data.gameMode;
+        if (typeof data.timeAttackEndsAt === "number") this.roundData.timeAttackEndsAt = data.timeAttackEndsAt;
+        this.roundData.isGameStarted = true;
+
+        this.specialUsedThisTurn = {};
+        this._lastCardFlipAt = Date.now();
+        this._lastAiStuckRequestAt = 0;
+
+        this.canClick = false;
+        this.playOpeningAnimation();
+
+        this.time.delayedCall(800, () => {
+          this.showReadyGo();
+          this.time.delayedCall(2000, () => {
+            const myId = this.isSingle ? this.myId : socket.id;
+            const currentTurnId = this.roundData?.players?.[this.turnIndex]?.id;
+            this.canClick = currentTurnId === myId || data.nextTurnId === myId;
+            console.log("🎮 game ready", { myId, currentTurnId, nextTurnId: data.nextTurnId, turnIndex: this.turnIndex, canClick: this.canClick });
+          });
+        });
+
+        this.renderTable(this.roundData.players);
+      } catch (e) {
+        console.warn("applyGameStartPayload failed", e);
+      }
+    };
+
     socket.off("gameStart").on("gameStart", (data) => {
       console.log("Gamestart");
+      this.showToast("gameStart event received", "#ff0");
+      this.applyGameStartPayload(data);
       this.showToast("gameStart event received", "#ff0");
 
       this.resultGameoverPlayed = false;
@@ -11549,6 +11760,19 @@ class GameScene extends Phaser.Scene {
             players: this.roundData?.players?.map((p) => p.id),
             canClick: this.canClick,
           });
+
+          // 추가 불투명도/레이어 재설정
+          try {
+            if (this.playerTableGroup) {
+              this.playerTableGroup.setVisible(true).setAlpha(1).setDepth(100);
+              this.children.bringToTop(this.playerTableGroup);
+            }
+            if (this.resultContainer) {
+              this.resultContainer.setVisible(false);
+            }
+          } catch (e) {
+            console.warn("applyGameStartPayload: layer reset after ready go failed", e);
+          }
         });
       });
 
@@ -12462,6 +12686,7 @@ class GameScene extends Phaser.Scene {
 
     socket.off("gameEnded").on("gameEnded", (data) => {
       console.log("[CLIENT] gameEnded event", data);
+      this._renderTableScheduled = false; // 게임 종료 시 다음 게임 시작을 위해 스케줄 상태 초기화
       const isMultiplayerWin = !this.isSingle && data && data.winnerId === socket.id;
       // Count multiplayer participation once per match. It should only increase when
       // the match has fully ended (to prevent double-counting due to rejoining/restarting).
@@ -12497,15 +12722,24 @@ class GameScene extends Phaser.Scene {
         console.log("[CLIENT] avetimeById:", data.avetimeById);
       }
       // sync final average reaction time when match ends
-      if (typeof emitInventory === 'function') {
-        // Do not include experience/level in final sync to avoid
-        // overwriting gameplay-updated values. Only send other profile data.
-        // Ensure the server sees the final bell accuracy totals.
-        emitInventory('final', {
-          includeExperience: false,
-          bellCorrect: this.bellStats?.correct,
-          bellTotal: this.bellStats?.total,
-        });
+      // Prefer instance method `this.emitInventory` when available; fall back
+      // to a global `emitInventory` if present. Protect against ReferenceError.
+      try {
+        if (typeof this.emitInventory === 'function') {
+          this.emitInventory('final', {
+            includeExperience: false,
+            bellCorrect: this.bellStats?.correct,
+            bellTotal: this.bellStats?.total,
+          });
+        } else if (typeof emitInventory === 'function') {
+          emitInventory('final', {
+            includeExperience: false,
+            bellCorrect: this.bellStats?.correct,
+            bellTotal: this.bellStats?.total,
+          });
+        }
+      } catch (e) {
+        console.warn('emitInventory final sync skipped', e);
       }
       // Ensure any AI timers/actions are stopped when match ends so
       // they don't leak into subsequent matches while result UI is shown.
@@ -12557,10 +12791,15 @@ class GameScene extends Phaser.Scene {
 
         // Also attempt to sync other profile fields (coins/items), but do not
         // require the server profile snapshot for this particular emit.
-        emitInventory("final", {
-          includeExperience: true,
-          requireServerProfile: false,
-        });
+        try {
+          if (typeof this.emitInventory === 'function') {
+            this.emitInventory('final', { includeExperience: true, requireServerProfile: false });
+          } else if (typeof emitInventory === 'function') {
+            emitInventory('final', { includeExperience: true, requireServerProfile: false });
+          }
+        } catch (e) {
+          console.warn('requestProfileSync emitInventory skipped', e);
+        }
       } catch (e) {
         console.warn("requestProfileSync handler failed", e);
       }
@@ -12615,21 +12854,20 @@ class GameScene extends Phaser.Scene {
       }
 
       this.showCustomAlert("코인 및 경험치를 포기하고\n로비로 이동합니다!", () => {
-        if (this.isSingle) {
-          console.debug("[moveToLobby] 싱글모드 -> GameScene returnToLobby 호출");
-          if (typeof this.returnToLobby === "function") {
-            this.returnToLobby({ rejoinRoom: false, leaveRoom: true });
-          } else {
-            this.scene.start("LobbyScene");
-          }
-          return;
+        // 바로 로비로 전환 (지연 없이), 백그라운드로 leaveRoom만 발송.
+        try {
+          this.scene.start("LobbyScene", { preventAutoStartSingleAfterTutorial: true });
+        } catch (e) {
+          console.warn("moveToLobby: immediate LobbyScene start failed", e);
+          this.scene.start("LobbyScene");
         }
 
-        console.debug("[moveToLobby] 멀티모드 -> returnToLobby 호출");
-        if (typeof this.returnToLobby === "function") {
-          this.returnToLobby({ rejoinRoom: false, leaveRoom: true });
-        } else {
-          this.scene.start("LobbyScene");
+        if (socket && socket.connected && this.roundData?.roomId) {
+          try {
+            socket.emit("leaveRoom", { roomId: this.roundData.roomId });
+          } catch (e) {
+            console.warn("moveToLobby: background leaveRoom emit failed", e);
+          }
         }
       });
     };
@@ -12781,9 +13019,13 @@ class GameScene extends Phaser.Scene {
   }
 
   renderTable(players) {
+    console.log("renderTable called with players:", players);
+
     // Prevent renderTable from being called repeatedly in the same frame.
     // This reduces stutter when many network updates arrive quickly.
     if (this._renderTableScheduled) {
+          console.log("renderTable renderscheduled:", this._renderTableScheduled);
+
       this._renderTableLatestPlayers = players;
       return;
     }
@@ -12796,6 +13038,8 @@ class GameScene extends Phaser.Scene {
         this._renderTableImmediate(this._renderTableLatestPlayers);
       }
     });
+        console.log("renderTable End");
+
   }
 
   _renderTableImmediate(players) {
@@ -12804,12 +13048,33 @@ class GameScene extends Phaser.Scene {
       !this.playerTableGroup ||
       !this.cameras ||
       !this.cameras.main ||
-      !this.scene ||
-      !this.scene.isActive()
+      !this.scene
     ) {
+      try {
+        console.warn("_renderTableImmediate: skipping render due to missing context", {
+          playersPresent: !!players,
+          playerTableGroup: !!this.playerTableGroup,
+          cameras: !!this.cameras,
+          camerasMain: !!this.cameras?.main,
+          scene: !!this.scene,
+          sceneActive: !!(this.scene && typeof this.scene.isActive === 'function' ? this.scene.isActive() : false),
+        });
+      } catch (e) {}
       return;
     }
+    try {
+      console.log("renderTable: rendering players", {
+        len: Array.isArray(players) ? players.length : 0,
+        ids: Array.isArray(players) ? players.map((p) => p && p.id) : [],
+      });
+    } catch (e) {}
     this.playerTableGroup.removeAll(true);
+    if (this.playerTableGroup) {
+      this.playerTableGroup.setVisible(true).setAlpha(1).setDepth(100);
+      try {
+        this.children.bringToTop(this.playerTableGroup);
+      } catch (e) {}
+    }
     const { width, height } = this.cameras.main;
 
     // 싱글/멀티 통합 ID 판정
@@ -12858,6 +13123,10 @@ class GameScene extends Phaser.Scene {
         y: layout.y,
         rotation: layout.rotation,
       };
+
+      try {
+        console.log("renderTable: drawing player", { id: p.id, nickname: p.nickname, cards: p.cards });
+      } catch (e) {}
 
       this.drawPlayerInfo(p, layout);
       this.drawPlayerDeck(p, layout); // 💡 여기서 숫자가 그려짐
@@ -13199,6 +13468,9 @@ class GameScene extends Phaser.Scene {
   }
 
   drawPlayerInfo(p, layout) {
+    try {
+      console.log("drawPlayerInfo called", { id: p && p.id, nickname: p && p.nickname, cards: p && p.cards });
+    } catch (e) {}
     const { width } = this.cameras.main;
     const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
     const isMe = p.id === myId;
@@ -13207,14 +13479,22 @@ class GameScene extends Phaser.Scene {
     if (typeof this.turnIndex !== "number") this.turnIndex = 0;
 
     const isMyTurn = this.roundData.players[this.turnIndex]?.id === p.id;
-    const cardCount = p.cards ?? (p.myDeck ? p.myDeck.length : 0);
+    const cardCount =
+      Number.isFinite(Number(p.cards))
+        ? Number(p.cards)
+        : Number.isFinite(Number(p.remainingCards))
+        ? Number(p.remainingCards)
+        : p.myDeck && Array.isArray(p.myDeck)
+        ? p.myDeck.length
+        : 0;
     //const isEliminated = cardCount === 0;
     const isEliminated = p.isEliminated ?? false;
 
     const nameOffset = 160;
 
     // 1. 닉네임 텍스트 설정
-    let displayNickname = p.nickname;
+    let displayNickname =
+      p.nickname || p.name || p.playerName || p.id || "플레이어";
     let nameColor = isMe ? "#22c55e" : "#ffffff";
 
     // 차례인 사람 강조 색상 (노란색 계열)
@@ -14166,7 +14446,7 @@ class GameScene extends Phaser.Scene {
     const tempCard = this.add
       .image(startPos.x, startPos.y, "card_back")
       .setDisplaySize(width * 0.15, width * 0.22)
-      .setDepth(100);
+      .setDepth(2000); // 날아가는 카드를 항상 다른 바닥 카드 위에 렌더
 
     const dist = width * 0.25;
     const rad = Phaser.Math.DegToRad(startPos.rotation - 90);
@@ -14267,7 +14547,7 @@ class GameScene extends Phaser.Scene {
           tempCard.setTexture(frontKey);
           tempCard.setDisplaySize(width * 0.18, width * 0.25);
           const openStackLength = player ? (player.openStack?.length || 0) : 0;
-          tempCard.setDepth(150 + openStackLength + 1);
+          tempCard.setDepth(4000 + openStackLength);
           this.tweens.add({
             targets: tempCard,
             alpha: 1,
@@ -15182,6 +15462,13 @@ class GameScene extends Phaser.Scene {
       !socket.connected
     ) {
       preventAutoStart();
+      try {
+        if (this.scene.isActive("GameScene")) {
+          this.scene.stop("GameScene");
+        }
+      } catch (e) {
+        console.warn("returnToLobby: stop GameScene failed", e);
+      }
       this.scene.start("LobbyScene", {
         preventAutoStartSingleAfterTutorial: true,
       });
@@ -15197,59 +15484,49 @@ class GameScene extends Phaser.Scene {
       this.resultCountdownTimer = null;
     }
 
+    // Ensure the game scene is stopped while we move to lobby/rejoin workflow.
+    try {
+      if (this.scene.isActive("GameScene")) {
+        this.scene.stop("GameScene");
+      }
+    } catch (e) {
+      console.warn("returnToLobby: stop GameScene failed during rejoin path", e);
+    }
+
+    try {
+      if (this.cameras && this.cameras.main) {
+        this.cameras.main.setVisible(false);
+      }
+    } catch (e) {
+      // ignore error
+    }
+
     const storedNickname = localStorage.getItem("nickname") || "요리사";
 
-    const timeoutId = setTimeout(() => {
-      console.log("⚠️ joinRoom 응답 타임아웃, 강제로 LobbyScene 이동");
-      this.scene.start("LobbyScene", {
-        fromGame: true,
-        roomId: this.roundData.roomId,
-        players: this.roundData.players,
-        hostId: this.roundData.hostId,
-        maxPlayers: this.roundData.maxPlayers || 4,
-        roomName: this.roundData.roomName || "대기실",
-      });
-    }, 3000);
-
-    const handlePlayerJoined = (data) => {
-      clearTimeout(timeoutId);
-      socket.off("playerJoined", handlePlayerJoined);
-      socket.off("joinRoomError", handleJoinError);
-
-      this.scene.start("LobbyScene", {
-        fromGame: true,
-        roomId: data.roomId,
-        players: data.players,
-        hostId: data.hostId,
-        maxPlayers: data.max || 4,
-        roomName: data.roomName || "대기실",
-      });
-    };
-
-    const handleJoinError = (error) => {
-      clearTimeout(timeoutId);
-      socket.off("playerJoined", handlePlayerJoined);
-      socket.off("joinRoomError", handleJoinError);
-
-      console.log("⚠️ joinRoom 에러:", error);
-      this.scene.start("LobbyScene", {
-        fromGame: true,
-        roomId: this.roundData.roomId,
-        players: this.roundData.players,
-        hostId: this.roundData.hostId,
-        maxPlayers: this.roundData.maxPlayers || 4,
-        roomName: this.roundData.roomName || "대기실",
-      });
-    };
-
-    socket.on("playerJoined", handlePlayerJoined);
-    socket.on("joinRoomError", handleJoinError);
-
-    socket.emit("joinRoom", {
+    // Immediately switch to LobbyScene to avoid blank transition lag.
+    this.scene.start("LobbyScene", {
+      fromGame: true,
       roomId: this.roundData.roomId,
-      nickname: storedNickname,
-      avatarKey: this.avatarKey || "player_1",
+      players: this.roundData.players,
+      hostId: this.roundData.hostId,
+      maxPlayers: this.roundData.maxPlayers || 4,
+      roomName: this.roundData.roomName || "대기실",
+      preventAutoStartSingleAfterTutorial: true,
     });
+
+    // Rejoin the room in background; lobby UI will be updated by LobbyScene listeners.
+    if (socket && socket.connected && this.roundData?.roomId) {
+      try {
+        socket.emit("joinRoom", {
+          roomId: this.roundData.roomId,
+          nickname: storedNickname,
+          avatarKey: this.avatarKey || "player_1",
+        });
+      } catch (e) {
+        console.warn("returnToLobby: joinRoom emit failed", e);
+      }
+    }
+
   }
 
   resetSingleGame() {
@@ -19829,6 +20106,7 @@ class GameScene extends Phaser.Scene {
   }
 
   showResultOverlay(players, isUpdate = false, resultData = null) {
+   
     // 기존 게임 로그 데이터 및 텍스트 객체 제거
     if (this.logTexts) {
       this.logTexts.forEach((txt) => txt.destroy());
@@ -20198,6 +20476,24 @@ class GameScene extends Phaser.Scene {
     // EXP end-of-game text animation removed — XP is shown during gameplay
 
     const goToLobby = () => {
+      // Ensure main game table is visible and on top before switching scenes.
+      try {
+        if (this.playerTableGroup) {
+          this.playerTableGroup.setVisible(true).setAlpha(1).setDepth(100);
+          this.children.bringToTop(this.playerTableGroup);
+        }
+      } catch (e) {
+        console.warn("goToLobby: failed to restore playerTableGroup visibility", e);
+      }
+      try {
+        if (this.resultContainer) {
+          this.resultContainer.destroy();
+          this.resultContainer = null;
+        }
+      } catch (e) {
+        console.warn("goToLobby: failed to destroy old resultContainer", e);
+      }
+
       // stop any playing gameover sound immediately when user leaves result
       try {
         if (this._currentGameoverSound) {
@@ -20214,20 +20510,57 @@ class GameScene extends Phaser.Scene {
           this._currentGameoverSound = null;
         }
       } catch (e) {}
-      this.returnToLobby();
+
+      // Cancel auto timers to avoid double-transition.
+      try {
+        if (this.resultAutoLeaveTimer) {
+          this.resultAutoLeaveTimer.remove(false);
+          this.resultAutoLeaveTimer = null;
+        }
+        if (this.resultCountdownTimer) {
+          this.resultCountdownTimer.remove(false);
+          this.resultCountdownTimer = null;
+        }
+      } catch (e) {}
+
+      // Hide the current scene entirely before switching.
+      try {
+        if (this.playerTableGroup) {
+          this.playerTableGroup.setVisible(false);
+        }
+        if (this.resultContainer) {
+          this.resultContainer.setVisible(false);
+        }
+        this.cameras.main.setVisible(false);
+      } catch (e) {
+        console.warn("goToLobby: hide visuals failed", e);
+      }
+
+      // Stop GameScene and return to lobby while keeping multiplayer room context.
+      try {
+        if (this.scene.isActive("GameScene")) {
+          this.scene.stop("GameScene");
+        }
+      } catch (e) {
+        console.warn("goToLobby: stop GameScene failed", e);
+      }
+
+      try {
+        this.returnToLobby({ rejoinRoom: !this.isSingle, leaveRoom: false });
+      } catch (e) {
+        console.warn("goToLobby: returnToLobby failed", e);
+        try {
+          this.scene.start("LobbyScene", { preventAutoStartSingleAfterTutorial: true });
+        } catch (err) {
+          console.warn("goToLobby: fallback start LobbyScene failed", err);
+        }
+      }
     };
 
     confirmBtn.on("pointerdown", () => {
       this.sound.play("btn", { volume: 0.1 });
-      this.tweens.add({
-        targets: [confirmBtn, confirmTxt],
-        scale: "*=0.95",
-        duration: 50,
-        yoyo: true,
-        onComplete: () => {
-          goToLobby();
-        },
-      });
+      // 즉시 로비로 전환
+      goToLobby();
     });
 
     let remainSeconds = 20;
