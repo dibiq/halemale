@@ -53,6 +53,70 @@
           navigator.serviceWorker.register("/sw.js").catch(() => {});
         });
       }
+
+      window.addEventListener("load", () => {
+        const btn = document.createElement("button");
+        btn.id = "debug-fill-xp";
+        btn.textContent = "DEBUG: 레벨업 XP 채우기";
+        Object.assign(btn.style, {
+          position: "absolute",
+          right: "16px",
+          top: "16px",
+          zIndex: 2147483647,
+          background: "#f59e0b",
+          color: "#1f2937",
+          border: "2px solid #f97316",
+          borderRadius: "10px",
+          padding: "10px 14px",
+          opacity: 0.85,
+          cursor: "pointer",
+          fontSize: "14px",
+          fontWeight: "bold",
+          fontFamily: "Jua, sans-serif",
+        });
+
+        btn.addEventListener("mouseenter", () => {
+          btn.style.opacity = "1";
+        });
+        btn.addEventListener("mouseleave", () => {
+          btn.style.opacity = "0.85";
+        });
+
+        btn.addEventListener("click", () => {
+          const _game = window.game;
+          if (!_game || !_game.scene) {
+            alert("게임이 아직 준비되지 않았습니다.");
+            return;
+          }
+
+          const scene =
+            _game.scene.keys.GameScene || _game.scene.getScene("GameScene");
+          if (!scene || typeof scene.awardExperience !== "function") {
+            alert("GameScene가 활성화되어 있지 않거나 경혐치 함수가 없습니다.");
+            return;
+          }
+
+          const profile = scene.myProfile || {};
+          const currExp = Number(profile.experience || 0);
+          const currLevel = Number(profile.level || 1);
+          const needed = 100 - (currExp % 100) || 100;
+
+          scene.awardExperience(needed);
+          const nextLevel = Number((scene.myProfile || {}).level || currLevel);
+          if (
+            nextLevel > currLevel &&
+            typeof scene.showLevelUpEffect === "function"
+          ) {
+            scene.showLevelUpEffect(currLevel, nextLevel);
+          }
+
+          console.log(
+            `DEBUG fill XP triggered: Lv.${currLevel} ${currExp} -> +${needed} (now Lv.${nextLevel})`,
+          );
+        });
+
+        document.body.appendChild(btn);
+      });
     </script>
   </body>
 </html>

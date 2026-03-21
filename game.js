@@ -3382,9 +3382,8 @@ class LobbyScene extends Phaser.Scene {
       this.hasReceivedProfileStats &&
       this.myProfile.level > prevLevel
     ) {
-      this.showToast(
-        `레벨 업! Lv.${prevLevel} → Lv.${this.myProfile.level}`,
-        "#2ecc71",
+      console.debug(
+        `레벨 업 감지(서버): Lv.${prevLevel} → Lv.${this.myProfile.level}`,
       );
     }
     if (hasIncomingStats) {
@@ -9939,6 +9938,8 @@ class GameScene extends Phaser.Scene {
       coins: 0,
       experience: 0,
     };
+    this._hasAwardExperienceRun = false; // 첫 공격 성과(1회) 이후부터 레벨업 토스트 허용
+
     // reaction time samples recorded during the current game
     this.reactionTimes = [];
     // Toggle optimistic (client-side) flip animations in multiplayer.
@@ -10018,9 +10019,9 @@ class GameScene extends Phaser.Scene {
       this.hasReceivedProfileStats &&
       this.myProfile.level > prevLevel
     ) {
-      this.showToast(
-        `레벨 업! Lv.${prevLevel} → Lv.${this.myProfile.level}`,
-        "#2ecc71",
+      // 서버 동기화 레벨 증가는 로컬 경험치 반영 후에만 알림
+      console.debug(
+        `[level sync] Lv.${prevLevel} → Lv.${this.myProfile.level} (toast suppressed)`,
       );
     }
     if (hasIncomingStats) {
@@ -11454,7 +11455,7 @@ class GameScene extends Phaser.Scene {
       }
 
       if (newLevel > prevLevel) {
-        this.showToast(`레벨 업! Lv.${prevLevel} → Lv.${newLevel}`, "#2ecc71");
+        console.debug(`level up suppressed (profile sync): Lv.${prevLevel} → Lv.${newLevel}`);
       }
       // 서버가 보낸 특수카드 정보가 있으면 로컬에 반영하고 UI 갱신
       try {
@@ -14809,7 +14810,7 @@ class GameScene extends Phaser.Scene {
         .text(-80, -32, title, { font: "45px Arial", color: "#ffffff", fontStyle: 'bold' })
         .setOrigin(0, 0.5);
       const subText = this.add
-        .text(-80, 30, subtitle, {
+        .text(-80, 35, subtitle, {
           font: "30px Arial",
           color: "#ffffff",
           wordWrap: { width: 350 },
@@ -14851,6 +14852,113 @@ class GameScene extends Phaser.Scene {
     } catch (e) {
       console.warn("playSpecialAnimation error", e);
       if (onComplete) onComplete();
+    }
+  }
+
+  showLevelUpEffect(prevLevel, newLevel) {
+    try {
+      console.debug("showLevelUpEffect", prevLevel, "->", newLevel);
+      const camera = this.cameras.main;
+      const centerX = camera ? camera.midPoint.x : this.scale.width * 0.5;
+      const centerY = camera ? camera.midPoint.y : this.scale.height * 0.4;
+      const effectContainer = this.add.container(centerX, centerY);
+      effectContainer.setDepth(1000000);
+      effectContainer.setAlpha(0);
+      effectContainer.setScrollFactor(0);
+
+      const glow = this.add
+        .circle(0, 0, 115, 0xffff00, 0.26)
+        .setDepth(1000001)
+        .setAlpha(0)
+        .setScrollFactor(0);
+
+      const text = this.add
+        .text(0, 0, `레벨 업! Lv.${newLevel}`, {
+          font: "56px Arial",
+          color: "#ffffff",
+          stroke: "#000000",
+          strokeThickness: 6,
+          fontWeight: "bold",
+        })
+        .setOrigin(0.5)
+        .setDepth(1000002)
+        .setScale(0.75)
+        .setAlpha(0)
+        .setScrollFactor(0);
+
+      effectContainer.add([glow, text]);
+
+      this.tweens.add({
+        targets: effectContainer,
+        alpha: 1,
+        duration: 180,
+        ease: "Cubic.easeOut",
+      });
+
+      this.tweens.add({
+        targets: glow,
+        alpha: 0.8,
+        scale: 1.7,
+        duration: 420,
+        ease: "Back.out",
+      });
+
+      this.tweens.add({
+        targets: text,
+        scale: 1.2,
+        alpha: 1,
+        duration: 300,
+        ease: "Back.out",
+        yoyo: true,
+        hold: 520,
+      });
+
+      this.time.delayedCall(1000, () => {
+        this.tweens.add({
+          targets: effectContainer,
+          alpha: 0,
+          duration: 400,
+          onComplete: () => {
+            try {
+              effectContainer.destroy();
+            } catch (e) {}
+          },
+        });
+      });
+
+      // 꽃가루 파티클 폭발 (레벨업 텍스트 중심)
+      const particleColors = ["#f9a8d4", "#a78bfa", "#67e8f9", "#fcd34d", "#fb7185"];
+      const particleCount = 24;
+      for (let i = 0; i < particleCount; i++) {
+        const angle = (Math.PI * 2 * i) / particleCount;
+        const speed = 160 + Math.random() * 220;
+        const hex = particleColors[i % particleColors.length];
+        const colorNum = Number(`0x${hex.replace('#', '')}`);
+        const particle = this.add
+          .circle(centerX, centerY, 8 + Math.random() * 8, colorNum, 1)
+          .setDepth(1000005)
+          .setScrollFactor(0);
+
+        const tx = centerX + Math.cos(angle) * speed;
+        const ty = centerY + Math.sin(angle) * speed;
+
+        this.tweens.add({
+          targets: particle,
+          x: tx,
+          y: ty,
+          alpha: 0,
+          scale: 0.5,
+          duration: 700 + Math.random() * 200,
+          ease: "Power2.easeOut",
+          onComplete: () => {
+            try {
+              particle.destroy();
+            } catch (e) {}
+          },
+        });
+      }
+    } catch (e) {
+      console.warn("showLevelUpEffect error", e);
     }
   }
 
@@ -15965,7 +16073,7 @@ class GameScene extends Phaser.Scene {
         } else {
           // 실패가 예상되었지만, 실제 패널티가 발생할지는 서버 판단에 따릅니다.
           // 따라서 '땡' 애니메이션은 서버에서 패널티가 확정된 후에만 재생됩니다.
-          this.playFeedback(false, "틀렸습니다.");
+          //this.playFeedback(false, "틀렸습니다.");
         }
       } catch (e) {
         console.warn("handleRingBell optimistic feedback failed", e);
@@ -16957,11 +17065,13 @@ class GameScene extends Phaser.Scene {
         console.warn("experience sync failed", e);
       }
 
-      // 레벨업 토스트
+      // 레벨업 효과 애니메이션
       if (leveled) {
         const newLv = Number(this.myProfile.level) || prevLevel;
-        this.showToast(`레벨 업! Lv.${prevLevel} → Lv.${newLv}`, "#2ecc71");
+        this.showLevelUpEffect(prevLevel, newLv);
+        console.debug(`level up effect triggered: Lv.${prevLevel} → Lv.${newLv}`);
       }
+      this._hasAwardExperienceRun = true;
     } catch (e) {
       console.warn("awardExperience error", e);
     }
@@ -17143,15 +17253,9 @@ class GameScene extends Phaser.Scene {
       /* ignore */
     }
 
-    // If EXP bar isn't available (e.g., profile panel not shown yet), ensure
-    // player still sees feedback via a toast.
+    // If EXP bar isn't available, no toast is shown by design (level-up effect handled visually).
     if (!hasBar) {
-      try {
-        console.log('[EXP GAIN] falling back to toast', xpGain);
-        this.showToast(`+${xpGain} XP`, "#2ecc71");
-      } catch (e) {
-        /* ignore */
-      }
+      console.log('[EXP GAIN] no bar available, skip toast fallback', xpGain);
     }
   }
 
@@ -21469,6 +21573,7 @@ const config = {
 };
 
 const game = new Phaser.Game(config);
+window.game = game; // 디버그용으로 전역에 노출
 
 // adjust when orientation/size changes
 window.addEventListener("resize", () => {

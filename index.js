@@ -2871,7 +2871,7 @@ io.on("connection", (socket) => {
             players: room.players,
             recipients: [],
             shielded: [],
-            message: `${socket.nickname}님이 자물쇠를 사용했습니다!`,
+            message: `${socket.nickname}님 자물쇠 사용!`,
           });
 
           // Ensure the room advances to the next turn (clear any bell lock state)
@@ -6016,7 +6016,7 @@ io.on("connection", (socket) => {
               io.to(room.roomId).emit("bellResult", {
                 success: false,
                 penaltyId: null,
-                message: `${penalizedSocket.nickname}님이 자물쇠로 패널티를 면제했습니다.`,
+                message: `${penalizedSocket.nickname}님 자물쇠 사용!`,
                 players: room.players,
                 recipients: [],
                 penaltyPerRecipient: 0,
@@ -6032,7 +6032,7 @@ io.on("connection", (socket) => {
                 players: room.players,
                 recipients: [],
                 shielded: [],
-                message: `${penalizedSocket.nickname}님이 자물쇠를 사용했습니다!`,
+                message: `${penalizedSocket.nickname}님 자물쇠 사용!`,
               });
 
               processSkipTurn(room, io);
