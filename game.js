@@ -519,6 +519,93 @@ const COLORS = {
 };
 const XP_PER_LEVEL = 100;
 
+function showCoinBurstEffect(scene, targetX, targetY, amount = 0) {
+  if (!scene || !scene.add || !scene.tweens) return;
+
+  try {
+    const coinCenter = scene.add
+      .image(targetX, targetY, "coin")
+      .setDisplaySize(48, 48)
+      .setDepth(10000)
+      .setScrollFactor(0)
+      .setScale(0.1)
+      .setAlpha(0);
+
+    scene.tweens.add({
+      targets: coinCenter,
+      alpha: 1,
+      scale: 1,
+      duration: 180,
+      ease: "Back.out",
+      onComplete: () => {
+        scene.tweens.add({
+          targets: coinCenter,
+          alpha: 0,
+          scale: 0.7,
+          duration: 200,
+          delay: 160,
+          onComplete: () => coinCenter.destroy(),
+        });
+      },
+    });
+
+    const colors = ["#f59e0b", "#facc15", "#fdba74", "#f97316", "#fde68a"];
+    const burstCount = 20;
+    for (let i = 0; i < burstCount; i += 1) {
+      const angle = (Math.PI * 2 * i) / burstCount;
+      const speed = 60 + Math.random() * 140;
+      const particle = scene.add
+        .circle(
+          targetX,
+          targetY,
+          6 + Math.random() * 6,
+          colors[i % colors.length],
+          1,
+        )
+        .setDepth(10000)
+        .setScrollFactor(0);
+
+      scene.tweens.add({
+        targets: particle,
+        x: targetX + Math.cos(angle) * speed,
+        y: targetY + Math.sin(angle) * speed,
+        alpha: 0,
+        scale: 0.3,
+        duration: 700 + Math.random() * 160,
+        ease: "Cubic.easeOut",
+        onComplete: () => particle.destroy(),
+      });
+    }
+
+    if (amount > 0) {
+      const amountText = scene.add
+        .text(targetX, targetY - 30, `+${amount}`, {
+          fontFamily: GAME_FONTS.main,
+          fontSize: "32px",
+          color: "#fde68a",
+          stroke: "#f97316",
+          strokeThickness: 4,
+          fontWeight: "bold",
+        })
+        .setOrigin(0.5)
+        .setDepth(10001)
+        .setScrollFactor(0);
+
+      scene.tweens.add({
+        targets: amountText,
+        y: targetY - 70,
+        alpha: 0,
+        scale: 1.3,
+        duration: 900,
+        ease: "Sine.easeOut",
+        onComplete: () => amountText.destroy(),
+      });
+    }
+  } catch (e) {
+    console.warn("showCoinBurstEffect error", e);
+  }
+}
+
 let bgmEnabled = localStorage.getItem("bgmEnabled") !== "false";
 
 class LobbyScene extends Phaser.Scene {
@@ -660,6 +747,7 @@ class LobbyScene extends Phaser.Scene {
     const scene = target && target.scene ? target.scene : this;
     if (!scene || !scene.add) return;
     if (!target || !target.active) return;
+
     if (typeof target.getData === "function") {
       if (target.getData("avatarDisplayWidth") === undefined) {
         target.setData("avatarDisplayWidth", target.displayWidth);
@@ -717,6 +805,51 @@ class LobbyScene extends Phaser.Scene {
         target.setTexture(baseKey);
         target.setDisplaySize(avatarDisplayWidth, avatarDisplayHeight);
       }
+    }
+  }
+
+  showCoinBurst(targetX, targetY, amount = 0) {
+    // GameScene에 정의된 것 재활용
+    if (
+      typeof GameScene !== "undefined" &&
+      GameScene.prototype &&
+      typeof GameScene.prototype.showCoinBurst === "function"
+    ) {
+      try {
+        return GameScene.prototype.showCoinBurst.call(this, targetX, targetY, amount);
+      } catch (e) {
+        console.warn("LobbyScene showCoinBurst via GameScene failed", e);
+      }
+    }
+
+    // fallback (간단한 팝업 스타일)
+    try {
+      const burstText = this.add
+        .text(targetX, targetY - 20, `+${amount}💰`, {
+          fontFamily: GAME_FONTS.main,
+          fontSize: "32px",
+          color: "#facc15",
+          stroke: "#000000",
+          strokeThickness: 4,
+          fontWeight: "bold",
+        })
+        .setOrigin(0.5)
+        .setDepth(10000);
+
+      this.tweens.add({
+        targets: burstText,
+        y: targetY - 80,
+        alpha: 0,
+        duration: 800,
+        ease: "Sine.easeOut",
+        onComplete: () => {
+          try {
+            burstText.destroy();
+          } catch (e) {}
+        },
+      });
+    } catch (e) {
+      console.warn("LobbyScene fallback showCoinBurst error", e);
     }
   }
 
@@ -9248,18 +9381,20 @@ class LobbyScene extends Phaser.Scene {
       }
 
       if (canClaim || isVideo) {
+        const scene = this;
         rowBg.setInteractive({ useHandCursor: true }).on("pointerdown", () => {
           if (isVideo) {
-            this.sound.play("btn", { volume: 0.1 });
-            this.showToast("광고 보상은 준비 중입니다!", "#38bdf8");
+            scene.sound.play("btn", { volume: 0.1 });
+            scene.showToast("광고 보상은 준비 중입니다!", "#38bdf8");
             return;
           }
-          if (this.isDailyRewardClaimPending) return;
-          this.sound.play("btn", { volume: 0.1 });
-          this.isDailyRewardClaimPending = true;
-          if (typeof this.updateDailyRewardButtonState === "function") {
-            this.updateDailyRewardButtonState();
+          if (scene.isDailyRewardClaimPending) return;
+          scene.sound.play("btn", { volume: 0.1 });
+          scene.isDailyRewardClaimPending = true;
+          if (typeof scene.updateDailyRewardButtonState === "function") {
+            scene.updateDailyRewardButtonState();
           }
+          showCoinBurstEffect(scene, rowX, rowY, scene.dailyRewardAmount);
           socket.emit("claimDailyReward");
           // immediately mark this day claimed and add stamp
           if (rowDateStr) {
@@ -11635,7 +11770,10 @@ class GameScene extends Phaser.Scene {
           this.resultContainer = null;
         }
 
-        this.isSingle = false;
+        this.isSingle =
+          data && typeof data.isSingle === "boolean"
+            ? data.isSingle
+            : this.isSingle;
         this.isGameStarted = true;
         this.isGameReady = true;
         this.lastEliminationEffectAtByPlayer = {};
@@ -12806,7 +12944,12 @@ class GameScene extends Phaser.Scene {
       // 💡 즉시 띄우지 않고 1~1.5초 정도 여유를 줌
       this.time.delayedCall(1000, () => {
         this.playFinishAnimation(() => {
-          this.showResultOverlay(data.ranking, false, data);
+          if (this.isSingle) {
+            // 싱글 플레이는 전용 결과창을 사용.
+            this.showSingleResultOverlay(data.ranking, data.result || "WIN");
+          } else {
+            this.showResultOverlay(data.ranking, false, data);
+          }
         });
       });
     });
@@ -14962,6 +15105,102 @@ class GameScene extends Phaser.Scene {
     }
   }
 
+  showCoinBurst(targetX, targetY, amount = 0) {
+    try {
+      const burstDepth = 1000005;
+      const burstCount = 20;
+      const coinRadius = 7;
+
+      // 중앙 코인 아이콘 점핑
+      const coinCenter = this.add
+        .image(targetX, targetY, "coin")
+        .setDisplaySize(coinRadius * 7, coinRadius * 7)
+        .setDepth(burstDepth)
+        .setScrollFactor(0)
+        .setScale(0.1)
+        .setAlpha(0);
+
+      this.tweens.add({
+        targets: coinCenter,
+        alpha: 1,
+        scale: 1.2,
+        duration: 180,
+        ease: "Back.out",
+        onComplete: () => {
+          this.tweens.add({
+            targets: coinCenter,
+            alpha: 0,
+            scale: 0.7,
+            duration: 220,
+            delay: 160,
+            onComplete: () => coinCenter.destroy(),
+          });
+        },
+      });
+
+      // 파티클 꽃가루 폭발
+      const colors = ["#f59e0b", "#facc15", "#fdba74", "#f97316", "#fde68a"];
+      for (let i = 0; i < burstCount; i += 1) {
+        const angle = (Math.PI * 2 * i) / burstCount;
+        const speed = 90 + Math.random() * 180;
+        const particle = this.add
+          .circle(targetX, targetY, coinRadius * (0.45 + Math.random() * 0.65), colors[i % colors.length], 1)
+          .setDepth(burstDepth)
+          .setScrollFactor(0);
+
+        const destX = targetX + Math.cos(angle) * speed;
+        const destY = targetY + Math.sin(angle) * speed;
+
+        this.tweens.add({
+          targets: particle,
+          x: destX,
+          y: destY,
+          alpha: 0,
+          scale: 0.4,
+          duration: 650 + Math.random() * 150,
+          ease: "Cubic.easeOut",
+          onComplete: () => {
+            try {
+              particle.destroy();
+            } catch (e) {}
+          },
+        });
+      }
+
+      // 숫자 텍스트 표시
+      if (amount > 0) {
+        const amountText = this.add
+          .text(targetX, targetY - 40, `+${amount}`, {
+            fontFamily: GAME_FONTS.main,
+            fontSize: "38px",
+            color: "#fde68a",
+            stroke: "#f97316",
+            strokeThickness: 4,
+            fontWeight: "bold",
+          })
+          .setOrigin(0.5)
+          .setDepth(burstDepth + 1)
+          .setScrollFactor(0);
+
+        this.tweens.add({
+          targets: amountText,
+          y: targetY - 80,
+          alpha: 0,
+          scale: 1.3,
+          duration: 900,
+          ease: "Sine.easeOut",
+          onComplete: () => {
+            try {
+              amountText.destroy();
+            } catch (e) {}
+          },
+        });
+      }
+    } catch (e) {
+      console.warn("showCoinBurst error", e);
+    }
+  }
+
   // 서버에 특수카드 사용 요청(낙관적 UI 업데이트 포함)
   requestUseSpecialWithOptimistic(cardId, cardName) {
     // 싱글 모드에서는 아이템 사용 금지
@@ -15772,7 +16011,14 @@ class GameScene extends Phaser.Scene {
 
     exitBtn.on("pointerdown", () => {
       this.sound.play("btn", { volume: 0.1 });
-      this.returnToLobby({ rejoinRoom: false });
+      try {
+        this.scene.start("LobbyScene", {
+          preventAutoStartSingleAfterTutorial: true,
+        });
+      } catch (e) {
+        console.warn("showSingleResultOverlay exit to lobby failed", e);
+        this.returnToLobby({ rejoinRoom: false, leaveRoom: true });
+      }
     });
 
     container.add([restartBtn, restartTxt, exitBtn, exitTxt]);
@@ -20575,6 +20821,34 @@ class GameScene extends Phaser.Scene {
     // EXP end-of-game text animation removed — XP is shown during gameplay
 
     const goToLobby = () => {
+      // 싱글 플레이일 경우에는 멀티 재입장 조건 없이 바로 메인 로비로 이동
+      if (this.isSingle) {
+        try {
+          if (this.resultContainer) {
+            this.resultContainer.destroy();
+            this.resultContainer = null;
+          }
+          if (this.playerTableGroup) {
+            this.playerTableGroup.setVisible(true).setAlpha(1).setDepth(100);
+          }
+        } catch (e) {
+          console.warn("goToLobby(single): cleanup failed", e);
+        }
+        try {
+          if (this.scene.isActive("GameScene")) this.scene.stop("GameScene");
+        } catch (e) {
+          console.warn("goToLobby(single): stop GameScene failed", e);
+        }
+        try {
+          this.scene.start("LobbyScene", {
+            preventAutoStartSingleAfterTutorial: true,
+          });
+        } catch (e) {
+          console.warn("goToLobby(single): start LobbyScene failed", e);
+        }
+        return;
+      }
+
       // Ensure main game table is visible and on top before switching scenes.
       try {
         if (this.playerTableGroup) {
@@ -20658,8 +20932,24 @@ class GameScene extends Phaser.Scene {
 
     confirmBtn.on("pointerdown", () => {
       this.sound.play("btn", { volume: 0.1 });
-      // 즉시 로비로 전환
-      goToLobby();
+      if (this.isSingle) {
+        try {
+          if (this.resultContainer) {
+            this.resultContainer.destroy();
+            this.resultContainer = null;
+          }
+        } catch (e) {}
+        try {
+          this.scene.start("LobbyScene", {
+            preventAutoStartSingleAfterTutorial: true,
+          });
+        } catch (e) {
+          console.warn("showResultOverlay confirm go to lobby failed", e);
+          goToLobby();
+        }
+      } else {
+        goToLobby();
+      }
     });
 
     let remainSeconds = 20;
