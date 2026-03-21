@@ -12296,11 +12296,6 @@ class GameScene extends Phaser.Scene {
               id: data.autoLockUsedBy,
               timestamp: Date.now(),
             };
-
-            this.showToast(
-              `${nick}님이 자물쇠로 패널티를 면제했습니다!`,
-              "#2ecc71",
-            );
             // animation will arrive via specialUsed event shortly
 
             // 서버가 보낸 플레이어 목록으로 갱신
@@ -12411,10 +12406,6 @@ class GameScene extends Phaser.Scene {
                       this.safeSyncInventory("autoUseLock", {
                         usedCardId: 4,
                       });
-                      this.showToast(
-                        "자물쇠 사용: 패널티 면제되었습니다!",
-                        "#2ecc71",
-                      );
                       return;
                     }
 
@@ -12433,10 +12424,6 @@ class GameScene extends Phaser.Scene {
               if (owned[4] <= 0) delete owned[4];
               localStorage.setItem("specialCards", JSON.stringify(owned));
               this.safeSyncInventory("autoUseLock", { usedCardId: 4 });
-              this.showToast(
-                "자물쇠 사용: 패널티 면제되었습니다! (오프라인 처리)",
-                "#2ecc71",
-              );
               if (this.roundData && this.roundData.players)
                 this.renderTable(this.roundData.players);
               return;
@@ -12567,16 +12554,9 @@ class GameScene extends Phaser.Scene {
                   : typeof thiefResult?.stolenCount === "number"
                     ? thiefResult.stolenCount
                     : computedStolen;
-                const toastColor = stolenCount > 0 ? "#2ecc71" : "#f39c12";
-                const toastMsg =
-                  stolenCount > 0
-                    ? `도둑 카드 사용: 총 ${stolenCount}장을 훔쳤습니다!`
-                    : "도둑 카드 사용: 획득할 카드가 없습니다.";
-                this.showToast(toastMsg, toastColor);
                 if (Array.isArray(data.shielded) && data.shielded.length > 0) {
                   data.shielded.forEach((id) => this.showShieldEffect(id));
                 }
-                if (data.message) this.showToast(data.message, "#2ecc71");
               } catch (e) {
                 console.warn("specialUsed merge error", e);
               }
@@ -12620,16 +12600,11 @@ class GameScene extends Phaser.Scene {
                       Array.isArray(data.shielded) &&
                       data.shielded.length > 0
                     ) {
-                      try {
-                        this.showToast(
-                          `방패 소모: ${data.shielded.join(",")}`,
-                          "#f1c40f",
-                        );
-                      } catch (e) {}
                       data.shielded.forEach((id) => this.showShieldEffect(id));
                     }
                   }
-                  if (data.message) this.showToast(data.message, "#2ecc71");
+                  // message toast omitted for special card.
+
                 } catch (e) {
                   console.warn("specialUsed merge error", e);
                 }
@@ -12685,15 +12660,10 @@ class GameScene extends Phaser.Scene {
                 "[debug] specialUsed (block) shielded ids:",
                 data.shielded,
               );
-              try {
-                this.showToast(
-                  `방패 소모: ${data.shielded.join(",")}`,
-                  "#f1c40f",
-                );
-              } catch (e) {}
               data.shielded.forEach((id) => this.showShieldEffect(id));
             }
-            if (data.message) this.showToast(data.message, "#f39c12");
+            // message toast omitted for special card.
+
           } catch (e) {
             console.warn("specialUsed block merge error", e);
           }
@@ -13819,10 +13789,7 @@ class GameScene extends Phaser.Scene {
             cardBg.disableInteractive();
 
             if ((this.specialUsedThisTurn || {})[myIdForFlag]) {
-              this.showToast(
-                "이미 이 턴에 특수카드를 사용했습니다!",
-                "#e74c3c",
-              );
+              // 이미 특수카드를 사용한 경우 별도 토스트 없이 차단
               return;
             }
 
@@ -14713,7 +14680,7 @@ class GameScene extends Phaser.Scene {
 
       const shieldSprite = this.add
         .image(baseX, specialY, "shield")
-        .setDisplaySize(48, 48)
+        .setDisplaySize(10, 10)
         .setDepth(600000)
         .setAlpha(0)
         .setScale(0);
@@ -14722,7 +14689,7 @@ class GameScene extends Phaser.Scene {
       this.tweens.add({
         targets: shieldSprite,
         alpha: 1,
-        scale: 1,
+        scale: 0.5,
         duration: 300,
         ease: "Back.out",
         yoyo: true,
@@ -14803,7 +14770,7 @@ class GameScene extends Phaser.Scene {
 
       const lockSprite = this.add
         .image(baseX, lockY, "lock")
-        .setDisplaySize(48, 48)
+        .setDisplaySize(10, 10)
         .setDepth(600000)
         .setAlpha(0)
         .setScale(0);
@@ -14811,7 +14778,7 @@ class GameScene extends Phaser.Scene {
       this.tweens.add({
         targets: lockSprite,
         alpha: 1,
-        scale: 1,
+        scale: 0.5,
         duration: 300,
         ease: "Back.out",
         yoyo: true,
@@ -14835,37 +14802,37 @@ class GameScene extends Phaser.Scene {
       const container = this.add.container(width * 0.5, height * 0.45);
       container.setDepth(9000);
 
-      const bg = this.add.rectangle(0, 0, 420, 180, 0x000000, 0.6);
-      bg.setStrokeStyle(2, 0xffffff, 0.06);
-      const img = this.add.image(-140, 0, imageKey).setDisplaySize(120, 120);
+      const bg = this.add.rectangle(0, 0, 520, 220, 0x000000, 0.75);
+      bg.setStrokeStyle(3, 0xffffff, 0.08);
+      const img = this.add.image(-170, 0, imageKey).setDisplaySize(150, 150);
       const titleText = this.add
-        .text(-50, -28, title, { font: "24px Arial", color: "#ffffff" })
+        .text(-80, -32, title, { font: "45px Arial", color: "#ffffff", fontStyle: 'bold' })
         .setOrigin(0, 0.5);
       const subText = this.add
-        .text(-50, 18, subtitle, {
-          font: "14px Arial",
-          color: "#dddddd",
-          wordWrap: { width: 300 },
+        .text(-80, 30, subtitle, {
+          font: "30px Arial",
+          color: "#ffffff",
+          wordWrap: { width: 350 },
         })
         .setOrigin(0, 0.5);
 
       container.add([bg, img, titleText, subText]);
       container.setAlpha(0);
-      container.setScale(0.8);
+      container.setScale(0.85);
 
       this.tweens.add({
         targets: container,
         alpha: 1,
-        scale: 1,
-        duration: 360,
+        scale: 1.05,
+        duration: 560,
         ease: "Back.out",
         onComplete: () => {
           // 잠깐 유지 후 사라짐
-          this.time.delayedCall(900, () => {
+          this.time.delayedCall(1000, () => {
             this.tweens.add({
               targets: container,
               alpha: 0,
-              scale: 0.9,
+              scale: 1.0,
               duration: 300,
               onComplete: () => {
                 try {
@@ -14898,7 +14865,7 @@ class GameScene extends Phaser.Scene {
       return;
     }
     try {
-      this.showToast(`${cardName} 카드를 사용 요청합니다...`, "#f39c12");
+      //this.showToast(`${cardName} 카드를 사용 요청합니다...`, "#f39c12");
       let handled = false;
       const timeout = this.time.delayedCall(2500, () => {
         if (handled) return;
@@ -14992,7 +14959,7 @@ class GameScene extends Phaser.Scene {
           try {
             if (this.pendingSpecialUse) delete this.pendingSpecialUse[myId];
           } catch (e) {}
-          this.showToast(`${cardName} 사용 요청을 보냈습니다.`, "#f39c12");
+          //this.showToast(`${cardName} 사용 요청을 보냈습니다.`, "#f39c12");
         } else {
           if (Number(cardId) === 7) {
             this.pendingThiefSnapshot = null;
@@ -20079,7 +20046,6 @@ class GameScene extends Phaser.Scene {
     }
 
     // 기본(기타) 카드 사용: 로컬 차감 + 턴당 1회 플래그 설정
-    this.showToast(`${cardName} 카드를 사용했습니다!`, "#2ecc71");
     specialCardsOwned[cardId] = count - 1;
     localStorage.setItem("specialCards", JSON.stringify(specialCardsOwned));
     try {

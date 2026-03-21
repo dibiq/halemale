@@ -2908,17 +2908,17 @@ io.on("connection", (socket) => {
         6: {
           imageKey: "block",
           title: "먹물 카드 사용",
-          subtitle: "모든 플레이어의 오픈 더미를 가립니다.",
+          subtitle: "카드를 먹물로 가립니다.",
         },
         7: {
           imageKey: "thief",
           title: "도둑 카드 사용",
-          subtitle: "생존 플레이어들로부터 3장씩 획득합니다.",
+          subtitle: "플레이어들로부터 3장씩 가져옵니다.",
         },
         8: {
           imageKey: "king",
           title: "왕 카드 사용",
-          subtitle: "카드 보유 수가 가장 많은 플레이어와 덱을 교환합니다.",
+          subtitle: "현재 1등과 카드를 교환합니다.",
         },
         5: {
           imageKey: "shield",
