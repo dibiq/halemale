@@ -2656,6 +2656,83 @@ class LobbyScene extends Phaser.Scene {
       }
     });
 
+    const buttonPress = (targets, onComplete, opts = {}) => {
+      if (!Array.isArray(targets)) targets = [targets];
+      // default: tint-based feedback (no scale change)
+      const downDuration = typeof opts.downDuration === "number" ? opts.downDuration : 50;
+      const upDuration = typeof opts.upDuration === "number" ? opts.upDuration : 100;
+
+      // helper: darken a hex tint by factor
+      const darkenTint = (tint, factor = 0.85) => {
+        if (typeof tint !== "number") return tint;
+        const r = Math.max(0, Math.min(255, Math.round(((tint >> 16) & 0xff) * factor)));
+        const g = Math.max(0, Math.min(255, Math.round(((tint >> 8) & 0xff) * factor)));
+        const b = Math.max(0, Math.min(255, Math.round((tint & 0xff) * factor)));
+        return (r << 16) | (g << 8) | b;
+      };
+
+      // record original tints/colors and cancel any pending restores
+      const originalTints = new Map();
+      const originalTextColors = new Map();
+      targets.forEach((t) => {
+        try {
+          if (t._pressRestore) {
+            try { t._pressRestore.remove(false); } catch (e) {}
+            t._pressRestore = null;
+          }
+          if (typeof t.setTint === "function") {
+            const orig = typeof t.tintTopLeft === "number" ? t.tintTopLeft : 0;
+            originalTints.set(t, orig);
+          } else if (typeof t.setStyle === "function" && t.style && t.style.color) {
+            originalTextColors.set(t, t.style.color);
+          }
+        } catch (e) {}
+      });
+
+      // apply immediate tint (or text color) to indicate press, then restore
+      targets.forEach((t) => {
+        try {
+          if (typeof t.setTint === "function") {
+            const orig = originalTints.get(t) || 0;
+            const darker = darkenTint(orig || 0xffffff, 0.85);
+            t.setTint(darker);
+          } else if (typeof t.setStyle === "function" && t.style && t.style.color) {
+            // convert '#rrggbb' or 'rgb()' to hex fallback: darken hex if possible
+            let col = t.style.color;
+            if (col && col.startsWith("#") && col.length === 7) {
+              const r = parseInt(col.slice(1, 3), 16);
+              const g = parseInt(col.slice(3, 5), 16);
+              const b = parseInt(col.slice(5, 7), 16);
+              const dr = Math.max(0, Math.round(r * 0.85)).toString(16).padStart(2, "0");
+              const dg = Math.max(0, Math.round(g * 0.85)).toString(16).padStart(2, "0");
+              const db = Math.max(0, Math.round(b * 0.85)).toString(16).padStart(2, "0");
+              t.setStyle({ color: `#${dr}${dg}${db}` });
+            }
+          }
+        } catch (e) {}
+      });
+
+      // schedule restore after down+up durations
+      const total = downDuration + upDuration;
+      targets.forEach((t) => {
+        try {
+          t._pressRestore = this.time.delayedCall(total, () => {
+            try {
+              if (typeof t.setTint === "function") {
+                const orig = originalTints.get(t);
+                if (typeof orig === "number" && orig !== 0) t.setTint(orig);
+                else t.clearTint && t.clearTint();
+              } else if (typeof t.setStyle === "function" && originalTextColors.has(t)) {
+                t.setStyle({ color: originalTextColors.get(t) });
+              }
+            } catch (e) {}
+            t._pressRestore = null;
+            if (typeof onComplete === "function") onComplete();
+          });
+        } catch (e) {}
+      });
+    };
+
     const adRewardBtn = this.add.container(adRewardBtnX, actionBtnBottomY);
     const adRewardBtnImg = this.add
       .image(0, 0, "uibtn")
@@ -2673,18 +2750,11 @@ class LobbyScene extends Phaser.Scene {
     adRewardBtn.add([adRewardBtnImg, adRewardBtnText]);
     adRewardBtnImg.on("pointerdown", () => {
       this.sound.play("btn", { volume: 0.1 });
-      this.tweens.add({
-        targets: [adRewardBtnImg, adRewardBtnText],
-        scaleX: "*=0.95",
-        scaleY: "*=0.95",
-        duration: 50,
-        yoyo: true,
-        onComplete: () => {
-          this.showToast("광고 보상은 준비 중입니다!", "#38bdf8");
-          if (typeof this.incrementMultiQuestCounter === "function") {
-            this.incrementMultiQuestCounter("watch_ad", 1);
-          }
-        },
+      buttonPress([adRewardBtnImg, adRewardBtnText], () => {
+        this.showToast("광고 보상은 준비 중입니다!", "#38bdf8");
+        if (typeof this.incrementMultiQuestCounter === "function") {
+          this.incrementMultiQuestCounter("watch_ad", 1);
+        }
       });
     });
 
@@ -2724,15 +2794,8 @@ class LobbyScene extends Phaser.Scene {
     questBtn.add([questBtnImg, questBtnText]);
     questBtnImg.on("pointerdown", () => {
       this.sound.play("btn", { volume: 0.1 });
-      this.tweens.add({
-        targets: [questBtnImg, questBtnText],
-        scaleX: "*=0.95",
-        scaleY: "*=0.95",
-        duration: 50,
-        yoyo: true,
-        onComplete: () => {
-          this.showQuestPopup();
-        },
+      buttonPress([questBtnImg, questBtnText], () => {
+        this.showQuestPopup();
       });
     });
     questBtn.add([questBadge, questBadgeText]);
@@ -2884,15 +2947,8 @@ class LobbyScene extends Phaser.Scene {
 
     shopBtnImg.on("pointerdown", () => {
       this.sound.play("btn", { volume: 0.1 });
-      this.tweens.add({
-        targets: [shopBtnImg, shopBtnText],
-        scaleX: "*=0.95",
-        scaleY: "*=0.95",
-        duration: 50,
-        yoyo: true,
-        onComplete: () => {
-          this.showShopPopup();
-        },
+      buttonPress([shopBtnImg, shopBtnText], () => {
+        this.showShopPopup();
       });
     });
 
@@ -6482,6 +6538,11 @@ class LobbyScene extends Phaser.Scene {
     this.isJoinPopupOpen = true;
     this.setLobbyChatInputHidden(true);
 
+    // Make sure burst helper exists before any claim UI can use it.
+    if (typeof this.ensureQuestCoinBurst === "function") {
+      this.ensureQuestCoinBurst();
+    }
+
     const { width, height } = this.cameras.main;
     const centerX = width / 2;
     const centerY = height * 0.5;
@@ -6623,20 +6684,29 @@ class LobbyScene extends Phaser.Scene {
         .setOrigin(0.5);
 
       if (entry.ready) {
+        console.log("ready");
+
         const handleClaim = () => {
+          console.debug("[claimBtn] clicked", { questKey: quest.key, ready: entry.ready, rewardCoins: quest.rewardCoins });
           this.sound.play("btn", { volume: 0.08 });
           if (!entry.ready) {
             this.showToast("아직 수령할 보상이 없어요!", "#f97316");
             return;
           }
           if (quest.rewardCoins) {
-            // play sound + burst animation from button location in single mode
-            if (this.isSingle) {
-              try {
-                this.sound.play("pop", { volume: 0.3 });
-              } catch (e) {}
+            // play sound + burst animation from button location
+            try {
+              this.sound.play("pop", { volume: 0.3 });
+            } catch (e) {}
+
+            if (typeof this.ensureQuestCoinBurst === "function") {
+              this.ensureQuestCoinBurst();
+            }
+
+            if (typeof this.playQuestCoinBurst === "function") {
               this.playQuestCoinBurst(claimX, claimY, quest.rewardCoins);
             }
+
             if (typeof this.rewardQuestCoins === "function") {
               this.rewardQuestCoins(quest.rewardCoins, runtime.title, quest.key);
             } else {
@@ -6684,12 +6754,21 @@ class LobbyScene extends Phaser.Scene {
           this.closeQuestPopup();
           this.showQuestPopup();
         };
+        const claimAction = () => {
+          console.debug("[claimButton] pressed", { questKey: quest.key, ready: entry.ready });
+          if (entry.ready) {
+            handleClaim();
+          } else {
+            this.showToast("아직 수령할 보상이 없어요!", "#f97316");
+          }
+        };
+
         claimBg
           .setInteractive({ useHandCursor: true })
-          .on("pointerdown", handleClaim);
+          .on("pointerdown", claimAction);
         claimText
           .setInteractive({ useHandCursor: true })
-          .on("pointerdown", handleClaim);
+          .on("pointerdown", claimAction);
       }
 
       this.questPopupContainer.add([
@@ -10408,11 +10487,9 @@ class GameScene extends Phaser.Scene {
     const scene = target && target.scene ? target.scene : this;
 
     if (!scene || !scene.add) {
-      // console.warn("[applyAvatarAnimation] invalid scene, abort");
       return;
     }
     if (!target || !target.active) {
-      // console.log("[applyAvatarAnimation] target inactive, abort");
       return;
     }
 
@@ -10473,12 +10550,6 @@ class GameScene extends Phaser.Scene {
         // intermittent freezes reported by players.
         const playAnim = () => {
           if (target && target.anims && animKey) {
-            console.log("[applyAvatarAnimation] play", animKey, {
-              targetActive: target.active,
-              currentAnim: target.anims.currentAnim && target.anims.currentAnim.key,
-              isPlaying: target.anims.isPlaying,
-              frame: target.anims.currentFrame && target.anims.currentFrame.index,
-            });
             target.play(animKey, true);
           }
         };
@@ -12002,17 +12073,16 @@ class GameScene extends Phaser.Scene {
         // still update players in case they were changed, but skip
         // animations/logging below
         if (Array.isArray(data.players)) {
+          // quickly sync minimal player fields to avoid rendering glitches
           this.roundData.players = data.players.map((p) => ({
             ...p,
             cards: p.cards ?? (p.myDeck ? p.myDeck.length : 0),
-            openStack: [],
+            openStack: Array.isArray(p.openStack) ? p.openStack : [],
+            openCard: p.openCard ?? null,
+            isEliminated: !!p.isEliminated,
           }));
         }
-        return;
       }
-      this.lastBellResultAt = now;
-      this.lastBellResultWinner = data.success ? data.winnerId : null;
-
       if (this.myTurnTimer) {
         this.myTurnTimer.remove();
         this.myTurnTimer = null;
@@ -12377,11 +12447,15 @@ class GameScene extends Phaser.Scene {
         }
 
         // 2. 💡 패널티 애니메이션 호출 시 '이미 업데이트된' 데이터를 직접 넘김
-        this.playPenaltyAnimation({
-          penaltyId: data.penaltyId,
-          recipients: data.recipients,
-          players: updatedPlayers, // 👈 중요!
-        });
+        if (Array.isArray(updatedPlayers)) {
+          this.playPenaltyAnimation({
+            penaltyId: data.penaltyId,
+            recipients: data.recipients,
+            players: updatedPlayers, // 👈 중요!
+          });
+        } else {
+          console.warn("playPenaltyAnimation called with invalid updatedPlayers", updatedPlayers);
+        }
 
         // 💡 [수정] roundData 업데이트는 playPenaltyAnimation 내부에서 처리됨
         // this.roundData.players = updatedPlayers; (제거 - 바닥 카드 보존을 위해)
@@ -12685,7 +12759,6 @@ class GameScene extends Phaser.Scene {
     });
 
     socket.off("gameEnded").on("gameEnded", (data) => {
-      console.log("[CLIENT] gameEnded event", data);
       this._renderTableScheduled = false; // 게임 종료 시 다음 게임 시작을 위해 스케줄 상태 초기화
       const isMultiplayerWin = !this.isSingle && data && data.winnerId === socket.id;
       // Count multiplayer participation once per match. It should only increase when
@@ -12715,11 +12788,9 @@ class GameScene extends Phaser.Scene {
         // debug: report why win wasn't counted
       }
       if (data && data.serverDebug) {
-        console.log("[CLIENT] serverDebug:");
         data.serverDebug.forEach((ln) => console.log("  ", ln));
       }
       if (data && data.avetimeById) {
-        console.log("[CLIENT] avetimeById:", data.avetimeById);
       }
       // sync final average reaction time when match ends
       // Prefer instance method `this.emitInventory` when available; fall back
@@ -12774,11 +12845,7 @@ class GameScene extends Phaser.Scene {
       try {
         const currentLevel = Number(this.myProfile?.level) || 1;
         const currentExperience = Number(this.myProfile?.experience) || 0;
-        console.log("[CLIENT] requestProfileSync received, sending final profile", {
-          level: currentLevel,
-          experience: currentExperience,
-        });
-
+   
         // Send a dedicated final sync event so the server can reliably
         // update finalizeGame values even if the normal sync path is skipped.
         socket.emit("finalProfileSync", {
@@ -13019,12 +13086,9 @@ class GameScene extends Phaser.Scene {
   }
 
   renderTable(players) {
-    console.log("renderTable called with players:", players);
-
     // Prevent renderTable from being called repeatedly in the same frame.
     // This reduces stutter when many network updates arrive quickly.
     if (this._renderTableScheduled) {
-          console.log("renderTable renderscheduled:", this._renderTableScheduled);
 
       this._renderTableLatestPlayers = players;
       return;
@@ -13038,7 +13102,6 @@ class GameScene extends Phaser.Scene {
         this._renderTableImmediate(this._renderTableLatestPlayers);
       }
     });
-        console.log("renderTable End");
 
   }
 
@@ -13063,10 +13126,7 @@ class GameScene extends Phaser.Scene {
       return;
     }
     try {
-      console.log("renderTable: rendering players", {
-        len: Array.isArray(players) ? players.length : 0,
-        ids: Array.isArray(players) ? players.map((p) => p && p.id) : [],
-      });
+  
     } catch (e) {}
     this.playerTableGroup.removeAll(true);
     if (this.playerTableGroup) {
@@ -13125,7 +13185,6 @@ class GameScene extends Phaser.Scene {
       };
 
       try {
-        console.log("renderTable: drawing player", { id: p.id, nickname: p.nickname, cards: p.cards });
       } catch (e) {}
 
       this.drawPlayerInfo(p, layout);
@@ -13469,7 +13528,6 @@ class GameScene extends Phaser.Scene {
 
   drawPlayerInfo(p, layout) {
     try {
-      console.log("drawPlayerInfo called", { id: p && p.id, nickname: p && p.nickname, cards: p && p.cards });
     } catch (e) {}
     const { width } = this.cameras.main;
     const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
@@ -14462,16 +14520,6 @@ class GameScene extends Phaser.Scene {
         (e) => Array.isArray(e.shielded) && e.shielded.includes(data.playerId),
       );
 
-    /*console.log(
-      "[flip] viewerId=",
-      viewerId,
-      "viewerIsIssuer=",
-      viewerIsIssuer,
-      "submitterShielded=",
-      submitterShielded,
-      "blockEffects=",
-      this.blockEffects,
-    );*/
     this.tweens.add({
       targets: tempCard,
       x: startPos.x + Math.cos(rad) * dist * 0.7 + targetOffsetX,
@@ -14658,15 +14706,7 @@ class GameScene extends Phaser.Scene {
       }
       const specialY = baseY;
 
-      console.log(
-        "[debug] showShieldEffect called for",
-        playerId,
-        "layout=",
-        layout,
-        "coords=",
-        { baseX, baseY, specialY },
-      );
-
+  
       const hasTexture =
         this.textures && this.textures.exists && this.textures.exists("shield");
       if (!hasTexture) console.warn("[debug] shield texture not available");
@@ -14756,15 +14796,6 @@ class GameScene extends Phaser.Scene {
         baseY = baseY - cardHeight * 0.5 - 8;
       }
       const lockY = baseY;
-
-      console.log(
-        "[debug] showLockEffect called for",
-        playerId,
-        "layout=",
-        layout,
-        "coords=",
-        { baseX, baseY, lockY },
-      );
 
       const hasTextureLock =
         this.textures && this.textures.exists && this.textures.exists("lock");
@@ -15212,8 +15243,6 @@ class GameScene extends Phaser.Scene {
       const normalizedResult = typeof result === 'string' ? result.toUpperCase() : result;
       const isWin = normalizedResult === 'WIN' || normalizedResult === 'WON';
 
-      console.debug('[premium] win check', { result, normalizedResult, isWin, myId, socketId: socket?.id, resolvedMyId, winnerId, playersList, hasPremiumBear, isTutorialMode: !!this.isTutorialMode, roomId: this.roundData?.roomId });
-
       const iAmWinner = !!(
         winnerId &&
         resolvedMyId &&
@@ -15222,7 +15251,7 @@ class GameScene extends Phaser.Scene {
 
       // If winner detected as me, show reward popup (even if already owned).
       if (isWin && iAmWinner) {
-        console.debug("[premium] confirmed win -> showing acquired popup", { winnerId, resolvedMyId, hasPremiumBear });
+
         const alreadyOwned = !!hasPremiumBear;
 
         // Ensure reward is unlocked locally even if user doesn't click the popup.
@@ -15234,7 +15263,6 @@ class GameScene extends Phaser.Scene {
                 return;
               }
             } catch (e) {
-              console.warn("[premium] auto-unlock failed (method)", e);
             }
 
             // Fallback: directly update profile + localStorage
@@ -15263,46 +15291,32 @@ class GameScene extends Phaser.Scene {
         }
 
         const showPremiumPopupWithFallback = () => {
-          console.log('[premium] showPremiumPopupWithFallback - using local reward popup');
-          console.log('[premium] this:', {
-            className: this?.constructor?.name,
-            showPremiumBearAcquiredPopup: typeof this.showPremiumBearAcquiredPopup,
-            createInlinePremiumBearPopup: typeof this.createInlinePremiumBearPopup,
-            hasAvailableMethod: typeof this.showPremiumBearAcquiredPopup === 'function' || typeof this.createInlinePremiumBearPopup === 'function',
-          });
 
           try {
             if (typeof this.showPremiumBearAcquiredPopup === 'function') {
-              console.log('[premium] calling showPremiumBearAcquiredPopup');
               this.showPremiumBearAcquiredPopup();
               return;
             }
           } catch (e) {
-            console.warn('[premium] showPremiumBearAcquiredPopup call failed', e);
           }
 
           const fallbackToInline = () => {
             if (typeof this.createInlinePremiumBearPopup === 'function') {
               try {
-                console.log('[premium] calling createInlinePremiumBearPopup fallback');
                 this.createInlinePremiumBearPopup();
                 return true;
               } catch (e) {
-                console.warn('[premium] createInlinePremiumBearPopup fallback failed', e);
               }
             }
 
             if (typeof window !== 'undefined' && typeof window.__halemale_showPremiumBearAcquiredPopup === 'function') {
               try {
-                console.log('[premium] calling window.__halemale_showPremiumBearAcquiredPopup fallback');
                 window.__halemale_showPremiumBearAcquiredPopup();
                 return true;
               } catch (e) {
-                console.warn('[premium] global fallback popup call failed', e);
               }
             }
 
-            console.warn('[premium] final fallback: DOM-based temporary popup');
             if (typeof document !== 'undefined') {
               try {
                 const id = 'halemale-premium-popup-fallback';
@@ -15448,7 +15462,6 @@ class GameScene extends Phaser.Scene {
       if (socket && socket.connected) {
         socket.emit("leaveRoom", { roomId }, startLobbyScene);
       } else {
-        console.debug("[returnToLobby] socket 미연결, 바로 lobby로 이동");
         startLobbyScene();
       }
       return;
@@ -15467,7 +15480,6 @@ class GameScene extends Phaser.Scene {
           this.scene.stop("GameScene");
         }
       } catch (e) {
-        console.warn("returnToLobby: stop GameScene failed", e);
       }
       this.scene.start("LobbyScene", {
         preventAutoStartSingleAfterTutorial: true,
@@ -15490,7 +15502,6 @@ class GameScene extends Phaser.Scene {
         this.scene.stop("GameScene");
       }
     } catch (e) {
-      console.warn("returnToLobby: stop GameScene failed during rejoin path", e);
     }
 
     try {
@@ -15523,7 +15534,6 @@ class GameScene extends Phaser.Scene {
           avatarKey: this.avatarKey || "player_1",
         });
       } catch (e) {
-        console.warn("returnToLobby: joinRoom emit failed", e);
       }
     }
 
@@ -16729,39 +16739,57 @@ class GameScene extends Phaser.Scene {
     );
   }
 
+  ensureQuestCoinBurst() {
+    this.playQuestCoinBurst = (x, y, amount = 12) => {
+      const coinAvailable = this.textures.exists("coin");
+      if (!coinAvailable) {
+        console.warn("[QuestCoinBurst] coin texture not available, fallback to circle");
+      }
+      const { width, height } = this.cameras.main;
+      const coinSize = width * 0.06;
+      const maxRadius = Math.min(width, height) * 0.35;
+      const burstCount = Math.min(12, Math.max(8, amount)); // 1회, 너무 많지 않도록 고정
+
+      console.debug("[QuestCoinBurst] burst start", { x, y, amount, burstCount, coinAvailable });
+
+      for (let i = 0; i < burstCount; i += 1) {
+        const angle = (Math.PI * 2 * i) / burstCount;
+        const destX = x + Math.cos(angle) * maxRadius;
+        const destY = y + Math.sin(angle) * maxRadius;
+
+        const coin = coinAvailable
+          ? this.add
+              .image(x, y, "coin")
+              .setDisplaySize(coinSize, coinSize)
+          : this.add
+              .circle(x, y, coinSize * 0.5, 0xffd700)
+              .setStrokeStyle(2, 0xffffff, 1);
+
+        coin.setDepth(4000).setAlpha(1).setScale(1);
+
+        this.tweens.add({
+          targets: coin,
+          x: destX,
+          y: destY,
+          alpha: 0,
+          scale: 0.2,
+          duration: 260,
+          ease: "Sine.easeOut",
+          onComplete: () => {
+            if (coin && coin.active) coin.destroy();
+          },
+        });
+      }
+      console.debug("[QuestCoinBurst] burst end", { x, y });
+    };
+  }
+
   handleQuestClaim(key) {
-    // helper for coin burst from claim buttons
-    if (typeof this.playQuestCoinBurst !== "function") {
-      this.playQuestCoinBurst = (x, y, amount = 12) => {
-        if (!this.textures.exists("coin")) return;
-        const { width, height } = this.cameras.main;
-        const coinSize = width * 0.04;
-        for (let i = 0; i < amount; i += 1) {
-          const coin = this.add
-            .image(x, y, "coin")
-            .setDisplaySize(coinSize, coinSize)
-            .setDepth(2000)
-            .setAlpha(1);
-          const dx = (Math.random() - 0.5) * width * 0.1;
-          const dy = -Math.random() * height * 0.2;
-          this.tweens.add({
-            targets: coin,
-            x: x + dx,
-            y: y + dy,
-            alpha: 0,
-            scale: 0.5,
-            duration: 500,
-            delay: i * 30,
-            ease: "Cubic.easeOut",
-            onComplete: () => {
-              if (coin && coin.active) coin.destroy();
-            },
-          });
-        }
-      };
-    }
+    console.debug("[handleQuestClaim] called", { key, questState: !!this.questState });
+    this.ensureQuestCoinBurst();
     if (!this.questState) return;
     const state = this.getQuestRuntimeState(key);
+    console.debug("[handleQuestClaim] state", { state });
     if (!state || !state.entry.ready) {
       if (!this.isSingle) {
         this.showToast("아직 수령할 보상이 없어요!", "#f97316");
@@ -16772,24 +16800,25 @@ class GameScene extends Phaser.Scene {
     const { quest, entry, title } = state;
     const questKey = quest.key;
     if (quest.rewardCoins) {
-      // single-play reward feedback: pop sound + coin burst at button
-      if (this.isSingle) {
-        try {
-          this.sound.play("bubble", { volume: 0.3 });
-        } catch (e) {}
-        // determine burst coordinates from the claim button if available
-        let burstX = this.cameras.main.centerX;
-        let burstY = this.cameras.main.centerY;
-        if (this.questState && this.questState.rows) {
-          const row = this.questState.rows[questKey];
-          if (row && row.claimBtn) {
-            const pt = row.claimBtn
-              .getWorldTransformMatrix()
-              .transformPoint(0, 0);
-            burstX = pt.x;
-            burstY = pt.y;
-          }
+      if (typeof this.ensureQuestCoinBurst === "function") {
+        this.ensureQuestCoinBurst();
+      }
+      try {
+        this.sound.play("bubble", { volume: 0.3 });
+      } catch (e) {}
+      let burstX = this.cameras.main.centerX;
+      let burstY = this.cameras.main.centerY;
+      if (this.questState && this.questState.rows) {
+        const row = this.questState.rows[questKey];
+        if (row && row.claimBtn) {
+          const pt = row.claimBtn
+            .getWorldTransformMatrix()
+            .transformPoint(0, 0);
+          burstX = pt.x;
+          burstY = pt.y;
         }
+      }
+      if (typeof this.playQuestCoinBurst === "function") {
         this.playQuestCoinBurst(burstX, burstY, quest.rewardCoins);
       }
       this.rewardQuestCoins(quest.rewardCoins, title, questKey);
