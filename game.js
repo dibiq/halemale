@@ -853,6 +853,27 @@ class LobbyScene extends Phaser.Scene {
     }
   }
 
+  ensureQuestCoinBurst() {
+    if (typeof this.playQuestCoinBurst === "function") return;
+
+    this.playQuestCoinBurst = (x, y, amount = 0) => {
+      try {
+        if (typeof this.showCoinBurst === "function") {
+          this.showCoinBurst(x, y, amount);
+          return;
+        }
+
+        showCoinBurstEffect(this, x, y, amount);
+      } catch (e) {
+        console.warn("LobbyScene playQuestCoinBurst fallback failed", e);
+        try {
+          showCoinBurstEffect(this, x, y, amount);
+        } catch (err) {
+          // ignore
+        }
+      }
+    };
+  }
 
   init(data = {}) {
     // 1. 필요한 상태를 미리 체크 (비동기)
@@ -17061,47 +17082,20 @@ class GameScene extends Phaser.Scene {
   }
 
   ensureQuestCoinBurst() {
+    if (typeof this.playQuestCoinBurst === "function") return;
+
     this.playQuestCoinBurst = (x, y, amount = 12) => {
-      const coinAvailable = this.textures.exists("coin");
-      if (!coinAvailable) {
-        console.warn("[QuestCoinBurst] coin texture not available, fallback to circle");
+      try {
+        // 메인(출석보상+퀘스트)에서 사용하는 showCoinBurstEffect 스타일로 통일
+        showCoinBurstEffect(this, x, y, amount);
+      } catch (e) {
+        console.warn("ensureQuestCoinBurst fallback failed", e);
+        try {
+          showCoinBurstEffect(this, x, y, amount);
+        } catch (inner) {
+          console.warn("ensureQuestCoinBurst final fallback failed", inner);
+        }
       }
-      const { width, height } = this.cameras.main;
-      const coinSize = width * 0.06;
-      const maxRadius = Math.min(width, height) * 0.35;
-      const burstCount = Math.min(12, Math.max(8, amount)); // 1회, 너무 많지 않도록 고정
-
-      console.debug("[QuestCoinBurst] burst start", { x, y, amount, burstCount, coinAvailable });
-
-      for (let i = 0; i < burstCount; i += 1) {
-        const angle = (Math.PI * 2 * i) / burstCount;
-        const destX = x + Math.cos(angle) * maxRadius;
-        const destY = y + Math.sin(angle) * maxRadius;
-
-        const coin = coinAvailable
-          ? this.add
-              .image(x, y, "coin")
-              .setDisplaySize(coinSize, coinSize)
-          : this.add
-              .circle(x, y, coinSize * 0.5, 0xffd700)
-              .setStrokeStyle(2, 0xffffff, 1);
-
-        coin.setDepth(4000).setAlpha(1).setScale(1);
-
-        this.tweens.add({
-          targets: coin,
-          x: destX,
-          y: destY,
-          alpha: 0,
-          scale: 0.2,
-          duration: 260,
-          ease: "Sine.easeOut",
-          onComplete: () => {
-            if (coin && coin.active) coin.destroy();
-          },
-        });
-      }
-      console.debug("[QuestCoinBurst] burst end", { x, y });
     };
   }
 
