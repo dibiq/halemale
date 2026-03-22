@@ -351,35 +351,32 @@ socket.off("serverHello").on("serverHello", (payload) => {
 });
 
 // -----------------------------------------------------------------------------
-// utility for cutting player_2_sprite into 10 frames (columns)
+// utility for cutting player sprite sheet into frames (columns)
 // called early in both LobbyScene and GameScene so UI can display when owned.
-function ensurePlayer2Frames(scene) {
+function ensurePlayerFrames(scene, spriteKey, prefix) {
   try {
     if (!scene || !scene.textures) {
       return;
     }
-    // must have the base sprite loaded first
-    if (!scene.textures.exists("player_2_sprite")) {
+    if (!scene.textures.exists(spriteKey)) {
       return;
     }
-    const tex = scene.textures.get("player_2_sprite");
+    const tex = scene.textures.get(spriteKey);
     const img = tex.getSourceImage();
     if (!img || !img.width || !img.height) {
       return;
     }
 
-    const cols = 10; // sprite is known to be a 10×10 grid
+    const cols = 10;
+    const rows = 10;
     const w = img.width;
     const h = img.height;
     const frameW = Math.floor(w / cols) || w;
-    const rows = 10; // fixed
     const frameH = Math.floor(h / rows) || h;
 
     let idx = 1;
-    let created = 0;
     for (let r = 0; r < rows; r += 1) {
       for (let c = 0; c < cols; c += 1) {
-        // extract into temporary canvas to examine pixels
         const temp = document.createElement("canvas");
         temp.width = frameW;
         temp.height = frameH;
@@ -394,21 +391,26 @@ function ensurePlayer2Frames(scene) {
           }
         }
         if (!nonEmpty) {
-          // skip blank cell
           continue;
         }
-        const key = `player_2_${idx}`;
+
+        const key = `${prefix}_${idx}`;
         idx += 1;
         if (scene.textures.exists(key)) continue;
-        const canvas = scene.textures.createCanvas(key, frameW, frameH);
-        const ctx = canvas.getContext();
+
+        const canvasTex = scene.textures.createCanvas(key, frameW, frameH);
+        const ctx = canvasTex.getContext();
         ctx.drawImage(img, -c * frameW, -r * frameH);
-        canvas.refresh();
-        created++;
+        canvasTex.refresh();
       }
     }
   } catch (e) {
+    // ignore
   }
+}
+
+function ensurePlayer2Frames(scene) {
+  ensurePlayerFrames(scene, "player_2_sprite", "player_2");
 }
 
 function ensureMainbgFrames(scene) {
@@ -648,9 +650,51 @@ class LobbyScene extends Phaser.Scene {
       scene = this;
     }
     const animKey = scene.getAvatarAnimKey(baseKey);
-    if (scene.anims.exists(animKey)) {
-      return animKey;
+
+    // If animation already exists but frame set may have grown (deferred loading),
+    // late-rebuild for updated sprite data.
+    const existingAnim = scene.anims.get(animKey);
+    if (existingAnim && existingAnim.frames && existingAnim.frames.length > 0) {
+      const existingFrameKeys = new Set(existingAnim.frames.map((f) => f.textureKey));
+      const candidateKeys = [];
+      if (baseKey === "player_1") {
+        if (scene.textures.exists("player_1_frame_1")) {
+          let idx = 1;
+          while (scene.textures.exists(`player_1_frame_${idx}`)) {
+            candidateKeys.push(`player_1_frame_${idx}`);
+            idx += 1;
+          }
+        }
+      } else if (baseKey === "player_2") {
+        let idx = 1;
+        while (scene.textures.exists(`player_2_${idx}`)) {
+          candidateKeys.push(`player_2_${idx}`);
+          idx += 1;
+        }
+        if (candidateKeys.length <= 1 && scene.textures.exists("player_2_frame_1")) {
+          idx = 1;
+          while (scene.textures.exists(`player_2_frame_${idx}`)) {
+            candidateKeys.push(`player_2_frame_${idx}`);
+            idx += 1;
+          }
+        }
+      } else {
+        const maxFrame = this.getAvatarAnimMaxFrame(baseKey);
+        for (let frame = 1; frame <= maxFrame; frame += 1) {
+          if (scene.textures.exists(`${baseKey}_${frame}`)) {
+            candidateKeys.push(`${baseKey}_${frame}`);
+          }
+        }
+      }
+
+      const hasNewFrames = candidateKeys.some((k) => !existingFrameKeys.has(k));
+      if (!hasNewFrames) {
+        return animKey;
+      }
+
+      scene.anims.remove(animKey);
     }
+
     try {
       if (baseKey === "player_1") {
         if (this.textures.exists("player_1_frame_1")) {
@@ -677,29 +721,8 @@ class LobbyScene extends Phaser.Scene {
         }
       }
       if (baseKey === "player_2") {
-        if (this.textures.exists("player_2_frame_1")) {
-          const frames = [];
-          let idx = 1;
-          while (true) {
-            const textureKey = `player_2_frame_${idx}`;
-            if (this.textures.exists(textureKey)) {
-              frames.push({ key: textureKey });
-              idx += 1;
-              continue;
-            }
-            break;
-          }
-          if (frames.length > 0) {
-            this.anims.create({
-              key: animKey,
-              frames,
-              frameRate: this.getAvatarAnimFrameRate(baseKey),
-              repeat: -1,
-            });
-            return animKey;
-          }
-        }
-        const frames = [];
+        // 1) Prefer player_2_# frames (generated by ensurePlayer2Frames)
+        let frames = [];
         let idx = 1;
         while (true) {
           const textureKey = `player_2_${idx}`;
@@ -710,7 +733,7 @@ class LobbyScene extends Phaser.Scene {
           }
           break;
         }
-        if (frames.length > 0) {
+        if (frames.length > 1) {
           this.anims.create({
             key: animKey,
             frames,
@@ -718,6 +741,75 @@ class LobbyScene extends Phaser.Scene {
             repeat: -1,
           });
           return animKey;
+        }
+
+        // 2) Fallback to player_2_frame_# sequence
+        if (this.textures.exists("player_2_frame_1")) {
+          frames = [];
+          idx = 1;
+          while (true) {
+            const textureKey = `player_2_frame_${idx}`;
+            if (this.textures.exists(textureKey)) {
+              frames.push({ key: textureKey });
+              idx += 1;
+              continue;
+            }
+            break;
+          }
+          if (frames.length > 1) {
+            this.anims.create({
+              key: animKey,
+              frames,
+              frameRate: this.getAvatarAnimFrameRate(baseKey),
+              repeat: -1,
+            });
+            return animKey;
+          }
+        }
+
+        // 3) If only a single texture exists, still create an animation to avoid no-play states.
+        frames = [];
+        idx = 1;
+        while (true) {
+          const textureKey = `player_2_${idx}`;
+          if (this.textures.exists(textureKey)) {
+            frames.push({ key: textureKey });
+            idx += 1;
+            continue;
+          }
+          break;
+        }
+        if (frames.length === 1) {
+          this.anims.create({
+            key: animKey,
+            frames,
+            frameRate: this.getAvatarAnimFrameRate(baseKey),
+            repeat: -1,
+          });
+          return animKey;
+        }
+
+        if (this.textures.exists("player_2_frame_1")) {
+          frames = [];
+          idx = 1;
+          while (true) {
+            const textureKey = `player_2_frame_${idx}`;
+            if (this.textures.exists(textureKey)) {
+              frames.push({ key: textureKey });
+              idx += 1;
+              continue;
+            }
+            break;
+          }
+          if (frames.length === 1) {
+            this.anims.create({
+              key: animKey,
+              frames,
+              frameRate: this.getAvatarAnimFrameRate(baseKey),
+              repeat: -1,
+            });
+            return animKey;
+          }
         }
       }
       const maxFrame = this.getAvatarAnimMaxFrame(baseKey);
@@ -1343,15 +1435,46 @@ class LobbyScene extends Phaser.Scene {
     const width = cam?.width || (this.scale && this.scale.width) || 0;
     const height = cam?.height || (this.scale && this.scale.height) || 0;
     const centerX = width ? width * 0.5 : 0;
+    const centerY = height ? height * 0.5 : 0;
 
-    const loadingText = this.add
-      .text(centerX, height * 0.9, "케릭터 잠 깨는 중...", {
+    // 추가 리소스 로딩 오버레이 표시
+    const overlayBg = this.add
+      .rectangle(0, 0, width, height, 0x000000, 0.7)
+      .setOrigin(0)
+      .setDepth(10000)
+      .setInteractive();
+
+    const overlayContainer = this.add
+      .container(0, 0)
+      .setDepth(10001);
+
+    const titleText = this.add
+      .text(centerX, centerY - 28, "추가 리소스 로딩중", {
         fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.035}px`,
+        fontSize: `${Math.max(18, width * 0.045)}px`,
+        color: "#ffffff",
+        fontStyle: "bold",
+      })
+      .setOrigin(0.5);
+
+    const progressText = this.add
+      .text(centerX, centerY + 20, "로딩 중... 0%", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${Math.max(16, width * 0.035)}px`,
         color: "#ffffff",
       })
-      .setOrigin(0.5)
-      .setDepth(5000);
+      .setOrigin(0.5);
+
+    overlayContainer.add([overlayBg, titleText, progressText]);
+    this._deferredLoadingOverlay = overlayContainer;
+
+    this._deferredLoadingProgressHandler = (value) => {
+      if (progressText && progressText.active) {
+        progressText.setText(`로딩 중... ${Math.floor((value || 0) * 100)}%`);
+      }
+    };
+
+    this.load.on("progress", this._deferredLoadingProgressHandler);
 
     const ASSET_SERVER = "https://halemale.onrender.com/assets";
     const VERSION = "?v=2";
@@ -1389,8 +1512,13 @@ class LobbyScene extends Phaser.Scene {
     }
 
     this.load.once("complete", () => {
-      if (loadingText && loadingText.active) {
-        loadingText.destroy();
+      if (this._deferredLoadingProgressHandler) {
+        this.load.off("progress", this._deferredLoadingProgressHandler);
+        this._deferredLoadingProgressHandler = null;
+      }
+      if (this._deferredLoadingOverlay) {
+        this._deferredLoadingOverlay.destroy();
+        this._deferredLoadingOverlay = null;
       }
       this._deferredAssetsLoaded = true;
       this._deferredAssetsLoading = false;
@@ -1439,8 +1567,9 @@ class LobbyScene extends Phaser.Scene {
     // Reset game-over sound guard per game session
     this.resultGameoverPlayed = false;
     this._lastResultPlayersHash = null;
-    // ensure player2 frames exist for lobby avatars
-    ensurePlayer2Frames(this);
+    // ensure player frames exist for lobby avatars
+    ensurePlayerFrames(this, "player_1_sprite", "player_1");
+    ensurePlayerFrames(this, "player_2_sprite", "player_2");
 
     this.currentJoinPopupCloseHandler = null;
     this.currentShopPopupCloseHandler = null;
@@ -6130,19 +6259,40 @@ class LobbyScene extends Phaser.Scene {
         let avatarSprite = null;
         try {
           const key = character.key;
+
+          // ensure frame sequence is generated for both players with the sprite sheet
+          if (key === "player_1" || key === "player_2") {
+            ensurePlayerFrames(this, "player_1_sprite", "player_1");
+            ensurePlayerFrames(this, "player_2_sprite", "player_2");
+          }
+
           let avatarTexture = null;
           if (this.textures.exists(`${key}_1`)) {
             avatarTexture = `${key}_1`;
           } else if (this.textures.exists(`${key}`)) {
             avatarTexture = `${key}`;
-          }
-          if (!avatarTexture && this.textures.exists("player_1_frame_1")) {
+          } else if (this.textures.exists(`${key}_frame_1`)) {
+            avatarTexture = `${key}_frame_1`;
+          } else if (this.textures.exists(`${key}_sprite`)) {
+            avatarTexture = `${key}_sprite`;
+          } else if (this.textures.exists("player_1_frame_1")) {
             avatarTexture = "player_1_frame_1";
           }
+
           avatarSprite = this.add
             .sprite(0, height * 0.0, avatarTexture)
             .setDisplaySize(width * 0.3, width * 0.3);
-          this.applyAvatarAnimation(avatarSprite, character.key);
+
+          const animKey = this.ensureAvatarAnimation(character.key);
+          if (avatarSprite && animKey && avatarSprite.anims) {
+            try {
+              avatarSprite.play(animKey, true);
+            } catch (err) {
+              console.warn("shop avatar animation play failed", err);
+            }
+          } else {
+            this.applyAvatarAnimation(avatarSprite, character.key);
+          }
         } catch (e) {
           console.warn("shop avatar sprite error", e);
         }
@@ -6721,6 +6871,18 @@ class LobbyScene extends Phaser.Scene {
       .image(centerX, centerY, "invitebg")
       .setDisplaySize(panelW, panelH);
 
+    const titleText = this.add
+      .text(centerX, centerY - panelH * 0.5, "퀘스트", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${Math.max(24, width * 0.1)}px`,
+        color: "#ffffff",
+        fontWeight: "bold",
+        stroke: "#000000",
+        strokeThickness: 4,
+      })
+      .setOrigin(0.5)
+      .setDepth(4002);
+
     const closeBtn = this.add
       .image(centerX + panelW * 0.42, centerY - panelH * 0.42, "popupclose")
       .setDisplaySize(width * 0.1, width * 0.1)
@@ -6736,7 +6898,7 @@ class LobbyScene extends Phaser.Scene {
       this.closeQuestPopup();
     });
 
-    this.questPopupContainer.add([overlay, popupBg]);
+    this.questPopupContainer.add([overlay, popupBg, titleText]);
 
     const snapshot = this.buildQuestPopupSnapshot();
     const rowHeight = Math.max(height * 0.055, 40);
@@ -9131,8 +9293,19 @@ class LobbyScene extends Phaser.Scene {
       .setDepth(4001)
       .setDisplaySize(width * 0.78, height * 0.26);
 
+    const titleText = this.add
+      .text(centerX, centerY - 65, "출석체크", {
+        fontFamily:
+          typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
+        fontSize: `${width * 0.045}px`,
+        color: "#ffffff",
+        fontWeight: "bold",
+      })
+      .setOrigin(0.5)
+      .setDepth(4002);
+
     const msgText = this.add
-      .text(centerX, centerY - 30, message, {
+      .text(centerX, centerY - 15, message, {
         fontFamily:
           typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
         fontSize: `${width * 0.04}px`,
@@ -9144,7 +9317,7 @@ class LobbyScene extends Phaser.Scene {
       .setDepth(4002);
 
     const closePopup = () => {
-      [overlay, popupBg, msgText, okBtn, okTxt].forEach((el) => {
+      [overlay, popupBg, titleText, msgText, okBtn, okTxt, closeBtn].forEach((el) => {
         if (el) el.destroy();
       });
       this.isJoinPopupOpen = false;
@@ -9210,6 +9383,18 @@ class LobbyScene extends Phaser.Scene {
       .image(centerX, centerY, "invitebg")
       .setDepth(4001)
       .setDisplaySize(panelW * 1.1, panelH * 0.6);
+
+    const titleText = this.add
+      .text(centerX, centerY - panelH * 0.35, "출석체크", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${Math.max(54, width * 0.1)}px`,
+        color: "#ffffff",
+        fontWeight: "bold",
+        stroke: "#000000",
+        strokeThickness: 4,
+      })
+      .setOrigin(0.5)
+      .setDepth(4003);
 
     // close button like quest popup
     const closeBtn = this.add
@@ -9470,7 +9655,7 @@ class LobbyScene extends Phaser.Scene {
       .setDepth(4003);
 
     const closePopup = () => {
-      [overlay, popupBg, closeBtn, helperText, ...rows].forEach((el) => {
+      [overlay, popupBg, titleText, closeBtn, helperText, ...rows].forEach((el) => {
         if (el) el.destroy();
       });
 
@@ -10690,10 +10875,7 @@ class GameScene extends Phaser.Scene {
       }
       target.y = avatarBaseY + target.displayHeight * 0.5;
       // set initial texture for player1 or player2
-      const firstFrameKey =
-        baseKey === "player_1" && this.textures.exists("player_1_frame_1")
-          ? "player_1_frame_1"
-          : `${baseKey}_1`;
+      const firstFrameKey = this.getAvatarDisplayKey(baseKey) || `${baseKey}_1`;
       if (this.textures.exists(firstFrameKey)) {
         target.setTexture(firstFrameKey);
       }
@@ -11162,22 +11344,22 @@ class GameScene extends Phaser.Scene {
       };
     });
 
-    // 싱글플레이에서는 AI 제출 속도를 더 빠르게 만든다 (약 30% 빠르게).
-    // (기존 delay 값에 0.7을 곱해 속도를 높임)
-    if (this.isSingle) {
+    // 싱글플레이(튜토리얼 제외)에서는 봇의 정답 반응 속도를 느리게 만든다 (약 1.5배).
+    // 튜토리얼 중에는 AI가 강하게 도와주기 때문에 이 제한을 적용하지 않는다.
+    if (this.isSingle && !this.isTutorialMode) {
       this.aiSettings = this.aiSettings.map((ai) => ({
         ...ai,
-        reactionTime: Math.max(120, Math.round(ai.reactionTime * 0.7)),
-        flipDelay: Math.max(250, Math.round(ai.flipDelay * 0.7)),
+        reactionTime: Math.round(Math.max(120, ai.reactionTime) * 1.3),
+        flipDelay: Math.round(Math.max(250, ai.flipDelay) * 1.2),
       }));
     }
 
-    // 싱글플레이 하드 모드에서는 AI가 정답을 판단하고 클릭하는 반응 속도를 추가로 느리게 한다.
-    // (원래 속도에 비해 약 1.5배 느리게)
-    if (this.isSingle && this.roundData?.aiDifficulty === "hard") {
+    // 싱글플레이 하드 모드에서는 추가로 더 느리게 한다 (강조용).
+    if (this.isSingle && !this.isTutorialMode && this.roundData?.aiDifficulty === "hard") {
       this.aiSettings = this.aiSettings.map((ai) => ({
         ...ai,
-        reactionTime: Math.round(ai.reactionTime * 1.5),
+        reactionTime: Math.round(ai.reactionTime * 1.2),
+        flipDelay: Math.round(ai.flipDelay * 1.1),
       }));
     }
 
