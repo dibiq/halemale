@@ -3567,6 +3567,18 @@ class LobbyScene extends Phaser.Scene {
     }
 
     const prev = this.myProfile || {};
+    const prevRatioVal = Number(prev.ratio);
+    const incomingRatioRaw = Number(profile.ratio);
+    const incomingRatio =
+      Number.isFinite(incomingRatioRaw) && incomingRatioRaw >= 0
+        ? incomingRatioRaw
+        : null;
+    const initialRatio =
+      incomingRatio !== null
+        ? incomingRatio
+        : Number.isFinite(prevRatioVal) && prevRatioVal >= 0
+        ? prevRatioVal
+        : 0;
     const prevLevel = Number(prev.level) || 1;
     const hasIncomingStats =
       typeof profile.level !== "undefined" ||
@@ -3620,7 +3632,7 @@ class LobbyScene extends Phaser.Scene {
       experience: Number(profile.experience ?? prev.experience ?? 0) || 0,
       // ratio is derived from bell stats (bellCorrect/bellTotal)
       // to avoid relying on an inconsistent cached value.
-      ratio: Number(prev.ratio ?? 0) || 0,
+      ratio: initialRatio,
       owned_characters: normalizedOwnedCharacters,
       current_character: normalizedCurrentCharacter,
       avatarKey: normalizedAvatarKey,
@@ -3651,9 +3663,12 @@ class LobbyScene extends Phaser.Scene {
 
     // If bell totals are available, derive ratio from them to ensure continuity
     if (this.bellStats.total > 0) {
-      this.myProfile.ratio = Math.round(
+      const derivedRatio = Math.round(
         (this.bellStats.correct / this.bellStats.total) * 100,
       );
+      if (Number.isFinite(derivedRatio) && derivedRatio >= 0) {
+        this.myProfile.ratio = derivedRatio;
+      }
     }
 
     if (typeof window !== "undefined") {
@@ -10283,6 +10298,8 @@ class GameScene extends Phaser.Scene {
 
     // reaction time samples recorded during the current game
     this.reactionTimes = [];
+    // Game-end state flag for avoiding late `bellResult` accuracy drift.
+    this.isGameEnded = false;
     // Toggle optimistic (client-side) flip animations in multiplayer.
     // Set to false to make multiplayer use the same server-driven animation
     // flow as singleplayer.
@@ -10300,6 +10317,18 @@ class GameScene extends Phaser.Scene {
     try {
       // identical logic to LobbyScene version; keeps game UI in sync
       const prev = this.myProfile || {};
+      const prevRatioVal = Number(prev.ratio);
+      const incomingRatioRaw = Number(profile.ratio);
+      const incomingRatio =
+        Number.isFinite(incomingRatioRaw) && incomingRatioRaw >= 0
+          ? incomingRatioRaw
+          : null;
+      const initialRatio =
+        incomingRatio !== null
+          ? incomingRatio
+          : Number.isFinite(prevRatioVal) && prevRatioVal >= 0
+          ? prevRatioVal
+          : 0;
     const prevLevel = Number(prev.level) || 1;
     const hasIncomingStats =
       typeof profile.level !== "undefined" ||
@@ -10350,6 +10379,7 @@ class GameScene extends Phaser.Scene {
       level: Number(profile.level ?? prev.level ?? 1) || 1,
       coins: Number(profile.coins ?? prev.coins ?? 0) || 0,
       experience: Number(profile.experience ?? prev.experience ?? 0) || 0,
+      ratio: initialRatio,
       owned_characters: normalizedOwnedCharacters,
       current_character: normalizedCurrentCharacter,
       avatarKey: normalizedAvatarKey,
@@ -11977,6 +12007,7 @@ class GameScene extends Phaser.Scene {
           data && typeof data.isSingle === "boolean"
             ? data.isSingle
             : this.isSingle;
+        this.isGameEnded = false; // 새 게임 시작 시 종료 플래그 리셋
         this.isGameStarted = true;
         this.isGameReady = true;
         this.lastEliminationEffectAtByPlayer = {};
@@ -13082,6 +13113,9 @@ class GameScene extends Phaser.Scene {
         }
       }
 
+      // mark game ended to avoid terminal bell events affecting ratio
+      this.isGameEnded = true;
+
       if (isMultiplayerWin) {
 
         // Use the class prototype method if possible (to avoid instance overrides).
@@ -13107,6 +13141,9 @@ class GameScene extends Phaser.Scene {
       // sync final average reaction time when match ends
       // Prefer instance method `this.emitInventory` when available; fall back
       // to a global `emitInventory` if present. Protect against ReferenceError.
+
+      // allow next match to recompute ratio properly
+      this.isGameEnded = true;
       try {
         if (typeof this.emitInventory === 'function') {
           this.emitInventory('final', {
@@ -17500,6 +17537,15 @@ class GameScene extends Phaser.Scene {
   }
 
   updateBellAccuracy({ correct = 0, total = 0 } = {}) {
+    // 게임 종료 직후의 추가 bell 이벤트는 정확도에 반영하지 않는다.
+    if (this.isGameEnded) {
+      console.debug("updateBellAccuracy skipped because game ended", {
+        correct,
+        total,
+      });
+      return;
+    }
+
     try {
       if (!this.bellStats) {
         this.bellStats = { correct: 0, total: 0 };
@@ -17529,10 +17575,9 @@ class GameScene extends Phaser.Scene {
 
       this.bellStats.correct += Number(correct) || 0;
       this.bellStats.total += Number(total) || 0;
-      const ratio =
-        this.bellStats.total > 0
-          ? Math.round((this.bellStats.correct / this.bellStats.total) * 100)
-          : 0;
+      const ratio = this.bellStats.total > 0
+        ? Math.round((this.bellStats.correct / this.bellStats.total) * 100)
+        : (Number(this.myProfile?.ratio) || 0);
       this.myProfile = this.myProfile || {};
       this.myProfile.ratio = ratio;
       if (this.profileRatioTxt && typeof this.profileRatioTxt.setText === "function") {
