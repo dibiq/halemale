@@ -2350,7 +2350,16 @@ class LobbyScene extends Phaser.Scene {
         // 특수카드는 서버 전용으로 관리, 로컬스토리지 저장하지 않음
       }
 
-      this.updateMyProfileUI(profile);
+      // 멀티플레이 결과(JUDGEMENT) 동안 코인/프로필 업데이트를 지연.
+      // 종료 시점에 서버가 프로필을 푸시하면, 결과 연출이 끝난 후 반영해야 어색함을 줄임.
+if (this.isGameEnded || this.isResultOverlayActive) {
+        this._deferredMyProfile = profile;
+        console.debug("myProfile update deferred until post-result", {
+          profile,
+        });
+      } else {
+        this.updateMyProfileUI(profile);
+      }
       this.hasServerProfileSnapshot = true;
 
       try {
@@ -2404,18 +2413,22 @@ class LobbyScene extends Phaser.Scene {
       if (amount <= 0) return;
 
       if (this.myProfile) {
-        this.myProfile.coins =
-          Number(payload.totalCoins) || Number(this.myProfile.coins) || 0;
-        this.updateMyProfileUI();
+        if (Number.isFinite(Number(payload.totalCoins))) {
+          this.setCoinsAbsolute(Number(payload.totalCoins), { sync: false });
+        } else {
+          this.updateMyProfileUI();
+        }
       }
 
-      if (this.shopCoinText && this.myProfile) {
-        this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
-      }
-      if (this.coinShopCurrentCoinText && this.myProfile) {
-        this.coinShopCurrentCoinText.setText(
-          `현재 보유: 💰 ${this.myProfile.coins}`,
-        );
+      if (!(this.isGameEnded && !this.isSingle)) {
+        if (this.shopCoinText && this.myProfile) {
+          this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
+        }
+        if (this.coinShopCurrentCoinText && this.myProfile) {
+          this.coinShopCurrentCoinText.setText(
+            `현재 보유: 💰 ${this.myProfile.coins}`,
+          );
+        }
       }
 
       // no toast needed; reward is shown on panel itself
@@ -2456,14 +2469,7 @@ class LobbyScene extends Phaser.Scene {
 
       // 서버 응답 기반으로 UI만 업데이트 (로컬스토리지 저장 없음)
       if (data && typeof data.newCoins === "number") {
-        this.myProfile.coins = data.newCoins;
-
-        // 상점이 열려있다면 코인 표시 업데이트
-        if (this.shopCoinText) {
-          this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
-        }
-
-        this.updateMyProfileUI();
+        this.setCoinsAbsolute(Number(data.newCoins), { sync: false });
       }
 
       // 케릭터 착용만 처리 (소유권은 myProfile 이벤트에서 처리)
@@ -2522,18 +2528,7 @@ class LobbyScene extends Phaser.Scene {
       }
 
       if (data && typeof data.newCoins === "number") {
-        this.myProfile.coins = data.newCoins;
-        this.updateMyProfileUI();
-
-        // 상점 UI가 열려있다면 업데이트
-        if (this.shopCoinText) {
-          this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
-        }
-        if (this.coinShopCurrentCoinText) {
-          this.coinShopCurrentCoinText.setText(
-            `현재 보유: 💰 ${this.myProfile.coins}`,
-          );
-        }
+        this.setCoinsAbsolute(Number(data.newCoins), { sync: false });
       }
     });
 
@@ -3549,7 +3544,65 @@ class LobbyScene extends Phaser.Scene {
     });
   }
 
+  applyDeferredProfileUpdates() {
+    if (!this._deferredMyProfile) return;
+
+    this._isApplyingDeferredProfile = true;
+    try {
+      this.updateMyProfileUI(this._deferredMyProfile);
+    } catch (e) {
+      console.warn("applyDeferredProfileUpdates failed", e);
+    }
+    this._isApplyingDeferredProfile = false;
+    this._deferredMyProfile = null;
+    // After applying any server snapshot, also apply deferred coin deltas
+    try {
+      this.applyDeferredCoins();
+    } catch (e) {
+      console.warn('applyDeferredProfileUpdates -> applyDeferredCoins failed', e);
+    }
+  }
+
+  // Helper to set the detailed '보유코인' label (long form). Skips on multiplayer game end.
+  setProfileCoinLabel(text) {
+    try {
+      if (this.isGameEnded && !this.isSingle) {
+        console.debug('setProfileCoinLabel skipped due to game end', { text });
+        return;
+      }
+      if (this.profileCoinTxt && this.profileCoinTxt.active && typeof this.profileCoinTxt.setText === 'function') {
+        this.profileCoinTxt.setText(text);
+      }
+    } catch (e) {
+      console.warn('setProfileCoinLabel failed', e);
+    }
+  }
+
+  // Helper to set the compact profile coin text (e.g. 'X 123'). Skips on multiplayer game end.
+  setProfileCoinShort(text) {
+    try {
+      if (this.isGameEnded && !this.isSingle) {
+        console.debug('setProfileCoinShort skipped due to game end', { text });
+        return;
+      }
+      if (this.profileCoinText && this.profileCoinText.active && typeof this.profileCoinText.setText === 'function') {
+        this.profileCoinText.setText(text);
+      }
+    } catch (e) {
+      console.warn('setProfileCoinShort failed', e);
+    }
+  }
+ 
+
   updateMyProfileUI(profile = {}) {
+    // 게임 종료 후에는 즉시 프로필을 갱신하지 않고, 결과 시상 연출 중에만 최종 갱신을 적용하도록 합니다.
+    if (this.isGameEnded && !this._isApplyingDeferredProfile) {
+      console.debug("updateMyProfileUI skipped because game ended", {
+        profile,
+      });
+      return;
+    }
+
     // In singleplayer we do not show/update multiplayer profile UI.
     // Guard against stale/destroyed text objects from a previous multiplayer session.
     if (
@@ -3717,6 +3770,8 @@ class LobbyScene extends Phaser.Scene {
       safeSetText(this.profileNameTxt, this.myProfile.nickname || '');
       safeSetText(this.profileLevelTxt, `Lv ${this.myProfile.level}`);
       safeSetText(this.profileCoinsTxt, `Coins: ${this.myProfile.coins}`);
+      // also update detailed profile label (guarded inside helper)
+      this.setProfileCoinLabel(`보유코인: ${this.myProfile.coins}`);
       return;
     }
 
@@ -3727,6 +3782,12 @@ class LobbyScene extends Phaser.Scene {
     );
     safeSetText(this.profileCoinText, `X ${this.myProfile.coins}`);
     // also update game-screen card if present
+    // 멀티플레이에서 게임 종료 후 하단 우측 UI(반응속도/정답률/보유코인)는 업데이트하지 않음
+    if (this.isGameEnded && !this.isSingle && !this._isApplyingDeferredProfile) {
+      console.debug('skip bottom-right UI update (updateMyProfileUI early)', { profile });
+      return;
+    }
+
     safeSetText(this.profileNameTxt, this.myProfile.nickname || "");
     safeSetText(this.profileLevelTxt, `Lv ${this.myProfile.level}`);
     safeSetText(this.profileCoinsTxt, `Coins: ${this.myProfile.coins}`);
@@ -6495,7 +6556,7 @@ class LobbyScene extends Phaser.Scene {
           JSON.parse(localStorage.getItem("specialCards") || "{}") || {};
 
         if (currentCoins >= price) {
-          this.myProfile.coins = currentCoins - price;
+          this.modifyCoins(Number(0 - price) || -price, { sync: true });
 
           // Quest counter update should never block the purchase flow.
           try {
@@ -6519,8 +6580,7 @@ class LobbyScene extends Phaser.Scene {
             console.warn("localStorage specialCards write failed", e);
           }
 
-          this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
-          this.updateMyProfileUI();
+          // UI updated by modifyCoins
 
           if (!this.isSingle && socket.connected) {
             socket.emit("buySpecialCard", {
@@ -6627,7 +6687,9 @@ class LobbyScene extends Phaser.Scene {
         } else {
           // 싱글플레이어 모드에서만 로컬 처리
           this.myProfile.coins -= character.price;
-          this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
+          if (!(this.isGameEnded && !this.isSingle)) {
+            this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
+          }
 
           ownedCharacters[character.key] = true;
           saveOwnedCharacters(ownedCharacters);
@@ -7043,11 +7105,7 @@ class LobbyScene extends Phaser.Scene {
               // Fallback: some builds may lose method binding, so apply reward manually.
               const amount = Number(quest.rewardCoins) || 0;
               if (amount > 0) {
-                if (!this.myProfile) this.myProfile = {};
-                this.myProfile.coins = (Number(this.myProfile.coins) || 0) + amount;
-                if (typeof this.updateMyProfileUI === "function") {
-                  this.updateMyProfileUI();
-                }
+                this.modifyCoins(Number(amount), { sync: true });
                 if (!this.isSingle) {
                   this.showToast(`퀘스트 보상 ${amount}💰 (${runtime.title})`, "#22c55e");
                 }
@@ -10310,6 +10368,106 @@ class GameScene extends Phaser.Scene {
     const seedCorrect = Number(socket?.profile?.bellCorrect) || 0;
     const seedTotal = Number(socket?.profile?.bellTotal) || 0;
     this.bellStats = { correct: seedCorrect, total: seedTotal };
+
+    // indicators for result overlay flow
+    this.isResultOverlayActive = false;
+    this._deferredMyProfile = null;
+    this._isApplyingDeferredProfile = false;
+    this._deferredCoinsDelta = 0;
+    this._isApplyingDeferredCoins = false;
+    // Flag set when the big "게임종료!" text is visible on screen
+    this.isResultTextVisible = false;
+  }
+
+  applyDeferredProfileUpdates() {
+    if (!this._deferredMyProfile) return;
+
+    this._isApplyingDeferredProfile = true;
+    try {
+      this.updateMyProfileUI(this._deferredMyProfile);
+    } catch (e) {
+      console.warn("applyDeferredProfileUpdates failed", e);
+    }
+    this._isApplyingDeferredProfile = false;
+    this._deferredMyProfile = null;
+  }
+
+  // Centralized coin update helper: apply delta immediately or defer during result overlay
+  modifyCoins(delta, options = {}) {
+    try {
+      const sync = !!options.sync;
+      const force = !!options.force;
+      // If result overlay active or game has ended, defer applying coins unless forced.
+      if ((this.isResultOverlayActive || this.isGameEnded) && !force) {
+        this._deferredCoinsDelta = (this._deferredCoinsDelta || 0) + Number(delta || 0);
+        console.debug('modifyCoins deferred', { delta, deferred: this._deferredCoinsDelta });
+        return;
+      }
+
+      if (!this.myProfile) this.myProfile = {};
+      const prev = Number(this.myProfile.coins) || 0;
+      const next = prev + Number(delta || 0);
+      this.myProfile.coins = next;
+
+      // Decide whether to update UI now. After multiplayer game end, skip bottom-right UI updates.
+      const skipUI = !!(this.isGameEnded && !this.isSingle && !force);
+      if (!skipUI) {
+        try {
+          this._isApplyingDeferredProfile = true;
+          if (typeof this.updateMyProfileUI === 'function') this.updateMyProfileUI();
+        } catch (e) {
+          console.warn('modifyCoins updateMyProfileUI failed', e);
+        } finally {
+          this._isApplyingDeferredProfile = false;
+        }
+
+        if (this.shopCoinText) {
+          try { this.shopCoinText.setText(`💰 ${this.myProfile.coins}`); } catch (e) {}
+        }
+        if (this.coinShopCurrentCoinText) {
+          try { this.coinShopCurrentCoinText.setText(`현재 보유: 💰 ${this.myProfile.coins}`); } catch (e) {}
+        }
+      } else {
+        console.debug('modifyCoins skipped UI update because game ended (multiplayer)', { delta });
+      }
+
+      if (sync) {
+        try {
+          if (typeof this.emitInventory === 'function') {
+            this.emitInventory('coinsChanged', { requireServerProfile: false });
+          } else if (socket && socket.emit) {
+            socket.emit('updatePlayerCoins', { coins: this.myProfile.coins });
+          }
+        } catch (e) {
+          console.warn('modifyCoins sync failed', e);
+        }
+      }
+    } catch (e) {
+      console.warn('modifyCoins error', e);
+    }
+  }
+
+  setCoinsAbsolute(total, options = {}) {
+    const next = Number.isFinite(Number(total)) ? Number(total) : null;
+    if (next === null) return;
+    const prev = Number(this.myProfile?.coins) || 0;
+    const delta = next - prev;
+    this.modifyCoins(delta, options);
+  }
+
+  applyDeferredCoins() {
+    if (!this._deferredCoinsDelta || this._deferredCoinsDelta === 0) return;
+    if (this._isApplyingDeferredCoins) return;
+    this._isApplyingDeferredCoins = true;
+    try {
+      const delta = this._deferredCoinsDelta || 0;
+      this._deferredCoinsDelta = 0;
+      // force apply even if overlay state somehow still true
+      this.modifyCoins(delta, { sync: true, force: true });
+    } catch (e) {
+      console.warn('applyDeferredCoins failed', e);
+    }
+    this._isApplyingDeferredCoins = false;
   }
 
   // replicate lobby's profile updater so GameScene has its own
@@ -10435,7 +10593,7 @@ class GameScene extends Phaser.Scene {
       `Lv ${this.myProfile.level} ${this.myProfile.nickname || ""}`,
     );
     safeSetText(this.profileCoinsTxt, `Coins: ${this.myProfile.coins}`);
-    safeSetText(this.profileCoinTxt, `보유코인: ${this.myProfile.coins}`);
+    this.setProfileCoinLabel(`보유코인: ${this.myProfile.coins}`);
 
     // make sure the react-time display stays in sync as well
     if (this.profileReactTxt && typeof this.profileReactTxt.setText === "function") {
@@ -10505,9 +10663,7 @@ class GameScene extends Phaser.Scene {
     if (this.profileIdText) {
       this.profileIdText.setText(`LV.${this.myProfile.level} ${this.myProfile.nickname}`);
     }
-    if (this.profileCoinText) {
-      this.profileCoinText.setText(`X ${this.myProfile.coins}`);
-    }
+    this.setProfileCoinShort(`X ${this.myProfile.coins}`);
 
     // experience bar update (if game scene uses it)
     if (this.profileExpBarFill && this.profileExpText) {
@@ -11819,7 +11975,15 @@ class GameScene extends Phaser.Scene {
 
       // make sure the game-scene profile UI also reflects the full profile
       if (typeof this.updateMyProfileUI === 'function') {
-        this.updateMyProfileUI(profile);
+        // 멀티플레이 결과(시상식) 연출 중이거나 게임이 종료된 상태라면
+        // 프로필(특히 코인) 업데이트를 즉시 적용하지 않고 지연 저장합니다.
+        if (this.isGameEnded || this.isResultOverlayActive) {
+          this._deferredMyProfile = profile;
+          console.debug("myProfile update deferred until post-result (socket.myProfile)", { profile });
+        } else {
+          this.updateMyProfileUI(profile);
+          this.hasServerProfileSnapshot = true;
+        }
       }
 
       if (newLevel > prevLevel) {
@@ -12394,9 +12558,7 @@ class GameScene extends Phaser.Scene {
           if (Number.isFinite(Number(data.coinTotal))) {
             this.profileStats = this.profileStats || {};
             this.profileStats.coins = Number(data.coinTotal);
-            if (this.myProfile) {
-              this.myProfile.coins = Number(data.coinTotal);
-            }
+            this.setCoinsAbsolute(Number(data.coinTotal), { sync: false });
           }
         }
       }
@@ -12472,12 +12634,18 @@ class GameScene extends Phaser.Scene {
 
       // update local accuracy stat (correct / total) for this session
       if (!this.isSingle) {
-        try {
-          // Prefer server-provided counters when available to avoid double-counting.
-          const myId = socket?.id;
-          const isSelfBell =
-            !this.isSingle &&
-            (data.winnerId === myId || data.penaltyId === myId);
+        // 게임 종료 후 추가 bell 이벤트는 클라이언트 정확도에 반영하지 않기
+        if (this.isGameEnded) {
+          console.debug("bellResult skipped on gameEnded", {
+            data,
+          });
+        } else {
+          try {
+            // Prefer server-provided counters when available to avoid double-counting.
+            const myId = socket?.id;
+            const isSelfBell =
+              !this.isSingle &&
+              (data.winnerId === myId || data.penaltyId === myId);
 
           if (
             isSelfBell &&
@@ -12558,6 +12726,7 @@ class GameScene extends Phaser.Scene {
           /* ignore */
         }
       }
+    }
 
       // 💡 [수정] prevPlayers를 깊은 복사로 만들어 openStack이 유지되도록 함
       // (서버가 이미 openCardStack을 비운 상태로 보내므로)
@@ -12606,9 +12775,13 @@ class GameScene extends Phaser.Scene {
             const newAvg = this.computeAvgReaction();
             this.myProfile = this.myProfile || {};
             this.myProfile.avetime = newAvg;
-            if (this.profileReactTxt) {
-              const avgVal = newAvg.toFixed(2);
-              this.profileReactTxt.setText(`Avg: ${avgVal}s`);
+            if (!(this.isGameEnded && !this.isSingle)) {
+              if (this.profileReactTxt) {
+                const avgVal = newAvg.toFixed(2);
+                this.profileReactTxt.setText(`Avg: ${avgVal}s`);
+              }
+            } else {
+              console.debug('skip profileReactTxt update due to game end');
             }
             // we no longer sync on every ring; final average will be sent at game end
             // (this reduces unnecessary socket traffic)
@@ -13115,6 +13288,7 @@ class GameScene extends Phaser.Scene {
 
       // mark game ended to avoid terminal bell events affecting ratio
       this.isGameEnded = true;
+      console.debug('gameEnded flag set', { time: Date.now(), isGameEnded: this.isGameEnded });
 
       if (isMultiplayerWin) {
 
@@ -13144,6 +13318,7 @@ class GameScene extends Phaser.Scene {
 
       // allow next match to recompute ratio properly
       this.isGameEnded = true;
+      console.debug('gameEnded flag reaffirmed', { time: Date.now(), isGameEnded: this.isGameEnded });
       try {
         if (typeof this.emitInventory === 'function') {
           this.emitInventory('final', {
@@ -13182,7 +13357,7 @@ class GameScene extends Phaser.Scene {
       } catch (e) {}
 
       // 💡 즉시 띄우지 않고 1~1.5초 정도 여유를 줌
-      this.time.delayedCall(1000, () => {
+      this.time.delayedCall(100, () => {
         this.playFinishAnimation(() => {
           if (this.isSingle) {
             // 싱글 플레이는 전용 결과창을 사용.
@@ -16707,12 +16882,7 @@ class GameScene extends Phaser.Scene {
     this.tutorialState.stageRewardsTotal =
       (this.tutorialState.stageRewardsTotal || 0) + amount;
 
-    if (!this.myProfile) this.myProfile = {};
-    const prev = Number(this.myProfile.coins) || 0;
-    this.myProfile.coins = prev + amount;
-    if (typeof this.updateMyProfileUI === "function") {
-      this.updateMyProfileUI();
-    }
+    this.modifyCoins(Number(amount), { sync: true });
 
     this.showToast(`보상 ${amount}💰 (${reason})`, "#22c55e");
 
@@ -17409,12 +17579,7 @@ class GameScene extends Phaser.Scene {
 
   rewardQuestCoins(amount, reason, questKey) {
     if (!Number.isFinite(amount) || amount <= 0) return;
-    if (!this.myProfile) this.myProfile = {};
-    const prev = Number(this.myProfile.coins) || 0;
-    this.myProfile.coins = prev + amount;
-    if (typeof this.updateMyProfileUI === "function") {
-      this.updateMyProfileUI();
-    }
+    this.modifyCoins(Number(amount), { sync: true });
 
     if (!this.isSingle) {
       this.showToast(`퀘스트 보상 ${amount}💰 (${reason})`, "#22c55e");
@@ -17538,10 +17703,12 @@ class GameScene extends Phaser.Scene {
 
   updateBellAccuracy({ correct = 0, total = 0 } = {}) {
     // 게임 종료 직후의 추가 bell 이벤트는 정확도에 반영하지 않는다.
-    if (this.isGameEnded) {
-      console.debug("updateBellAccuracy skipped because game ended", {
+    if (this.isGameEnded || !this.isGameStarted) {
+      console.debug("updateBellAccuracy skipped because game ended or not started", {
         correct,
         total,
+        isGameEnded: this.isGameEnded,
+        isGameStarted: this.isGameStarted,
       });
       return;
     }
@@ -17580,7 +17747,9 @@ class GameScene extends Phaser.Scene {
         : (Number(this.myProfile?.ratio) || 0);
       this.myProfile = this.myProfile || {};
       this.myProfile.ratio = ratio;
-      if (this.profileRatioTxt && typeof this.profileRatioTxt.setText === "function") {
+      if (this.isGameEnded && !this.isSingle) {
+        console.debug('skip profileRatioTxt update (updateBellAccuracy) due to game end');
+      } else if (this.profileRatioTxt && typeof this.profileRatioTxt.setText === "function") {
         const oldText = this.profileRatioTxt.text;
         const newText = `정답률: ${ratio}%`;
         if (oldText !== newText) {
@@ -18760,9 +18929,7 @@ class GameScene extends Phaser.Scene {
       if (playerId === myId) {
         this.profileStats = this.profileStats || {};
         this.profileStats.coins = newTotal;
-        if (this.myProfile) {
-          this.myProfile.coins = newTotal;
-        }
+        this.setCoinsAbsolute(newTotal, { sync: false });
         const nickname =
           localStorage.getItem("nickname") ||
           (this.myProfile && this.myProfile.nickname) ||
@@ -20250,10 +20417,10 @@ class GameScene extends Phaser.Scene {
           ease: "Linear",
           onUpdate: (tween) => {
             const value = Math.round(tween.getValue());
-            this.profileCoinTxt.setText(`보유코인: ${value}`);
+            this.setProfileCoinLabel(`보유코인: ${value}`);
           },
           onComplete: () => {
-            this.profileCoinTxt.setText(`보유코인: ${finalCoins}`);
+            this.setProfileCoinLabel(`보유코인: ${finalCoins}`);
           },
         });
       }
@@ -20672,7 +20839,9 @@ class GameScene extends Phaser.Scene {
   }
 
   showResultOverlay(players, isUpdate = false, resultData = null) {
-   
+    // 시상대 결과 중에는 프로필 즉시 반영 금지
+    this.isResultOverlayActive = true;
+
     // 기존 게임 로그 데이터 및 텍스트 객체 제거
     if (this.logTexts) {
       this.logTexts.forEach((txt) => txt.destroy());
@@ -20911,6 +21080,48 @@ class GameScene extends Phaser.Scene {
       const floorXMax = width * 0.8;
       let coinSequence = 0;
 
+      const totalRankCoins = rankedPlayers.reduce(
+        (sum, _, idx) => sum + (coinCountByRank[idx] || 0),
+        0,
+      );
+      let arrivedCoins = 0;
+
+      const tryApplyDeferred = () => {
+        if (totalRankCoins > 0 && arrivedCoins < totalRankCoins) return;
+
+        // 코인 애니메이션이 다 끝났을 때 프로필 갱신
+        try {
+          // 1) 순위 보상 직접 반영 (내 계정)
+          try {
+            const coinCountByRank = [30, 20, 10];
+            let awardedForMe = 0;
+            rankedPlayers.forEach((p, idx) => {
+              if (p && p.id && socket && socket.id && p.id === socket.id) {
+                awardedForMe += Number(coinCountByRank[idx] || 0);
+              }
+            });
+            if (awardedForMe > 0) {
+              // Apply via centralized helper and force apply even if flag still set
+              this.modifyCoins(Number(awardedForMe), { sync: true, force: true });
+            }
+          } catch (e) {
+            console.warn('apply per-rank award failed', e);
+          }
+
+          // 3) 서버가 보낸 프로필 스냅샷이 대기중이면 병합/적용
+          this.applyDeferredProfileUpdates();
+
+          // 결과창 완료 상태 reset
+          this.isResultOverlayActive = false;
+        } catch (e) {
+          console.warn('tryApplyDeferred failed', e);
+          try {
+            this.applyDeferredProfileUpdates();
+          } catch (err) {}
+          this.isResultOverlayActive = false;
+        }
+      };
+
       rankedPlayers.forEach((_, rankIndex) => {
         const targetPos = podiumPositions[rankIndex];
         const coinCount = coinCountByRank[rankIndex] || 0;
@@ -20979,11 +21190,19 @@ class GameScene extends Phaser.Scene {
                 if (coin && coin.active) {
                   coin.destroy();
                 }
+                arrivedCoins += 1;
+                tryApplyDeferred();
               },
             });
           });
         }
       });
+
+      if (totalRankCoins === 0) {
+        // 만약 코인이 없는 경우도 즉시 반영
+        tryApplyDeferred();
+      }
+
     };
 
     const playRewardTextAnimation = (rankIndex, rewardCoin) => {
@@ -21042,6 +21261,9 @@ class GameScene extends Phaser.Scene {
     // EXP end-of-game text animation removed — XP is shown during gameplay
 
     const goToLobby = () => {
+      // 결과 overlay가 끝났으므로 대기 상태 해제
+      this.isResultOverlayActive = false;
+
       // 싱글 플레이일 경우에는 멀티 재입장 조건 없이 바로 메인 로비로 이동
       if (this.isSingle) {
         try {
@@ -21130,6 +21352,15 @@ class GameScene extends Phaser.Scene {
         console.warn("goToLobby: hide visuals failed", e);
       }
 
+      // 종료/시상대 후 지연된 프로필 업데이트가 있으면 반영
+      if (this._deferredMyProfile) {
+        try {
+          this.applyDeferredProfileUpdates();
+        } catch (e) {
+          console.warn("goToLobby: failed to apply deferred profile", e);
+        }
+      }
+
       // Stop GameScene and return to lobby while keeping multiplayer room context.
       try {
         if (this.scene.isActive("GameScene")) {
@@ -21199,11 +21430,16 @@ class GameScene extends Phaser.Scene {
         duration: 800,
         ease: "Back.easeOut",
         onComplete: () => {
+          this.isResultOverlayActive = true;
+          // resultbg 위치 애니메이션 완료 후 코인 수급 처리를 시작
           playCoinCollectAnimation();
         },
       });
     } else {
       container.y = 0;
+      this.isResultOverlayActive = true;
+      // 업데이트 모드에서는 이미 결과창이 끝난 상태로 간주하고 바로 실행
+      playCoinCollectAnimation();
     }
   }
 
@@ -21291,6 +21527,9 @@ class GameScene extends Phaser.Scene {
     this.isGameReady = false;
 
     // "FINISH!" 텍스트 연출
+    // mark that the big finish text is visible so UI updates should be paused
+    try { this.isResultTextVisible = true; } catch (e) {}
+
     const finishText = this.add
       .text(centerX, centerY, "게임종료!", {
         fontFamily: GAME_FONTS.main,
@@ -21322,7 +21561,8 @@ class GameScene extends Phaser.Scene {
             duration: 500,
             ease: "Power2",
             onComplete: () => {
-              finishText.destroy();
+              try { finishText.destroy(); } catch (e) {}
+              try { this.isResultTextVisible = false; } catch (e) {}
               if (callback) callback(); // 애니메이션 끝나고 결과창 띄우기
             },
           });
@@ -22058,6 +22298,66 @@ class GameScene extends Phaser.Scene {
   }
 };
 
+// Ensure defensive fallback methods exist on prototypes in case some build
+// or earlier initialization path failed to attach them to the class.
+try {
+  if (typeof GameScene !== 'undefined') {
+    if (typeof GameScene.prototype.setProfileCoinLabel !== 'function') {
+      GameScene.prototype.setProfileCoinLabel = function (text) {
+        try {
+          if (this.isGameEnded && !this.isSingle) return;
+          if (this.profileCoinTxt && this.profileCoinTxt.active && typeof this.profileCoinTxt.setText === 'function') {
+            this.profileCoinTxt.setText(text);
+          }
+        } catch (e) {
+          // swallow
+        }
+      };
+    }
+    if (typeof GameScene.prototype.setProfileCoinShort !== 'function') {
+      GameScene.prototype.setProfileCoinShort = function (text) {
+        try {
+          if (this.isGameEnded && !this.isSingle) return;
+          if (this.profileCoinText && this.profileCoinText.active && typeof this.profileCoinText.setText === 'function') {
+            this.profileCoinText.setText(text);
+          }
+        } catch (e) {
+          // swallow
+        }
+      };
+    }
+  }
+  if (typeof LobbyScene !== 'undefined') {
+    if (typeof LobbyScene.prototype.setProfileCoinLabel !== 'function') {
+      LobbyScene.prototype.setProfileCoinLabel = GameScene.prototype.setProfileCoinLabel;
+    }
+    if (typeof LobbyScene.prototype.setProfileCoinShort !== 'function') {
+      LobbyScene.prototype.setProfileCoinShort = GameScene.prototype.setProfileCoinShort;
+    }
+  }
+} catch (e) {
+  // ignore
+}
+
+// Defensive wrapper: ensure updateMyProfileUI respects game-end guard regardless
+try {
+  if (typeof GameScene !== 'undefined' && typeof GameScene.prototype.updateMyProfileUI === 'function') {
+    const _origUpdate = GameScene.prototype.updateMyProfileUI;
+    GameScene.prototype.updateMyProfileUI = function (profile) {
+      try {
+        if (this.isGameEnded && !this._isApplyingDeferredProfile) {
+          console.debug('updateMyProfileUI skipped by wrapper due to isGameEnded', { profile });
+          return;
+        }
+      } catch (e) {
+        // ignore
+      }
+      return _origUpdate.call(this, profile);
+    };
+  }
+} catch (e) {
+  // ignore
+}
 /* prettier-ignore-file */
 
 // pick scale mode based on orientation.  portrait devices get ENVELOP
