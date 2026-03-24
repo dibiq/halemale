@@ -628,6 +628,48 @@ class LobbyScene extends Phaser.Scene {
     return baseKey === "player_1" ? 4 : 2; // player_2 handled dynamically elsewhere
   }
 
+  setCoinsAbsolute(total, options = {}) {
+    try {
+      const next = Number.isFinite(Number(total)) ? Number(total) : null;
+      if (next === null) {
+        return null;
+      }
+      if (!this.myProfile || typeof this.myProfile !== "object") {
+        this.myProfile = { level: 1, coins: 0, experience: 0 };
+      }
+      this.myProfile.coins = next;
+
+      if (typeof this.updateMyProfileUI === "function") {
+        this.updateMyProfileUI();
+      } else {
+        if (this.shopCoinText && typeof this.shopCoinText.setText === "function") {
+          this.shopCoinText.setText(`💰 ${next}`);
+        }
+        if (
+          this.coinShopCurrentCoinText &&
+          typeof this.coinShopCurrentCoinText.setText === "function"
+        ) {
+          this.coinShopCurrentCoinText.setText(`현재 보유: 💰 ${next}`);
+        }
+      }
+
+      if (options.sync && typeof this.safeSyncInventory === "function") {
+        try {
+          this.safeSyncInventory("setCoinsAbsolute", {
+            coins: next,
+            sync: true,
+          });
+        } catch (e) {
+          console.warn("LobbyScene.setCoinsAbsolute safeSyncInventory failed", e);
+        }
+      }
+      return next;
+    } catch (e) {
+      console.warn("LobbyScene.setCoinsAbsolute failed", e);
+      return null;
+    }
+  }
+
   modifyCoins(delta, options = {}) {
     try {
       const amount = Number(delta) || 0;
@@ -5768,6 +5810,18 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       .image(centerX, popupY, "invitebg")
       .setDisplaySize(width * 0.7, height * 0.5);
 
+    const titleText = this.add
+      .text(centerX, popupY - height * 0.26, "싱글플레이", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${Math.max(24, width * 0.1)}px`,
+        color: "#ffffff",
+        fontWeight: "bold",
+        stroke: "#000000",
+        strokeThickness: 4,
+      })
+      .setOrigin(0.5)
+      .setDepth(4002);
+
     const difficultyButtons = [
       { key: "easy", label: "EASY", tint: 0x2ecc71 },
       { key: "normal", label: "NORMAL", tint: 0xf1c40f },
@@ -5793,7 +5847,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       this.closeSingleDifficultyPopup();
     });
 
-    const popupObjects = [overlay, popupBg, closeBtn];
+    const popupObjects = [overlay, popupBg, titleText, closeBtn];
 
     difficultyButtons.forEach((btn, index) => {
       const btnY = firstY + btnGap * index;
@@ -9438,7 +9492,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       .setDisplaySize(width * 0.78, height * 0.26);
 
     const titleText = this.add
-      .text(centerX, centerY - 65, "출석체크", {
+      .text(centerX, centerY * 0.23, "출석체크", {
         fontFamily:
           typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
         fontSize: `${width * 0.045}px`,
@@ -9529,7 +9583,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       .setDisplaySize(panelW * 1.1, panelH * 0.6);
 
     const titleText = this.add
-      .text(centerX, centerY - panelH * 0.35, "출석체크", {
+      .text(centerX, centerY - panelH * 0.32, "출석체크", {
         fontFamily: GAME_FONTS.main,
         fontSize: `${Math.max(54, width * 0.1)}px`,
         color: "#ffffff",
