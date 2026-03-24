@@ -628,6 +628,68 @@ class LobbyScene extends Phaser.Scene {
     return baseKey === "player_1" ? 4 : 2; // player_2 handled dynamically elsewhere
   }
 
+  modifyCoins(delta, options = {}) {
+    try {
+      const amount = Number(delta) || 0;
+      if (!this.myProfile || typeof this.myProfile !== "object") {
+        this.myProfile = { level: 1, coins: 0, experience: 0 };
+      }
+      const prev = Number(this.myProfile.coins) || 0;
+      const next = prev + amount;
+      this.myProfile.coins = next;
+
+      if (typeof this.updateMyProfileUI === "function") {
+        this.updateMyProfileUI();
+      } else {
+        if (this.shopCoinText && typeof this.shopCoinText.setText === "function") {
+          this.shopCoinText.setText(`💰 ${next}`);
+        }
+        if (
+          this.coinShopCurrentCoinText &&
+          typeof this.coinShopCurrentCoinText.setText === "function"
+        ) {
+          this.coinShopCurrentCoinText.setText(`현재 보유: 💰 ${next}`);
+        }
+      }
+
+      if (options.sync && typeof this.safeSyncInventory === "function") {
+        try {
+          this.safeSyncInventory("modifyCoins", {
+            coins: next,
+            delta: amount,
+            questMode: true,
+          });
+        } catch (e) {
+          console.warn("LobbyScene.modifyCoins safeSyncInventory failed", e);
+        }
+      }
+      return next;
+    } catch (e) {
+      console.warn("LobbyScene.modifyCoins failed", e);
+      return null;
+    }
+  }
+
+  rewardQuestCoins(amount, reason, questKey) {
+    if (!Number.isFinite(amount) || amount <= 0) return;
+
+    this.modifyCoins(Number(amount), { sync: true });
+    if (!this.isSingle) {
+      this.showToast(`퀘스트 보상 ${amount}💰 (${reason})`, "#22c55e");
+    }
+    try {
+      if (typeof this.safeSyncInventory === "function") {
+        this.safeSyncInventory("questReward", {
+          coins: Number(amount),
+          questKey,
+          reason,
+        });
+      }
+    } catch (e) {
+      console.warn("LobbyScene.rewardQuestCoins sync failed", e);
+    }
+  }
+
   getAvatarDisplayKey(baseKey) {
     if (this.textures.exists(`${baseKey}_1`)) return `${baseKey}_1`;
     if (baseKey === "player_1") {
@@ -7105,7 +7167,16 @@ if (this.isGameEnded || this.isResultOverlayActive) {
               // Fallback: some builds may lose method binding, so apply reward manually.
               const amount = Number(quest.rewardCoins) || 0;
               if (amount > 0) {
-                this.modifyCoins(Number(amount), { sync: true });
+                if (typeof this.modifyCoins === "function") {
+                  this.modifyCoins(Number(amount), { sync: true });
+                } else {
+                  // Defensive fallback for legacy LobbyScene.
+                  this.myProfile = this.myProfile || {};
+                  this.myProfile.coins = (Number(this.myProfile.coins) || 0) + amount;
+                  if (typeof this.updateMyProfileUI === "function") {
+                    this.updateMyProfileUI();
+                  }
+                }
                 if (!this.isSingle) {
                   this.showToast(`퀘스트 보상 ${amount}💰 (${runtime.title})`, "#22c55e");
                 }
@@ -12634,12 +12705,16 @@ class GameScene extends Phaser.Scene {
 
       // update local accuracy stat (correct / total) for this session
       if (!this.isSingle) {
-        // 게임 종료 후 추가 bell 이벤트는 클라이언트 정확도에 반영하지 않기
-        if (this.isGameEnded) {
-          console.debug("bellResult skipped on gameEnded", {
+        // 게임 종료 / 종료 직후의 결과는 반영하지 않기
+        if (this.isGameEnded || this.isResultTextVisible || this.isResultOverlayActive) {
+          console.debug("bellResult skipped on end stage", {
+            isGameEnded: this.isGameEnded,
+            isResultTextVisible: this.isResultTextVisible,
+            isResultOverlayActive: this.isResultOverlayActive,
             data,
           });
-        } else {
+          return;
+        }
           try {
             // Prefer server-provided counters when available to avoid double-counting.
             const myId = socket?.id;
@@ -12726,7 +12801,6 @@ class GameScene extends Phaser.Scene {
           /* ignore */
         }
       }
-    }
 
       // 💡 [수정] prevPlayers를 깊은 복사로 만들어 openStack이 유지되도록 함
       // (서버가 이미 openCardStack을 비운 상태로 보내므로)
@@ -13276,6 +13350,8 @@ class GameScene extends Phaser.Scene {
 
     socket.off("gameEnded").on("gameEnded", (data) => {
       this._renderTableScheduled = false; // 게임 종료 시 다음 게임 시작을 위해 스케줄 상태 초기화
+      // 결과 텍스트/시상 연출과 같은 최종 단계가 시작됐음을 즉시 표시
+      this.isResultTextVisible = true;
       const isMultiplayerWin = !this.isSingle && data && data.winnerId === socket.id;
       // Count multiplayer participation once per match. It should only increase when
       // the match has fully ended (to prevent double-counting due to rejoining/restarting).
@@ -21563,6 +21639,7 @@ class GameScene extends Phaser.Scene {
             onComplete: () => {
               try { finishText.destroy(); } catch (e) {}
               try { this.isResultTextVisible = false; } catch (e) {}
+              // 결과표시가 시작되고 나면 종료 플래그 그대로 유지
               if (callback) callback(); // 애니메이션 끝나고 결과창 띄우기
             },
           });
@@ -22333,6 +22410,130 @@ try {
     }
     if (typeof LobbyScene.prototype.setProfileCoinShort !== 'function') {
       LobbyScene.prototype.setProfileCoinShort = GameScene.prototype.setProfileCoinShort;
+    }
+
+    if (typeof LobbyScene.prototype.safeSyncInventory !== 'function') {
+      LobbyScene.prototype.safeSyncInventory = function (reason, extra = {}) {
+        try {
+          if (typeof this.syncInventoryToServer === 'function') {
+            this.syncInventoryToServer(reason, extra);
+            return;
+          }
+          if (typeof syncInventoryToServer === 'function') {
+            try {
+              syncInventoryToServer(reason, extra);
+              return;
+            } catch (e) {}
+          }
+          if (
+            typeof window !== 'undefined' &&
+            typeof window.syncInventoryToServer === 'function'
+          ) {
+            try {
+              window.syncInventoryToServer(reason, extra);
+              return;
+            } catch (e) {}
+          }
+
+          // Fallback direct emit for LobbyScene.
+          if (typeof socket !== 'undefined' && socket && socket.connected) {
+            const resolvedPlayerId =
+              this.myProfile?.nickname ||
+              localStorage.getItem('nickname') ||
+              this.myNickname ||
+              '요리사';
+
+            const specialCardsOwned = JSON.parse(
+              localStorage.getItem('specialCards') || '{}',
+            );
+
+            const items = Object.entries(specialCardsOwned)
+              .map(([id, count]) => ({
+                id: Number(id),
+                count: Number(count) || 0,
+              }))
+              .filter((item) => Number.isFinite(item.id) && item.count > 0);
+
+            const payload = {
+              reason,
+              id: resolvedPlayerId,
+              userId: resolvedPlayerId,
+              player_id: resolvedPlayerId,
+              nickname: this.myProfile?.nickname,
+              playerId: socket.id,
+              items,
+              specialCards: specialCardsOwned,
+              ...extra,
+            };
+
+            if (this.myProfile && Number.isFinite(Number(this.myProfile.coins))) {
+              payload.coins = Number(this.myProfile.coins);
+            }
+            if (this.myProfile && Number.isFinite(Number(this.myProfile.level))) {
+              payload.level = Number(this.myProfile.level);
+            }
+            if (this.myProfile && Number.isFinite(Number(this.myProfile.experience))) {
+              payload.experience = Number(this.myProfile.experience);
+            }
+            if (this.myProfile && Number.isFinite(Number(this.myProfile.ratio))) {
+              payload.ratio = Number(this.myProfile.ratio);
+            }
+
+            socket.emit('syncPlayerInventory', payload);
+            socket.emit('syncInventory', payload);
+            socket.emit('updatePlayerInventory', payload);
+            socket.emit('updateProfile', payload);
+            socket.emit('savePlayerProfile', payload);
+            return;
+          }
+
+          console.warn('LobbyScene.safeSyncInventory: no syncInventoryToServer available and no socket', reason, extra);
+        } catch (e) {
+          console.warn('LobbyScene.safeSyncInventory error', e);
+        }
+      };
+    }
+
+    if (typeof LobbyScene.prototype.modifyCoins !== 'function') {
+      LobbyScene.prototype.modifyCoins = function (delta, options = {}) {
+        try {
+          const amount = Number(delta) || 0;
+          if (!this.myProfile || typeof this.myProfile !== 'object') {
+            this.myProfile = { level: 1, coins: 0, experience: 0 };
+          }
+          const prev = Number(this.myProfile.coins) || 0;
+          const next = prev + amount;
+          this.myProfile.coins = next;
+
+          if (typeof this.updateMyProfileUI === 'function') {
+            this.updateMyProfileUI();
+          }
+
+          if (options.sync) {
+            this.safeSyncInventory('modifyCoins', { coins: next, delta: amount, ...options });
+          }
+
+          return next;
+        } catch (e) {
+          console.warn('LobbyScene.modifyCoins failed', e);
+          return null;
+        }
+      };
+    }
+
+    if (typeof LobbyScene.prototype.rewardQuestCoins !== 'function') {
+      LobbyScene.prototype.rewardQuestCoins = function (amount, reason, questKey) {
+        if (!Number.isFinite(amount) || amount <= 0) return;
+        this.modifyCoins(Number(amount), { sync: true });
+        if (!this.isSingle && typeof this.showToast === 'function') {
+          this.showToast(`퀘스트 보상 ${amount}💰 (${reason})`, '#22c55e');
+        }
+        try {
+          this.safeSyncInventory('questReward', { coins: Number(amount), questKey, reason });
+        } catch (e) {
+          console.warn('LobbyScene.rewardQuestCoins sync failed', e);
+        }
+      };
     }
   }
 } catch (e) {
