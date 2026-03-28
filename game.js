@@ -13091,6 +13091,8 @@ class GameScene extends Phaser.Scene {
             winnerId: data.winnerId, // 서버에서 승자 ID를 보내준다고 가정
             players: updatedPlayers,
             prevPlayers: prevPlayers, // 바닥 카드가 남아있는 이전 상태 전달
+            winnerNickname: data.winnerNickname,
+            collectedCount: data.collectedCount,
           });
         }
 
@@ -14950,6 +14952,47 @@ class GameScene extends Phaser.Scene {
 
     const relWinIdx = (winIdx - myIndex + players.length) % players.length;
     const targetPos = pos[relWinIdx];
+
+    // 정답 플레이어명 및 획득 카드 텍스트 표시
+    const winnerPlayer = players[winIdx] || {};
+    const winnerName =
+      data.winnerNickname || winnerPlayer.nickname || winnerPlayer.name || "플레이어";
+    const gainedCards =
+      typeof data.collectedCount === "number"
+        ? data.collectedCount
+        : Math.max(
+            0,
+            (players[winIdx]?.cards || 0) - (prevPlayers?.find((p) => p.id === winnerId)?.cards || 0),
+          );
+
+    const winInfoText = this.add
+      .text(targetPos.x, targetPos.y, `${winnerName}님 정답! ${gainedCards}장 획득!`, {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${Math.round(width * 0.07)}px`,
+        color: "#ffff00",
+        stroke: "#000000",
+        strokeThickness: 6,
+        fontStyle: "bold",
+      })
+      .setOrigin(0.5)
+      .setDepth(10011)
+      .setAlpha(0);
+
+    this.tweens.add({
+      targets: winInfoText,
+      alpha: 1,
+      y: height * 0.35,
+      duration: 250,
+      ease: "Power2.easeOut",
+      yoyo: true,
+      hold: 1700,
+      repeat: 0,
+      onComplete: () => {
+        if (winInfoText) {
+          winInfoText.destroy();
+        }
+      },
+    });
 
     // show single avatar animation at center once (for winner)
     let combo = 0;
@@ -20146,6 +20189,8 @@ class GameScene extends Phaser.Scene {
       players: updatedPlayers,
       prevPlayers: prevPlayers,
       skipAvatar: this.isSingle,
+      winnerNickname: winner.nickname || winner.name || "플레이어",
+      collectedCount: totalCollected,
     });
 
     // 즉시 로컬 상태 업데이트 (애니메이션이 끝나면 openStack은 playWinAnimation에서 비워집니다)
