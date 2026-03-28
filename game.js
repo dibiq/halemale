@@ -625,13 +625,13 @@ class LobbyScene extends Phaser.Scene {
   }
 
   getAvatarAnimFrameRate(baseKey) {
-    // player_1/player_2/player_3 모두 빠른 프레임으로 재생
-    return baseKey === "player_1" || baseKey === "player_2" || baseKey === "player_3" ? 18 : 2;
+    // player_1/player_2/player_3/player_4 모두 빠른 프레임으로 재생
+    return baseKey === "player_1" || baseKey === "player_2" || baseKey === "player_3" || baseKey === "player_4" ? 18 : 2;
   }
 
   getAvatarAnimMaxFrame(baseKey) {
-    // player_1/player_2/player_3은 최대 91 프레임을 사용하여 자연스럽게 재생
-    return /^player_[1-3]$/.test(baseKey) ? 91 : 2;
+    // player_1/player_2/player_3/player_4은 최대 91 프레임을 사용하여 자연스럽게 재생
+    return /^player_[1-4]$/.test(baseKey) ? 91 : 2;
   }
 
   setCoinsAbsolute(total, options = {}) {
@@ -749,6 +749,9 @@ class LobbyScene extends Phaser.Scene {
     if (baseKey === "player_3") {
       if (this.textures.exists("player_3_frame_1")) return "player_3_frame_1";
     }
+    if (baseKey === "player_4") {
+      if (this.textures.exists("player_4_frame_1")) return "player_4_frame_1";
+    }
     const sheetKey = `${baseKey}_sprite_a`;
     if (this.textures.exists(sheetKey)) return sheetKey;
     return null;
@@ -841,7 +844,7 @@ class LobbyScene extends Phaser.Scene {
           }
         }
       }
-      if (baseKey === "player_1" || baseKey === "player_2" || baseKey === "player_3") {
+      if (baseKey === "player_1" || baseKey === "player_2" || baseKey === "player_3" || baseKey === "player_4") {
         const playerKey = baseKey;
         const maxFrame = this.getAvatarAnimMaxFrame(baseKey);
 
@@ -983,7 +986,7 @@ class LobbyScene extends Phaser.Scene {
         ? target.getData("avatarBaseY")
         : target.y;
     const animKey = this.ensureAvatarAnimation(baseKey);
-    if (baseKey === "player_1" || baseKey === "player_2" || baseKey === "player_3") {
+    if (baseKey === "player_1" || baseKey === "player_2" || baseKey === "player_3" || baseKey === "player_4") {
       target.setOrigin(0.5, 1);
       if (avatarDisplayWidth > 0 && avatarDisplayHeight > 0) {
         target.setDisplaySize(avatarDisplayWidth, avatarDisplayHeight);
@@ -996,6 +999,8 @@ class LobbyScene extends Phaser.Scene {
           ? "player_2_frame_1"
           : (baseKey === "player_3" && this.textures.exists("player_3_frame_1"))
           ? "player_3_frame_1"
+          : (baseKey === "player_4" && this.textures.exists("player_4_frame_1"))
+          ? "player_4_frame_1"
           : `${baseKey}_1`;
       if (firstFrameKey && this.textures.exists(firstFrameKey)) {
         target.setTexture(firstFrameKey);
@@ -1330,6 +1335,9 @@ class LobbyScene extends Phaser.Scene {
     const PLAYER3_SPRITE_VERSION = VERSION
       ? `${VERSION}&p3=20260227_1`
       : "?p3=20260227_1";
+    const PLAYER4_SPRITE_VERSION = VERSION
+      ? `${VERSION}&p4=20260228_1`
+      : "?p4=20260228_1";
 
     this.load.image(
       "popupclose",
@@ -1355,6 +1363,10 @@ class LobbyScene extends Phaser.Scene {
     this.load.image(
       "player_3_frame_1",
       `assets/images/player_3_sprite/1.png${PLAYER3_SPRITE_VERSION}`,
+    );
+    this.load.image(
+      "player_4_frame_1",
+      `assets/images/player_4_sprite/1.png${PLAYER4_SPRITE_VERSION}`,
     );
 
     // Remaining frames are deferred and loaded in loadDeferredAssets().
@@ -1484,16 +1496,8 @@ class LobbyScene extends Phaser.Scene {
     // They will be loaded in the background after the lobby UI is ready.
     // (See loadDeferredAssets())
 
-    // 플레이어 애니메이션용 이미지 (player_3은 sprite로 대체)
-    // (기존 player_3_1/player_3_2는 더 이상 기본 우선순위로 사용하지 않음)
-    this.load.image(
-      "player_4_1",
-      `${ASSET_SERVER}/images/player_4_1.png${VERSION}`,
-    );
-    this.load.image(
-      "player_4_2",
-      `${ASSET_SERVER}/images/player_4_2.png${VERSION}`,
-    );
+    // 플레이어 애니메이션용 이미지 (player_3/player_4은 sprite로 대체)
+    // (기존 player_4_1/player_4_2는 더 이상 사용하지 않음)
     this.load.image(
       "resultbg",
       `${ASSET_SERVER}/images/resultbg.png${VERSION}`,
@@ -1612,6 +1616,9 @@ class LobbyScene extends Phaser.Scene {
     const PLAYER3_SPRITE_VERSION = VERSION
       ? `${VERSION}&p3=20260227_1`
       : "?p3=20260227_1";
+    const PLAYER4_SPRITE_VERSION = VERSION
+      ? `${VERSION}&p4=20260228_1`
+      : "?p4=20260228_1";
 
     // deferred frame loads (reduces initial startup time)
     // We already loaded frame 1 early for placeholders.
@@ -1643,6 +1650,12 @@ class LobbyScene extends Phaser.Scene {
       this.load.image(
         `player_3_frame_${i}`,
         `assets/images/player_3_sprite/${i}.png${PLAYER3_SPRITE_VERSION}`,
+      );
+    }
+    for (let i = 2; i <= 91; i += 1) {
+      this.load.image(
+        `player_4_frame_${i}`,
+        `assets/images/player_4_sprite/${i}.png${PLAYER4_SPRITE_VERSION}`,
       );
     }
 
@@ -4796,8 +4809,8 @@ if (this.isGameEnded || this.isResultOverlayActive) {
   }
 
   getAvatarAnimMaxFrame(baseKey) {
-    // player_1/player_2/player_3 모두 4 프레임까지 허용
-    return baseKey === "player_1" || baseKey === "player_2" || baseKey === "player_3" ? 4 : 2;
+    // player_1/player_2/player_3/player_4 모두 91 프레임까지 허용
+    return /^player_[1-4]$/.test(baseKey) ? 91 : 2;
   }
 
   getMybgAnimKey() {
@@ -4959,13 +4972,13 @@ if (this.isGameEnded || this.isResultOverlayActive) {
   }
 
   getAvatarAnimFrameRate(baseKey) {
-    // player_1/player_2/player_3 모두 빠른 프레임으로 재생
-    return baseKey === "player_1" || baseKey === "player_2" || baseKey === "player_3" ? 18 : 2;
+    // player_1/player_2/player_3/player_4 모두 빠른 프레임으로 재생
+    return baseKey === "player_1" || baseKey === "player_2" || baseKey === "player_3" || baseKey === "player_4" ? 18 : 2;
   }
 
   getAvatarAnimMaxFrame(baseKey) {
-    // player_1/player_2/player_3은 최대 91 프레임을 사용하여 자연스럽게 재생
-    return /^player_[1-3]$/.test(baseKey) ? 91 : 2;
+    // player_1/player_2/player_3/player_4은 최대 91 프레임을 사용하여 자연스럽게 재생
+    return /^player_[1-4]$/.test(baseKey) ? 91 : 2;
   }
 
   // choose a texture key to display for a given avatar base key
@@ -4979,6 +4992,9 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     }
     if (baseKey === "player_3") {
       if (this.textures.exists("player_3_frame_1")) return "player_3_frame_1";
+    }
+    if (baseKey === "player_4") {
+      if (this.textures.exists("player_4_frame_1")) return "player_4_frame_1";
     }
     // use first sheet if available
     const sheetKey = `${baseKey}_sprite_a`;
@@ -6110,8 +6126,8 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       },
       {
         key: "player_4",
-        name: "👩‍🍳 요리사 4",
-        description: "화려한 플레이의 장인",
+        name: "관리 곰돌이",
+        description: "전용 스프라이트 애니메이션으로 움직이는 캐릭터",
         price: 600,
       },
     ];
@@ -6532,12 +6548,12 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         try {
           const key = character.key;
 
-          // ensure frame sequence is generated for both players with the sprite sheet
-          if (key === "player_1" || key === "player_2"|| key === "player_3") {
+          // ensure frame sequence is generated for players with the sprite sheet
+          if (key === "player_1" || key === "player_2" || key === "player_3" || key === "player_4") {
             ensurePlayerFrames(this, "player_1_sprite", "player_1");
             ensurePlayerFrames(this, "player_2_sprite", "player_2");
             ensurePlayerFrames(this, "player_3_sprite", "player_3");
-
+            ensurePlayerFrames(this, "player_4_sprite", "player_4");
           }
 
           let avatarTexture = null;
@@ -6558,11 +6574,11 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             .setDisplaySize(width * 0.3, width * 0.3);
 
           const animKey = this.ensureAvatarAnimation(character.key);
-          if (!animKey && character.key === "player_3") {
-            console.debug("player_3 animation key not found", {
-              frame1: this.textures.exists("player_3_frame_1"),
-              frame2: this.textures.exists("player_3_frame_2"),
-              sprite: this.textures.exists("player_3_sprite"),
+          if (!animKey && (character.key === "player_3" || character.key === "player_4")) {
+            console.debug(`${character.key} animation key not found`, {
+              frame1: this.textures.exists(`${character.key}_frame_1`),
+              frame2: this.textures.exists(`${character.key}_frame_2`),
+              sprite: this.textures.exists(`${character.key}_sprite`),
             });
           }
           if (avatarSprite && animKey && avatarSprite.anims) {
@@ -10939,17 +10955,18 @@ class GameScene extends Phaser.Scene {
   }
 
   getAvatarAnimFrameRate(baseKey) {
-    // player_3 should also use fast animation timing like player_1/2
+    // player_1/player_2/player_3/player_4 모두 빠른 프레임으로 재생
     return baseKey === "player_1" ||
       baseKey === "player_2" ||
-      baseKey === "player_3"
+      baseKey === "player_3" ||
+      baseKey === "player_4"
       ? 18
       : 2;
   }
 
   getAvatarAnimMaxFrame(baseKey) {
-    // player_1/player_2/player_3 모두 풀 프레임(최대 91) 재생
-    return /^player_[1-3]$/.test(baseKey) ? 91 : 2;
+    // player_1/player_2/player_3/player_4 모두 풀 프레임(최대 91) 재생
+    return /^player_[1-4]$/.test(baseKey) ? 91 : 2;
   }
 
   // choose current avatar key, mirror LobbyScene logic
@@ -11015,6 +11032,9 @@ class GameScene extends Phaser.Scene {
     }
     if (baseKey === "player_3") {
       if (this.textures.exists("player_3_frame_1")) return "player_3_frame_1";
+    }
+    if (baseKey === "player_4") {
+      if (this.textures.exists("player_4_frame_1")) return "player_4_frame_1";
     }
     const sheetKey = `${baseKey}_sprite_a`;
     if (this.textures.exists(sheetKey)) return sheetKey;
@@ -11105,12 +11125,12 @@ class GameScene extends Phaser.Scene {
     const animKey = scene.getAvatarAnimKey(baseKey);
 
     try {
-      if (baseKey === "player_3") {
+      if (baseKey === "player_3" || baseKey === "player_4") {
         const maxFrame = this.getAvatarAnimMaxFrame(baseKey);
-        if (this.textures.exists("player_3_frame_1")) {
+        if (this.textures.exists(`${baseKey}_frame_1`)) {
           const frames = [];
           for (let idx = 1; idx <= maxFrame; idx += 1) {
-            const textureKey = `player_3_frame_${idx}`;
+            const textureKey = `${baseKey}_frame_${idx}`;
             if (this.textures.exists(textureKey)) {
               frames.push({ key: textureKey });
             }
@@ -11133,7 +11153,7 @@ class GameScene extends Phaser.Scene {
         // fallback to legacy two-frame assets if any
         const fallbackFrames = [];
         for (let idx = 1; idx <= 2; idx += 1) {
-          const textureKey = `player_3_${idx}`;
+          const textureKey = `${baseKey}_${idx}`;
           if (this.textures.exists(textureKey)) {
             fallbackFrames.push({ key: textureKey });
           }
