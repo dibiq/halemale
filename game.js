@@ -4933,10 +4933,14 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         });
       } else {
         this._lobbyBgSprites.forEach((sprite) => {
-          if (!sprite) return;
-          sprite.play(mybgAnimKey, true);
-          if (this._lobbyBgSize) {
-            sprite.setDisplaySize(this._lobbyBgSize.width, this._lobbyBgSize.height);
+          if (!sprite || !sprite.active || typeof sprite.play !== "function") return;
+          try {
+            sprite.play(mybgAnimKey, true);
+            if (this._lobbyBgSize) {
+              sprite.setDisplaySize(this._lobbyBgSize.width, this._lobbyBgSize.height);
+            }
+          } catch (e) {
+            console.warn("_applyDeferredAnimations: background sprite play failed", e);
           }
         });
       }
@@ -11824,24 +11828,17 @@ class GameScene extends Phaser.Scene {
       };
     });
 
-    // 싱글플레이(튜토리얼 제외)에서는 봇의 정답 반응 속도를 느리게 만든다 (약 1.5배).
-    // 튜토리얼 중에는 AI가 강하게 도와주기 때문에 이 제한을 적용하지 않는다.
+    // 싱글플레이(튜토리얼 제외)에서는 AI 제출 속도를 1.3초로 고정한다.
+    // (기존 느리게 조절하던 로직을 제거하고 요청대로 고정 딜레이를 적용)
     if (this.isSingle && !this.isTutorialMode) {
       this.aiSettings = this.aiSettings.map((ai) => ({
         ...ai,
-        reactionTime: Math.round(Math.max(120, ai.reactionTime) * 1.3),
-        flipDelay: Math.round(Math.max(250, ai.flipDelay) * 1.2),
+        reactionTime: 1300,
+        flipDelay: 1300,
       }));
     }
 
-    // 싱글플레이 하드 모드에서는 추가로 더 느리게 한다 (강조용).
-    if (this.isSingle && !this.isTutorialMode && this.roundData?.aiDifficulty === "hard") {
-      this.aiSettings = this.aiSettings.map((ai) => ({
-        ...ai,
-        reactionTime: Math.round(ai.reactionTime * 1.2),
-        flipDelay: Math.round(ai.flipDelay * 1.1),
-      }));
-    }
+    // 싱글플레이 하드 모드에서는 추가로 더 느리게 하는 이전 로직은 제거
 
     // Ensure quest counter helpers always exist (avoids `undefined` on certain builds)
     // NOTE: we try not to override the class prototype methods so the real
@@ -18262,36 +18259,74 @@ class GameScene extends Phaser.Scene {
     const pos = pointerPositions[pointerKey];
     if (!pos) return;
 
-    const circle = this.add
-      .circle(pos.x, pos.y, width * 0.09, 0xffffff, 0.1)
-      .setStrokeStyle(5, 0xfff3c4, 0.8)
+    // Outer ring (expanded, semi-transparent) for clear touch guidance
+    const outerRing = this.add
+      .circle(pos.x, pos.y, width * 0.12, 0xfff1b8, 0.20)
+      .setStrokeStyle(8, 0xffd44f, 0.95)
       .setDepth(9001);
-    this.tutorialState.pointerObjects.push(circle);
+    this.tutorialState.pointerObjects.push(outerRing);
     this.tweens.add({
-      targets: circle,
-      scale: { from: 0.85, to: 1.1 },
-      alpha: { from: 0.45, to: 0.15 },
-      duration: 650,
+      targets: outerRing,
+      scale: { from: 0.9, to: 1.2 },
+      alpha: { from: 0.5, to: 0.1 },
+      duration: 750,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.easeInOut",
+    });
+
+    const innerCircle = this.add
+      .circle(pos.x, pos.y, width * 0.08, 0xffffff, 0.35)
+      .setStrokeStyle(6, 0xfcc419, 0.95)
+      .setDepth(9002);
+    this.tutorialState.pointerObjects.push(innerCircle);
+    this.tweens.add({
+      targets: innerCircle,
+      scale: { from: 0.95, to: 1.05 },
+      duration: 700,
       yoyo: true,
       repeat: -1,
       ease: "Sine.easeInOut",
     });
 
     const arrow = this.add
-      .text(pos.x, pos.y - width * 0.1, "👇", {
+      .text(pos.x, pos.y - width * 0.12, "👇", {
         fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.08}px`,
-        color: "#ffffff",
-        stroke: "#000000",
-        strokeThickness: 6,
+        fontSize: `${width * 0.12}px`,
+        color: "#fffbeb",
+        stroke: "#8b5cf6",
+        strokeThickness: 8,
       })
       .setOrigin(0.5)
-      .setDepth(9002);
+      .setDepth(9003);
     this.tutorialState.pointerObjects.push(arrow);
     this.tweens.add({
       targets: arrow,
       y: pos.y - width * 0.07,
-      duration: 520,
+      duration: 560,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.easeInOut",
+    });
+
+    const label = this.add
+      .text(pos.x, pos.y - width * 0.22, "여기를 눌러주세요", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.04}px`,
+        color: "#ffffff",
+        backgroundColor: "rgba(255, 148, 58, 0.9)",
+        padding: { x: 10, y: 6 },
+        align: "center",
+        stroke: "#000000",
+        strokeThickness: 4,
+      })
+      .setOrigin(0.5)
+      .setDepth(9003);
+    this.tutorialState.pointerObjects.push(label);
+    this.tweens.add({
+      targets: label,
+      alpha: { from: 1, to: 0.6 },
+      duration: 900,
       yoyo: true,
       repeat: -1,
       ease: "Sine.easeInOut",
@@ -19996,11 +20031,12 @@ class GameScene extends Phaser.Scene {
       const aiSetting = this.aiSettings.find((ai) => ai.id === nextPlayer.id);
       const baseDelay = aiSetting ? aiSetting.flipDelay : 1500;
 
-      // 싱글플레이에서는 난이도에 따라 봇 제출 속도를 조절
-      // - normal: 20% 빠르게
-      // - hard: 20% 느리게
+      // 튜토리얼 종료 후 싱글플레이 AI 카드 제출 속도 고정(1.3초)
       let adjustedBaseDelay = baseDelay;
-      if (this.isSingle) {
+      if (this.isSingle && !this.isTutorialMode) {
+        adjustedBaseDelay = 1300;
+      } else if (this.isSingle) {
+        // 튜토리얼 모드에서는 난이도에 따라 빠르기/느리기 조절
         const diff = this.roundData?.aiDifficulty;
         if (diff === "normal") {
           adjustedBaseDelay = Math.round(baseDelay * 0.8);
