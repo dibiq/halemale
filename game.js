@@ -11943,6 +11943,19 @@ class GameScene extends Phaser.Scene {
       console.warn("GameScene.create: clearing old resultContainer failed", e);
     }
 
+    // 이전 게임의 로그 또한 남아있지 않도록 초기화
+    try {
+      if (this.logTexts) {
+        this.logTexts.forEach((t) => { try { t.destroy(); } catch (e) {} });
+        this.logTexts = [];
+      }
+      if (this.gameLogs) {
+        this.gameLogs = [];
+      }
+    } catch (e) {
+      console.warn("GameScene.create: clearing old game logs failed", e);
+    }
+
     try {
       if (this.playerTableGroup) {
         this.playerTableGroup.destroy();
@@ -14265,16 +14278,16 @@ class GameScene extends Phaser.Scene {
   }
 
   updateTurnEffect() {
-    const isMyTurn =
-      this.roundData.players[this.turnIndex]?.id ===
-      (this.isSingle ? this.myId : socket.id);
-
+    const myId = this.myId || (socket && socket.id) || (this.isSingle ? "PLAYER_ME" : null);
     const currentTurnId = this.roundData.players[this.turnIndex]?.id;
-    const isCurrentHumanTurn =
-      currentTurnId === (this.isSingle ? this.myId : socket.id);
+    const isMyTurn = currentTurnId === myId;
+    const isCurrentHumanTurn = isMyTurn;
 
-    console.debug("[updateTurnEffect] turnIndex", this.turnIndex, "currentTurnId", currentTurnId, "myId", this.isSingle ? this.myId : (socket && socket.id), "isMyTurn", isMyTurn, "isCurrentHumanTurn", isCurrentHumanTurn);
-    console.debug("[updateTurnEffect] myDeckSprite", this.myDeckSprite && this.myDeckSprite.active, "playerDeckSprites keys", this.playerDeckSprites ? Object.keys(this.playerDeckSprites) : []);
+    console.debug("[updateTurnEffect] turnIndex", this.turnIndex, "currentTurnId", currentTurnId, "myId", myId, "isMyTurn", isMyTurn, "isCurrentHumanTurn", isCurrentHumanTurn);
+    console.debug("[updateTurnEffect] myDeckSprite", this.myDeckSprite && this.myDeckSprite.active, "playerDeckSprites keys", this.playerDeckSprites ? Object.keys(this.playerDeckSprites) : [], "playerDeckSpritesExists", !!this.playerDeckSprites);
+    if (this.playerDeckSprites && myId) {
+      console.debug("[updateTurnEffect] myDeckSpriteFromMap", this.playerDeckSprites[myId], "active", this.playerDeckSprites[myId] ? this.playerDeckSprites[myId].active : null);
+    }
 
     if (isMyTurn && this.isGameStarted) {
       if (!this.turnOverlay) {
@@ -14304,39 +14317,26 @@ class GameScene extends Phaser.Scene {
           : null;
 
       if (activeDeck && activeDeck.active) {
-        if (this.turnDeckSprite !== activeDeck) {
-          // stop any previous deck-related tweens
-          if (this.turnDeckTween) {
-            try { this.turnDeckTween.stop(); } catch (e) {}
-            this.turnDeckTween = null;
-          }
-          if (this.turnDeckPulseTween) {
-            try { this.turnDeckPulseTween.stop(); } catch (e) {}
-            this.turnDeckPulseTween = null;
-          }
-          this.turnDeckSprite = activeDeck;
-          // Remove any tint/scale animation: ensure deck is in default visual state
-          try { activeDeck.clearTint(); } catch (e) {}
-        }
+        this.applyDeckPulse(activeDeck);
       }
 
-      // 카드 영역을 강조 (내 턴 알리기) — 애니메이션 제거: 아무 동작도 하지 않음
-      if (this.myDeckSprite && this.myDeckSprite.active) {
-        try { this.myDeckSprite.clearTint(); } catch (e) {}
+      // 카드 영역을 강조 (내 턴 알리기) — 싱글/멀티 모두에서 myDeck을 찾아서 펄스 적용
+      try {
+        const myDeck =
+          (this.playerDeckSprites && myId && this.playerDeckSprites[myId]) ||
+          this.myDeckSprite;
+        if (myDeck && myDeck.active) {
+          this.applyDeckPulse(myDeck);
+        }
+      } catch (e) {
+        try { if (this.myDeckSprite) this.myDeckSprite.clearTint(); } catch (err) {}
       }
     } else {
       if (this.turnOverlay) {
         this.turnOverlay.destroy();
         this.turnOverlay = null;
       }
-      if (this.turnDeckPulseTween) {
-        try { this.turnDeckPulseTween.stop(); } catch (e) {}
-        this.turnDeckPulseTween = null;
-      }
-      if (this.myDeckPulseTween) {
-        try { this.myDeckPulseTween.stop(); } catch (e) {}
-        this.myDeckPulseTween = null;
-      }
+      this.clearDeckPulse();
       if (this.turnDeckSprite && this.turnDeckSprite.active) {
         try { this.turnDeckSprite.clearTint(); } catch (e) {}
       }
@@ -14344,6 +14344,51 @@ class GameScene extends Phaser.Scene {
         try { this.myDeckSprite.clearTint(); } catch (e) {}
       }
       this.turnDeckSprite = null;
+    }
+  }
+
+  applyDeckPulse(deck) {
+    if (!deck || !deck.active) return;
+
+    if (this.deckPulseTween) {
+      try { this.deckPulseTween.stop(); } catch (e) {}
+      this.deckPulseTween = null;
+    }
+
+    const sc = 0xffffff;
+    const ec = 0x2ecc71;
+    const sr = (sc >> 16) & 0xff;
+    const sg = (sc >> 8) & 0xff;
+    const sb = sc & 0xff;
+    const er = (ec >> 16) & 0xff;
+    const eg = (ec >> 8) & 0xff;
+    const eb = ec & 0xff;
+
+    this.deckPulseTween = this.tweens.addCounter({
+      from: 0,
+      to: 100,
+      duration: 700,
+      yoyo: true,
+      repeat: -1,
+      onUpdate: (tween) => {
+        try {
+          const v = tween.getValue() / 100;
+          const r = Math.round(sr + (er - sr) * v);
+          const g = Math.round(sg + (eg - sg) * v);
+          const b = Math.round(sb + (eb - sb) * v);
+          const color = (r << 16) | (g << 8) | b;
+          if (deck && deck.active) {
+            deck.setTint(color);
+          }
+        } catch (e) {}
+      },
+    });
+  }
+
+  clearDeckPulse() {
+    if (this.deckPulseTween) {
+      try { this.deckPulseTween.stop(); } catch (e) {}
+      this.deckPulseTween = null;
     }
   }
 
@@ -14509,6 +14554,73 @@ class GameScene extends Phaser.Scene {
     this.playerTableGroup.add(nameTxt);
   }
 
+  drawPlayerDeck(p, layout) {
+    const { width } = this.cameras.main;
+
+    const myId = this.isSingle ? this.myId || "PLAYER_ME" : (this.myId || (socket && socket.id));
+    const isMe = p.id === myId;
+
+    const cardCount = p.cards !== undefined ? p.cards : p.remainingCards || 0;
+
+    const deck = this.add
+      .image(layout.x, layout.y, "card_back")
+      .setDisplaySize(width * 0.14, width * 0.20)
+      .setTint(isMe ? 0x7ae1ff : 0xffffff);
+
+    if (!this.playerDeckSprites) {
+      this.playerDeckSprites = {};
+    }
+    this.playerDeckSprites[p.id] = deck;
+
+    if (isMe) {
+      this.myDeckSprite = deck;
+      if (typeof this.profileCard !== 'undefined') {
+        this.time.delayedCall(0, () => {
+          if (typeof this.repositionProfileCard === 'function') {
+            this.repositionProfileCard();
+          }
+        });
+      }
+    }
+
+    const currentTurnId = this.roundData?.players?.[this.turnIndex]?.id;
+    const isMyTurn = currentTurnId === myId;
+
+    if (isMyTurn && isMe) {
+      this.applyDeckPulse(deck);
+    } else if (isMe) {
+      this.clearDeckPulse();
+      try { deck.clearTint(); } catch (e) {}
+    }
+
+    if (isMe && cardCount > 0) {
+      deck.setInteractive({ useHandCursor: true });
+      deck.on("pointerdown", () => {
+        this.tweens.add({
+          targets: deck,
+          scale: "*=0.95",
+          duration: 50,
+          yoyo: true,
+          onComplete: () => this.handleFlipCard(),
+        });
+      });
+    }
+
+    const countTxt = this.add
+      .text(layout.x, layout.y, cardCount, {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.055}px`,
+        color: "#ffffff",
+        fontWeight: "bold",
+        stroke: "#000",
+        strokeThickness: 4,
+      })
+      .setOrigin(0.5)
+      .setDepth(101);
+
+    this.playerTableGroup.add([deck, countTxt]);
+  }
+
   repositionProfileCard() {
     // move profile card to the right of my deck and make visible
     if (!this.profileCard || !this.myDeckSprite) return;
@@ -14525,8 +14637,8 @@ class GameScene extends Phaser.Scene {
   drawPlayerDeck(p, layout) {
     const { width } = this.cameras.main;
 
-    const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
-    const isMe = p.id === myId; // 내 카드인지 확인
+    const resolvedMyId = this.isSingle ? this.myId || "PLAYER_ME" : (this.myId || (socket && socket.id));
+    const isMe = p.id === resolvedMyId; // 내 카드인지 확인
 
     // 💡 카드 장수 결정 로직 통일
     const cardCount = p.cards !== undefined ? p.cards : p.remainingCards || 0;
@@ -14590,29 +14702,13 @@ class GameScene extends Phaser.Scene {
 
     const currentTurnId = this.roundData?.players?.[this.turnIndex]?.id;
     const isCurrentTurn = p.id === currentTurnId;
+    // resolvedMyId already defined at top of drawPlayerDeck
+    // const isMe is already defined above, so no redeclaration.
 
-    // 이전에는 현재 턴일 때 덱에 스케일/틴트 트윈을 생성했음.
-    // 사용자가 요청한 대로 덱 관련 애니메이션(스케일/틴트)을 제거합니다.
-    if (isCurrentTurn && isMe && !p.isEliminated) {
-      // no animation: ensure any previous tweens are stopped and visual reset
-      if (deck.__turnTween) {
-        try { deck.__turnTween.stop(); } catch (e) {}
-        deck.__turnTween = null;
-      }
-      if (deck.__tintTween) {
-        try { deck.__tintTween.stop(); } catch (e) {}
-        deck.__tintTween = null;
-      }
-      try { deck.clearTint(); } catch (e) {}
-    } else {
-      if (deck.__turnTween) {
-        try { deck.__turnTween.stop(); } catch (e) {}
-        deck.__turnTween = null;
-      }
-      if (deck.__tintTween) {
-        try { deck.__tintTween.stop(); } catch (e) {}
-        deck.__tintTween = null;
-      }
+    if (isMe && isCurrentTurn && !p.isEliminated) {
+      this.applyDeckPulse(deck);
+    } else if (isMe) {
+      this.clearDeckPulse();
       try { deck.clearTint(); } catch (e) {}
     }
 
@@ -15055,34 +15151,37 @@ class GameScene extends Phaser.Scene {
             (players[winIdx]?.cards || 0) - (prevPlayers?.find((p) => p.id === winnerId)?.cards || 0),
           );
 
-    const winInfoText = this.add
-      .text(targetPos.x, targetPos.y, `${winnerName}님 정답! ${gainedCards}장 획득!`, {
-        fontFamily: GAME_FONTS.main,
-        fontSize: `${Math.round(width * 0.07)}px`,
-        color: "#ffff00",
-        stroke: "#000000",
-        strokeThickness: 6,
-        fontStyle: "bold",
-      })
-      .setOrigin(0.5)
-      .setDepth(10011)
-      .setAlpha(0);
+    // Only show win text for real players (not AI/bots)
+    if (!this.isPlayerAi(winnerId)) {
+      const winInfoText = this.add
+        .text(targetPos.x, targetPos.y, `${winnerName}님 정답! ${gainedCards}장 획득!`, {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${Math.round(width * 0.07)}px`,
+          color: "#ffff00",
+          stroke: "#000000",
+          strokeThickness: 6,
+          fontStyle: "bold",
+        })
+        .setOrigin(0.5)
+        .setDepth(10011)
+        .setAlpha(0);
 
-    this.tweens.add({
-      targets: winInfoText,
-      alpha: 1,
-      y: height * 0.35,
-      duration: 250,
-      ease: "Power2.easeOut",
-      yoyo: true,
-      hold: 1700,
-      repeat: 0,
-      onComplete: () => {
-        if (winInfoText) {
-          winInfoText.destroy();
-        }
-      },
-    });
+      this.tweens.add({
+        targets: winInfoText,
+        alpha: 1,
+        y: height * 0.35,
+        duration: 250,
+        ease: "Power2.easeOut",
+        yoyo: true,
+        hold: 1700,
+        repeat: 0,
+        onComplete: () => {
+          if (winInfoText) {
+            winInfoText.destroy();
+          }
+        },
+      });
+    }
 
     // show single avatar animation at center once (for winner)
     let combo = 0;
