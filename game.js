@@ -14034,6 +14034,11 @@ class GameScene extends Phaser.Scene {
       return sum + (p.openStack ? p.openStack.length : 0);
     }, 0);
 
+    // 매 프레임 렌더 이후 턴 효과 업데이트 (현재 턴 강조)
+    if (typeof this.updateTurnEffect === "function") {
+      this.updateTurnEffect();
+    }
+
     const cx = width * 0.5;
     const cy = height * 0.465;
 
@@ -14264,6 +14269,13 @@ class GameScene extends Phaser.Scene {
       this.roundData.players[this.turnIndex]?.id ===
       (this.isSingle ? this.myId : socket.id);
 
+    const currentTurnId = this.roundData.players[this.turnIndex]?.id;
+    const isCurrentHumanTurn =
+      currentTurnId === (this.isSingle ? this.myId : socket.id);
+
+    console.debug("[updateTurnEffect] turnIndex", this.turnIndex, "currentTurnId", currentTurnId, "myId", this.isSingle ? this.myId : (socket && socket.id), "isMyTurn", isMyTurn, "isCurrentHumanTurn", isCurrentHumanTurn);
+    console.debug("[updateTurnEffect] myDeckSprite", this.myDeckSprite && this.myDeckSprite.active, "playerDeckSprites keys", this.playerDeckSprites ? Object.keys(this.playerDeckSprites) : []);
+
     if (isMyTurn && this.isGameStarted) {
       if (!this.turnOverlay) {
         this.turnOverlay = this.add.graphics();
@@ -14285,11 +14297,53 @@ class GameScene extends Phaser.Scene {
           repeat: -1,
         });
       }
+
+      const activeDeck =
+        this.playerDeckSprites && currentTurnId
+          ? this.playerDeckSprites[currentTurnId]
+          : null;
+
+      if (activeDeck && activeDeck.active) {
+        if (this.turnDeckSprite !== activeDeck) {
+          // stop any previous deck-related tweens
+          if (this.turnDeckTween) {
+            try { this.turnDeckTween.stop(); } catch (e) {}
+            this.turnDeckTween = null;
+          }
+          if (this.turnDeckPulseTween) {
+            try { this.turnDeckPulseTween.stop(); } catch (e) {}
+            this.turnDeckPulseTween = null;
+          }
+          this.turnDeckSprite = activeDeck;
+          // Remove any tint/scale animation: ensure deck is in default visual state
+          try { activeDeck.clearTint(); } catch (e) {}
+        }
+      }
+
+      // 카드 영역을 강조 (내 턴 알리기) — 애니메이션 제거: 아무 동작도 하지 않음
+      if (this.myDeckSprite && this.myDeckSprite.active) {
+        try { this.myDeckSprite.clearTint(); } catch (e) {}
+      }
     } else {
       if (this.turnOverlay) {
         this.turnOverlay.destroy();
         this.turnOverlay = null;
       }
+      if (this.turnDeckPulseTween) {
+        try { this.turnDeckPulseTween.stop(); } catch (e) {}
+        this.turnDeckPulseTween = null;
+      }
+      if (this.myDeckPulseTween) {
+        try { this.myDeckPulseTween.stop(); } catch (e) {}
+        this.myDeckPulseTween = null;
+      }
+      if (this.turnDeckSprite && this.turnDeckSprite.active) {
+        try { this.turnDeckSprite.clearTint(); } catch (e) {}
+      }
+      if (this.myDeckSprite && this.myDeckSprite.active) {
+        try { this.myDeckSprite.clearTint(); } catch (e) {}
+      }
+      this.turnDeckSprite = null;
     }
   }
 
@@ -14479,9 +14533,17 @@ class GameScene extends Phaser.Scene {
 
     const deck = this.add
       .image(layout.x, layout.y, "card_back")
-      .setDisplaySize(width * 0.15, width * 0.22);
+      .setDisplaySize(width * 0.14, width * 0.20)
+      .setTint(isMe ? 0x7ae1ff : 0xffffff);
+
+    // Keep mapping from player ID to deck sprite for turn effects.
+    if (!this.playerDeckSprites) {
+      this.playerDeckSprites = {};
+    }
+    this.playerDeckSprites[p.id] = deck;
+
     if (isMe) {
-      // keep reference for later animation
+      // keep reference for later animation (also used by existing logic)
       this.myDeckSprite = deck;
       // once my deck exists, reposition the profile card above and to the right of it
       if (typeof this.profileCard !== 'undefined') {
@@ -14524,6 +14586,34 @@ class GameScene extends Phaser.Scene {
     if (isMe && cardCount > 0) {
       countTxt.setInteractive({ useHandCursor: true });
       countTxt.on("pointerdown", () => this.handleFlipCard());
+    }
+
+    const currentTurnId = this.roundData?.players?.[this.turnIndex]?.id;
+    const isCurrentTurn = p.id === currentTurnId;
+
+    // 이전에는 현재 턴일 때 덱에 스케일/틴트 트윈을 생성했음.
+    // 사용자가 요청한 대로 덱 관련 애니메이션(스케일/틴트)을 제거합니다.
+    if (isCurrentTurn && isMe && !p.isEliminated) {
+      // no animation: ensure any previous tweens are stopped and visual reset
+      if (deck.__turnTween) {
+        try { deck.__turnTween.stop(); } catch (e) {}
+        deck.__turnTween = null;
+      }
+      if (deck.__tintTween) {
+        try { deck.__tintTween.stop(); } catch (e) {}
+        deck.__tintTween = null;
+      }
+      try { deck.clearTint(); } catch (e) {}
+    } else {
+      if (deck.__turnTween) {
+        try { deck.__turnTween.stop(); } catch (e) {}
+        deck.__turnTween = null;
+      }
+      if (deck.__tintTween) {
+        try { deck.__tintTween.stop(); } catch (e) {}
+        deck.__tintTween = null;
+      }
+      try { deck.clearTint(); } catch (e) {}
     }
 
     this.playerTableGroup.add([deck, countTxt]);
@@ -15466,24 +15556,8 @@ class GameScene extends Phaser.Scene {
           delete this._singleFlipInProgress[data.playerId];
         }
 
-        // Show the actual face of the flipped card briefly before cleaning up.
-        const frontKey = this.getCardKey(data.card);
-        if (frontKey && this.textures.exists(frontKey)) {
-          tempCard.setTexture(frontKey);
-          tempCard.setDisplaySize(width * 0.18, width * 0.25);
-          const openStackLength = player ? (player.openStack?.length || 0) : 0;
-          tempCard.setDepth(4000 + openStackLength);
-          this.tweens.add({
-            targets: tempCard,
-            alpha: 1,
-            duration: 120,
-            onComplete: () => {
-              tempCard.destroy();
-            },
-          });
-        } else {
-          tempCard.destroy();
-        }
+        // 간단히 날아가도록: 중간에 색상 변경이나 크기 변화를 하지 않고 바로 정리
+        try { tempCard.destroy(); } catch (e) {}
 
         // 마지막으로 전체(새 카드 포함) 렌더링
         this.renderTable(this.roundData.players);
@@ -16229,7 +16303,7 @@ class GameScene extends Phaser.Scene {
         const offset = (j - (perRecipient - 1) / 2) * (width * 0.02);
         const flyCard = this.add
           .image(startPos.x, startPos.y, "card_back")
-          .setDisplaySize(width * 0.135, width * 0.22)
+          .setDisplaySize(width * 0.15, width * 0.22)
           .setDepth(2000);
 
         this.tweens.add({
@@ -19066,7 +19140,7 @@ class GameScene extends Phaser.Scene {
 
         const flyCard = this.add
           .image(startX, startY, "card_back")
-          .setDisplaySize(width * 0.14, width * 0.2)
+          .setDisplaySize(width * 0.15, width * 0.22)
           .setDepth(3000 + i);
 
         const delay = i * 120;
@@ -19148,14 +19222,14 @@ class GameScene extends Phaser.Scene {
     const toPos = pos[relTarget];
 
     // 두 장의 카드가 서로 교차 이동
-    const cardA = this.add
-      .image(fromPos.x + (Math.random() - 0.5) * 12, fromPos.y, "card_back")
-      .setDisplaySize(width * 0.14, width * 0.2)
-      .setDepth(3000);
+        const cardA = this.add
+          .image(x, y, "card_back")
+          .setDisplaySize(width * 0.15, width * 0.22)
+          .setDepth(3000);
     const cardB = this.add
-      .image(toPos.x + (Math.random() - 0.5) * 12, toPos.y, "card_back")
-      .setDisplaySize(width * 0.14, width * 0.2)
-      .setDepth(3001);
+      .image(x, y, data.card) 
+      .setDisplaySize(width * 0.15, width * 0.22)
+      .setDepth(1100);
 
     this.tweens.add({
       targets: cardA,
