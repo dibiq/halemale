@@ -18814,7 +18814,7 @@ class GameScene extends Phaser.Scene {
     });
 
     const label = this.add
-      .text(pos.x, pos.y - width * 0.22, "여기를 눌러주세요", {
+      .text(pos.x, pos.y, "여기를 눌러주세요", {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.04}px`,
         color: "#ffffff",
@@ -18825,7 +18825,7 @@ class GameScene extends Phaser.Scene {
         strokeThickness: 4,
       })
       .setOrigin(0.5)
-      .setDepth(9003);
+      .setDepth(9004);
     this.tutorialState.pointerObjects.push(label);
     this.tweens.add({
       targets: label,
