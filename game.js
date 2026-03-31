@@ -659,6 +659,12 @@ class LobbyScene extends Phaser.Scene {
         }
       }
 
+      try {
+        localStorage.setItem('profileCoins', String(next));
+      } catch (e) {
+        console.warn('[LobbyScene.setCoinsAbsolute] localStorage persist failed', e);
+      }
+
       if (options.sync && typeof this.safeSyncInventory === "function") {
         try {
           this.safeSyncInventory("setCoinsAbsolute", {
@@ -745,6 +751,12 @@ class LobbyScene extends Phaser.Scene {
         ) {
           this.coinShopCurrentCoinText.setText(`현재 보유: 💰 ${next}`);
         }
+      }
+
+      try {
+        localStorage.setItem('profileCoins', String(next));
+      } catch (e) {
+        console.warn('[LobbyScene.modifyCoins] localStorage persist failed', e);
       }
 
       if (options.sync && typeof this.safeSyncInventory === "function") {
@@ -1157,6 +1169,7 @@ class LobbyScene extends Phaser.Scene {
     // we can immediately start a single easy match instead of staying in the lobby.
     this.autoStartSingleAfterTutorial =
       data && data.fromTutorial && data.autoStartSingle;
+    this.fromSingleGame = !!(data && data.fromSingle);
 
     // Allow callers to explicitly prevent automatic single-start (e.g. when
     // returning from a single match via back/navigation). This prevents a
@@ -1829,27 +1842,28 @@ class LobbyScene extends Phaser.Scene {
           specialCards: specialCardsOwned,
         };
 
-        if (this.hasServerProfileSnapshot) {
-          const safeCoins = Number(this.myProfile && this.myProfile.coins);
-          if (Number.isFinite(safeCoins)) {
-            payload.coins = safeCoins;
-          }
-          const safeAvetime = Number(this.myProfile && this.myProfile.avetime);
-          if (Number.isFinite(safeAvetime)) {
-            payload.avetime = safeAvetime;
-          }
+        const safeCoins = Number(this.myProfile && this.myProfile.coins);
+        if (Number.isFinite(safeCoins)) {
+          payload.coins = safeCoins;
+        }
 
-          const includeExperience = options.includeExperience !== false;
-          const safeLevel = Number(this.myProfile && this.myProfile.level);
-          if (includeExperience && Number.isFinite(safeLevel)) {
-            payload.level = safeLevel;
-          }
-          const safeExperience = Number(this.myProfile && this.myProfile.experience);
-          if (includeExperience && Number.isFinite(safeExperience)) {
-            payload.experience = safeExperience;
-          }
+        const safeAvetime = Number(this.myProfile && this.myProfile.avetime);
+        if (Number.isFinite(safeAvetime)) {
+          payload.avetime = safeAvetime;
+        }
 
-          // Include owned characters in the payload.
+        const includeExperience = options.includeExperience !== false;
+        const safeLevel = Number(this.myProfile && this.myProfile.level);
+        if (includeExperience && Number.isFinite(safeLevel)) {
+          payload.level = safeLevel;
+        }
+
+        const safeExperience = Number(this.myProfile && this.myProfile.experience);
+        if (includeExperience && Number.isFinite(safeExperience)) {
+          payload.experience = safeExperience;
+        }
+
+        // Include owned characters in the payload.
         // If the server profile isn't fully available yet, use locally stored owned characters.
         const filterOwnedKeys = (keys) =>
           Array.isArray(keys)
@@ -1877,14 +1891,13 @@ class LobbyScene extends Phaser.Scene {
           payload.owned_characters = mergedOwnedCharacters;
         }
 
-          const currentCharacter = this.getSelectedAvatarKey();
-          if (
-            typeof currentCharacter === "string" &&
-            (/^(player_[1-4]|premium_bear)$/.test(currentCharacter))
-          ) {
-            payload.currentCharacter = currentCharacter;
-            payload.current_character = currentCharacter;
-          }
+        const currentCharacter = this.getSelectedAvatarKey();
+        if (
+          typeof currentCharacter === "string" &&
+          (/^(player_[1-4]|premium_bear)$/.test(currentCharacter))
+        ) {
+          payload.currentCharacter = currentCharacter;
+          payload.current_character = currentCharacter;
         }
 
         socket.emit("syncPlayerInventory", payload);
@@ -3930,6 +3943,12 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       normalizeCharacterKey(prev.avatarKey) ||
       normalizedCurrentCharacter;
 
+    let resolvedCoins = Number(profile.coins ?? prev.coins ?? 0) || 0;
+    if (this.fromSingleGame || this.isSingle) {
+      const storedCoins = Number(localStorage.getItem("profileCoins")) || 0;
+      resolvedCoins = Math.max(resolvedCoins, storedCoins);
+    }
+
     this.myProfile = {
       ...prev,
       ...profile,
@@ -3939,7 +3958,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         localStorage.getItem("nickname") ||
         "요리사",
       level: Number(profile.level ?? prev.level ?? 1) || 1,
-      coins: Number(profile.coins ?? prev.coins ?? 0) || 0,
+      coins: resolvedCoins,
       experience: Number(profile.experience ?? prev.experience ?? 0) || 0,
       // ratio is derived from bell stats (bellCorrect/bellTotal)
       // to avoid relying on an inconsistent cached value.
@@ -10730,7 +10749,17 @@ class GameScene extends Phaser.Scene {
 
     this._isApplyingDeferredProfile = true;
     try {
-      this.updateMyProfileUI(this._deferredMyProfile);
+      // Defensive merge: if the deferred profile includes a `coins` value,
+      // avoid letting an older server snapshot overwrite a locally-updated
+      // coin amount (e.g. client applied per-rank animation + modifyCoins).
+      const incoming = { ...this._deferredMyProfile };
+      if (typeof incoming.coins !== 'undefined') {
+        const localCoins = Number(this.myProfile?.coins) || 0;
+        const incomingCoins = Number(incoming.coins) || 0;
+        // Prefer whichever is larger to avoid accidental regressions.
+        incoming.coins = localCoins >= incomingCoins ? localCoins : incomingCoins;
+      }
+      this.updateMyProfileUI(incoming);
     } catch (e) {
       console.warn("applyDeferredProfileUpdates failed", e);
     }
@@ -10741,6 +10770,7 @@ class GameScene extends Phaser.Scene {
   // Centralized coin update helper: apply delta immediately or defer during result overlay
   modifyCoins(delta, options = {}) {
     try {
+      console.log('[modifyCoins] called', { delta, options });
       const sync = !!options.sync;
       const force = !!options.force;
       // If result overlay active or game has ended, defer applying coins unless forced.
@@ -10754,6 +10784,20 @@ class GameScene extends Phaser.Scene {
       const prev = Number(this.myProfile.coins) || 0;
       const next = prev + Number(delta || 0);
       this.myProfile.coins = next;
+      console.log('[modifyCoins] applied', { prev, delta: Number(delta || 0), next });
+      // Persist coins locally for single-player so the value survives scene switches
+      try {
+        if (this.isSingle) {
+          try {
+            localStorage.setItem('profileCoins', String(this.myProfile.coins));
+            console.log('[modifyCoins] persisted to localStorage', { key: 'profileCoins', value: this.myProfile.coins });
+          } catch (e) {
+            console.warn('[modifyCoins] failed to persist local profileCoins', e);
+          }
+        }
+      } catch (e) {
+        /* ignore */
+      }
 
       // Decide whether to update UI now. After multiplayer game end, skip bottom-right UI updates.
       const skipUI = !!(this.isGameEnded && !this.isSingle && !force);
@@ -10872,6 +10916,21 @@ class GameScene extends Phaser.Scene {
       normalizeCharacterKey(prev.avatarKey) ||
       normalizedCurrentCharacter;
 
+    // Decide coin value carefully: for single-player prefer locally-persisted
+    // coin value if it's larger than the server snapshot to avoid losing
+    // freshly-awarded single-player rewards that may not be synced immediately.
+    let incomingCoins = Number.isFinite(Number(profile.coins))
+      ? Number(profile.coins)
+      : Number(prev.coins) || 0;
+    try {
+      if (this.isSingle || this.fromSingleGame) {
+        const stored = Number(localStorage.getItem("profileCoins")) || 0;
+        incomingCoins = Math.max(incomingCoins, stored, Number(prev.coins) || 0);
+      }
+    } catch (e) {
+      // ignore localStorage errors
+    }
+
     this.myProfile = {
       ...prev,
       ...profile,
@@ -10881,7 +10940,7 @@ class GameScene extends Phaser.Scene {
         localStorage.getItem("nickname") ||
         "요리사",
       level: Number(profile.level ?? prev.level ?? 1) || 1,
-      coins: Number(profile.coins ?? prev.coins ?? 0) || 0,
+      coins: Number.isFinite(incomingCoins) ? incomingCoins : 0,
       experience: Number(profile.experience ?? prev.experience ?? 0) || 0,
       ratio: initialRatio,
       owned_characters: normalizedOwnedCharacters,
@@ -12358,6 +12417,9 @@ class GameScene extends Phaser.Scene {
     });
 
     socket.off("myProfile").on("myProfile", (profile) => {
+      try {
+        console.log('[socket.myProfile] received', profile);
+      } catch (e) {}
       // cache again in case stats update separately
       try { socket.profile = profile; } catch (e) {}
       // update local profile stats for toast/etc
@@ -12389,14 +12451,40 @@ class GameScene extends Phaser.Scene {
 
       // make sure the game-scene profile UI also reflects the full profile
       if (typeof this.updateMyProfileUI === 'function') {
-        // 멀티플레이 결과(시상식) 연출 중이거나 게임이 종료된 상태라면
-        // 프로필(특히 코인) 업데이트를 즉시 적용하지 않고 지연 저장합니다.
-        if (this.isGameEnded || this.isResultOverlayActive) {
-          this._deferredMyProfile = profile;
-          console.debug("myProfile update deferred until post-result (socket.myProfile)", { profile });
-        } else {
-          this.updateMyProfileUI(profile);
+        // If server only sent a coin update (common for single-player end flows),
+        // treat it as a delta instead of overwriting the entire profile.coins.
+        const hasOnlyCoins =
+          typeof profile.coins !== 'undefined' &&
+          typeof profile.level === 'undefined' &&
+          typeof profile.experience === 'undefined' &&
+          (Object.keys(profile).length === 1 || (Object.keys(profile).length === 2 && profile.coins !== undefined));
+
+        if (hasOnlyCoins && this.isSingle) {
+          const coinDelta = Number(profile.coins) || 0;
+          if (this.isGameEnded || this.isResultOverlayActive) {
+            // defer coin delta until after result overlay (keeps underlying UI stable)
+            this._deferredCoinsDelta = (this._deferredCoinsDelta || 0) + coinDelta;
+            console.debug('socket.myProfile: deferred coin delta (single)', { coinDelta, deferred: this._deferredCoinsDelta });
+          } else {
+            // apply immediately as a delta (do not emit back to server)
+            try {
+              this.modifyCoins(coinDelta, { sync: false });
+            } catch (e) {
+              console.warn('socket.myProfile: modifyCoins failed', e);
+            }
+          }
+          // mark that we have at least a server snapshot for other stats
           this.hasServerProfileSnapshot = true;
+        } else {
+          // 멀티플레이 결과(시상식) 연출 중이거나 게임이 종료된 상태라면
+          // 프로필(특히 코인) 업데이트를 즉시 적용하지 않고 지연 저장합니다.
+          if (this.isGameEnded || this.isResultOverlayActive) {
+            this._deferredMyProfile = profile;
+            console.debug("myProfile update deferred until post-result (socket.myProfile)", { profile });
+          } else {
+            this.updateMyProfileUI(profile);
+            this.hasServerProfileSnapshot = true;
+          }
         }
       }
 
@@ -14477,8 +14565,6 @@ class GameScene extends Phaser.Scene {
   applyDeckPulse(deck) {
     if (!deck || !deck.active) return;
 
-    console.log('[applyDeckPulse] start for deck', deck && deck.name, 'at', deck && { x: deck.x, y: deck.y });
-
     // if we're switching targets, clear tint on old target
     try {
       if (this.deckPulseTarget && this.deckPulseTarget !== deck) {
@@ -14518,21 +14604,18 @@ class GameScene extends Phaser.Scene {
             deck.setTint(color);
           }
           // small probe log when tint is set
-          try { console.log('[applyDeckPulse] tint set', color.toString(16)); } catch (e) {}
+        
         } catch (e) {}
       },
     });
-    try { console.log('[applyDeckPulse] tween started', !!this.deckPulseTween, 'target:', this.deckPulseTarget && { x: this.deckPulseTarget.x, y: this.deckPulseTarget.y }); } catch (e) {}
     // Immediately apply an initial tint so user sees the effect even if
     // tween callbacks haven't run yet due to timing/scheduling.
     try {
       const immediateColor = ec; // end color (green)
       if (deck && deck.setTint) {
         deck.setTint(immediateColor);
-        console.log('[applyDeckPulse] initial tint applied', immediateColor.toString(16));
       }
     } catch (e) {
-      console.warn('applyDeckPulse initial tint failed', e);
     }
   }
 
@@ -16940,6 +17023,7 @@ class GameScene extends Phaser.Scene {
       }
       this.scene.start("LobbyScene", {
         preventAutoStartSingleAfterTutorial: true,
+        fromSingle: this.isSingle,
       });
       return;
     }
@@ -21824,16 +21908,43 @@ class GameScene extends Phaser.Scene {
 
     const confirmBtn = this.add
       .image(width / 2, height * 0.83, "uibtn")
-      .setDisplaySize(width * 0.45, height * 0.075)
-      .setInteractive({ useHandCursor: true });
+      .setDisplaySize(width * 0.45, height * 0.075);
     const confirmTxt = this.add
-      .text(width / 2, height * 0.83, "확인", {
+      .text(width / 2, height * 0.83, "코인 획득중..", {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.055}px`,
         color: "#ffffff",
         fontWeight: "bold",
       })
       .setOrigin(0.5);
+
+    let isResultReadyToConfirm = false;
+    const enableConfirmButton = () => {
+      isResultReadyToConfirm = true;
+      try {
+        confirmBtn.setInteractive({ useHandCursor: true });
+      } catch (e) {
+        // ignore
+      }
+      confirmBtn.setAlpha(1);
+      confirmTxt.setAlpha(1);
+      confirmTxt.setText("확인");
+    };
+    const disableConfirmButton = () => {
+      isResultReadyToConfirm = false;
+      try {
+        if (confirmBtn.disableInteractive) {
+          confirmBtn.disableInteractive();
+        }
+      } catch (e) {
+        // ignore
+      }
+      confirmBtn.setAlpha(0.5);
+      confirmTxt.setAlpha(0.5);
+      confirmTxt.setText("코인 적용중...");
+    };
+
+    disableConfirmButton();
 
     container.add([countdownText, confirmBtn, confirmTxt]);
 
@@ -21853,9 +21964,11 @@ class GameScene extends Phaser.Scene {
         (sum, _, idx) => sum + (coinCountByRank[idx] || 0),
         0,
       );
+      console.log('[result] playCoinCollectAnimation start', { totalRankCoins, rankedPlayersCount: rankedPlayers.length });
       let arrivedCoins = 0;
 
       const tryApplyDeferred = () => {
+        console.log('[result] tryApplyDeferred', { totalRankCoins, arrivedCoins });
         if (totalRankCoins > 0 && arrivedCoins < totalRankCoins) return;
 
         // 코인 애니메이션이 다 끝났을 때 프로필 갱신
@@ -21864,14 +21977,29 @@ class GameScene extends Phaser.Scene {
           try {
             const coinCountByRank = [30, 20, 10];
             let awardedForMe = 0;
+            const mySocketId = this.isSingle ? (this.myId || "PLAYER_ME") : (socket && socket.id);
+            console.log('[result] computing awardedForMe', { mySocketId, rankedPlayers });
             rankedPlayers.forEach((p, idx) => {
-              if (p && p.id && socket && socket.id && p.id === socket.id) {
-                awardedForMe += Number(coinCountByRank[idx] || 0);
+              try {
+                if (!p || typeof p.id === 'undefined') return;
+                if (!mySocketId) return;
+                if (String(p.id) === String(mySocketId)) {
+                  awardedForMe += Number(coinCountByRank[idx] || 0);
+                }
+              } catch (e) {
+                // ignore per-player comparison issues
               }
             });
+            console.log('[result] awardedForMe computed', { awardedForMe });
             if (awardedForMe > 0) {
               // Apply via centralized helper and force apply even if flag still set
-              this.modifyCoins(Number(awardedForMe), { sync: true, force: true });
+              try {
+                console.log('[result] before modifyCoins', { prevCoins: Number(this.myProfile?.coins) || 0, awardedForMe });
+                this.modifyCoins(Number(awardedForMe), { sync: true, force: true });
+                console.log('[result] after modifyCoins', { newCoins: Number(this.myProfile?.coins) || 0 });
+              } catch (e) {
+                console.warn('[result] modifyCoins failed', e);
+              }
             }
           } catch (e) {
             console.warn('apply per-rank award failed', e);
@@ -21882,12 +22010,14 @@ class GameScene extends Phaser.Scene {
 
           // 결과창 완료 상태 reset
           this.isResultOverlayActive = false;
+          enableConfirmButton();
         } catch (e) {
           console.warn('tryApplyDeferred failed', e);
           try {
             this.applyDeferredProfileUpdates();
           } catch (err) {}
           this.isResultOverlayActive = false;
+          enableConfirmButton();
         }
       };
 
@@ -22046,6 +22176,25 @@ class GameScene extends Phaser.Scene {
         } catch (e) {
           console.warn("goToLobby(single): cleanup failed", e);
         }
+
+        // Ensure any deferred profile update is applied before leaving.
+        try {
+          if (this._deferredMyProfile) {
+            this.applyDeferredProfileUpdates();
+          }
+        } catch (e) {
+          console.warn("goToLobby(single): applyDeferredProfileUpdates failed", e);
+        }
+
+        // Sync final single-player coin state to server/local.
+        try {
+          if (typeof this.emitInventory === "function") {
+            this.emitInventory("postProfileSync", { requireServerProfile: false });
+          }
+        } catch (e) {
+          console.warn("goToLobby(single): postProfileSync emit failed", e);
+        }
+
         try {
           if (this.scene.isActive("GameScene")) this.scene.stop("GameScene");
         } catch (e) {
@@ -22054,6 +22203,7 @@ class GameScene extends Phaser.Scene {
         try {
           this.scene.start("LobbyScene", {
             preventAutoStartSingleAfterTutorial: true,
+            fromSingle: true,
           });
         } catch (e) {
           console.warn("goToLobby(single): start LobbyScene failed", e);
@@ -22130,6 +22280,15 @@ class GameScene extends Phaser.Scene {
         }
       }
 
+      // ensure singleplayer coins are synced/kept to server (or local fallback)
+      try {
+        if (typeof this.emitInventory === "function") {
+          this.emitInventory("postProfileSync", { requireServerProfile: false });
+        }
+      } catch (e) {
+        console.warn("goToLobby: postProfileSync emit failed", e);
+      }
+
       // Stop GameScene and return to lobby while keeping multiplayer room context.
       try {
         if (this.scene.isActive("GameScene")) {
@@ -22152,25 +22311,16 @@ class GameScene extends Phaser.Scene {
     };
 
     confirmBtn.on("pointerdown", () => {
-      this.sound.play("btn", { volume: 0.1 });
-      if (this.isSingle) {
-        try {
-          if (this.resultContainer) {
-            this.resultContainer.destroy();
-            this.resultContainer = null;
-          }
-        } catch (e) {}
-        try {
-          this.scene.start("LobbyScene", {
-            preventAutoStartSingleAfterTutorial: true,
-          });
-        } catch (e) {
-          console.warn("showResultOverlay confirm go to lobby failed", e);
-          goToLobby();
+      if (!isResultReadyToConfirm) {
+        this.sound.play("btn", { volume: 0.1 });
+        if (typeof this.showToast === "function") {
+          this.showToast("코인 업데이트가 완료된 후에 이동합니다.", "#f1c40f");
         }
-      } else {
-        goToLobby();
+        return;
       }
+
+      this.sound.play("btn", { volume: 0.1 });
+      goToLobby();
     });
 
     let remainSeconds = 20;
@@ -22207,6 +22357,7 @@ class GameScene extends Phaser.Scene {
     } else {
       container.y = 0;
       this.isResultOverlayActive = true;
+      enableConfirmButton();
       // 업데이트 모드에서는 이미 결과창이 끝난 상태로 간주하고 바로 실행
       playCoinCollectAnimation();
     }
