@@ -1170,6 +1170,7 @@ class LobbyScene extends Phaser.Scene {
     this.autoStartSingleAfterTutorial =
       data && data.fromTutorial && data.autoStartSingle;
     this.fromSingleGame = !!(data && data.fromSingle);
+    this.fromTutorial = !!(data && data.fromTutorial);
 
     // Allow callers to explicitly prevent automatic single-start (e.g. when
     // returning from a single match via back/navigation). This prevents a
@@ -5916,15 +5917,32 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     };
 
     // If the lobby was entered from the tutorial completion flow, mark
-    // the upcoming single game as tutorial-origin so debug helpers appear.
+    // the upcoming single game as tutorial-origin so reward conditions can apply.
     try {
+      const pendingPremiumBearReward =
+        localStorage.getItem("pendingPremiumBearReward") === "true";
+
+      if (this.autoStartSingleAfterTutorial || pendingPremiumBearReward) {
+        // Tutorial-origin single should be eligible for the premium-bear win reward.
+        singleGameData.fromTutorial = true;
+      }
+
       if (this.autoStartSingleAfterTutorial) {
         singleGameData.isTutorialMode = true;
-        singleGameData.fromTutorial = true;
-        // clear the flag so it doesn't persist for future games
         this.autoStartSingleAfterTutorial = false;
       }
-    } catch (e) {}
+
+      // If we use the pending reward tuple, we don't want this to repeat.
+      if (pendingPremiumBearReward) {
+        try {
+          localStorage.removeItem("pendingPremiumBearReward");
+        } catch (e) {
+          console.warn("remove pendingPremiumBearReward failed", e);
+        }
+      }
+    } catch (e) {
+      console.warn("startSingleGame tutorial reward init failed", e);
+    }
 
     this.scene.start("GameScene", singleGameData);
   }
@@ -11628,6 +11646,7 @@ class GameScene extends Phaser.Scene {
     this.pendingGameStartData = data && Array.isArray(this.roundData.players) && this.roundData.players.length ? data : null;
 
     this.isTutorialMode = !!data.isTutorialMode;
+    this.fromTutorial = !!data.fromTutorial;
     this.tutorialConfig = data.tutorialConfig || null;
 
     // Reset tracking flags so each new game correctly counts single play progress.
@@ -16788,9 +16807,11 @@ class GameScene extends Phaser.Scene {
         String(winnerId) === String(resolvedMyId)
       );
 
-      // If winner detected as me, show reward popup only for tutorial-origin single games.
-      // Reward must not be granted for normal single or multiplayer wins.
-      if (isWin && iAmWinner && this.isSingle && this.isTutorialMode) {
+      // If winner detected as me, show reward popup for tutorial-origin single games.
+      // Reward should cover both pure tutorial-mode games and the follow-up single game after tutorial.
+      const tutorialRewardEligible =
+        this.isSingle && (this.isTutorialMode || this.fromTutorial);
+      if (isWin && iAmWinner && tutorialRewardEligible) {
 
         const alreadyOwned = !!hasPremiumBear;
 
@@ -16943,11 +16964,19 @@ class GameScene extends Phaser.Scene {
         };
 
         showAcquiredPopupWithRetry(0);
+
+        // Mark one-time tutorial-related premium reward as consumed.
+        try {
+          this.fromTutorial = false;
+          localStorage.removeItem("pendingPremiumBearReward");
+        } catch (e) {
+          console.warn("clear premium bear reward flag failed", e);
+        }
       }
 
       // Force-show for tutorial-origin single games as a fallback if popup didn't appear.
       try {
-        if (this.isTutorialMode && isWin && iAmWinner && !this._premiumBearPopupForcedShown) {
+        if ((this.isTutorialMode || this.fromTutorial) && isWin && iAmWinner && !this._premiumBearPopupForcedShown) {
           console.debug('[premium] forcing acquired popup for tutorial game');
           this._premiumBearPopupForcedShown = true;
           try {
@@ -19278,6 +19307,12 @@ class GameScene extends Phaser.Scene {
         localStorage.setItem(TUTORIAL_STATE_KEY, "true");
       } catch (e) {
         console.warn("failed to persist tutorial completion", e);
+      }
+      try {
+        // 튜토리얼 후 첫 싱글 승리 시 명품곰돌이 지급 보장 플래그
+        localStorage.setItem("pendingPremiumBearReward", "true");
+      } catch (e) {
+        console.warn("failed to set pendingPremiumBearReward", e);
       }
 
       try {
