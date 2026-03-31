@@ -676,6 +676,53 @@ class LobbyScene extends Phaser.Scene {
     }
   }
 
+  // Start a pending coin deduction for optimistic UI updates.
+  // This records the original coin total and updates UI to show predicted value.
+  startPendingCoinDeduction(price) {
+    try {
+      if (!Number.isFinite(Number(price)) || Number(price) <= 0) return false;
+      if (!this.myProfile) this.myProfile = { coins: 0 };
+      if (this.coinPurchaseInProgress) return false; // already pending
+      this.coinPurchaseInProgress = true;
+      this.pendingCoinDeduction = Number(price) || 0;
+      this.pendingOriginalCoins = Number(this.myProfile.coins) || 0;
+      const predicted = Math.max(0, this.pendingOriginalCoins - this.pendingCoinDeduction);
+      this.myProfile.coins = predicted;
+      if (this.shopCoinText && typeof this.shopCoinText.setText === "function") {
+        this.shopCoinText.setText(`💰 ${predicted}`);
+      }
+      if (
+        this.coinShopCurrentCoinText &&
+        typeof this.coinShopCurrentCoinText.setText === "function"
+      ) {
+        this.coinShopCurrentCoinText.setText(`현재 보유: 💰 ${predicted}`);
+      }
+      if (typeof this.updateMyProfileUI === "function") {
+        this.updateMyProfileUI();
+      }
+      return true;
+    } catch (e) {
+      console.warn("startPendingCoinDeduction failed", e);
+      return false;
+    }
+  }
+
+  // Cancel an in-progress pending deduction and restore original coin count
+  cancelPendingCoinDeduction() {
+    try {
+      if (!this.coinPurchaseInProgress) return false;
+      const orig = Number(this.pendingOriginalCoins) || 0;
+      this.pendingCoinDeduction = 0;
+      this.pendingOriginalCoins = 0;
+      this.coinPurchaseInProgress = false;
+      this.setCoinsAbsolute(orig, { sync: false });
+      return true;
+    } catch (e) {
+      console.warn("cancelPendingCoinDeduction failed", e);
+      return false;
+    }
+  }
+
   modifyCoins(delta, options = {}) {
     try {
       const amount = Number(delta) || 0;
@@ -2624,6 +2671,26 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     // 💡 케릭터 구매 이벤트 핸들러 추가
     socket.off("buyCharacterError").on("buyCharacterError", (message) => {
       this.showToast(message || "케릭터 구매에 실패했습니다.", "#e74c3c");
+      // If we had an optimistic pending deduction, revert it on error
+      try {
+        if (this.coinPurchaseInProgress) {
+          this.cancelPendingCoinDeduction();
+        }
+      } catch (e) {
+        console.warn("failed to revert pending coin deduction", e);
+      }
+    });
+
+    // Special card purchase error -> revert optimistic deduction if present
+    socket.off("buySpecialCardError").on("buySpecialCardError", (message) => {
+      this.showToast(message || "특수카드 구매에 실패했습니다.", "#e74c3c");
+      try {
+        if (this.coinPurchaseInProgress) {
+          this.cancelPendingCoinDeduction();
+        }
+      } catch (e) {
+        console.warn("failed to revert pending coin deduction for special card", e);
+      }
     });
 
     // 💡 케릭터 착용 에러 이벤트 핸들러 추가
@@ -2635,8 +2702,32 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       console.log("🎭 케릭터 구매 성공:", data);
 
       // 서버 응답 기반으로 UI만 업데이트 (로컬스토리지 저장 없음)
-      if (data && typeof data.newCoins === "number") {
-        this.setCoinsAbsolute(Number(data.newCoins), { sync: false });
+      const isMyPurchase =
+        data &&
+        (data.playerId === socket.id ||
+          data.userId === this.myProfile?.userId ||
+          data.id === socket.id);
+      if (isMyPurchase) {
+        // Clear pending state and reconcile with server-provided coins when available
+        try {
+          this.coinPurchaseInProgress = false;
+          const pending = Number(this.pendingCoinDeduction) || 0;
+          this.pendingCoinDeduction = 0;
+          this.pendingOriginalCoins = 0;
+          if (data && typeof data.newCoins === "number") {
+            this.setCoinsAbsolute(Number(data.newCoins), { sync: false });
+          } else if (pending) {
+            // If server didn't send the updated coin total, keep optimistic amount as current
+            if (this.shopCoinText) {
+              this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
+            }
+            if (this.coinShopCurrentCoinText) {
+              this.coinShopCurrentCoinText.setText(`현재 보유: 💰 ${this.myProfile.coins}`);
+            }
+          }
+        } catch (e) {
+          console.warn("characterPurchased reconciliation failed", e);
+        }
       }
 
       // 케릭터 착용만 처리 (소유권은 myProfile 이벤트에서 처리)
@@ -6781,7 +6872,13 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           JSON.parse(localStorage.getItem("specialCards") || "{}") || {};
 
         if (currentCoins >= price) {
-          this.modifyCoins(Number(0 - price) || -price, { sync: true });
+          if (!this.isSingle && socket && socket.connected) {
+            // Multiplayer: don't apply authoritative modifyCoins immediately to avoid double-deduction.
+            this.startPendingCoinDeduction(price);
+          } else {
+            // Single-player: apply immediately and sync as before.
+            this.modifyCoins(Number(0 - price) || -price, { sync: true });
+          }
 
           // Quest counter update should never block the purchase flow.
           try {
@@ -6901,12 +6998,14 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           };
 
           socket.emit("buyCharacter", characterPayload);
+          // 멀티플레이에서 가격 처리 중 중복 차감 방지: 안전한 낙관적 차감 시작
+          const price = Number(character.price) || 0;
+          this.startPendingCoinDeduction(price);
 
           // Optimistically mark as owned/equipped for immediate UI feedback.
           ownedCharacters[character.key] = true;
           saveOwnedCharacters(ownedCharacters);
           this.equipCharacter(character.key);
-          this.updateMyProfileUI();
           renderShopContent();
           return;
         } else {
@@ -7590,7 +7689,18 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         timestamp: new Date().toISOString(),
       });
 
-      // 서버 응답을 기다리므로 여기서는 UI만 표시
+      // 즉시 UI에 반영 (낙관적 업데이트)
+      this.myProfile.coins = Number(this.myProfile.coins || 0) + Number(amount);
+      if (this.shopCoinText) {
+        this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
+      }
+      if (this.coinShopCurrentCoinText) {
+        this.coinShopCurrentCoinText.setText(`현재 보유: 💰 ${this.myProfile.coins}`);
+      }
+      if (typeof this.updateMyProfileUI === "function") {
+        this.updateMyProfileUI();
+      }
+
       this.showToast(`💰 ${amount} 코인 충전 요청 중...`, "#f39c12");
       return;
     }
@@ -12512,6 +12622,13 @@ class GameScene extends Phaser.Scene {
             const currentTurnId = this.roundData?.players?.[this.turnIndex]?.id;
             this.canClick = currentTurnId === myId || data.nextTurnId === myId;
             console.log("🎮 game ready", { myId, currentTurnId, nextTurnId: data.nextTurnId, turnIndex: this.turnIndex, canClick: this.canClick });
+            try {
+              // Ensure visual turn effects are applied once UI is visible
+              this.updateTurnEffect && typeof this.updateTurnEffect === 'function' && this.updateTurnEffect();
+              if (this.canClick && this.myDeckSprite) {
+                try { this.applyDeckPulse(this.myDeckSprite); } catch (e) {}
+              }
+            } catch (e) {}
           });
         });
 
@@ -12672,6 +12789,14 @@ class GameScene extends Phaser.Scene {
             players: this.roundData?.players?.map((p) => p.id),
             canClick: this.canClick,
           });
+
+          try {
+            // Ensure visual turn effects are applied once UI is visible
+            this.updateTurnEffect && typeof this.updateTurnEffect === 'function' && this.updateTurnEffect();
+            if (this.canClick && this.myDeckSprite) {
+              try { this.applyDeckPulse(this.myDeckSprite); } catch (e) {}
+            }
+          } catch (e) {}
 
           // 추가 불투명도/레이어 재설정
           try {
@@ -13141,39 +13266,41 @@ class GameScene extends Phaser.Scene {
           this.comboState.lastWinnerId = null;
         }
 
-        // 서버가 자물쇠 자동 사용으로 패널티를 면제했을 때 처리
+        // 서버가 자물쇠 자동 사용으로 패널티를 면제했을 때 처리 (멀티 전용)
         if (data.autoLockUsedBy) {
-          try {
-            const nick = this.getNicknameById(data.autoLockUsedBy);
+          // 싱글플레이에서는 서버가 autoLockUsedBy 를 보내더라도 이를 무시합니다.
+          if (!this.isSingle) {
+            try {
+              const nick = this.getNicknameById(data.autoLockUsedBy);
 
-            // Prevent duplicate toast when the server also emits a specialUsed event.
-            this._suppressNextLockToast = {
-              id: data.autoLockUsedBy,
-              timestamp: Date.now(),
-            };
-            // animation will arrive via specialUsed event shortly
+              // Prevent duplicate toast when the server also emits a specialUsed event.
+              this._suppressNextLockToast = {
+                id: data.autoLockUsedBy,
+                timestamp: Date.now(),
+              };
+              // animation will arrive via specialUsed event shortly
 
-            // 서버가 보낸 플레이어 목록으로 갱신
-            if (Array.isArray(data.players) && data.players.length > 0) {
-              // 💡 Preserve any open stacks the client already had, since server
-              // may send players with emptied stacks. Similar to later lock
-              // handling logic.
-              this.roundData.players.forEach((oldPlayer) => {
-                const newPlayer = updatedPlayers.find(
-                  (p) => p.id === oldPlayer.id,
-                );
-                if (newPlayer) {
-                  const preservedOpenStack = oldPlayer.openStack;
-                  Object.assign(oldPlayer, newPlayer);
-                  oldPlayer.openStack = preservedOpenStack;
-                }
-              });
-              this.renderTable(this.roundData.players);
+              // 서버가 보낸 플레이어 목록으로 갱신
+              if (Array.isArray(data.players) && data.players.length > 0) {
+                // 💡 Preserve any open stacks the client already had, since server
+                // may send players with emptied stacks. Similar to later lock
+                // handling logic.
+                this.roundData.players.forEach((oldPlayer) => {
+                  const newPlayer = updatedPlayers.find((p) => p.id === oldPlayer.id);
+                  if (newPlayer) {
+                    const preservedOpenStack = oldPlayer.openStack;
+                    Object.assign(oldPlayer, newPlayer);
+                    oldPlayer.openStack = preservedOpenStack;
+                  }
+                });
+                this.renderTable(this.roundData.players);
+              }
+            } catch (e) {
+              console.warn("autoLock handling error", e);
             }
-          } catch (e) {
-            console.warn("autoLock handling error", e);
+            return;
           }
-          return;
+          // 싱글플레이인 경우 autoLockUsedBy는 무시하고 패널티 처리를 계속 진행합니다.
         }
 
         // 자동 사용: 패널티 대상이 로컬 플레이어이고 자물쇠(lock, id=4)를 보유한 경우
@@ -13312,18 +13439,17 @@ class GameScene extends Phaser.Scene {
           if (data.by) this.specialUsedThisTurn[data.by] = true;
         } catch (e) {}
 
-        // 중앙 방패 애니메이션 제거; 대신 각 플레이어 위치에서 개별 효과를 표시함
-        // (먹물에는 방패 효과가 없으므로 cardId 6은 무시)
-        if (
-          Number(data.cardId) !== 6 &&
-          Array.isArray(data.shielded) &&
-          data.shielded.length > 0
-        ) {
-          data.shielded.forEach((id) => this.showShieldEffect(id));
-        }
-        // lock 카드(페널티 면제)도 바로 애니메이션
-        if (Number(data.cardId) === 4 && data.by) {
-          this.showLockEffect(data.by);
+        // 싱글플레이에서는 자물쇠/방패 효과를 무시합니다 (상점 아이템은 멀티 전용)
+        if (!this.isSingle) {
+          // 중앙 방패 애니메이션 제거; 대신 각 플레이어 위치에서 개별 효과를 표시함
+          // (먹물에는 방패 효과가 없으므로 cardId 6은 무시)
+          if (Number(data.cardId) !== 6 && Array.isArray(data.shielded) && data.shielded.length > 0) {
+            data.shielded.forEach((id) => this.showShieldEffect(id));
+          }
+          // lock 카드(페널티 면제)도 바로 애니메이션
+          if (Number(data.cardId) === 4 && data.by) {
+            this.showLockEffect(data.by);
+          }
         }
         // (추가적으로 각 카드 특정 애니메이션 끝난 뒤에도 showShieldEffect를 호출함)
 
@@ -13409,7 +13535,7 @@ class GameScene extends Phaser.Scene {
                   : typeof thiefResult?.stolenCount === "number"
                     ? thiefResult.stolenCount
                     : computedStolen;
-                if (Array.isArray(data.shielded) && data.shielded.length > 0) {
+                if (!this.isSingle && Array.isArray(data.shielded) && data.shielded.length > 0) {
                   data.shielded.forEach((id) => this.showShieldEffect(id));
                 }
               } catch (e) {
@@ -13451,10 +13577,7 @@ class GameScene extends Phaser.Scene {
                       }
                     });
                     this.renderTable(this.roundData.players);
-                    if (
-                      Array.isArray(data.shielded) &&
-                      data.shielded.length > 0
-                    ) {
+                    if (!this.isSingle && Array.isArray(data.shielded) && data.shielded.length > 0) {
                       data.shielded.forEach((id) => this.showShieldEffect(id));
                     }
                   }
@@ -13477,9 +13600,7 @@ class GameScene extends Phaser.Scene {
             // 가능하면 서버의 openCardStack을 클라이언트 openStack에 즉시 반영합니다.
             if (Array.isArray(data.players) && data.players.length > 0) {
               this.roundData.players.forEach((oldPlayer) => {
-                const newPlayer = data.players.find(
-                  (p) => p.id === oldPlayer.id,
-                );
+                const newPlayer = data.players.find((p) => p.id === oldPlayer.id);
                 if (newPlayer) {
                   const preservedOpenStack = oldPlayer.openStack || [];
                   Object.assign(oldPlayer, newPlayer);
@@ -13492,30 +13613,36 @@ class GameScene extends Phaser.Scene {
               });
             }
 
-            // 서버가 전달한 effectId가 있으면 등록(클라이언트가 중복으로 openStack을 변경하지 않도록 함)
-            if (data.effectId) {
-              this.blockEffects = this.blockEffects || [];
-              this.blockEffects.push({
-                id: data.effectId,
-                issuer: data.by,
-                remainingTurns:
-                  typeof data.remainingTurns === "number"
-                    ? data.remainingTurns
-                    : 2,
-                shielded: Array.isArray(data.shielded) ? data.shielded : [],
-              });
-            }
+            // 블록/실드 효과는 멀티에서만 적용합니다. 싱글플레이에서는 UI만 갱신.
+            if (!this.isSingle) {
+              // 서버가 전달한 effectId가 있으면 등록(클라이언트가 중복으로 openStack을 변경하지 않도록 함)
+              if (data.effectId) {
+                this.blockEffects = this.blockEffects || [];
+                this.blockEffects.push({
+                  id: data.effectId,
+                  issuer: data.by,
+                  remainingTurns:
+                    typeof data.remainingTurns === "number"
+                      ? data.remainingTurns
+                      : 2,
+                  shielded: Array.isArray(data.shielded) ? data.shielded : [],
+                });
+              }
 
-            this.blockActive = true;
-            this.blockBy = data.by;
+              this.blockActive = true;
+              this.blockBy = data.by;
 
-            this.renderTable(this.roundData.players);
-            if (Array.isArray(data.shielded) && data.shielded.length > 0) {
-              console.log(
-                "[debug] specialUsed (block) shielded ids:",
-                data.shielded,
-              );
-              data.shielded.forEach((id) => this.showShieldEffect(id));
+              this.renderTable(this.roundData.players);
+              if (Array.isArray(data.shielded) && data.shielded.length > 0) {
+                console.log(
+                  "[debug] specialUsed (block) shielded ids:",
+                  data.shielded,
+                );
+                data.shielded.forEach((id) => this.showShieldEffect(id));
+              }
+            } else {
+              // 싱글플레이: block/shield 효과는 적용하지 않음. UI만 반영했으므로 렌더만 끝냄.
+              this.renderTable(this.roundData.players);
             }
             // message toast omitted for special card.
 
@@ -14283,10 +14410,10 @@ class GameScene extends Phaser.Scene {
     const isMyTurn = currentTurnId === myId;
     const isCurrentHumanTurn = isMyTurn;
 
-    console.debug("[updateTurnEffect] turnIndex", this.turnIndex, "currentTurnId", currentTurnId, "myId", myId, "isMyTurn", isMyTurn, "isCurrentHumanTurn", isCurrentHumanTurn);
-    console.debug("[updateTurnEffect] myDeckSprite", this.myDeckSprite && this.myDeckSprite.active, "playerDeckSprites keys", this.playerDeckSprites ? Object.keys(this.playerDeckSprites) : [], "playerDeckSpritesExists", !!this.playerDeckSprites);
+    console.log("[updateTurnEffect] turnIndex", this.turnIndex, "currentTurnId", currentTurnId, "myId", myId, "isMyTurn", isMyTurn, "isCurrentHumanTurn", isCurrentHumanTurn);
+    console.log("[updateTurnEffect] myDeckSprite", this.myDeckSprite && this.myDeckSprite.active, "playerDeckSprites keys", this.playerDeckSprites ? Object.keys(this.playerDeckSprites) : [], "playerDeckSpritesExists", !!this.playerDeckSprites);
     if (this.playerDeckSprites && myId) {
-      console.debug("[updateTurnEffect] myDeckSpriteFromMap", this.playerDeckSprites[myId], "active", this.playerDeckSprites[myId] ? this.playerDeckSprites[myId].active : null);
+      console.log("[updateTurnEffect] myDeckSpriteFromMap", this.playerDeckSprites[myId], "active", this.playerDeckSprites[myId] ? this.playerDeckSprites[myId].active : null);
     }
 
     if (isMyTurn && this.isGameStarted) {
@@ -14350,10 +14477,20 @@ class GameScene extends Phaser.Scene {
   applyDeckPulse(deck) {
     if (!deck || !deck.active) return;
 
+    console.log('[applyDeckPulse] start for deck', deck && deck.name, 'at', deck && { x: deck.x, y: deck.y });
+
+    // if we're switching targets, clear tint on old target
+    try {
+      if (this.deckPulseTarget && this.deckPulseTarget !== deck) {
+        try { this.deckPulseTarget.clearTint(); } catch (e) {}
+      }
+    } catch (e) {}
+
     if (this.deckPulseTween) {
       try { this.deckPulseTween.stop(); } catch (e) {}
       this.deckPulseTween = null;
     }
+    this.deckPulseTarget = deck;
 
     const sc = 0xffffff;
     const ec = 0x2ecc71;
@@ -14380,9 +14517,23 @@ class GameScene extends Phaser.Scene {
           if (deck && deck.active) {
             deck.setTint(color);
           }
+          // small probe log when tint is set
+          try { console.log('[applyDeckPulse] tint set', color.toString(16)); } catch (e) {}
         } catch (e) {}
       },
     });
+    try { console.log('[applyDeckPulse] tween started', !!this.deckPulseTween, 'target:', this.deckPulseTarget && { x: this.deckPulseTarget.x, y: this.deckPulseTarget.y }); } catch (e) {}
+    // Immediately apply an initial tint so user sees the effect even if
+    // tween callbacks haven't run yet due to timing/scheduling.
+    try {
+      const immediateColor = ec; // end color (green)
+      if (deck && deck.setTint) {
+        deck.setTint(immediateColor);
+        console.log('[applyDeckPulse] initial tint applied', immediateColor.toString(16));
+      }
+    } catch (e) {
+      console.warn('applyDeckPulse initial tint failed', e);
+    }
   }
 
   clearDeckPulse() {
@@ -14390,6 +14541,12 @@ class GameScene extends Phaser.Scene {
       try { this.deckPulseTween.stop(); } catch (e) {}
       this.deckPulseTween = null;
     }
+    try {
+      if (this.deckPulseTarget) {
+        try { this.deckPulseTarget.clearTint(); } catch (e) {}
+        this.deckPulseTarget = null;
+      }
+    } catch (e) {}
   }
 
   clearMyTurnTimer() {
@@ -14549,6 +14706,23 @@ class GameScene extends Phaser.Scene {
         duration: 1000,
         repeat: -1,
       });
+      // Ensure deck pulse is synced with nickname animation. Delayed
+      // by 0 ticks so it runs after drawPlayerDeck (which may run after
+      // drawPlayerInfo in some render flows).
+      try {
+        this.time.delayedCall(0, () => {
+          try {
+            // Do not apply visual turn pulse for AI/bot players
+            if (typeof this.isPlayerAi === 'function' && this.isPlayerAi(p.id)) return;
+            const deck = this.playerDeckSprites && p && this.playerDeckSprites[p.id];
+            if (deck && deck.active) {
+              this.applyDeckPulse(deck);
+            } else if (isMe && this.myDeckSprite && this.myDeckSprite.active) {
+              this.applyDeckPulse(this.myDeckSprite);
+            }
+          } catch (e) {}
+        });
+      } catch (e) {}
     }
 
     this.playerTableGroup.add(nameTxt);
@@ -14570,7 +14744,12 @@ class GameScene extends Phaser.Scene {
     if (!this.playerDeckSprites) {
       this.playerDeckSprites = {};
     }
+    const prevDeck = this.playerDeckSprites[p.id];
     this.playerDeckSprites[p.id] = deck;
+    if (prevDeck && prevDeck !== deck) {
+      try { prevDeck.clearTint(); } catch (e) {}
+      try { if (prevDeck.destroy && typeof prevDeck.destroy === 'function') prevDeck.destroy(); } catch (e) {}
+    }
 
     if (isMe) {
       this.myDeckSprite = deck;
@@ -14587,7 +14766,8 @@ class GameScene extends Phaser.Scene {
     const isMyTurn = currentTurnId === myId;
 
     if (isMyTurn && isMe) {
-      this.applyDeckPulse(deck);
+      // ensure pulse applied after any immediate layout changes
+      this.time.delayedCall(0, () => this.applyDeckPulse(deck));
     } else if (isMe) {
       this.clearDeckPulse();
       try { deck.clearTint(); } catch (e) {}
@@ -14596,12 +14776,12 @@ class GameScene extends Phaser.Scene {
     if (isMe && cardCount > 0) {
       deck.setInteractive({ useHandCursor: true });
       deck.on("pointerdown", () => {
+        try { this.handleFlipCard(); } catch (e) {}
         this.tweens.add({
           targets: deck,
           scale: "*=0.95",
           duration: 50,
           yoyo: true,
-          onComplete: () => this.handleFlipCard(),
         });
       });
     }
@@ -14670,13 +14850,13 @@ class GameScene extends Phaser.Scene {
     if (isMe && cardCount > 0) {
       deck.setInteractive({ useHandCursor: true });
       deck.on("pointerdown", () => {
+        try { this.handleFlipCard(); } catch (e) {}
         // 살짝 눌리는 효과 (피드백)
         this.tweens.add({
           targets: deck,
           scale: "*=0.95",
           duration: 50,
           yoyo: true,
-          onComplete: () => this.handleFlipCard(), // 카드 뒤집기 함수 호출
         });
       });
     }
@@ -15193,6 +15373,7 @@ class GameScene extends Phaser.Scene {
           players[winIdx]?.avatarKey ||
           players[winIdx]?.current_character ||
           "player_1";
+        console.log("[playWinAnimation] avatarKey:", avatarKey, "winnerId:", winnerId);
 
         // use a reusable sprite instance to avoid allocation overhead
         const needsNewSprite =
@@ -15205,7 +15386,7 @@ class GameScene extends Phaser.Scene {
           }
           this._winAvatarSprite = this.add
             .sprite(centerX, centerY, avatarKey)
-            .setDepth(10050)
+            .setDepth(11100)
             .setVisible(false);
         }
         const tempSprite = this._winAvatarSprite;
@@ -15230,12 +15411,33 @@ class GameScene extends Phaser.Scene {
           (this.textures.exists(avatarKey) ? avatarKey : null);
 
         if (baseTexture && this.textures.exists(baseTexture)) {
+          console.log("[playWinAnimation] baseTexture:", baseTexture, "exists:true");
           try {
             tempSprite.setTexture(baseTexture);
             this.applyAvatarAnimation(tempSprite, avatarKey);
-            const anim = tempSprite.anims.currentAnim;
-            if (anim) {
-              anim.repeat = 0;
+            try {
+              console.log('[playWinAnimation] postApply animState', tempSprite.anims && { isPlaying: tempSprite.anims.isPlaying, currentAnim: tempSprite.anims.currentAnim && tempSprite.anims.currentAnim.key, currentFrame: tempSprite.anims.currentFrame && tempSprite.anims.currentFrame.textureKey });
+            } catch (e) {}
+            try {
+              if (tempSprite.anims) {
+                if (!tempSprite.anims.currentAnim) {
+                    const fallbackAnim = this.ensureAvatarAnimation(avatarKey);
+                    console.log('[playWinAnimation] fallbackAnim:', fallbackAnim);
+                    if (fallbackAnim) {
+                      try {
+                        tempSprite.play(fallbackAnim, true);
+                      } catch (e) {
+                        console.warn("fallback play failed", e);
+                      }
+                    }
+                  }
+                const anim = tempSprite.anims.currentAnim;
+                if (anim) {
+                  anim.repeat = 0;
+                }
+              }
+            } catch (e) {
+              console.warn("win avatar anim start failed", e);
             }
             const clearFlag = () => {
               this.avatarAnimInProgress = false;
@@ -15245,6 +15447,7 @@ class GameScene extends Phaser.Scene {
             };
             tempSprite.off("animationcomplete");
             tempSprite.once("animationcomplete", () => {
+              console.log('[playWinAnimation] animationcomplete fired for', avatarKey);
               clearFlag();
             });
             // safety timeout
@@ -16502,8 +16705,9 @@ class GameScene extends Phaser.Scene {
         String(winnerId) === String(resolvedMyId)
       );
 
-      // If winner detected as me, show reward popup (even if already owned).
-      if (isWin && iAmWinner) {
+      // If winner detected as me, show reward popup only for tutorial-origin single games.
+      // Reward must not be granted for normal single or multiplayer wins.
+      if (isWin && iAmWinner && this.isSingle && this.isTutorialMode) {
 
         const alreadyOwned = !!hasPremiumBear;
 
