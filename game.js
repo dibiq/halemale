@@ -222,21 +222,21 @@ const TUTORIAL_STAGE_CONFIGS = [
   {
     key: "flip",
     title: "1단계 · 카드 제출",
-    description: "카드를 눌러 제출해보세요!",
+    description: "카드를 눌러 제출하세요!",
     pointer: "deck",
     reward: 20,
   },
   {
     key: "ringFive",
     title: "2단계 · 카드 획득",
-    description: "바닥의 과일 합이 5가 되면 종을 눌러주세요!",
+    description: "과일이 5개 되면 종을 눌러요!",
     pointer: "deck",
     reward: 20,
   },
   {
     key: "wrongBell",
     title: "3단계 · 패널티",
-    description: "숫자합이 5가 아닐 때 종을 누르면 카드를 한 장씩 뺏겨요.",
+    description: "실수로 종을 누르면 카드를 한 장씩 뺏겨요.",
     pointer: "deck",
     reward: 20,
   },
@@ -244,7 +244,7 @@ const TUTORIAL_STAGE_CONFIGS = [
     key: "bomb",
     title: "4단계 · 특수카드: 폭탄",
     description:
-      "폭탄이 나오면 합이 5여도 종을 누르면 안돼요. 카드만 제출하세요!",
+      "폭탄이 나오면 절대 누르지 마세요!",
     pointer: "deck",
     reward: 20,
   },
@@ -252,7 +252,7 @@ const TUTORIAL_STAGE_CONFIGS = [
     key: "thunder",
     title: "5단계 · 특수카드: 번개",
     description:
-      "카드 합이 5가 아니어도 번개가 나오면 즉시 종을 눌러 카드를 가져가요!",
+      "번개가 나오면 즉시 종을 눌러 카드를 가져가요!",
     pointer: "deck",
     reward: 20,
   },
@@ -260,7 +260,7 @@ const TUTORIAL_STAGE_CONFIGS = [
     key: "plus1",
     title: "6단계 · 특수카드: +1",
     description:
-      "+1 카드가 있으면 모든 카드 숫자에 +1이 적용됩니다. 이를 계산해 종을 누르세요!",
+      "+1 카드가 있으면 모든 카드 숫자에 +1이 더해져요.",
     pointer: "deck",
     reward: 20,
   },
@@ -1026,14 +1026,28 @@ class LobbyScene extends Phaser.Scene {
         target.setData("avatarDisplayHeight", target.displayHeight);
       }
     }
-    const avatarDisplayWidth =
+    let avatarDisplayWidth =
       typeof target.getData === "function"
         ? target.getData("avatarDisplayWidth")
         : target.displayWidth;
-    const avatarDisplayHeight =
+    let avatarDisplayHeight =
       typeof target.getData === "function"
         ? target.getData("avatarDisplayHeight")
         : target.displayHeight;
+
+    // 최소 크기 방어: 초기 로딩/프레임 변경 과정에서 과도히 작아지는 문제 방지
+    const MIN_AVATAR_SIZE = Math.max(64, Math.round((target.scene?.scale?.width || 1080) * 0.08));
+    avatarDisplayWidth = Math.max(
+      avatarDisplayWidth || 0,
+      target.displayWidth || 0,
+      MIN_AVATAR_SIZE,
+    );
+    avatarDisplayHeight = Math.max(
+      avatarDisplayHeight || 0,
+      target.displayHeight || 0,
+      MIN_AVATAR_SIZE,
+    );
+
     if (
       typeof target.getData === "function" &&
       target.getData("avatarBaseY") === undefined
@@ -1739,6 +1753,16 @@ class LobbyScene extends Phaser.Scene {
       this._deferredAssetsLoaded = true;
       this._deferredAssetsLoading = false;
 
+      // if nickname popup was queued while deferred loading, show now
+      try {
+        if (this._queuedNicknamePopup && typeof this._queuedNicknamePopup === 'function') {
+          this._queuedNicknamePopup();
+          this._queuedNicknamePopup = null;
+        }
+      } catch (e) {
+        console.warn('queued nickname popup failed', e);
+      }
+
       // Ensure the shop UI reflects newly available player_3 frames, if already open.
       try {
         if (this.isShopOpen && typeof renderShopContent === "function") {
@@ -1767,6 +1791,7 @@ class LobbyScene extends Phaser.Scene {
     this.isToastOpen = false;
     this.isRoomOpen = false;
     this.lastBackPressedAt = 0;
+    this._queuedNicknamePopup = null; // 추가 리소스 로딩 완료 시점에 팝업 표시 예약
     this.backPressExitWindowMs = 2000;
     this.isSingle = false; // 로비는 항상 멀티플레이
     this.coinShopElements = []; // 코인 팝업 요소들
@@ -1916,21 +1941,29 @@ class LobbyScene extends Phaser.Scene {
     this.emitInventory = emitInventory;
 
     if (!savedNickname) {
-      // 2. 저장된 닉네임이 없으면 팝업 표시
-      this.showNicknamePopup((nickname) => {
-        localStorage.setItem("nickname", nickname); // 로컬에 영구 저장
+      // 2. 저장된 닉네임이 없으면 팝업 표시 (추가 리소스 로딩 후에)
+      const showNicknameFunc = () => {
+        this.showNicknamePopup((nickname) => {
+          localStorage.setItem("nickname", nickname); // 로컬에 영구 저장
 
-        // 서버로 전송
-        socket.emit("setNickname", {
-          nickname,
-          avatarKey: this.getSelectedAvatarKey(),
+          // 서버로 전송
+          socket.emit("setNickname", {
+            nickname,
+            avatarKey: this.getSelectedAvatarKey(),
+          });
+          this.myNickname = nickname; // 현재 씬 변수에 저장
+          this.updateMyProfileUI({ nickname: this.myNickname });
+          // inventory sync
+          emitInventory();
+          this.scheduleTutorialOverlay();
         });
-        this.myNickname = nickname; // 현재 씬 변수에 저장
-        this.updateMyProfileUI({ nickname: this.myNickname });
-        // inventory sync
-        emitInventory();
-        this.scheduleTutorialOverlay();
-      });
+      };
+
+      if (this._deferredAssetsLoaded) {
+        showNicknameFunc();
+      } else {
+        this._queuedNicknamePopup = showNicknameFunc;
+      }
     } else {
       // 3. 이미 닉네임이 있다면 팝업 없이 바로 서버로 전송
       this.myNickname = savedNickname;
@@ -1969,8 +2002,6 @@ class LobbyScene extends Phaser.Scene {
         this.startTutorialGame();
       }
     }
-
-
 
     this.profileAvatarKeys = ["player_1", "player_2", "player_3", "player_4", PREMIUM_BEAR_KEY].filter(
       (key, idx, arr) => arr.indexOf(key) === idx,
@@ -10725,6 +10756,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
   }
 }
 
+
 class GameScene extends Phaser.Scene {
   constructor() {
     super("GameScene");
@@ -18885,7 +18917,7 @@ class GameScene extends Phaser.Scene {
         this.tutorialState.expectingAiFive = true;
         this.showTutorialMessage({
           title: "좋아요!",
-          description: "AI가 카드를 내서 합계가 5가 되면 종을 눌러요.",
+          description: "과일이 5개 되면 종을 눌러요.",
         });
         const tutor = this.roundData.players.find((p) => p.id !== myId);
         if (tutor) {
@@ -18933,7 +18965,7 @@ class GameScene extends Phaser.Scene {
           this.tutorialState.expectedBellType = "ringFive";
           this.showTutorialMessage({
             title: "지금이 기회!",
-            description: "바닥 합이 5개입니다. 종을 눌러 카드를 가져가세요!",
+            description: "종을 눌러 카드를 획득하세요!",
             pointer: "bell",
           });
         }
@@ -18949,7 +18981,7 @@ class GameScene extends Phaser.Scene {
       this.showTutorialMessage({
         title: "폭탄이 가려졌어요!",
         description:
-          "이제 폭탄이 보이지 않으니 합계 5일 때 종을 눌러 카드를 가져가요!",
+          "종을 눌러 카드를 획득하세요!",
         pointer: "bell",
       });
       return;
@@ -18963,7 +18995,7 @@ class GameScene extends Phaser.Scene {
         this.showTutorialMessage({
           title: "과일 숫자를 살펴봐요",
           description:
-            "지금은 합계가 3장입니다. AI가 한 장을 더 내려줄 때까지 기다려요.",
+            "AI가 한 장을 더 내려줄 때까지 기다려요.",
         });
         const tutor = this.roundData.players.find((p) => p.id !== myId);
         if (tutor) {
@@ -18979,9 +19011,9 @@ class GameScene extends Phaser.Scene {
         this.setTutorialTurn(myId);
         this.canClick = false;
         this.showTutorialMessage({
-          title: "이번엔 일부러 틀려봐요",
+          title: "패널티 체험하기",
           description:
-            "바닥 합계가 5가 아닐때 종을 누르면 패널티가 받아요. 눌러보세요!",
+            "합계가 5가 아닐때 종을 누르면 패널티 받아요!",
           pointer: "bell",
         });
         return;
@@ -18993,9 +19025,9 @@ class GameScene extends Phaser.Scene {
         this.tutorialState.awaitingPreThunderFlip = false;
         this.canClick = false;
         this.showTutorialMessage({
-          title: "준비하세요",
+          title: "번개카드는 선착순 누르기",
           description:
-            "내 카드는 3장이지만 상대가 번개를 내면 합계 5가 아니어도 종을 눌러야 해요.",
+            "번개가 나오면 종을 눌러요.(단,폭탄이 없는 경우에만)",
         });
         const tutor = this.roundData.players.find((p) => p.id !== myId);
         if (tutor) {
@@ -19059,7 +19091,7 @@ class GameScene extends Phaser.Scene {
         this.showTutorialMessage({
           title: "+1 효과!",
           description:
-            "카드 숫자에 +1이 적용되어 5가 되었습니다. 종을 눌러보세요!",
+            "+1이 적용되어 5가 되었습니다. 종을 눌러보세요!",
           pointer: "bell",
         });
       }
@@ -19081,7 +19113,7 @@ class GameScene extends Phaser.Scene {
       this.showTutorialMessage({
         title: "폭탄 등장!",
         description:
-          "폭탄이 깔린 동안에는 합이 5가 되어도 종을 누르면 실패예요. 잠시만 기다려요.",
+          "폭탄이 나오면 절대 누르지 마세요!",
         pointer: null,
       });
       const tutor = this.roundData.players.find((p) => p.id !== myId);
@@ -19113,7 +19145,7 @@ class GameScene extends Phaser.Scene {
         this.showTutorialMessage({
           title: "아직은 금지!",
           description:
-            "상대 카드가 5여도 폭탄이 보이는 동안엔 종을 누르면 안 돼요. 내 덱을 한 번 더 눌러 폭탄을 덮어보세요!",
+            "카드를 제출해 폭탄을 제거하세요!",
           pointer: "deck",
         });
       }
@@ -19129,7 +19161,7 @@ class GameScene extends Phaser.Scene {
       this.showTutorialMessage({
         title: "번개 카드!",
         description:
-          "내가 낸 카드는 3이라 합이 5가 아니어도 번개가 나오면 즉시 종을 쳐서 카드를 가져가요!",
+          "즉시 종을 쳐서 카드를 획득하세요!",
         pointer: "bell",
       });
       return;
@@ -19141,7 +19173,7 @@ class GameScene extends Phaser.Scene {
       this.showTutorialMessage({
         title: "+1 활성화",
         description:
-          "이제 바닥 모든 카드 숫자에 +1이 적용됩니다. 합계를 잘 살펴보세요!",
+          "이제 바닥 모든 카드 숫자에 +1이 적용됩니다.",
       });
       this.canClick = false;
       const tutor = this.roundData.players.find((p) => p.id !== myId);
