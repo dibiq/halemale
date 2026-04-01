@@ -78,7 +78,7 @@ const QUEST_CONFIGS = [
     descriptionTemplate: "싱글에서 종을 정확히 {target}번 눌러보세요.",
     initialTarget: 3,
     targetIncrement: 1,
-    rewardCoins: 30,
+    rewardCoins: 20,
   },
   {
     key: "big_haul",
@@ -89,7 +89,7 @@ const QUEST_CONFIGS = [
     targetIncrement: 1,
     initialThreshold: 5,
     thresholdIncrement: 1,
-    rewardCoins: 40,
+    rewardCoins: 30,
   },
   {
     key: "penalty_runner",
@@ -98,7 +98,7 @@ const QUEST_CONFIGS = [
     descriptionTemplate: "실수로 종을 쳐서 패널티를 {target}번 받아보세요.",
     initialTarget: 3,
     targetIncrement: 1,
-    rewardCoins: 25,
+    rewardCoins: 20,
   },
   {
     key: "bomb_flip",
@@ -107,7 +107,7 @@ const QUEST_CONFIGS = [
     descriptionTemplate: "내 덱에서 폭탄 카드를 총 {target}번 뒤집어보세요.",
     initialTarget: 3,
     targetIncrement: 1,
-    rewardCoins: 25,
+    rewardCoins: 20,
   },
   {
     key: "combo_duo",
@@ -116,7 +116,7 @@ const QUEST_CONFIGS = [
     descriptionTemplate: "정답을 연속 {target}번 맞춰 콤보를 달성하세요.",
     initialTarget: 1,
     targetIncrement: 1,
-    rewardCoins: 35,
+    rewardCoins: 30,
   },
   {
     key: "thunder_flip",
@@ -125,7 +125,7 @@ const QUEST_CONFIGS = [
     descriptionTemplate: "내 덱에서 번개 카드를 총 {target}번 뒤집어보세요.",
     initialTarget: 3,
     targetIncrement: 1,
-    rewardCoins: 25,
+    rewardCoins: 18,
   },
 ];
 
@@ -137,7 +137,7 @@ const MULTI_QUEST_CONFIGS = [
     descriptionTemplate: "싱글 플레이를 {target}회 시작해보세요.",
     initialTarget: 1,
     targetIncrement: 1,
-    rewardCoins: 300,
+    rewardCoins: 80,
   },
   {
     key: "single_win",
@@ -146,7 +146,7 @@ const MULTI_QUEST_CONFIGS = [
     descriptionTemplate: "싱글 플레이에서 {target}회 승리하세요.",
     initialTarget: 1,
     targetIncrement: 1,
-    rewardCoins: 300,
+    rewardCoins: 120,
   },
   {
     key: "multi_play",
@@ -155,7 +155,7 @@ const MULTI_QUEST_CONFIGS = [
     descriptionTemplate: "멀티 플레이를 {target}회 시작해보세요.",
     initialTarget: 1,
     targetIncrement: 1,
-    rewardCoins: 300,
+    rewardCoins: 60,
   },
   {
     key: "multi_win",
@@ -164,7 +164,7 @@ const MULTI_QUEST_CONFIGS = [
     descriptionTemplate: "멀티 플레이에서 {target}회 1위를 달성하세요.",
     initialTarget: 1,
     targetIncrement: 1,
-    rewardCoins: 300,
+    rewardCoins: 150,
   },
   {
     key: "shop_buy",
@@ -173,7 +173,7 @@ const MULTI_QUEST_CONFIGS = [
     descriptionTemplate: "상점에서 아이템을 {target}회 구매하세요.",
     initialTarget: 1,
     targetIncrement: 1,
-    rewardCoins: 300,
+    rewardCoins: 80,
   },
   {
     key: "watch_ad",
@@ -182,7 +182,7 @@ const MULTI_QUEST_CONFIGS = [
     descriptionTemplate: "광고 보상을 {target}회 시청하세요.",
     initialTarget: 1,
     targetIncrement: 1,
-    rewardCoins: 300,
+    rewardCoins: 50,
   },
 ];
 const QUEST_CONFIG_MAP = QUEST_CONFIGS.reduce((acc, quest) => {
@@ -6201,7 +6201,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         icon: "lock",
         name: "패널티 방어",
         description: "실수해도 카드를 잃지 않아요",
-        price: 180,
+        price: 220,
       },
       {
         id: 5,
@@ -6209,7 +6209,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         icon: "shield",
         name: "방패",
         description: "공격을 막아서 카드를 지켜요",
-        price: 170,
+        price: 210,
       },
       {
         id: 6,
@@ -6217,7 +6217,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         icon: "block",
         name: "먹물",
         description: "상대방 카드에 먹물을 뿌려요",
-        price: 160,
+        price: 200,
       },
       {
         id: 7,
@@ -6225,7 +6225,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         icon: "thief",
         name: "도둑",
         description: "모두에게서 카드 3장씩 뺏어와요",
-        price: 220,
+        price: 260,
       },
       {
         id: 8,
@@ -6233,7 +6233,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         icon: "king",
         name: "왕",
         description: "특수한 보너스 효과를 부여합니다",
-        price: 300,
+        price: 320,
       },
     ];
 
@@ -6248,19 +6248,19 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         key: "player_2",
         name: "명품 곰돌이",
         description: "럭셔리한 명품 곰돌이에요",
-        price: 300,
+        price: 260,
       },
       {
         key: "player_3",
         name: "댄서 곰돌이",
         description: "경쾌한 댄스 무브를 가진 캐릭터",
-        price: 450,
+        price: 420,
       },
       {
         key: "player_4",
         name: "관리 곰돌이",
         description: "전용 스프라이트 애니메이션으로 움직이는 캐릭터",
-        price: 600,
+        price: 560,
       },
     ];
 
@@ -21988,7 +21988,7 @@ class GameScene extends Phaser.Scene {
         return;
       }
 
-      const coinCountByRank = [30, 20, 10];
+      const coinCountByRank = [50, 30, 20];
       const floorYMin = height * 0.72;
       const floorYMax = height * 0.86;
       const floorXMin = width * 0.2;
