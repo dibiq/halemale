@@ -895,7 +895,7 @@ function setPlayerElimination(player, eliminated) {
   }
 }
 
-const TIME_ATTACK_DURATION_MS = 30 * 1000; // 30초
+const TIME_ATTACK_DURATION_MS = 60 * 1000; // 1분
 
 function clearTimeAttackTimer(room) {
   if (!room) return;

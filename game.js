@@ -22031,7 +22031,7 @@ class GameScene extends Phaser.Scene {
       }
       confirmBtn.setAlpha(0.5);
       confirmTxt.setAlpha(0.5);
-      confirmTxt.setText("코인 적용중...");
+      confirmTxt.setText("확인");
     };
 
     disableConfirmButton();
