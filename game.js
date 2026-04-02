@@ -7981,7 +7981,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           isPublic: true,
           password: "",
           isItemMode: true,
-          isTimeAttack: false,
+          isTimeAttack: true,
         };
 
         const attemptCreateRoom = () => {
@@ -10782,6 +10782,8 @@ class GameScene extends Phaser.Scene {
     this._isApplyingDeferredProfile = false;
     this._deferredCoinsDelta = 0;
     this._isApplyingDeferredCoins = false;
+    this._allowCoinTextUpdateForNextUI = false;
+    this._initialProfileApplied = false;
     // Flag set when the big "게임종료!" text is visible on screen
     this.isResultTextVisible = false;
   }
@@ -10820,6 +10822,8 @@ class GameScene extends Phaser.Scene {
       console.log('[modifyCoins] called', { delta, options });
       const sync = !!options.sync;
       const force = !!options.force;
+      const coinCardUpdate = !!options.coinCardUpdate;
+
       // If result overlay active or game has ended, defer applying coins unless forced.
       if ((this.isResultOverlayActive || this.isGameEnded) && !force) {
         this._deferredCoinsDelta = (this._deferredCoinsDelta || 0) + Number(delta || 0);
@@ -10846,12 +10850,25 @@ class GameScene extends Phaser.Scene {
         /* ignore */
       }
 
-      // Decide whether to update UI now. After multiplayer game end, skip bottom-right UI updates.
+      // Decide whether to update UI now.
+      const isLiveMultiplayer =
+        !this.isSingle && this.isGameStarted && !this.isResultOverlayActive && !this.isGameEnded;
       const skipUI = !!(this.isGameEnded && !this.isSingle && !force);
-      if (!skipUI) {
+      const allowLiveUI = coinCardUpdate || force;
+
+      if (isLiveMultiplayer && !allowLiveUI) {
+        // During live multiplayer session, avoid showing coin update in top profile
+        // until actual coin-card event triggers. Keep underlying value updated.
+        console.debug('modifyCoins skipped live multiplayer coin UI update', { delta, iAmCoinCardUpdate: coinCardUpdate });
+      } else if (!skipUI) {
+        console.debug('modifyCoins updating profile UI', { delta, coinCardUpdate, isLiveMultiplayer, skipUI, force, thisCoin: this.myProfile?.coins });
         try {
           this._isApplyingDeferredProfile = true;
-          if (typeof this.updateMyProfileUI === 'function') this.updateMyProfileUI();
+          if (typeof this.updateMyProfileUI === 'function') {
+            this._allowCoinTextUpdateForNextUI = coinCardUpdate || this._allowCoinTextUpdateForNextUI;
+            this.updateMyProfileUI();
+            this._allowCoinTextUpdateForNextUI = false;
+          }
         } catch (e) {
           console.warn('modifyCoins updateMyProfileUI failed', e);
         } finally {
@@ -10978,6 +10995,14 @@ class GameScene extends Phaser.Scene {
         console.warn("[updateMyProfileUI] failed to read profileCoins from localStorage", e);
       }
 
+      const shouldHoldCoinUi =
+        !this.isSingle && (this.isGameEnded || this.isResultOverlayActive);
+      if (shouldHoldCoinUi) {
+        // During multiplayer end result overlay, avoid reflecting final coins
+        // in the top-left UI until animation/confirmation completes.
+        incomingCoins = Number(prev.coins) || 0;
+      }
+
       console.log('[result] updateMyProfileUI coin merge', {
         profileCoins: Number(profile.coins),
         prevCoins: Number(prev.coins),
@@ -11051,8 +11076,40 @@ class GameScene extends Phaser.Scene {
         this.profileLevelTxt,
         `Lv ${this.myProfile.level} ${this.myProfile.nickname || ""}`,
       );
-      safeSetText(this.profileCoinsTxt, `Coins: ${this.myProfile.coins}`);
+      const isLiveMultiplayer =
+        !this.isSingle && this.isGameStarted && !this.isResultOverlayActive && !this.isGameEnded;
+      const isFirstUpdate = !this._initialProfileApplied;
+      if (isFirstUpdate) {
+        this._initialProfileApplied = true;
+      }
+      const shouldShowProfileCoinText =
+        (this.isSingle || !isLiveMultiplayer || isFirstUpdate) &&
+        !(this.isResultOverlayActive || this.isGameEnded);
+      const shouldShowLiveCoinText = isLiveMultiplayer && this._allowCoinTextUpdateForNextUI;
+
+      if (shouldShowProfileCoinText || shouldShowLiveCoinText) {
+        console.log('[profile UI] 업데이트 보유코인 텍스트', {
+          isSingle: this.isSingle,
+          isLiveMultiplayer,
+          isResultOverlayActive: this.isResultOverlayActive,
+          isGameEnded: this.isGameEnded,
+          allowCoinText: this._allowCoinTextUpdateForNextUI,
+          coins: this.myProfile.coins,
+        });
+        safeSetText(this.profileCoinsTxt, `Coins: ${this.myProfile.coins}`);
+      } else {
+        console.log('[profile UI] 보유코인 텍스트 갱신 생략', {
+          isSingle: this.isSingle,
+          isLiveMultiplayer,
+          isResultOverlayActive: this.isResultOverlayActive,
+          isGameEnded: this.isGameEnded,
+          allowCoinText: this._allowCoinTextUpdateForNextUI,
+          coins: this.myProfile.coins,
+        });
+      }
+
       this.setProfileCoinLabel(`보유코인: ${this.myProfile.coins}`);
+      this._allowCoinTextUpdateForNextUI = false;
 
       // make sure the react-time display stays in sync as well
       safeSetText(
@@ -12535,7 +12592,7 @@ class GameScene extends Phaser.Scene {
           } else {
             // apply immediately as a delta (do not emit back to server)
             try {
-              this.modifyCoins(coinDelta, { sync: false });
+              this.modifyCoins(coinDelta, { sync: false, coinCardUpdate: true });
             } catch (e) {
               console.warn('socket.myProfile: modifyCoins failed', e);
             }
@@ -12548,6 +12605,10 @@ class GameScene extends Phaser.Scene {
           if (this.isGameEnded || this.isResultOverlayActive) {
             this._deferredMyProfile = profile;
             console.debug("myProfile update deferred until post-result (socket.myProfile)", { profile });
+          } else if (!this.isSingle) {
+            // Live multiplayer: avoid profile UI show during match; coin display only from coincard updates.
+            this._deferredMyProfile = profile;
+            console.debug("myProfile update held during live multiplayer (socket.myProfile)", { profile });
           } else {
             this.updateMyProfileUI(profile);
             this.hasServerProfileSnapshot = true;
@@ -12742,9 +12803,40 @@ class GameScene extends Phaser.Scene {
             : this.isSingle;
         this._startOfMatchCoins = Number(this.myProfile?.coins) || 0; // 시작 시점 코인 스냅샷
         this.isGameEnded = false; // 새 게임 시작 시 종료 플래그 리셋
+        this.isResultOverlayActive = false;
         this.isGameStarted = true;
         this.isGameReady = true;
         this.lastEliminationEffectAtByPlayer = {};
+        this._initialProfileApplied = false;
+
+        // Re-sync deferred profile/coins from previous match and update UI immediately
+        try {
+          if (this._deferredMyProfile) {
+            this.applyDeferredProfileUpdates();
+          }
+          this.applyDeferredCoins();
+
+          // Ensure we show the latest known server profile on start.
+          if (socket && socket.profile) {
+            this.myProfile = this.myProfile || {};
+            if (Number.isFinite(Number(socket.profile.coins))) {
+              this.myProfile.coins = Number(socket.profile.coins);
+            }
+            if (typeof socket.profile.level !== 'undefined') {
+              this.myProfile.level = Number(socket.profile.level) || this.myProfile.level || 1;
+            }
+            if (typeof socket.profile.experience !== 'undefined') {
+              this.myProfile.experience = Number(socket.profile.experience) || this.myProfile.experience || 0;
+            }
+          }
+
+          if (typeof this.updateMyProfileUI === 'function') {
+            this._allowCoinTextUpdateForNextUI = true;
+            this.updateMyProfileUI(socket && socket.profile ? socket.profile : this.myProfile);
+          }
+        } catch (e) {
+          console.warn('applyGameStartPayload initial profile/coins sync failed', e);
+        }
 
         const initialTurnIndex = data.players.findIndex((p) => p.id === data.nextTurnId);
         this.turnIndex = initialTurnIndex >= 0 ? initialTurnIndex : 0;
@@ -13143,7 +13235,7 @@ class GameScene extends Phaser.Scene {
           if (Number.isFinite(Number(data.coinTotal))) {
             this.profileStats = this.profileStats || {};
             this.profileStats.coins = Number(data.coinTotal);
-            this.setCoinsAbsolute(Number(data.coinTotal), { sync: false });
+            this.setCoinsAbsolute(Number(data.coinTotal), { sync: false, coinCardUpdate: true });
           }
         }
       }
@@ -21997,42 +22089,35 @@ class GameScene extends Phaser.Scene {
           console.log('[result] awardedForMe computed', { awardedForMe });
 
           if (awardedForMe > 0) {
+            const serverCoins = Number(this._deferredMyProfile?.coins);
             const currentCoins = Number(this.myProfile?.coins) || 0;
             const baselineCoins = Number(resultOverlayBaselineCoins) || 0;
             const expectedAfterReward = baselineCoins + awardedForMe;
-            const missingCoins = Math.max(0, expectedAfterReward - currentCoins);
 
-            if (this.isSingle) {
-              // Single-player should always apply reward locally.
-              if (missingCoins > 0) {
-                try {
-                  console.log('[result/reward] single-player rewarding coins', { prevCoins: currentCoins, missingCoins, awardedForMe });
-                  this.modifyCoins(missingCoins, { sync: true, force: true });
-                  console.log('[result/reward] single-player after modifyCoins', { newCoins: Number(this.myProfile?.coins) || 0 });
-                } catch (e) {
-                  console.warn('[result/reward] myProfile modifyCoins failed', e);
-                }
+            let missingCoins = 0;
+            if (Number.isFinite(serverCoins) && serverCoins >= 0) {
+              // If server profile already includes final coins, avoid double-adding.
+              if (serverCoins >= expectedAfterReward) {
+                missingCoins = 0;
+                console.log('[result/reward] serverCoins already satisfies expected reward', { serverCoins, expectedAfterReward });
+              } else {
+                missingCoins = expectedAfterReward - serverCoins;
+                console.log('[result/reward] serverCoins is lower than expected, adding missing', { serverCoins, expectedAfterReward, missingCoins });
               }
             } else {
-              // Multiplayer: server should already have applied rank reward via myProfile.
-              if (currentCoins < expectedAfterReward) {
-                try {
-                  console.log('[result/reward] multiplayer missing coins; syncing local reward', {
-                    prevCoins: currentCoins,
-                    expectedAfterReward,
-                    missingCoins,
-                  });
-                  this.modifyCoins(missingCoins, { sync: true, force: true });
-                  console.log('[result/reward] multiplayer after modifyCoins', { newCoins: Number(this.myProfile?.coins) || 0 });
-                } catch (e) {
-                  console.warn('[result/reward] multiplayer modifyCoins failed', e);
-                }
-              } else {
-                console.log('[result/reward] multiplayer coin reward already reflected from server; skipping modifyCoins', {
-                  currentCoins,
-                  expectedAfterReward,
-                });
+              missingCoins = Math.max(0, expectedAfterReward - currentCoins);
+              console.log('[result/reward] no server coin snapshot, fallback', { currentCoins, expectedAfterReward, missingCoins });
+            }
+
+            if (missingCoins > 0) {
+              try {
+                this.modifyCoins(missingCoins, { sync: true, force: true, coinCardUpdate: true });
+                console.log('[result/reward] after modifyCoins', { newCoins: Number(this.myProfile?.coins) || 0, missingCoins });
+              } catch (e) {
+                console.warn('[result/reward] modifyCoins failed', e);
               }
+            } else {
+              console.log('[result/reward] no coin delta required for leaderboard reward', { awardedForMe, missingCoins });
             }
           }
         } catch (e) {
@@ -22200,13 +22285,14 @@ class GameScene extends Phaser.Scene {
           console.warn("goToLobby(single): cleanup failed", e);
         }
 
-        // Ensure any deferred profile update is applied before leaving.
+        // Ensure any deferred profile update and coins are applied before leaving.
         try {
           if (this._deferredMyProfile) {
             this.applyDeferredProfileUpdates();
           }
+          this.applyDeferredCoins();
         } catch (e) {
-          console.warn("goToLobby(single): applyDeferredProfileUpdates failed", e);
+          console.warn("goToLobby(single): applyDeferred profile/coins failed", e);
         }
 
         // Sync final single-player coin state to server/local.
@@ -22295,12 +22381,13 @@ class GameScene extends Phaser.Scene {
       }
 
       // 종료/시상대 후 지연된 프로필 업데이트가 있으면 반영
-      if (this._deferredMyProfile) {
-        try {
+      try {
+        if (this._deferredMyProfile) {
           this.applyDeferredProfileUpdates();
-        } catch (e) {
-          console.warn("goToLobby: failed to apply deferred profile", e);
         }
+        this.applyDeferredCoins();
+      } catch (e) {
+        console.warn("goToLobby: failed to apply deferred profile/coins", e);
       }
 
       // ensure singleplayer coins are synced/kept to server (or local fallback)
