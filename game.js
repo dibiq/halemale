@@ -12740,6 +12740,7 @@ class GameScene extends Phaser.Scene {
           data && typeof data.isSingle === "boolean"
             ? data.isSingle
             : this.isSingle;
+        this._startOfMatchCoins = Number(this.myProfile?.coins) || 0; // 시작 시점 코인 스냅샷
         this.isGameEnded = false; // 새 게임 시작 시 종료 플래그 리셋
         this.isGameStarted = true;
         this.isGameReady = true;
@@ -14479,12 +14480,6 @@ class GameScene extends Phaser.Scene {
     const currentTurnId = this.roundData.players[this.turnIndex]?.id;
     const isMyTurn = currentTurnId === myId;
     const isCurrentHumanTurn = isMyTurn;
-
-    console.log("[updateTurnEffect] turnIndex", this.turnIndex, "currentTurnId", currentTurnId, "myId", myId, "isMyTurn", isMyTurn, "isCurrentHumanTurn", isCurrentHumanTurn);
-    console.log("[updateTurnEffect] myDeckSprite", this.myDeckSprite && this.myDeckSprite.active, "playerDeckSprites keys", this.playerDeckSprites ? Object.keys(this.playerDeckSprites) : [], "playerDeckSpritesExists", !!this.playerDeckSprites);
-    if (this.playerDeckSprites && myId) {
-      console.log("[updateTurnEffect] myDeckSpriteFromMap", this.playerDeckSprites[myId], "active", this.playerDeckSprites[myId] ? this.playerDeckSprites[myId].active : null);
-    }
 
     if (isMyTurn && this.isGameStarted) {
       if (!this.turnOverlay) {
@@ -21862,6 +21857,10 @@ class GameScene extends Phaser.Scene {
       { x: width * 0.79, y: height * 0.62 },
     ];
 
+    const resultOverlayBaselineCoins =
+      Number(this._startOfMatchCoins) || Number(this.myProfile?.coins) || 0;
+    console.log('[result] overlay baseline coins', { resultOverlayBaselineCoins });
+
     rankedPlayers.forEach((player, index) => {
       const pos = podiumPositions[index];
       if (!pos) return;
@@ -21949,10 +21948,18 @@ class GameScene extends Phaser.Scene {
 
     const playCoinCollectAnimation = () => {
       if (isUpdate || !this.textures.exists("coin")) {
+        // If coin textures are unavailable, still allow user to proceed.
+        if (!isUpdate) {
+          enableConfirmButton();
+        }
         return;
       }
 
-      const coinCountByRank = [50, 30, 20];
+      const rankRewardCoins =
+        (typeof RANK_REWARD_COINS !== "undefined" && Array.isArray(RANK_REWARD_COINS) && RANK_REWARD_COINS.length > 0)
+          ? RANK_REWARD_COINS
+          : [30, 20, 10];
+      const coinCountByRank = rankRewardCoins;
       const floorYMin = height * 0.72;
       const floorYMax = height * 0.86;
       const floorXMin = width * 0.2;
@@ -21967,45 +21974,80 @@ class GameScene extends Phaser.Scene {
       let arrivedCoins = 0;
       let rewardApplied = false;
 
-      const tryApplyDeferred = () => {
-        console.log('[result] tryApplyDeferred', { totalRankCoins, arrivedCoins, rewardApplied });
-        if (totalRankCoins > 0 && arrivedCoins < totalRankCoins) return;
+      const applyDeferredRewards = () => {
         if (rewardApplied) return;
         rewardApplied = true;
 
-        // 코인 애니메이션이 다 끝났을 때 프로필 갱신
         try {
-          // 1) 순위 보상 직접 반영 (내 계정)
-          try {
-            const coinCountByRank = [30, 20, 10];
-            let awardedForMe = 0;
-            const mySocketId = this.isSingle ? (this.myId || "PLAYER_ME") : (socket && socket.id);
-            console.log('[result] computing awardedForMe', { mySocketId, rankedPlayers });
-            rankedPlayers.forEach((p, idx) => {
-              try {
-                if (!p || typeof p.id === 'undefined') return;
-                if (!mySocketId) return;
-                if (String(p.id) === String(mySocketId)) {
-                  awardedForMe += Number(coinCountByRank[idx] || 0);
-                }
-              } catch (e) {
-                // ignore per-player comparison issues
+          const coinCountByRank = rankRewardCoins;
+          let awardedForMe = 0;
+          const mySocketId = this.isSingle ? (this.myId || "PLAYER_ME") : (socket && socket.id);
+          console.log('[result] computing awardedForMe', { mySocketId, rankedPlayers });
+          rankedPlayers.forEach((p, idx) => {
+            try {
+              if (!p || typeof p.id === 'undefined') return;
+              if (!mySocketId) return;
+              if (String(p.id) === String(mySocketId)) {
+                awardedForMe += Number(coinCountByRank[idx] || 0);
               }
-            });
-            console.log('[result] awardedForMe computed', { awardedForMe });
-            if (awardedForMe > 0) {
-              // Apply via centralized helper and force apply even if flag still set
-              try {
-                console.log('[result/reward] before modifyCoins', { prevCoins: Number(this.myProfile?.coins) || 0, awardedForMe });
-                this.modifyCoins(Number(awardedForMe), { sync: true, force: true });
-                console.log('[result/reward] after modifyCoins', { newCoins: Number(this.myProfile?.coins) || 0 });
-              } catch (e) {
-                console.warn('[result/reward] modifyCoins failed', e);
+            } catch (e) {
+              // ignore per-player comparison issues
+            }
+          });
+          console.log('[result] awardedForMe computed', { awardedForMe });
+
+          if (awardedForMe > 0) {
+            const currentCoins = Number(this.myProfile?.coins) || 0;
+            const baselineCoins = Number(resultOverlayBaselineCoins) || 0;
+            const expectedAfterReward = baselineCoins + awardedForMe;
+            const missingCoins = Math.max(0, expectedAfterReward - currentCoins);
+
+            if (this.isSingle) {
+              // Single-player should always apply reward locally.
+              if (missingCoins > 0) {
+                try {
+                  console.log('[result/reward] single-player rewarding coins', { prevCoins: currentCoins, missingCoins, awardedForMe });
+                  this.modifyCoins(missingCoins, { sync: true, force: true });
+                  console.log('[result/reward] single-player after modifyCoins', { newCoins: Number(this.myProfile?.coins) || 0 });
+                } catch (e) {
+                  console.warn('[result/reward] myProfile modifyCoins failed', e);
+                }
+              }
+            } else {
+              // Multiplayer: server should already have applied rank reward via myProfile.
+              if (currentCoins < expectedAfterReward) {
+                try {
+                  console.log('[result/reward] multiplayer missing coins; syncing local reward', {
+                    prevCoins: currentCoins,
+                    expectedAfterReward,
+                    missingCoins,
+                  });
+                  this.modifyCoins(missingCoins, { sync: true, force: true });
+                  console.log('[result/reward] multiplayer after modifyCoins', { newCoins: Number(this.myProfile?.coins) || 0 });
+                } catch (e) {
+                  console.warn('[result/reward] multiplayer modifyCoins failed', e);
+                }
+              } else {
+                console.log('[result/reward] multiplayer coin reward already reflected from server; skipping modifyCoins', {
+                  currentCoins,
+                  expectedAfterReward,
+                });
               }
             }
-          } catch (e) {
-            console.warn('[result] tryApplyDeferred reward apply failed', e);
           }
+        } catch (e) {
+          console.warn('[result] applyDeferredRewards failed', e);
+        }
+
+        enableConfirmButton();
+      };
+
+      const tryApplyDeferred = () => {
+        if (rewardApplied) return;
+        if (totalRankCoins > 0 && arrivedCoins < totalRankCoins) return;
+
+        applyDeferredRewards();
+      };
 
       rankedPlayers.forEach((_, rankIndex) => {
         const targetPos = podiumPositions[rankIndex];
@@ -22013,8 +22055,6 @@ class GameScene extends Phaser.Scene {
         if (!targetPos || coinCount <= 0) {
           return;
         }
-        // EXP is awarded during gameplay; do not show per-rank EXP at game end.
-        const expReward = 0;
 
         const targetX = targetPos.x;
         const targetY = targetPos.y - width * 0.14;
@@ -22050,7 +22090,6 @@ class GameScene extends Phaser.Scene {
             didShowRewardText = true;
             this.time.delayedCall(flyDelay, () => {
               playRewardTextAnimation(rankIndex, coinCount);
-              // EXP display removed from end-of-game results (XP awarded during gameplay)
             });
           }
 
@@ -22084,14 +22123,8 @@ class GameScene extends Phaser.Scene {
       });
 
       if (totalRankCoins === 0) {
-        // 만약 코인이 없는 경우도 즉시 반영
         tryApplyDeferred();
       }
-
-    } catch (e) {
-      console.warn('[result] tryApplyDeferred failed', e);
-    }
-
     };
 
     const playRewardTextAnimation = (rankIndex, rewardCoin) => {
@@ -22352,7 +22385,6 @@ class GameScene extends Phaser.Scene {
       playCoinCollectAnimation();
     }
   }
-}
 
   playFeedback(isSuccess, message = "") {
     const { width, height } = this.cameras.main;
