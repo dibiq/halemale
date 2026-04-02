@@ -3924,14 +3924,16 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
     const prev = this.myProfile || {};
     const prevRatioVal = Number(prev.ratio);
-    const incomingRatioRaw = Number(profile.ratio);
-    const incomingRatio =
-      Number.isFinite(incomingRatioRaw) && incomingRatioRaw >= 0
-        ? incomingRatioRaw
-        : null;
+
+    // Load localStorage bell stats and derive local accuracy ratio.
+    const localCorrect = Number(localStorage.getItem("bellCorrect")) || 0;
+    const localTotal = Number(localStorage.getItem("bellTotal")) || 0;
+    const localRatio = localTotal > 0 ? Math.round((localCorrect / localTotal) * 100) : null;
+
+    // Incoming server ratio is ignored for multiplayer; local data has priority.
     const initialRatio =
-      incomingRatio !== null
-        ? incomingRatio
+      localRatio !== null
+        ? localRatio
         : Number.isFinite(prevRatioVal) && prevRatioVal >= 0
         ? prevRatioVal
         : 0;
@@ -4000,37 +4002,27 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       avatarKey: normalizedAvatarKey,
     };
 
-    // keep bell accuracy totals in sync with server persistence
+    // keep bell accuracy totals in sync with localStorage only
     if (!this.bellStats) {
       this.bellStats = { correct: 0, total: 0 };
     }
 
-    // allow string/number (socket.io sometimes serializes numbers as strings)
-    const parsedCorrect = Number(profile.bellCorrect);
-    if (Number.isFinite(parsedCorrect)) {
-      this.bellStats.correct = parsedCorrect;
-    }
-    const parsedTotal = Number(profile.bellTotal);
-    if (Number.isFinite(parsedTotal)) {
-      this.bellStats.total = parsedTotal;
+    // Profile payload may include server-side bell stats; ignore them for multiplayer.
+    // Instead, re-load from localStorage if needed (local data wins).
+    const storedCorrect = Number(localStorage.getItem("bellCorrect")) || 0;
+    const storedTotal = Number(localStorage.getItem("bellTotal")) || 0;
+    if (storedTotal > 0) {
+      this.bellStats.correct = storedCorrect;
+      this.bellStats.total = storedTotal;
     }
 
-    // DEBUG: log incoming bell totals/ratio so we can trace rejoin behavior
-    console.debug("[DEBUG] updateMyProfileUI - bell totals", {
-      incomingRatio: profile.ratio,
-      incomingBellCorrect: profile.bellCorrect,
-      incomingBellTotal: profile.bellTotal,
-      appliedBellStats: this.bellStats,
-    });
-
-    // If bell totals are available, derive ratio from them to ensure continuity
+    // derived ratio from local stats
     if (this.bellStats.total > 0) {
-      const derivedRatio = Math.round(
+      this.myProfile.ratio = Math.round(
         (this.bellStats.correct / this.bellStats.total) * 100,
       );
-      if (Number.isFinite(derivedRatio) && derivedRatio >= 0) {
-        this.myProfile.ratio = derivedRatio;
-      }
+    } else {
+      this.myProfile.ratio = 0;
     }
 
     if (typeof window !== "undefined") {
@@ -6457,11 +6449,11 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         }
       }
 
-      // Always send ratio when available (even if profile snapshot hasn't arrived yet)
-      const safeRatio = Number(this.myProfile.ratio);
-      if (Number.isFinite(safeRatio)) {
-        payload.ratio = safeRatio;
-      }
+      // Avoid sending accuracy ratio over the network; use localStorage-based ratio.
+      // const safeRatio = Number(this.myProfile.ratio);
+      // if (Number.isFinite(safeRatio)) {
+      //   payload.ratio = safeRatio;
+      // }
 
       socket.emit("syncPlayerInventory", payload);
       socket.emit("syncInventory", payload);
@@ -10779,9 +10771,9 @@ class GameScene extends Phaser.Scene {
     this.useOptimisticFlip = false;
 
     // correct/total bell press tracking for accuracy ratio
-    // Seed from existing socket profile (so reconnect keeps previous totals)
-    const seedCorrect = Number(socket?.profile?.bellCorrect) || 0;
-    const seedTotal = Number(socket?.profile?.bellTotal) || 0;
+    // Seed from localStorage to avoid server-dependent multiplayer accuracy.
+    const seedCorrect = Number(localStorage.getItem("bellCorrect")) || 0;
+    const seedTotal = Number(localStorage.getItem("bellTotal")) || 0;
     this.bellStats = { correct: seedCorrect, total: seedTotal };
 
     // indicators for result overlay flow
@@ -10796,6 +10788,11 @@ class GameScene extends Phaser.Scene {
 
   applyDeferredProfileUpdates() {
     if (!this._deferredMyProfile) return;
+
+    console.log('[result] applyDeferredProfileUpdates called', {
+      deferredProfile: this._deferredMyProfile,
+      currentCoins: Number(this.myProfile?.coins) || 0,
+    });
 
     this._isApplyingDeferredProfile = true;
     try {
@@ -10916,206 +10913,218 @@ class GameScene extends Phaser.Scene {
       // identical logic to LobbyScene version; keeps game UI in sync
       const prev = this.myProfile || {};
       const prevRatioVal = Number(prev.ratio);
-      const incomingRatioRaw = Number(profile.ratio);
-      const incomingRatio =
-        Number.isFinite(incomingRatioRaw) && incomingRatioRaw >= 0
-          ? incomingRatioRaw
-          : null;
+
+      const localCorrect = Number(localStorage.getItem("bellCorrect")) || 0;
+      const localTotal = Number(localStorage.getItem("bellTotal")) || 0;
+      const localRatio = localTotal > 0 ? Math.round((localCorrect / localTotal) * 100) : null;
+
       const initialRatio =
-        incomingRatio !== null
-          ? incomingRatio
+        localRatio !== null
+          ? localRatio
           : Number.isFinite(prevRatioVal) && prevRatioVal >= 0
           ? prevRatioVal
           : 0;
-    const prevLevel = Number(prev.level) || 1;
-    const hasIncomingStats =
-      typeof profile.level !== "undefined" ||
-      typeof profile.coins !== "undefined" ||
-      typeof profile.experience !== "undefined";
 
-    const normalizeCharacterKey = (value) =>
-      typeof value === "string" && /^(player_[1-4]|premium_bear)$/.test(value)
-        ? value
-        : null;
+      const prevLevel = Number(prev.level) || 1;
+      const hasIncomingStats =
+        typeof profile.level !== "undefined" ||
+        typeof profile.coins !== "undefined" ||
+        typeof profile.experience !== "undefined";
 
-    const incomingOwnedCharacters = Array.isArray(profile.owned_characters)
-      ? profile.owned_characters
-      : Array.isArray(prev.owned_characters)
-        ? prev.owned_characters
-        : [];
+      const normalizeCharacterKey = (value) =>
+        typeof value === "string" && /^(player_[1-4]|premium_bear)$/.test(value)
+          ? value
+          : null;
 
-    const normalizedOwnedCharacters = Array.from(
-      new Set(
-        ["player_1"].concat(
-          incomingOwnedCharacters.filter(
-            (key) => typeof key === "string" && /^player_[1-4]$/.test(key),
+      const incomingOwnedCharacters = Array.isArray(profile.owned_characters)
+        ? profile.owned_characters
+        : Array.isArray(prev.owned_characters)
+          ? prev.owned_characters
+          : [];
+
+      const normalizedOwnedCharacters = Array.from(
+        new Set(
+          ["player_1"].concat(
+            incomingOwnedCharacters.filter(
+              (key) => typeof key === "string" && /^player_[1-4]$/.test(key),
+            ),
           ),
         ),
-      ),
-    );
+      );
 
-    const normalizedCurrentCharacter =
-      normalizeCharacterKey(profile.current_character) ||
-      normalizeCharacterKey(profile.avatarKey) ||
-      normalizeCharacterKey(prev.current_character) ||
-      "player_1";
+      const normalizedCurrentCharacter =
+        normalizeCharacterKey(profile.current_character) ||
+        normalizeCharacterKey(profile.avatarKey) ||
+        normalizeCharacterKey(prev.current_character) ||
+        "player_1";
 
-    const normalizedAvatarKey =
-      normalizeCharacterKey(profile.avatarKey) ||
-      normalizeCharacterKey(profile.current_character) ||
-      normalizeCharacterKey(prev.avatarKey) ||
-      normalizedCurrentCharacter;
+      const normalizedAvatarKey =
+        normalizeCharacterKey(profile.avatarKey) ||
+        normalizeCharacterKey(profile.current_character) ||
+        normalizeCharacterKey(prev.avatarKey) ||
+        normalizedCurrentCharacter;
 
-    // Decide coin value carefully: for single-player prefer locally-persisted
-    // coin value if it's larger than the server snapshot to avoid losing
-    // freshly-awarded single-player rewards that may not be synced immediately.
-    let incomingCoins = Number.isFinite(Number(profile.coins))
-      ? Number(profile.coins)
-      : Number(prev.coins) || 0;
-    try {
-      if (this.isSingle || this.fromSingleGame) {
+      // Decide coin value carefully: for single-player prefer locally-persisted
+      // coin value if it's larger than the server snapshot to avoid losing
+      // freshly-awarded single-player rewards that may not be synced immediately.
+      let incomingCoins = Number.isFinite(Number(profile.coins))
+        ? Number(profile.coins)
+        : Number(prev.coins) || 0;
+
+      try {
         const stored = Number(localStorage.getItem("profileCoins")) || 0;
         incomingCoins = Math.max(incomingCoins, stored, Number(prev.coins) || 0);
-      }
-    } catch (e) {
-      // ignore localStorage errors
-    }
-
-    this.myProfile = {
-      ...prev,
-      ...profile,
-      nickname:
-        profile.nickname ||
-        prev.nickname ||
-        localStorage.getItem("nickname") ||
-        "요리사",
-      level: Number(profile.level ?? prev.level ?? 1) || 1,
-      coins: Number.isFinite(incomingCoins) ? incomingCoins : 0,
-      experience: Number(profile.experience ?? prev.experience ?? 0) || 0,
-      ratio: initialRatio,
-      owned_characters: normalizedOwnedCharacters,
-      current_character: normalizedCurrentCharacter,
-      avatarKey: normalizedAvatarKey,
-    };
-
-    if (
-      hasIncomingStats &&
-      this.hasReceivedProfileStats &&
-      this.myProfile.level > prevLevel
-    ) {
-      // 서버 동기화 레벨 증가는 로컬 경험치 반영 후에만 알림
-      console.debug(
-        `[level sync] Lv.${prevLevel} → Lv.${this.myProfile.level} (toast suppressed)`,
-      );
-    }
-    if (hasIncomingStats) {
-      this.hasReceivedProfileStats = true;
-    }
-
-    // seed reaction sample from server snapshot if we don't have any local data yet
-    // only use it when the value is a positive number (0 means "no data").
-    // In singleplayer we don't track average reaction time.
-    if (
-      !this.isSingle &&
-      typeof this.myProfile.avetime === 'number' &&
-      this.myProfile.avetime > 0 &&
-      (!Array.isArray(this.reactionTimes) || this.reactionTimes.length === 0)
-    ) {
-      this.reactionTimes = [this.myProfile.avetime];
-    }
-
-    // update any game-screen text refs (wrapped safely to prevent crashes if the text object has been destroyed)
-    const safeSetText = (txtObj, value) => {
-      try {
-        // Some Phaser text objects can become invalid/destroyed during scene
-        // transitions. Guard against that to avoid noisy console warnings.
-        if (
-          txtObj &&
-          !txtObj.destroyed &&
-          txtObj.active &&
-          typeof txtObj.setText === "function"
-        ) {
-          txtObj.setText(value);
-        }
       } catch (e) {
-        // ignore phantom errors when the object is partially destroyed
+        console.warn("[updateMyProfileUI] failed to read profileCoins from localStorage", e);
       }
-    };
 
-    safeSetText(this.profileNameTxt, this.myProfile.nickname || "");
-    safeSetText(
-      this.profileLevelTxt,
-      `Lv ${this.myProfile.level} ${this.myProfile.nickname || ""}`,
-    );
-    safeSetText(this.profileCoinsTxt, `Coins: ${this.myProfile.coins}`);
-    this.setProfileCoinLabel(`보유코인: ${this.myProfile.coins}`);
+      console.log('[result] updateMyProfileUI coin merge', {
+        profileCoins: Number(profile.coins),
+        prevCoins: Number(prev.coins),
+        localCoins: Number(localStorage.getItem("profileCoins")) || 0,
+        incomingCoins,
+      });
 
-    // make sure the react-time display stays in sync as well
-    safeSetText(
-      this.profileReactTxt,
-      `반응속도: ${this.computeAvgReaction().toFixed(2)}s`,
-    );
+      this.myProfile = {
+        ...prev,
+        ...profile,
+        nickname:
+          profile.nickname ||
+          prev.nickname ||
+          localStorage.getItem("nickname") ||
+          "요리사",
+        level: Number(profile.level ?? prev.level ?? 1) || 1,
+        coins: Number.isFinite(incomingCoins) ? incomingCoins : 0,
+        experience: Number(profile.experience ?? prev.experience ?? 0) || 0,
+        ratio: initialRatio,
+        owned_characters: normalizedOwnedCharacters,
+        current_character: normalizedCurrentCharacter,
+        avatarKey: normalizedAvatarKey,
+      };
 
-    if (this.profileRatioTxt && this.profileRatioTxt.active && !this.profileRatioTxt.destroyed && typeof this.profileRatioTxt.setText === "function") {
-      const prevRatioVal = Number(prev.ratio) || 0;
-      const ratioVal = Number(this.myProfile.ratio) || 0;
-      const oldText = this.profileRatioTxt.text;
-      const newText = `정답률: ${ratioVal}%`;
-      if (oldText !== newText) {
-        safeSetText(this.profileRatioTxt, newText);
+      if (
+        hasIncomingStats &&
+        this.hasReceivedProfileStats &&
+        this.myProfile.level > prevLevel
+      ) {
+        // 서버 동기화 레벨 증가는 로컬 경험치 반영 후에만 알림
+        console.debug(
+          `[level sync] Lv.${prevLevel} → Lv.${this.myProfile.level} (toast suppressed)`,
+        );
+      }
+      if (hasIncomingStats) {
+        this.hasReceivedProfileStats = true;
+      }
 
-        // 색상 변경: 상승=빨 red, 하락=파 blue, 유지=white
-        let color = "#ffffff";
-        if (ratioVal > prevRatioVal) {
-          color = "#ff4d4d";
-        } else if (ratioVal < prevRatioVal) {
-          color = "#4da6ff";
-        }
+      // seed reaction sample from server snapshot if we don't have any local data yet
+      // only use it when the value is a positive number (0 means "no data").
+      // In singleplayer we don't track average reaction time.
+      if (
+        !this.isSingle &&
+        typeof this.myProfile.avetime === 'number' &&
+        this.myProfile.avetime > 0 &&
+        (!Array.isArray(this.reactionTimes) || this.reactionTimes.length === 0)
+      ) {
+        this.reactionTimes = [this.myProfile.avetime];
+      }
+
+      // update any game-screen text refs (wrapped safely to prevent crashes if the text object has been destroyed)
+      const safeSetText = (txtObj, value) => {
         try {
-          if (color !== "#ffffff") {
-            try {
-              this.profileRatioTxt.setColor(color);
-            } catch (e) {
-              // ignore if text object is invalid/destroyed
-            }
-            this._ratioColorTimeout = setTimeout(() => {
-              try {
-                if (
-                  this.profileRatioTxt &&
-                  typeof this.profileRatioTxt.setColor === "function"
-                ) {
-                  this.profileRatioTxt.setColor("#ffffff");
-                }
-              } catch (e) {
-                // ignore errors when object is gone
-              }
-              this._ratioColorTimeout = null;
-            }, 550);
+          // Some Phaser text objects can become invalid/destroyed during scene
+          // transitions. Guard against that to avoid noisy console warnings.
+          if (
+            txtObj &&
+            !txtObj.destroyed &&
+            txtObj.active &&
+            typeof txtObj.setText === "function"
+          ) {
+            txtObj.setText(value);
           }
         } catch (e) {
-          // ignore
+          // ignore phantom errors when the object is partially destroyed
         }
+      };
 
-        // Animate to highlight the change
-        try {
-          this.tweens.add({
-            targets: this.profileRatioTxt,
-            scaleX: 1.15,
-            scaleY: 1.15,
-            duration: 140,
-            yoyo: true,
-            ease: "Sine.easeOut",
-          });
-        } catch (e) {
-          // ignore if tween not available
+      safeSetText(this.profileNameTxt, this.myProfile.nickname || "");
+      safeSetText(
+        this.profileLevelTxt,
+        `Lv ${this.myProfile.level} ${this.myProfile.nickname || ""}`,
+      );
+      safeSetText(this.profileCoinsTxt, `Coins: ${this.myProfile.coins}`);
+      this.setProfileCoinLabel(`보유코인: ${this.myProfile.coins}`);
+
+      // make sure the react-time display stays in sync as well
+      safeSetText(
+        this.profileReactTxt,
+        `반응속도: ${this.computeAvgReaction().toFixed(2)}s`,
+      );
+
+      if (
+        this.profileRatioTxt &&
+        this.profileRatioTxt.active &&
+        !this.profileRatioTxt.destroyed &&
+        typeof this.profileRatioTxt.setText === "function"
+      ) {
+        const prevRatioVal = Number(prev.ratio) || 0;
+        const ratioVal = Number(this.myProfile.ratio) || 0;
+        const oldText = this.profileRatioTxt.text;
+        const newText = `정답률: ${ratioVal}%`;
+        if (oldText !== newText) {
+          safeSetText(this.profileRatioTxt, newText);
+
+          // 색상 변경: 상승=빨 red, 하락=파 blue, 유지=white
+          let color = "#ffffff";
+          if (ratioVal > prevRatioVal) {
+            color = "#ff4d4d";
+          } else if (ratioVal < prevRatioVal) {
+            color = "#4da6ff";
+          }
+          try {
+            if (color !== "#ffffff") {
+              try {
+                this.profileRatioTxt.setColor(color);
+              } catch (e) {
+                // ignore if text object is invalid/destroyed
+              }
+              this._ratioColorTimeout = setTimeout(() => {
+                try {
+                  if (
+                    this.profileRatioTxt &&
+                    typeof this.profileRatioTxt.setColor === "function"
+                  ) {
+                    this.profileRatioTxt.setColor("#ffffff");
+                  }
+                } catch (e) {
+                  // ignore errors when object is gone
+                }
+                this._ratioColorTimeout = null;
+              }, 550);
+            }
+          } catch (e) {
+            // ignore
+          }
+
+          // Animate to highlight the change
+          try {
+            this.tweens.add({
+              targets: this.profileRatioTxt,
+              scaleX: 1.15,
+              scaleY: 1.15,
+              duration: 140,
+              yoyo: true,
+              ease: "Sine.easeOut",
+            });
+          } catch (e) {
+            // ignore if tween not available
+          }
         }
       }
-    }
 
-    // combine with lobby-style text if present (rare inside GameScene but safe)
-  } catch (e) {
-    console.warn("[updateMyProfileUI] exception swallowed", e);
-  }
+      // combine with lobby-style text if present (rare inside GameScene but safe)
+    } catch (e) {
+      console.warn("[updateMyProfileUI] exception swallowed", e);
+    }
     if (this.profileIdText) {
       this.profileIdText.setText(`LV.${this.myProfile.level} ${this.myProfile.nickname}`);
     }
@@ -11162,14 +11171,21 @@ class GameScene extends Phaser.Scene {
 
   // compute average of recorded reactionTimes, return number (seconds)
   computeAvgReaction() {
-    if (!Array.isArray(this.reactionTimes) || this.reactionTimes.length === 0) {
+    try {
+      if (!Array.isArray(this.reactionTimes) || this.reactionTimes.length === 0) {
+        return 0;
+      }
+      // filter out non-positive values which may be placeholder/invalid
+      const valid = this.reactionTimes.filter((v) => Number.isFinite(v) && v > 0);
+      if (valid.length === 0) return 0;
+      const sum = valid.reduce((a, b) => a + b, 0);
+      return sum / valid.length;
+    } catch (e) {
+      console.warn("computeAvgReaction failed", e);
       return 0;
+    } finally {
+      // 인텐셔널: 현재 이 함수는 로컬 인메모리 계산이므로 꼭 cleanup이 필요하지 않습니다.
     }
-    // filter out non-positive values which may be placeholder/invalid
-    const valid = this.reactionTimes.filter((v) => Number.isFinite(v) && v > 0);
-    if (valid.length === 0) return 0;
-    const sum = valid.reduce((a, b) => a + b, 0);
-    return sum / valid.length;
   }
 
   // helper methods for avatar keys and sprite sheets (also copied to LobbyScene)
@@ -13219,77 +13235,7 @@ class GameScene extends Phaser.Scene {
               !this.isSingle &&
               (data.winnerId === myId || data.penaltyId === myId);
 
-          if (
-            isSelfBell &&
-            typeof data.bellCorrect === "number" &&
-            typeof data.bellTotal === "number"
-          ) {
-            const correct = Number(data.bellCorrect) || 0;
-            const total = Number(data.bellTotal) || 0;
-            this.bellStats = { correct, total };
-            const ratio = total > 0 ? Math.round((correct / total) * 100) : 0;
-
-            this.myProfile = this.myProfile || {};
-            const prevRatioVal = Number(this.myProfile.ratio || 0);
-            this.myProfile.ratio = ratio;
-            if (
-              this.profileRatioTxt &&
-              typeof this.profileRatioTxt.setText === "function"
-            ) {
-              const oldText = this.profileRatioTxt.text;
-              const newText = `정답률: ${ratio}%`;
-              if (oldText !== newText) {
-                this.profileRatioTxt.setText(newText);
-
-                // 색상 애니메이션: 상승=빨강, 하락=파랑
-                let highlightColor = "#ffffff";
-                if (ratio > prevRatioVal) {
-                  highlightColor = "#ff4d4d";
-                } else if (ratio < prevRatioVal) {
-                  highlightColor = "#4da6ff";
-                }
-
-                try {
-                  this.tweens.killTweensOf(this.profileRatioTxt);
-                  if (this._ratioColorTimeout) {
-                    clearTimeout(this._ratioColorTimeout);
-                    this._ratioColorTimeout = null;
-                  }
-                  this.profileRatioTxt.setScale(1);
-                  if (highlightColor !== "#ffffff") {
-                    this.profileRatioTxt.setColor(highlightColor);
-                    this._ratioColorTimeout = setTimeout(() => {
-                      if (
-                        this.profileRatioTxt &&
-                        typeof this.profileRatioTxt.setColor === "function"
-                      ) {
-                        this.profileRatioTxt.setColor("#ffffff");
-                      }
-                      this._ratioColorTimeout = null;
-                    }, 550);
-                  }
-                  this.tweens.add({
-                    targets: this.profileRatioTxt,
-                    scaleX: 1.15,
-                    scaleY: 1.15,
-                    duration: 140,
-                    yoyo: true,
-                    ease: "Sine.easeOut",
-                  });
-                } catch (e) {
-                  // ignore if tweens unavailable
-                }
-              }
-            }
-            if (typeof socket !== "undefined" && socket.profile) {
-              socket.profile.bellCorrect = correct;
-              socket.profile.bellTotal = total;
-              socket.profile.ratio = ratio;
-            }
-            if (typeof window !== "undefined") {
-              window.bellStats = { correct, total };
-            }
-          } else if (data.success && data.winnerId === socket.id) {
+          if (data.success && data.winnerId === socket.id) {
             this.updateBellAccuracy({ correct: 1, total: 1 });
           } else if (!data.success && data.penaltyId === socket.id) {
             this.updateBellAccuracy({ correct: 0, total: 1 });
@@ -13896,23 +13842,8 @@ class GameScene extends Phaser.Scene {
       // allow next match to recompute ratio properly
       this.isGameEnded = true;
       console.debug('gameEnded flag reaffirmed', { time: Date.now(), isGameEnded: this.isGameEnded });
-      try {
-        if (typeof this.emitInventory === 'function') {
-          this.emitInventory('final', {
-            includeExperience: false,
-            bellCorrect: this.bellStats?.correct,
-            bellTotal: this.bellStats?.total,
-          });
-        } else if (typeof emitInventory === 'function') {
-          emitInventory('final', {
-            includeExperience: false,
-            bellCorrect: this.bellStats?.correct,
-            bellTotal: this.bellStats?.total,
-          });
-        }
-      } catch (e) {
-        console.warn('emitInventory final sync skipped', e);
-      }
+      // Avoid pushing bell stats to server; accuracy data is local-only.
+      // (Local storage updates are handled in updateBellAccuracy.)
       // Ensure any AI timers/actions are stopped when match ends so
       // they don't leak into subsequent matches while result UI is shown.
       try {
@@ -18575,9 +18506,10 @@ class GameScene extends Phaser.Scene {
   }
 
   updateBellAccuracy({ correct = 0, total = 0 } = {}) {
-    // 게임 종료 직후의 추가 bell 이벤트는 정확도에 반영하지 않는다.
-    if (this.isGameEnded || !this.isGameStarted) {
-      console.debug("updateBellAccuracy skipped because game ended or not started", {
+    // 게임 종료 후 이벤트는 정확도에 반영하지 않는다.
+    // isGameStarted 플래그는 멀티에서 event race로 때때로 false일 수 있으므로 생략.
+    if (this.isGameEnded) {
+      console.debug("updateBellAccuracy skipped because game ended", {
         correct,
         total,
         isGameEnded: this.isGameEnded,
@@ -18668,13 +18600,13 @@ class GameScene extends Phaser.Scene {
         }
       }
 
-      // do not sync bell stats constantly from the client; the server is
-      // authoritative and will send updated totals via bellResult.
-      // This prevents out-of-order updates from inflating totals.
-      if (typeof socket !== "undefined" && socket.profile) {
-        socket.profile.bellCorrect = this.bellStats.correct;
-        socket.profile.bellTotal = this.bellStats.total;
-        socket.profile.ratio = ratio;
+      // Persist bell accuracy locally and do not sync ratio to server.
+      try {
+        localStorage.setItem("bellCorrect", String(this.bellStats.correct));
+        localStorage.setItem("bellTotal", String(this.bellStats.total));
+        localStorage.setItem("bellRatio", String(ratio));
+      } catch (e) {
+        console.warn("updateBellAccuracy localStorage save failed", e);
       }
       if (typeof window !== "undefined") {
         window.bellStats = { ...this.bellStats };
@@ -22033,10 +21965,13 @@ class GameScene extends Phaser.Scene {
       );
       console.log('[result] playCoinCollectAnimation start', { totalRankCoins, rankedPlayersCount: rankedPlayers.length });
       let arrivedCoins = 0;
+      let rewardApplied = false;
 
       const tryApplyDeferred = () => {
-        console.log('[result] tryApplyDeferred', { totalRankCoins, arrivedCoins });
+        console.log('[result] tryApplyDeferred', { totalRankCoins, arrivedCoins, rewardApplied });
         if (totalRankCoins > 0 && arrivedCoins < totalRankCoins) return;
+        if (rewardApplied) return;
+        rewardApplied = true;
 
         // 코인 애니메이션이 다 끝났을 때 프로필 갱신
         try {
@@ -22061,32 +21996,16 @@ class GameScene extends Phaser.Scene {
             if (awardedForMe > 0) {
               // Apply via centralized helper and force apply even if flag still set
               try {
-                console.log('[result] before modifyCoins', { prevCoins: Number(this.myProfile?.coins) || 0, awardedForMe });
+                console.log('[result/reward] before modifyCoins', { prevCoins: Number(this.myProfile?.coins) || 0, awardedForMe });
                 this.modifyCoins(Number(awardedForMe), { sync: true, force: true });
-                console.log('[result] after modifyCoins', { newCoins: Number(this.myProfile?.coins) || 0 });
+                console.log('[result/reward] after modifyCoins', { newCoins: Number(this.myProfile?.coins) || 0 });
               } catch (e) {
-                console.warn('[result] modifyCoins failed', e);
+                console.warn('[result/reward] modifyCoins failed', e);
               }
             }
           } catch (e) {
-            console.warn('apply per-rank award failed', e);
+            console.warn('[result] tryApplyDeferred reward apply failed', e);
           }
-
-          // 3) 서버가 보낸 프로필 스냅샷이 대기중이면 병합/적용
-          this.applyDeferredProfileUpdates();
-
-          // 결과창 완료 상태 reset
-          this.isResultOverlayActive = false;
-          enableConfirmButton();
-        } catch (e) {
-          console.warn('tryApplyDeferred failed', e);
-          try {
-            this.applyDeferredProfileUpdates();
-          } catch (err) {}
-          this.isResultOverlayActive = false;
-          enableConfirmButton();
-        }
-      };
 
       rankedPlayers.forEach((_, rankIndex) => {
         const targetPos = podiumPositions[rankIndex];
@@ -22168,6 +22087,10 @@ class GameScene extends Phaser.Scene {
         // 만약 코인이 없는 경우도 즉시 반영
         tryApplyDeferred();
       }
+
+    } catch (e) {
+      console.warn('[result] tryApplyDeferred failed', e);
+    }
 
     };
 
@@ -22429,6 +22352,7 @@ class GameScene extends Phaser.Scene {
       playCoinCollectAnimation();
     }
   }
+}
 
   playFeedback(isSuccess, message = "") {
     const { width, height } = this.cameras.main;
@@ -23386,9 +23310,10 @@ try {
             if (this.myProfile && Number.isFinite(Number(this.myProfile.experience))) {
               payload.experience = Number(this.myProfile.experience);
             }
-            if (this.myProfile && Number.isFinite(Number(this.myProfile.ratio))) {
-              payload.ratio = Number(this.myProfile.ratio);
-            }
+            // 멀티 정답률은 서버 전송하지 않고 로컬로만 관리합니다.
+            //if (this.myProfile && Number.isFinite(Number(this.myProfile.ratio))) {
+            //  payload.ratio = Number(this.myProfile.ratio);
+            //}
 
             socket.emit('syncPlayerInventory', payload);
             socket.emit('syncInventory', payload);
