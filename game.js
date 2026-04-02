@@ -12809,6 +12809,24 @@ class GameScene extends Phaser.Scene {
         this.lastEliminationEffectAtByPlayer = {};
         this._initialProfileApplied = false;
 
+        // 3연속 진행시 남아있는 액션 잠금/타이머 초기화(플립/턴/AI)
+        this.isFlipping = false;
+        this.canClick = false;
+        this.clearMyTurnTimer();
+        if (this._aiTurnWatchTimer) {
+          try { this._aiTurnWatchTimer.remove(); } catch (e) {}
+          this._aiTurnWatchTimer = null;
+          this._aiTurnWatchRetries = 0;
+        }
+        if (this._aiAutoNotifyTimer) {
+          try { this._aiAutoNotifyTimer.remove(); } catch (e) {}
+          this._aiAutoNotifyTimer = null;
+        }
+        if (this._aiStuckChecker) {
+          try { this._aiStuckChecker.remove(); } catch (e) {}
+          this._aiStuckChecker = null;
+        }
+
         // Re-sync deferred profile/coins from previous match and update UI immediately
         try {
           if (this._deferredMyProfile) {
@@ -12832,7 +12850,9 @@ class GameScene extends Phaser.Scene {
 
           if (typeof this.updateMyProfileUI === 'function') {
             this._allowCoinTextUpdateForNextUI = true;
-            this.updateMyProfileUI(socket && socket.profile ? socket.profile : this.myProfile);
+            // Prefer local cached myProfile (most up-to-date) over stale socket.profile
+            // in case server profile sync is delayed during rapid reconnect/restart.
+            this.updateMyProfileUI(this.myProfile);
           }
         } catch (e) {
           console.warn('applyGameStartPayload initial profile/coins sync failed', e);
