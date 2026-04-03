@@ -675,6 +675,26 @@ class LobbyScene extends Phaser.Scene {
     this.iapBtnImg = null;
     this.iapBtnText = null;
     this.iapPurchaseCleanup = null;
+
+    // 🎮 모바일 최적화 설정
+    const isMobileDevice = window.innerWidth < 768 || /mobile|android|iphone|ipad/i.test(navigator.userAgent.toLowerCase());
+    const isLowEndDevice = navigator.deviceMemory ? navigator.deviceMemory <= 2 : performance.memory ? performance.memory.jsHeapSizeLimit < 512 * 1024 * 1024 : false;
+    
+    // 저사양 모바일 감지:
+    // - 화면 너비 < 768px (모바일)
+    // - RAM <= 2GB 또는 힙 크기 < 512MB
+    this.isMobileOptimized = isMobileDevice;
+    this.isLowEndDevice = isLowEndDevice;
+    
+    // 애니메이션 설정 (저사양 기기에서는 감소)
+    this.particleCountMultiplier = isLowEndDevice ? 0.4 : (isMobileDevice ? 0.6 : 1.0);
+    this.animationDurationMultiplier = isLowEndDevice ? 0.7 : (isMobileDevice ? 0.85 : 1.0);
+    
+    // 동시 실행 애니메이션 제한
+    this.maxConcurrentAnims = isLowEndDevice ? 5 : (isMobileDevice ? 8 : 20);
+    this.currentAnimCount = 0;
+    
+    console.log(`[Optimization] Mobile: ${isMobileDevice}, LowEnd: ${isLowEndDevice}, ParticleMultiplier: ${this.particleCountMultiplier}`);
   }
 
   // avatar helper methods (copied from GameScene) so lobby can use same logic
@@ -16419,7 +16439,7 @@ class GameScene extends Phaser.Scene {
       targets: tempCard,
       x: startPos.x + Math.cos(rad) * dist * 0.7 + targetOffsetX,
       y: startPos.y + Math.sin(rad) * dist + targetOffsetY,
-      duration: 100, // 더 빠른 카드 제출 연출
+      duration: 100 * (this.animationDurationMultiplier || 1), // 모바일 최적화: 동적 애니메이션 시간
       ease: "Power2.out",
       onComplete: () => {
         // 💡 애니메이션 종료 후: 싱글플레이는 이미 openStack에 추가되어 있으므로
@@ -20442,11 +20462,143 @@ class GameScene extends Phaser.Scene {
 
   // 💥 정답 시 스펙타클한 이펙트
   playSuccessEffect() {
+    if (!this.isMobileOptimized) {
+      // 웹/PC 버전: 원래대로
+      return this._playSuccessEffectFull();
+    }
+    
+    // 📱 모바일 최적화 버전
     const { width, height } = this.cameras.main;
     const centerX = width / 2;
     const centerY = height / 2;
 
-    // 1. 화면 전체 플래시 효과 (흰색 깜빡임)
+    // 1. 화면 플래시 (더 짧은 시간)
+    const flash = this.add
+      .rectangle(centerX, centerY, width, height, 0xffffff, 1)
+      .setDepth(10000);
+
+    this.tweens.add({
+      targets: flash,
+      alpha: 0,
+      duration: 200, // 300 → 200ms
+      ease: "Power2",
+      onComplete: () => flash.destroy(),
+    });
+
+    // 2. 더 약한 카메라 셰이크
+    this.cameras.main.shake(250, 0.005); // 400, 0.01 → 250, 0.005
+
+    // 3. 성공 텍스트 (간소화)
+    const perfectText = this.add
+      .text(centerX, centerY - height * 0.1, "성공!", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.12}px`, // 0.15 → 0.12
+        color: "#FFD700",
+        fontWeight: "bold",
+        stroke: "#FF6B6B",
+        strokeThickness: 8, // 12 → 8
+      })
+      .setOrigin(0.5)
+      .setDepth(10001)
+      .setScale(0)
+      .setAlpha(0);
+
+    this.tweens.add({
+      targets: perfectText,
+      scale: 1.1, // 1.2 → 1.1
+      alpha: 1,
+      duration: 150, // 200 → 150ms
+      ease: "Back.easeOut",
+      onComplete: () => {
+        this.tweens.add({
+          targets: perfectText,
+          scale: 1.3,
+          alpha: 0,
+          y: centerY - height * 0.18,
+          duration: 300, // 400 → 300ms
+          delay: 200,
+          ease: "Power2.easeIn",
+          onComplete: () => perfectText.destroy(),
+        });
+      },
+    });
+
+    // 4. 파티클 효과 (개수 감소)
+    const particleCount = Math.round(15 * this.particleCountMultiplier); // 30 → 15
+    for (let i = 0; i < particleCount; i++) {
+      const angle = (Math.PI * 2 * i) / particleCount;
+      const speed = 150 + Math.random() * 150; // 200 + 200 → 150 + 150
+
+      const particle = this.add
+        .circle(centerX, centerY, width * 0.015, 0xffd700, 1) // 0.02 → 0.015
+        .setDepth(10002);
+
+      const vx = Math.cos(angle) * speed;
+      const vy = Math.sin(angle) * speed;
+
+      this.tweens.add({
+        targets: particle,
+        x: centerX + vx,
+        y: centerY + vy,
+        alpha: 0,
+        scale: 0,
+        duration: 600, // 800 → 600ms
+        ease: "Power2.easeOut",
+        onComplete: () => particle.destroy(),
+      });
+    }
+
+    // 5. 별 이모지 (간소화)
+    const bellY = height * 0.465;
+    const starCount = Math.round(12 * this.particleCountMultiplier); // 20 → 12
+
+    for (let i = 0; i < starCount; i++) {
+      const angle = (Math.PI * 2 * i) / starCount;
+      const distance = width * 0.3 + Math.random() * width * 0.15; // 0.4 + 0.2 → 0.3 + 0.15
+
+      const star = this.add
+        .text(centerX, bellY, "⭐", {
+          fontSize: `${width * 0.025}px`, // 0.03 → 0.025
+        })
+        .setOrigin(0.5)
+        .setDepth(10003)
+        .setAlpha(0);
+
+      const targetX = centerX + Math.cos(angle) * distance;
+      const targetY = bellY + Math.sin(angle) * distance;
+
+      this.time.delayedCall(i * 5, () => { // 10 → 5ms 딜레이
+        this.tweens.add({
+          targets: star,
+          x: targetX,
+          y: targetY,
+          alpha: 1,
+          rotation: Math.PI * 2 + Math.random() * Math.PI,
+          scale: 1 + Math.random() * 0.3, // 0.5 → 0.3
+          duration: 250 + Math.random() * 150, // 300 + 200 → 250 + 150
+          ease: "Power2.easeOut",
+          onComplete: () => {
+            this.tweens.add({
+              targets: star,
+              alpha: 0,
+              scale: 0,
+              duration: 100, // 150 → 100
+              ease: "Power2.easeIn",
+              onComplete: () => star.destroy(),
+            });
+          },
+        });
+      });
+    }
+  }
+
+  _playSuccessEffectFull() {
+    // 웹/PC 전체 효과 버전
+    const { width, height } = this.cameras.main;
+    const centerX = width / 2;
+    const centerY = height / 2;
+
+    // 1. 화면 플래시
     const flash = this.add
       .rectangle(centerX, centerY, width, height, 0xffffff, 1)
       .setDepth(10000);
@@ -20462,7 +20614,7 @@ class GameScene extends Phaser.Scene {
     // 2. 카메라 셰이크
     this.cameras.main.shake(400, 0.01);
 
-    // 3. "PERFECT!" 텍스트 애니메이션
+    // 3. 성공 텍스트
     const perfectText = this.add
       .text(centerX, centerY - height * 0.1, "성공!", {
         fontFamily: GAME_FONTS.main,
@@ -20484,24 +20636,21 @@ class GameScene extends Phaser.Scene {
       duration: 200,
       ease: "Back.easeOut",
       onComplete: () => {
-        // 잠시 유지 후 사라짐
         this.tweens.add({
           targets: perfectText,
-          scale: 1.5,
+          scale: 1.3,
           alpha: 0,
-          y: centerY - height * 0.2,
+          y: centerY - height * 0.18,
           duration: 400,
-          delay: 300,
+          delay: 200,
           ease: "Power2.easeIn",
           onComplete: () => perfectText.destroy(),
         });
       },
     });
 
-    // 4. 파티클 효과 - 황금 별 폭발
-    const particles = [];
+    // 4. 파티클 효과
     const particleCount = 30;
-
     for (let i = 0; i < particleCount; i++) {
       const angle = (Math.PI * 2 * i) / particleCount;
       const speed = 200 + Math.random() * 200;
@@ -20509,8 +20658,6 @@ class GameScene extends Phaser.Scene {
       const particle = this.add
         .circle(centerX, centerY, width * 0.02, 0xffd700, 1)
         .setDepth(10002);
-
-      particles.push(particle);
 
       const vx = Math.cos(angle) * speed;
       const vy = Math.sin(angle) * speed;
@@ -20527,8 +20674,8 @@ class GameScene extends Phaser.Scene {
       });
     }
 
-    // 5. 별 이모지가 bell 중앙에서 360도로 폭발하는 효과
-    const bellY = height * 0.465; // bell의 y 위치
+    // 5. 별 이모지
+    const bellY = height * 0.465;
     const starCount = 20;
 
     for (let i = 0; i < starCount; i++) {
@@ -20537,7 +20684,7 @@ class GameScene extends Phaser.Scene {
 
       const star = this.add
         .text(centerX, bellY, "⭐", {
-          fontSize: `${width * 0.03}px`, // 크기 축소
+          fontSize: `${width * 0.03}px`,
         })
         .setOrigin(0.5)
         .setDepth(10003)
@@ -20546,7 +20693,6 @@ class GameScene extends Phaser.Scene {
       const targetX = centerX + Math.cos(angle) * distance;
       const targetY = bellY + Math.sin(angle) * distance;
 
-      // 약간의 지연을 주어 파도치듯 퍼지는 효과
       this.time.delayedCall(i * 10, () => {
         this.tweens.add({
           targets: star,
@@ -20555,15 +20701,14 @@ class GameScene extends Phaser.Scene {
           alpha: 1,
           rotation: Math.PI * 2 + Math.random() * Math.PI,
           scale: 1 + Math.random() * 0.5,
-          duration: 300 + Math.random() * 200, // 더 빨리 흩어짐
+          duration: 300 + Math.random() * 200,
           ease: "Power2.easeOut",
           onComplete: () => {
-            // 도착 후 서서히 사라짐
             this.tweens.add({
               targets: star,
               alpha: 0,
               scale: 0,
-              duration: 150, // 더 빨리 사라짐
+              duration: 150,
               ease: "Power2.easeIn",
               onComplete: () => star.destroy(),
             });
@@ -20575,6 +20720,137 @@ class GameScene extends Phaser.Scene {
 
   // 💥 틀렸을 때 강력한 패널티 효과
   playFailureEffect() {
+    if (!this.isMobileOptimized) {
+      // 웹/PC 버전: 원래대로
+      return this._playFailureEffectFull();
+    }
+    
+    // 📱 모바일 최적화 버전
+    const { width, height } = this.cameras.main;
+    const centerX = width / 2;
+    const centerY = height / 2;
+
+    // 1. 화면 붉은 플래시 (더 약함)
+    const flash = this.add
+      .rectangle(centerX, centerY, width, height, 0xff3333, 0.5) // 0.8 → 0.5
+      .setDepth(10000);
+
+    this.tweens.add({
+      targets: flash,
+      alpha: 0,
+      duration: 300, // 400 → 300ms
+      ease: "Power2",
+      onComplete: () => flash.destroy(),
+    });
+
+    // 2. 더 약한 카메라 흔들림
+    this.cameras.main.shake(350, 0.008); // 500, 0.015 → 350, 0.008
+
+    // 3. 실패 텍스트 (간소화)
+    const wrongText = this.add
+      .text(centerX, centerY, "땡!", {
+        fontSize: `${width * 0.1}px`, // 0.12 → 0.1
+        fontFamily: "Arial Black",
+        color: "#ff0000",
+        stroke: "#ffffff",
+        strokeThickness: 6, // 8 → 6
+      })
+      .setOrigin(0.5)
+      .setDepth(10001)
+      .setAlpha(0)
+      .setScale(0);
+
+    this.tweens.add({
+      targets: wrongText,
+      scale: 1.2, // 1.3 → 1.2
+      alpha: 1,
+      duration: 150, // 200 → 150ms
+      ease: "Back.easeOut",
+      onComplete: () => {
+        this.tweens.add({
+          targets: wrongText,
+          y: centerY - height * 0.12,
+          alpha: 0,
+          scale: 0.8,
+          duration: 300, // 400 → 300ms
+          delay: 150, // 200 → 150ms
+          ease: "Power2.easeIn",
+          onComplete: () => wrongText.destroy(),
+        });
+      },
+    });
+
+    // 4. 붉은 파티클 (간소화)
+    const particleCount = Math.round(20 * this.particleCountMultiplier); // 40 → 20
+    for (let i = 0; i < particleCount; i++) {
+      const angle = (Math.PI * 2 * i) / particleCount;
+      const distance = Math.random() * width * 0.2; // 0.3 → 0.2
+
+      const particle = this.add
+        .circle(centerX, centerY, width * 0.012, 0xff0000, 1) // 0.015 → 0.012
+        .setDepth(10002);
+
+      const targetX = centerX + Math.cos(angle) * distance;
+      const targetY = centerY + Math.sin(angle) * distance;
+
+      this.tweens.add({
+        targets: particle,
+        x: targetX,
+        y: targetY,
+        alpha: 0,
+        scale: 0.2,
+        duration: 500, // 600 → 500ms
+        ease: "Power2.easeOut",
+        onComplete: () => particle.destroy(),
+      });
+    }
+
+    // 5. ❌ 이모지 (간소화)
+    const bellY = height * 0.465;
+    const xCount = Math.round(10 * this.particleCountMultiplier); // 15 → 10
+
+    for (let i = 0; i < xCount; i++) {
+      const angle = (Math.PI * 2 * i) / xCount;
+      const distance = width * 0.3 + Math.random() * width * 0.15; // 0.35 + 0.2 → 0.3 + 0.15
+
+      const xMark = this.add
+        .text(centerX, bellY, "❌", {
+          fontSize: `${width * 0.032}px`, // 0.04 → 0.032
+        })
+        .setOrigin(0.5)
+        .setDepth(10003)
+        .setAlpha(0);
+
+      const targetX = centerX + Math.cos(angle) * distance;
+      const targetY = bellY + Math.sin(angle) * distance;
+
+      this.time.delayedCall(i * 8, () => { // 15 → 8ms
+        this.tweens.add({
+          targets: xMark,
+          x: targetX,
+          y: targetY,
+          alpha: 1,
+          rotation: Math.PI * 2 + Math.random() * Math.PI,
+          scale: 1 + Math.random() * 0.3, // 0.5 → 0.3
+          duration: 300 + Math.random() * 150, // 400 + 200 → 300 + 150
+          ease: "Power2.easeOut",
+          onComplete: () => {
+            this.tweens.add({
+              targets: xMark,
+              alpha: 0,
+              scale: 0,
+              duration: 150, // 200 → 150
+              ease: "Power2.easeIn",
+              onComplete: () => xMark.destroy(),
+            });
+          },
+        });
+      });
+    }
+  }
+
+  _playFailureEffectFull() {
+    // 웹/PC 전체 효과 버전
     const { width, height } = this.cameras.main;
     const centerX = width / 2;
     const centerY = height / 2;
