@@ -11265,23 +11265,35 @@ class GameScene extends Phaser.Scene {
   applyDeferredProfileUpdates() {
     if (!this._deferredMyProfile) return;
 
+    const localCoins = Number(this.myProfile?.coins) || 0;
+    const incomingCoins = Number(this._deferredMyProfile?.coins) || 0;
+    
     console.log('[result] applyDeferredProfileUpdates called', {
-      deferredProfile: this._deferredMyProfile,
-      currentCoins: Number(this.myProfile?.coins) || 0,
+      localCoins,
+      incomingCoins,
+      preferLocal: localCoins > incomingCoins,
     });
 
     this._isApplyingDeferredProfile = true;
     try {
-      // Defensive merge: if the deferred profile includes a `coins` value,
-      // avoid letting an older server snapshot overwrite a locally-updated
-      // coin amount (e.g. client applied per-rank animation + modifyCoins).
+      // 🔴 [중요] 로컬에서 적용된 코인(배수 포함)을 우선시
       const incoming = { ...this._deferredMyProfile };
+      
+      // 코인: 로컬 수정 값이 더 크면 그것을 사용 (배수 적용된 보상)
       if (typeof incoming.coins !== 'undefined') {
-        const localCoins = Number(this.myProfile?.coins) || 0;
-        const incomingCoins = Number(incoming.coins) || 0;
-        // Prefer whichever is larger to avoid accidental regressions.
-        incoming.coins = localCoins >= incomingCoins ? localCoins : incomingCoins;
+        if (localCoins > incomingCoins) {
+          console.log('[result] 로컬 코인 우선 사용 (배수 반영)', { localCoins, incomingCoins });
+          incoming.coins = localCoins;
+        } else if (localCoins === incomingCoins) {
+          console.log('[result] 로컬/서버 코인 동일', { coins: localCoins });
+          incoming.coins = localCoins;
+        } else {
+          // 서버 코인이 더 크면 서버 값 사용 (오류 복구)
+          console.log('[result] 서버 코인 더 큼, 서버 값 사용', { localCoins, incomingCoins });
+          incoming.coins = incomingCoins;
+        }
       }
+      
       this.updateMyProfileUI(incoming);
     } catch (e) {
       console.warn("applyDeferredProfileUpdates failed", e);
@@ -11469,12 +11481,19 @@ class GameScene extends Phaser.Scene {
         console.warn("[updateMyProfileUI] failed to read profileCoins from localStorage", e);
       }
 
+      // 🔴 [중요] 멀티플레이 결과 화면 중 코인 업데이트
+      // 이미 applyDeferredProfileUpdates에서 대비했으므로, 여기서는 로컬 값 우선
       const shouldHoldCoinUi =
-        !this.isSingle && (this.isGameEnded || this.isResultOverlayActive);
-      if (shouldHoldCoinUi) {
-        // During multiplayer end result overlay, avoid reflecting final coins
-        // in the top-left UI until animation/confirmation completes.
+        !this.isSingle && (this.isGameEnded || this.isResultOverlayActive) && !this._isApplyingDeferredProfile;
+      if (shouldHoldCoinUi && !this._isApplyingDeferredProfile) {
+        // applyDeferredProfileUpdates에서 처리 중 아니면 현재 값 유지
         incomingCoins = Number(prev.coins) || 0;
+        console.debug('[ui] 결과 화면 중 코인 UI 유지 (applyDeferredProfileUpdates 대기)', { incomingCoins });
+      } else if (this._isApplyingDeferredProfile) {
+        // applyDeferredProfileUpdates에서 호출 중이면 로컬 값 우선
+        const localCurrentCoins = Number(this.myProfile?.coins) || 0;
+        incomingCoins = Math.max(incomingCoins, localCurrentCoins);
+        console.log('[ui] applyDeferredProfileUpdates 처리 중 - 로컬 코인 우선', { incomingCoins, localCurrentCoins });
       }
 
       console.log('[result] updateMyProfileUI coin merge', {
@@ -11482,6 +11501,7 @@ class GameScene extends Phaser.Scene {
         prevCoins: Number(prev.coins),
         localCoins: Number(localStorage.getItem("profileCoins")) || 0,
         incomingCoins,
+        isApplyingDeferred: this._isApplyingDeferredProfile,
       });
 
       this.myProfile = {
@@ -12221,7 +12241,12 @@ class GameScene extends Phaser.Scene {
       itemMode: typeof data.itemMode === "boolean" ? data.itemMode : this.roundData?.itemMode !== false,
       gameMode: data.gameMode || this.roundData?.gameMode || "allin",
       timeAttackEndsAt: data.timeAttackEndsAt || this.roundData?.timeAttackEndsAt || null,
+      gameMultiplier: 1, // 배수 시스템: 1배, 2배, 3배, 5배, 10배
     };
+    
+    // 배수 애니메이션 실행 flag
+    this._multiplierAnimationShown = false;
+    
     this.pendingGameStartData = data && Array.isArray(this.roundData.players) && this.roundData.players.length ? data : null;
 
     this.isTutorialMode = !!data.isTutorialMode;
@@ -12732,10 +12757,15 @@ class GameScene extends Phaser.Scene {
     }
 
     // 플레이어/카드들을 담을 그룹
-    this.playerTableGroup = this.add.container(0, 0).setDepth(100);
+    this.playerTableGroup = this.add.container(0, 0).setDepth(1000);
     try {
       this.playerTableGroup.setVisible(true).setAlpha(1);
+      this.playerTableGroup.setScrollFactor(0, 0);  // UI는 화면 고정 (0, 0)
       this.children.bringToTop(this.playerTableGroup);
+      console.log('[GameScene.create] playerTableGroup 생성:', {
+        depth: 1000,
+        scrollFactor: `${this.playerTableGroup.scrollFactorX}, ${this.playerTableGroup.scrollFactorY}`,
+      });
     } catch (e) {
       console.warn("GameScene.create: restoring playerTableGroup visibility/depth failed", e);
     }
@@ -12757,10 +12787,7 @@ class GameScene extends Phaser.Scene {
     }
 
     // If LobbyScene transitioned directly with a gameStart payload, apply it.
-    if (this.pendingGameStartData && typeof this.applyGameStartPayload === 'function') {
-      this.applyGameStartPayload(this.pendingGameStartData);
-      this.pendingGameStartData = null;
-    }
+    // persisted in pendingGameStartData, will be handled after socket handlers are registered below
 
     // Debug: add force-win button for tutorial-started single games
     if (
@@ -12864,11 +12891,8 @@ class GameScene extends Phaser.Scene {
       }
     }
 
-    // 연출 실행
-    this.playOpeningAnimation();
-    this.time.delayedCall(800, () => {
-      this.showReadyGo();
-    });
+    // 연출은 applyGameStartPayload에서 처리됩니다
+    // 이곳에서는 socket 핸들러 등록 후 pendingGameStartData를 통해 애니메이션이 시작됩니다
 
     // Ensure debug UI stays on top after opening animations that may reorder depths.
     try {
@@ -13077,12 +13101,19 @@ class GameScene extends Phaser.Scene {
           // 멀티플레이 결과(시상식) 연출 중이거나 게임이 종료된 상태라면
           // 프로필(특히 코인) 업데이트를 즉시 적용하지 않고 지연 저장합니다.
           if (this.isGameEnded || this.isResultOverlayActive) {
+            const localCoins = Number(this.myProfile?.coins) || 0;
+            const incomingCoins = Number(profile?.coins) || 0;
+            console.log('[socket.myProfile] 결과 화면 중 프로필 업데이트 지연', { 
+              localCoins,
+              incomingCoins,
+              willPreferLocal: localCoins > incomingCoins
+            });
             this._deferredMyProfile = profile;
             console.debug("myProfile update deferred until post-result (socket.myProfile)", { profile });
           } else if (!this.isSingle) {
             // Live multiplayer: avoid profile UI show during match; coin display only from coincard updates.
-            this._deferredMyProfile = profile;
             console.debug("myProfile update held during live multiplayer (socket.myProfile)", { profile });
+            this._deferredMyProfile = profile;
           } else {
             this.updateMyProfileUI(profile);
             this.hasServerProfileSnapshot = true;
@@ -13227,7 +13258,14 @@ class GameScene extends Phaser.Scene {
 
     this.applyGameStartPayload = (data) => {
       try {
+        console.log('[applyGameStartPayload] 호출됨', {
+          isSingle: this.isSingle,
+          _multiplierAnimationShown: this._multiplierAnimationShown,
+          playersLength: Array.isArray(data?.players) ? data.players.length : 0,
+        });
+
         if (!data || !Array.isArray(data.players) || data.players.length === 0) {
+          console.log('[applyGameStartPayload] 데이터 유효성 검사 실패');
           return;
         }
 
@@ -13276,6 +13314,14 @@ class GameScene extends Phaser.Scene {
             ? data.isSingle
             : this.isSingle;
         this._startOfMatchCoins = Number(this.myProfile?.coins) || 0; // 시작 시점 코인 스냅샷
+        
+        // 🔴 [배수 초기화] 새 게임은 배수 미정 (애니메이션에서 설정됨)
+        this.roundData.gameMultiplier = 1; // 기본값 (게임 시작 후 애니메이션에서 업데이트됨)
+        console.log('[applyGameStartPayload] 배수 초기화', { 
+          gameMultiplier: this.roundData.gameMultiplier,
+          isSingle: this.isSingle
+        });
+        
         this.isGameEnded = false; // 새 게임 시작 시 종료 플래그 리셋
         this.isResultOverlayActive = false;
         this.isGameStarted = true;
@@ -13357,22 +13403,69 @@ class GameScene extends Phaser.Scene {
         this.canClick = false;
         this.playOpeningAnimation();
 
-        this.time.delayedCall(800, () => {
-          this.showReadyGo();
-          this.time.delayedCall(2000, () => {
-            const myId = this.isSingle ? this.myId : socket.id;
-            const currentTurnId = this.roundData?.players?.[this.turnIndex]?.id;
-            this.canClick = currentTurnId === myId || data.nextTurnId === myId;
-            console.log("🎮 game ready", { myId, currentTurnId, nextTurnId: data.nextTurnId, turnIndex: this.turnIndex, canClick: this.canClick });
-            try {
-              // Ensure visual turn effects are applied once UI is visible
-              this.updateTurnEffect && typeof this.updateTurnEffect === 'function' && this.updateTurnEffect();
-              if (this.canClick && this.myDeckSprite) {
-                try { this.applyDeckPulse(this.myDeckSprite); } catch (e) {}
-              }
-            } catch (e) {}
+        // 멀티플레이는 커튼 후에 배수 애니메이션 실행, 싱글플레이는 기존 흐름
+        if (!this.isSingle && !this._multiplierAnimationShown) {
+          // 멀티플레이: 커튼 열림 → 배수 애니메이션 → Ready-Go
+          this._multiplierAnimationShown = true;
+          this._multiplierAnimationPlaying = true; // 배수 애니메이션 진행 중 플래그
+          
+          this.time.delayedCall(1200, () => {
+            console.log('[applyGameStartPayload] 커튼 열림 → 배수 애니메이션 시작');
+            this.playMultiplierSelectionAnimation(); // 5초 (3초 회전 + 2초 표시)
+
+            this.time.delayedCall(5000, () => {
+              this.showReadyGo();
+              this.time.delayedCall(2000, () => {
+                const myId = this.isSingle ? this.myId : socket.id;
+                const currentTurnId = this.roundData?.players?.[this.turnIndex]?.id;
+                this.canClick = currentTurnId === myId || data.nextTurnId === myId;
+                
+                // ✅ 배수 애니메이션 완료
+                this._multiplierAnimationPlaying = false;
+                console.log("🎮 배수 애니메이션 완료, 게임 시작 준비 완료", {
+                  myId,
+                  currentTurnId,
+                  nextTurnId: data.nextTurnId,
+                  canClick: this.canClick,
+                });
+                
+                try {
+                  this.updateTurnEffect && typeof this.updateTurnEffect === 'function' && this.updateTurnEffect();
+                  if (this.canClick && this.myDeckSprite) {
+                    try { this.applyDeckPulse(this.myDeckSprite); } catch (e) {}
+                  }
+                } catch (e) {}
+                
+                // ✅ 배수 애니메이션 완료 후, 내 턴이면 타이머 시작
+                if (this.canClick) {
+                  const myPlayerLayout = this.playerLayouts && this.playerLayouts[myId];
+                  const myPlayer = this.roundData.players.find(p => p.id === myId);
+                  if (myPlayer && myPlayerLayout) {
+                    this.startMyAutoTimer(myPlayer, myPlayerLayout);
+                  }
+                }
+              });
+            });
           });
-        });
+        } else {
+          // 싱글플레이: 기존 흐름
+          this.time.delayedCall(800, () => {
+            this.showReadyGo();
+            this.time.delayedCall(2000, () => {
+              const myId = this.isSingle ? this.myId : socket.id;
+              const currentTurnId = this.roundData?.players?.[this.turnIndex]?.id;
+              this.canClick = currentTurnId === myId || data.nextTurnId === myId;
+              console.log("🎮 game ready", { myId, currentTurnId, nextTurnId: data.nextTurnId, turnIndex: this.turnIndex, canClick: this.canClick });
+              try {
+                // Ensure visual turn effects are applied once UI is visible
+                this.updateTurnEffect && typeof this.updateTurnEffect === 'function' && this.updateTurnEffect();
+                if (this.canClick && this.myDeckSprite) {
+                  try { this.applyDeckPulse(this.myDeckSprite); } catch (e) {}
+                }
+              } catch (e) {}
+            });
+          });
+        }
 
         this.renderTable(this.roundData.players);
       } catch (e) {
@@ -13381,220 +13474,18 @@ class GameScene extends Phaser.Scene {
     };
 
     socket.off("gameStart").on("gameStart", (data) => {
+      console.log("🎮 [gameStart 이벤트] 수신됨");
       console.log("Gamestart");
       this.showToast("gameStart event received", "#ff0");
       this.applyGameStartPayload(data);
-      this.showToast("gameStart event received", "#ff0");
-
-      this.resultGameoverPlayed = false;
-      this._lastResultPlayersHash = null;
-
-      // stop any lingering gameover sound from previous match
-      try {
-        if (this._currentGameoverSound) {
-          try {
-            this._currentGameoverSound.stop();
-          } catch (e) {}
-          try {
-            this._currentGameoverSound.destroy();
-          } catch (e) {}
-          this._currentGameoverSound = null;
-        }
-      } catch (e) {}
-
-      // Reset any lingering block effects at the start of a new match.
-      // In multiplayer the scene is reused between matches, so stale
-      // entries in `this.blockEffects` may cause unexpected `blockcard`
-      // renderings even when no player used the item in the current
-      // match. Clear them here so rendering only shows active effects.
-      this.blockEffects = [];
-      this.blockActive = false;
-      this.blockBy = null;
-
-      // Clear various transient/locking flags and timers that may persist
-      // across matches when the same scene instance is reused.
-      try {
-        this.specialCardPauseUntil = 0;
-        this.allowBellBecauseThunder = false;
-        this.optimisticBellHandled = false;
-        this.specialUsedThisTurn = {};
-        this._optimisticFlipById = {};
-        this._pendingServerOpenStackById = {};
-        if (this._aiTurnWatchTimer) {
-          try {
-            this._aiTurnWatchTimer.remove();
-          } catch (e) {}
-          this._aiTurnWatchTimer = null;
-          this._aiTurnWatchRetries = 0;
-        }
-        if (this.myTurnTimer) {
-          this.myTurnTimer.remove();
-          this.myTurnTimer = null;
-        }
-        if (this.specialCardPauseTimer) {
-          this.specialCardPauseTimer.remove();
-          this.specialCardPauseTimer = null;
-        }
-        // Reactivate AI handling for the new match
-        try {
-          this._aiPaused = false;
-          this._aiTurnWatchRetries = 0;
-        } catch (e) {}
-      } catch (e) {}
-
-      // 1. 결과창이 떠 있다면 위로 치우며 제거
-      if (this.resultContainer) {
-        this.tweens.add({
-          targets: this.resultContainer,
-          y: -height,
-          duration: 500,
-          ease: "Back.easeIn",
-          onComplete: () => {
-            this.resultContainer.destroy();
-            this.resultContainer = null;
-          },
-        });
-      }
-
-      // 2. [추가] 게임 상태 및 모드 동기화
-      this.isSingle = false; // 멀티플레이임을 명시
-      this.isGameStarted = true;
-      this.isGameReady = true;
-      this.lastEliminationEffectAtByPlayer = {};
-      const initialTurnIndex = Array.isArray(data.players)
-        ? data.players.findIndex((p) => p.id === data.nextTurnId)
-        : -1;
-      this.turnIndex = initialTurnIndex >= 0 ? initialTurnIndex : 0;
-      // 2. 💡 먼저 서버에서 온 players 데이터를 즉시 반영합니다.
-      console.log("📊 게임시작 players 데이터:", data.players); // 디버그용
-      console.log("📌 gameStart debug:", {
-        nextTurnId: data.nextTurnId,
-        initialTurnIndex,
-        computedTurnIndex: this.turnIndex,
-        mySocketId: socket.id,
-        playersIds: Array.isArray(data.players)
-          ? data.players.map((p) => p.id)
-          : [],
-      });
-      // 서버가 보낸 nextTurnId를 보관(다른 장소에서 참조 가능하도록)
-      this.latestNextTurnId = data.nextTurnId;
-      this.roundData.players = data.players.map((p) => {
-        // 서버에서 p.myDeck이 올 때 그 길이를 cards로 강제 할당
-        const initialCards = p.cards ?? (p.myDeck ? p.myDeck.length : 0);
-
-        return {
-          ...p,
-          cards: initialCards, // 여기서 숫자가 0이 되지 않도록 보장
-          openStack: [], // 💡 추가
-          openCard: null,
-          isEliminated: false, // 시작 시 탈락 상태 초기화
-        };
-      });
-
-      this.roundData.hostId = data.hostId; // 방장 정보 동기화
-      if (typeof data.itemMode === "boolean") {
-        this.roundData.itemMode = data.itemMode;
-      }
-      if (typeof data.gameMode === "string") {
-        this.roundData.gameMode = data.gameMode;
-      }
-      if (typeof data.timeAttackEndsAt === "number") {
-        this.roundData.timeAttackEndsAt = data.timeAttackEndsAt;
-      }
-      this.roundData.isGameStarted = true;
-
-      // 게임 시작 시 모든 플레이어의 특수 사용 플래그 초기화
-      this.specialUsedThisTurn = {};
-
-      // Track last flip time for bot stuck detection
-      this._lastCardFlipAt = Date.now();
-      this._lastAiStuckRequestAt = 0;
-
-      // 3. 연출 시작: 클릭 금지 후 애니메이션 및 Ready-Go 예약
-      this.canClick = false; // 💡 시작 직후엔 클릭 금지
-      this.playOpeningAnimation();
-
-      this.time.delayedCall(800, () => {
-        this.showReadyGo();
-
-        // 💡 Ready-Go(약 1.2초)가 완전히 끝난 뒤에 클릭 허용
-        this.time.delayedCall(2000, () => {
-          const myId = this.isSingle ? this.myId : socket.id;
-          const currentTurnId = this.roundData?.players?.[this.turnIndex]?.id;
-          // 우선 서버가 보낸 nextTurnId를 신뢰하도록 폴백을 추가
-          this.canClick = currentTurnId === myId || data.nextTurnId === myId;
-          console.log("🎮 이제 카드를 제출할 수 있습니다.", {
-            myId,
-            currentTurnId,
-            nextTurnIdFromServer: data.nextTurnId,
-            turnIndex: this.turnIndex,
-            players: this.roundData?.players?.map((p) => p.id),
-            canClick: this.canClick,
-          });
-
-          try {
-            // Ensure visual turn effects are applied once UI is visible
-            this.updateTurnEffect && typeof this.updateTurnEffect === 'function' && this.updateTurnEffect();
-            if (this.canClick && this.myDeckSprite) {
-              try { this.applyDeckPulse(this.myDeckSprite); } catch (e) {}
-            }
-          } catch (e) {}
-
-          // 추가 불투명도/레이어 재설정
-          try {
-            if (this.playerTableGroup) {
-              this.playerTableGroup.setVisible(true).setAlpha(1).setDepth(100);
-              this.children.bringToTop(this.playerTableGroup);
-            }
-            if (this.resultContainer) {
-              this.resultContainer.setVisible(false);
-            }
-          } catch (e) {
-            console.warn("applyGameStartPayload: layer reset after ready go failed", e);
-          }
-        });
-      });
-
-      this.roundData.hostId = data.hostId; // 방장 정보 동기화
-
-      // 연출 시작 시점에 맞춰 테이블 갱신
-      this.renderTable(this.roundData.players);
-
-      // If the next turn belongs to a bot, ensure watchdog is scheduled even if
-      // no turnChanged event has fired yet.
-      scheduleAiWatchdog(this.roundData.players[this.turnIndex]?.id);
-
-      // Periodically probe for stuck bot turns even when the server fails to
-      // emit a turnChanged event.
-      if (!this._aiStuckChecker) {
-        this._aiStuckChecker = this.time.addEvent({
-          delay: 4000,
-          loop: true,
-          callback: () => {
-            if (!this.isGameStarted || this._aiPaused) return;
-            const current = this.roundData.players[this.turnIndex];
-            if (!current || !isPlayerAiLocal(current.id)) return;
-
-            const now = Date.now();
-            if (!this._lastCardFlipAt) this._lastCardFlipAt = now;
-            if (now - this._lastCardFlipAt < 5000) return;
-
-            // prevent spam
-            if (now - (this._lastAiStuckRequestAt || 0) < 4000) return;
-            this._lastAiStuckRequestAt = now;
-
-            if (socket && socket.connected) {
-              socket.emit("requestAiMove", {
-                playerId: current.id,
-                reason: "stuck_watchdog",
-                hasOpenStack: Array.isArray(current.openStack) && current.openStack.length > 0,
-              });
-              this.showToast("AI가 멈췄습니다. 서버에 요청 중...", "#f39c12");
-            }
-          },
-        });
-      }
     });
+
+    // Handle pending gameStart data from LobbyScene transition
+    if (this.pendingGameStartData) {
+      console.log("📋 [GameScene] pendingGameStartData 발견, applyGameStartPayload 호출");
+      this.applyGameStartPayload(this.pendingGameStartData);
+      this.pendingGameStartData = null;
+    }
 
     socket.off("turnChanged").on("turnChanged", (data) => {
       const nextIdx = this.roundData.players.findIndex(
@@ -13919,9 +13810,11 @@ class GameScene extends Phaser.Scene {
             Number.isFinite(Number(data.collectedCount)) &&
             Number(data.collectedCount) > 0
           ) {
-            const gained = Number(data.collectedCount) || 0;
+            const baseGained = Number(data.collectedCount) || 0;
+            const multiplier = this.roundData?.gameMultiplier || 1;
+            const gained = baseGained * multiplier; // 배수 적용
             if (typeof this.awardExperience === "function") {
-              console.log('[bellResult] invoking awardExperience', gained);
+              console.log('[bellResult] invoking awardExperience', gained, '(base:', baseGained, 'x', multiplier, ')');
               this.awardExperience(gained);
             }
           }
@@ -14752,13 +14645,18 @@ class GameScene extends Phaser.Scene {
     try {
   
     } catch (e) {}
+    
+    
     this.playerTableGroup.removeAll(true);
+    
+    
     if (this.playerTableGroup) {
-      this.playerTableGroup.setVisible(true).setAlpha(1).setDepth(100);
+      this.playerTableGroup.setVisible(true).setAlpha(1).setDepth(1000);
       try {
         this.children.bringToTop(this.playerTableGroup);
       } catch (e) {}
     }
+    
     const { width, height } = this.cameras.main;
 
     // 싱글/멀티 통합 ID 판정
@@ -14830,6 +14728,7 @@ class GameScene extends Phaser.Scene {
     const totalStackCount = players.reduce((sum, p) => {
       return sum + (p.openStack ? p.openStack.length : 0);
     }, 0);
+    
 
     // 매 프레임 렌더 이후 턴 효과 업데이트 (현재 턴 강조)
     if (typeof this.updateTurnEffect === "function") {
@@ -14838,7 +14737,24 @@ class GameScene extends Phaser.Scene {
 
     const cx = width * 0.5;
     const cy = height * 0.465;
+    
+    // ✅ 배수 정보는 항상 표시 (카드 제출 여부 상관없이)
+    const multiplier = this.roundData?.gameMultiplier || 1;
+    const multiplierTxt = this.add
+      .text(cx, cy - width * 0.11, `${multiplier}배 판`, {
+        fontFamily: "Jua",
+        fontSize: `${width * 0.035}px`,
+        color: "#FFD700",
+        fontWeight: "bold",
+        stroke: "#000000",
+        strokeThickness: 3,
+      })
+      .setOrigin(0.5)
+      .setDepth(2001);
+    this.playerTableGroup.add(multiplierTxt);
+    
 
+    // 카드 합계는 0보다 클 때만 표시
     if (totalStackCount > 0) {
       // 긴장감 단계: 10장 이상 → 주황, 20장 이상 → 빨강
       const tension = totalStackCount >= 20 ? 2 : totalStackCount >= 10 ? 1 : 0;
@@ -14856,8 +14772,10 @@ class GameScene extends Phaser.Scene {
           strokeThickness: 5,
         })
         .setOrigin(0.5)
-        .setDepth(200);
+        .setDepth(2000);  // 뎁스를 훨씬 높게
       this.playerTableGroup.add(stackTxt);
+      
+  
 
       // 💥 10장 이상일 때 숫자와 라벨에 역동적인 효과 추가
       if (tension >= 1) {
@@ -15205,6 +15123,12 @@ class GameScene extends Phaser.Scene {
   startMyAutoTimer(p, layout) {
     // 1. 기존 타이머가 있다면 즉시 제거
     this.clearMyTurnTimer();
+
+    // ✅ 배수 애니메이션이 진행 중이면 타이머를 시작하지 않음
+    if (this._multiplierAnimationPlaying) {
+      console.log("⏸️ 배수 애니메이션 진행 중 - 카드 제출 타이머 시작 차단");
+      return;
+    }
 
     if (this.isTutorialMode) {
       return;
@@ -21515,6 +21439,248 @@ class GameScene extends Phaser.Scene {
     }
   }
 
+  playMultiplierSelectionAnimation() {
+    // 배수 선택 애니메이션: 1배, 2배, 3배, 5배, 10배 중 하나를 3초에 걸쳐 선택
+    console.log('[playMultiplierSelectionAnimation] 시작', {
+      isSingle: this.isSingle,
+      hasCamera: !!this.cameras?.main,
+      hasAdd: !!this.add,
+    });
+    
+    if (this.isSingle) {
+      console.log('[playMultiplierSelectionAnimation] 싱글플레이이므로 리턴');
+      return; // 멀티플레이만 실행
+    }
+    
+    const { width, height } = this.cameras.main;
+    console.log('[playMultiplierSelectionAnimation] 카메라 정보:', { width, height });
+    const centerX = width / 2;
+    const centerY = height / 2;
+    
+    const multipliers = [1, 2, 3, 5, 10];
+    let currentValue = multipliers[0];
+    let finalMultiplier = 1;
+    let animationCompleted = false;
+    
+    // 배경 어두운 오버레이
+    const overlay = this.add
+      .rectangle(centerX, centerY, width, height, 0x000000, 0)
+      .setDepth(11000);
+    
+    console.log('[playMultiplierSelectionAnimation] 오버레이 생성 완료');
+    
+    this.tweens.add({
+      targets: overlay,
+      alpha: 0.7,
+      duration: 300,
+      ease: "Power2.easeInOut",
+    });
+    
+    // 배수 디스플레이 - 큰 네모칸
+    const boxSize = Math.min(width * 0.4, height * 0.25);
+    const box = this.add
+      .rectangle(centerX, centerY - height * 0.1, boxSize, boxSize, 0x2d5016, 0.9)
+      .setStrokeStyle(5, 0xffd700)
+      .setDepth(11001);
+    
+    // 숫자만 변경되는 텍스트 (여러 개 겹쳐서 동시에 변경)
+    const numberTexts = [];
+    for (let i = 0; i < 3; i++) {
+      const numText = this.add
+        .text(centerX - boxSize * 0.12, centerY - height * 0.1, `${currentValue}`, {
+          fontFamily: "Arial Black",
+          fontSize: `${boxSize * 0.35}px`,
+          color: "#FFD700",
+          fontWeight: "bold",
+        })
+        .setOrigin(0.5)
+        .setDepth(11002 + i)
+        .setAlpha(1);
+      numberTexts.push(numText);
+    }
+    
+    // "배" 글자 - 고정 (숫자 오른쪽)
+    const unitText = this.add
+      .text(centerX + boxSize * 0.08, centerY - height * 0.1, "배", {
+        fontFamily: "Arial Black",
+        fontSize: `${boxSize * 0.25}px`,
+        color: "#FFD700",
+        fontWeight: "bold",
+      })
+      .setOrigin(0.5)
+      .setDepth(11002)
+      .setAlpha(1);
+    
+    // 안내 텍스트
+    const instructionText = this.add
+      .text(centerX, centerY + height * 0.15, "배수가 결정 중입니다...", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.045}px`,
+        color: "#ffffff",
+      })
+      .setOrigin(0.5)
+      .setDepth(11001)
+      .setAlpha(0);
+    
+    this.tweens.add({
+      targets: instructionText,
+      alpha: 1,
+      duration: 200,
+    });
+    
+    // 3초 동안 슬롯 애니메이션 (점점 느려지다가 멈춤)
+    let lastChangeTime = Date.now();
+    const animationDuration = 3000; // 3초 애니메이션
+    const animationStartTime = Date.now();
+    
+    console.log('[playMultiplierSelectionAnimation] 슬롯 애니메이션 시작');
+    
+    const updateMultiplier = () => {
+      const now = Date.now();
+      const elapsed = now - animationStartTime;
+      const progress = Math.min(elapsed / animationDuration, 1); // 0 ~ 1
+      
+      if (progress >= 1 && !animationCompleted) {
+        console.log('[playMultiplierSelectionAnimation] 3초 완료 - 최종 배수 결정');
+        animationCompleted = true;
+        
+        // 최종 배수를 가중치 있게 선택
+        const rand = Math.random() * 100;
+        if (rand < 5) finalMultiplier = 10; // 5% 확률
+        else if (rand < 15) finalMultiplier = 5; // 10% 확률
+        else if (rand < 40) finalMultiplier = 3; // 25% 확률
+        else if (rand < 70) finalMultiplier = 2; // 30% 확률
+        else finalMultiplier = 1; // 30% 확률
+        
+        currentValue = finalMultiplier;
+        this.roundData.gameMultiplier = finalMultiplier;
+        
+        // 🔴 [로그] 배수 저장 확인
+        console.log('[playMultiplierSelectionAnimation] ✅ 배수 저장 완료', { 
+          finalMultiplier,
+          storedValue: this.roundData.gameMultiplier,
+          roomId: this.roomId,
+          isSingle: this.isSingle
+        });
+        
+        // 숫자 텍스트 최종 업데이트
+        numberTexts.forEach(numText => {
+          numText.setText(`${finalMultiplier}`);
+          numText.setScale(1.3);
+        });
+        
+        // 박스와 숫자 텍스트 강조
+        this.tweens.add({
+          targets: [box, ...numberTexts],
+          scale: 1.2,
+          duration: 200,
+          ease: "Power2.easeOut",
+          yoyo: true,
+          hold: 100,
+        });
+        
+        // 안내 텍스트 변경
+        instructionText.setText(`🎉 ${finalMultiplier}배 판입니다! 🎉`);
+        instructionText.setColor("#FFD700");
+        
+        // 2초 후 사라짐
+        this.time.delayedCall(2000, () => {
+          // 🔴 [서버 전송] 배수 정보를 서버로 전송 - 서버에서 보상 계산에 사용
+          try {
+            if (typeof socket !== 'undefined' && socket) {
+              const multiplierPayload = {
+                roomId: this.roomId,
+                gameMultiplier: finalMultiplier,
+                timestamp: Date.now(),
+              };
+              
+              console.log('[playMultiplierSelectionAnimation] 배수 서버 전송 시작', multiplierPayload);
+              
+              socket.emit('setGameMultiplier', multiplierPayload, (ack) => {
+                console.log('[playMultiplierSelectionAnimation] 서버 배수 설정 확인됨', { 
+                  finalMultiplier, 
+                  ack,
+                  received: ack?.received,
+                  saved: ack?.saved 
+                });
+              });
+              
+              // 재확인: 약간 뒤에 다시 전송 (서버 수신 확인용)
+              this.time.delayedCall(500, () => {
+                socket.emit('getGameMultiplier', { roomId: this.roomId }, (current) => {
+                  console.log('[playMultiplierSelectionAnimation] 서버 배수 재확인', { 
+                    sent: finalMultiplier, 
+                    serverCurrent: current?.gameMultiplier 
+                  });
+                });
+              });
+            }
+          } catch (e) {
+            console.warn('[playMultiplierSelectionAnimation] 서버 배수 전송 실패', e);
+          }
+
+          this.tweens.add({
+            targets: [overlay, box, ...numberTexts, unitText, instructionText],
+            alpha: 0,
+            duration: 500,
+            ease: "Power2.easeIn",
+            onComplete: () => {
+              try { overlay.destroy(); } catch (e) {}
+              try { box.destroy(); } catch (e) {}
+              numberTexts.forEach(t => { try { t.destroy(); } catch (e) {} });
+              try { unitText.destroy(); } catch (e) {}
+              try { instructionText.destroy(); } catch (e) {}
+            },
+          });
+        });
+        
+        return; // 애니메이션 완료
+      }
+      
+      // 🔄 슬롯 회전 중: 점차 느려지는 효과
+      if (!animationCompleted) {
+        // progress에 따라 변경 간격 계산
+        // 0~0.7 (0~2.1초): 50ms간격 (빠른 회전)
+        // 0.7~1.0 (2.1~3초): 점점 느려짐 (50ms → 300ms)
+        let changeInterval;
+        if (progress < 0.7) {
+          changeInterval = 50; // 빠른 회전 (더 연속적인 느낌)
+        } else {
+          // 마지막 1초: 50ms → 300ms로 점차 증가
+          const slowProgress = (progress - 0.7) / 0.3; // 0~1
+          changeInterval = 50 + (300 - 50) * slowProgress; // 50 → 300
+        }
+        
+        // 변경 간격이 지났으면 숫자 바꾸기
+        if (now - lastChangeTime >= changeInterval) {
+          currentValue = multipliers[Math.floor(Math.random() * multipliers.length)];
+          
+          // 모든 숫자 텍스트 업데이트
+          numberTexts.forEach(numText => {
+            numText.setText(`${currentValue}`);
+          });
+          
+          lastChangeTime = now;
+          
+          // 마지막 구간에서는 시각적 피드백 추가
+          if (progress > 0.7) {
+            numberTexts.forEach(numText => {
+              numText.setScale(0.95 + Math.random() * 0.1); // 약간의 진동 효과
+            });
+          }
+        }
+      }
+      
+      // 재귀 호출: 15ms마다 확인 (더 부드러운 60+fps)
+      if (!animationCompleted) {
+        this.time.delayedCall(15, updateMultiplier);
+      }
+    };
+    
+    console.log('[playMultiplierSelectionAnimation] 슬롯 애니메이션 함수 시작');
+    updateMultiplier();
+  }
+
   createRandomFruitCard() {
     return {
       fruit: Math.floor(Math.random() * 4) + 1,
@@ -22797,10 +22963,20 @@ class GameScene extends Phaser.Scene {
         return;
       }
 
-      const rankRewardCoins =
+      const baseRankRewardCoins =
         (typeof RANK_REWARD_COINS !== "undefined" && Array.isArray(RANK_REWARD_COINS) && RANK_REWARD_COINS.length > 0)
           ? RANK_REWARD_COINS
           : [30, 20, 10];
+      
+      // 배수 적용: 게임 배수가 설정되었으면 각 순위별 코인에 배수 적용
+      const multiplier = this.roundData?.gameMultiplier || 1;
+      const rankRewardCoins = baseRankRewardCoins.map(coin => Math.floor(coin * multiplier));
+      
+      // 🔴 [중요] 확인 버튼 핸들러에서 접근할 수 있도록 this에 저장
+      this._resultRankRewardCoins = rankRewardCoins;
+      this._resultBaselineCoins = resultOverlayBaselineCoins;
+      this._resultRankedPlayers = rankedPlayers;
+      
       const coinCountByRank = rankRewardCoins;
       const floorYMin = height * 0.72;
       const floorYMax = height * 0.86;
@@ -22808,11 +22984,18 @@ class GameScene extends Phaser.Scene {
       const floorXMax = width * 0.8;
       let coinSequence = 0;
 
+      // 🔴 [수정] totalRankCoins도 배수 미적용 기준으로 계산 (코인 애니메이션이 baseRankRewardCoins 기준이므로)
       const totalRankCoins = rankedPlayers.reduce(
-        (sum, _, idx) => sum + (coinCountByRank[idx] || 0),
+        (sum, _, idx) => sum + (baseRankRewardCoins[idx] || 0),
         0,
       );
-      console.log('[result] playCoinCollectAnimation start', { totalRankCoins, rankedPlayersCount: rankedPlayers.length });
+      console.log('[result] playCoinCollectAnimation start', { 
+        totalRankCoins, 
+        rankedPlayersCount: rankedPlayers.length,
+        baseRankRewardCoins,
+        multiplier,
+        rankRewardCoins,
+      });
       let arrivedCoins = 0;
       let rewardApplied = false;
 
@@ -22825,49 +23008,74 @@ class GameScene extends Phaser.Scene {
           let awardedForMe = 0;
           const mySocketId = this.isSingle ? (this.myId || "PLAYER_ME") : (socket && socket.id);
           console.log('[result] computing awardedForMe', { mySocketId, rankedPlayers });
+          
+          // 배수 미적용 기본 보상 계산 (서버가 주는 코인)
+          let baseAwardedForMe = 0;
+          let myRankIdx = -1;
+          
           rankedPlayers.forEach((p, idx) => {
             try {
               if (!p || typeof p.id === 'undefined') return;
               if (!mySocketId) return;
               if (String(p.id) === String(mySocketId)) {
-                awardedForMe += Number(coinCountByRank[idx] || 0);
+                baseAwardedForMe += Number(baseRankRewardCoins[idx] || 0); // 배수 미적용
+                awardedForMe += Number(coinCountByRank[idx] || 0); // 배수 적용
+                myRankIdx = idx;
               }
             } catch (e) {
               // ignore per-player comparison issues
             }
           });
-          console.log('[result] awardedForMe computed', { awardedForMe });
+          console.log('[result] awardedForMe computed', { awardedForMe, baseAwardedForMe, multiplier, myRankIdx });
 
           if (awardedForMe > 0) {
             const serverCoins = Number(this._deferredMyProfile?.coins);
             const currentCoins = Number(this.myProfile?.coins) || 0;
             const baselineCoins = Number(resultOverlayBaselineCoins) || 0;
-            const expectedAfterReward = baselineCoins + awardedForMe;
-
+            
+            // 🔴 [중요] 최종 보상은 배수가 적용된 전체 금액(awardedForMe)을 기준으로 계산
+            // 서버가 배수를 포함했든 안 했든, 클라이언트가 최종 보정을 책임짐
+            const expectedFinalCoins = baselineCoins + awardedForMe; // 배수 포함 최종값
+            
             let missingCoins = 0;
             if (Number.isFinite(serverCoins) && serverCoins >= 0) {
-              // If server profile already includes final coins, avoid double-adding.
-              if (serverCoins >= expectedAfterReward) {
+              // 서버에서 받은 코인 vs 예상 최종 코인
+              if (serverCoins >= expectedFinalCoins) {
+                // 서버가 이미 배수를 포함했거나, 초과로 준 경우
                 missingCoins = 0;
-                console.log('[result/reward] serverCoins already satisfies expected reward', { serverCoins, expectedAfterReward });
+                console.log('[result/reward] serverCoins already satisfies expected reward (배수 포함)', { 
+                  serverCoins, 
+                  expectedFinalCoins,
+                  missingCoins 
+                });
               } else {
-                missingCoins = expectedAfterReward - serverCoins;
-                console.log('[result/reward] serverCoins is lower than expected, adding missing', { serverCoins, expectedAfterReward, missingCoins });
+                // 서버가 부족한 경우 (배수 미적용 또는 부분 적용)
+                missingCoins = expectedFinalCoins - serverCoins;
+                console.log('[result/reward] serverCoins is lower than expected, adding missing (배수 적용된 전체)', { 
+                  serverCoins, 
+                  expectedFinalCoins, 
+                  missingCoins 
+                });
               }
             } else {
-              missingCoins = Math.max(0, expectedAfterReward - currentCoins);
-              console.log('[result/reward] no server coin snapshot, fallback', { currentCoins, expectedAfterReward, missingCoins });
+              // 서버 코인 정보 없는 경우: 현재 코인에서 예상 최종값까지 계산
+              missingCoins = Math.max(0, expectedFinalCoins - currentCoins);
+              console.log('[result/reward] no server coin snapshot, fallback with multiplier applied', { 
+                currentCoins, 
+                expectedFinalCoins,
+                missingCoins 
+              });
             }
 
             if (missingCoins > 0) {
               try {
                 this.modifyCoins(missingCoins, { sync: true, force: true, coinCardUpdate: true });
-                console.log('[result/reward] after modifyCoins', { newCoins: Number(this.myProfile?.coins) || 0, missingCoins });
+                console.log('[result/reward] after modifyCoins', { newCoins: Number(this.myProfile?.coins) || 0, missingCoins, expectedFinal: expectedFinalCoins });
               } catch (e) {
                 console.warn('[result/reward] modifyCoins failed', e);
               }
             } else {
-              console.log('[result/reward] no coin delta required for leaderboard reward', { awardedForMe, missingCoins });
+              console.log('[result/reward] no additional coins needed', { serverCoins, expectedFinalCoins, missingCoins });
             }
           }
         } catch (e) {
@@ -22886,8 +23094,11 @@ class GameScene extends Phaser.Scene {
 
       rankedPlayers.forEach((_, rankIndex) => {
         const targetPos = podiumPositions[rankIndex];
-        const coinCount = coinCountByRank[rankIndex] || 0;
-        if (!targetPos || coinCount <= 0) {
+        // 🔴 [수정] 애니메이션 개수는 기본 보상 기준, 텍스트 표시는 배수 적용 기준으로 분리
+        const animationCoinCount = baseRankRewardCoins[rankIndex] || 0; // 애니메이션 개수 (배수 미적용)
+        const rewardCoinCount = rankRewardCoins[rankIndex] || 0; // 보상 텍스트 (배수 적용)
+        
+        if (!targetPos || animationCoinCount <= 0) {
           return;
         }
 
@@ -22895,7 +23106,7 @@ class GameScene extends Phaser.Scene {
         const targetY = targetPos.y - width * 0.14;
         let didShowRewardText = false;
 
-        for (let index = 0; index < coinCount; index += 1) {
+        for (let index = 0; index < animationCoinCount; index += 1) {
           const startX = Phaser.Math.FloatBetween(floorXMin, floorXMax);
           const startY = Phaser.Math.FloatBetween(floorYMin, floorYMax);
           const coin = this.add
@@ -22924,7 +23135,7 @@ class GameScene extends Phaser.Scene {
           if (!didShowRewardText) {
             didShowRewardText = true;
             this.time.delayedCall(flyDelay, () => {
-              playRewardTextAnimation(rankIndex, coinCount);
+              playRewardTextAnimation(rankIndex, rewardCoinCount); // 배수 적용된 보상 표시
             });
           }
 
@@ -23018,6 +23229,47 @@ class GameScene extends Phaser.Scene {
     // EXP end-of-game text animation removed — XP is shown during gameplay
 
     const goToLobby = () => {
+      // 🔴 [최종 보장] 로비 이동 전 마지막 코인 검증
+      try {
+        const rankRewardCoins = this._resultRankRewardCoins || [];
+        const baselineCoins = this._resultBaselineCoins || 0;
+        const rankedPlayersData = this._resultRankedPlayers || [];
+        
+        if (rankRewardCoins.length > 0 && baselineCoins > 0) {
+          const myRank = rankedPlayersData.findIndex(p => 
+            p && String(p.id) === String(socket?.id)
+          );
+          if (myRank >= 0 && myRank < 3) {
+            const awardedAmount = rankRewardCoins[myRank] || 0;
+            const expectedFinalCoins = baselineCoins + awardedAmount;
+            const currentCoins = Number(this.myProfile?.coins) || 0;
+            
+            console.log('[goToLobby] 로비 이동 전 최종 검증', { 
+              currentCoins, 
+              expectedFinalCoins,
+              myRank,
+              awardedAmount,
+              deficit: expectedFinalCoins - currentCoins
+            });
+            
+            // 최종 검증: 부족하면 추가
+            if (currentCoins < expectedFinalCoins) {
+              const finalMissing = expectedFinalCoins - currentCoins;
+              console.log('[goToLobby] ⚠️ 부족한 코인 발견! 마지막 보장', { 
+                currentCoins, 
+                expectedFinalCoins, 
+                finalMissing 
+              });
+              this.modifyCoins(finalMissing, { sync: true, force: true, coinCardUpdate: true });
+            } else if (currentCoins === expectedFinalCoins) {
+              console.log('[goToLobby] ✅ 코인이 정확함', { currentCoins, expectedFinalCoins });
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[goToLobby] 최종 검증 중 오류', e);
+      }
+
       // 결과 overlay가 끝났으므로 대기 상태 해제
       this.isResultOverlayActive = false;
 
@@ -23180,6 +23432,45 @@ class GameScene extends Phaser.Scene {
       }
 
       this.sound.play("btn", { volume: 0.1 });
+      
+      // 🔴 [최종 보장] 확인 버튼 클릭 시 최종 코인 검증
+      try {
+        const rankRewardCoins = this._resultRankRewardCoins || [];
+        const baselineCoins = this._resultBaselineCoins || 0;
+        const rankedPlayersData = this._resultRankedPlayers || [];
+        
+        const myRank = rankedPlayersData.findIndex(p => 
+          p && String(p.id) === String(socket?.id)
+        );
+        if (myRank >= 0 && myRank < 3) {
+          const awardedAmount = rankRewardCoins[myRank] || 0;
+          const expectedFinalCoins = baselineCoins + awardedAmount;
+          const currentCoins = Number(this.myProfile?.coins) || 0;
+          
+          console.log('[result/final] 확인 버튼 클릭 시 최종 검증', { 
+            currentCoins, 
+            expectedFinalCoins,
+            myRank,
+            awardedAmount
+          });
+          
+          // 최종 검증: 부족하면 추가
+          if (currentCoins < expectedFinalCoins) {
+            const finalMissing = expectedFinalCoins - currentCoins;
+            console.log('[result/final] 최종 보장: 부족한 코인 추가', { 
+              currentCoins, 
+              expectedFinalCoins, 
+              finalMissing 
+            });
+            this.modifyCoins(finalMissing, { sync: true, force: true, coinCardUpdate: true });
+          } else {
+            console.log('[result/final] 이미 최종 금액 도달', { currentCoins, expectedFinalCoins });
+          }
+        }
+      } catch (e) {
+        console.warn('[result/final] 최종 검증 실패', e);
+      }
+      
       goToLobby();
     });
 

@@ -954,11 +954,22 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
     }),
   );
 
-  // 순위별 보상(1등 30, 2등 20, 3등 10)
+  // 순위별 보상(1등 30, 2등 20, 3등 10) - 배수 적용
   sorted.forEach((player, rankIndex) => {
-    const coinReward = RANK_REWARD_COINS[rankIndex] || 0;
+    const baseCoinReward = RANK_REWARD_COINS[rankIndex] || 0;
+    const multiplier = room.gameMultiplier || 1;
+    const coinReward = Math.floor(baseCoinReward * multiplier);
+
     if (coinReward > 0) {
       player.coins = (Number(player.coins) || 0) + coinReward;
+      console.log("[finalizeGame] 코인 보상 (배수 적용)", {
+        playerName: player.name,
+        rank: rankIndex + 1,
+        base: baseCoinReward,
+        multiplier: multiplier,
+        totalReward: coinReward,
+        newTotalCoins: player.coins,
+      });
     }
     // NOTE: Removed end-of-game rank-based XP distribution. XP is now
     // awarded during gameplay (per-card) on the client/server flow.
@@ -1977,6 +1988,38 @@ io.on("connection", (socket) => {
 
   // Ensure specialCards object exists immediately to avoid early-turn race conditions
   socket.specialCards = socket.specialCards || {};
+
+  // 🔴 [배수 처리] 클라이언트에서 게임 배수 정보 수신
+  socket.on("setGameMultiplier", (data, ack) => {
+    try {
+      const { roomId, gameMultiplier } = data || {};
+      const room = rooms[roomId];
+
+      if (!room) {
+        console.log("[setGameMultiplier] 방을 찾을 수 없음", {
+          roomId,
+          gameMultiplier,
+        });
+        if (typeof ack === "function")
+          ack({ ok: false, reason: "ROOM_NOT_FOUND" });
+        return;
+      }
+
+      room.gameMultiplier = Number(gameMultiplier) || 1;
+      console.log("[setGameMultiplier] 배수 저장 완료", {
+        roomId,
+        gameMultiplier: room.gameMultiplier,
+        playersCount: room.players.length,
+      });
+
+      if (typeof ack === "function") {
+        ack({ ok: true, received: true, saved: true });
+      }
+    } catch (e) {
+      console.warn("[setGameMultiplier] 오류", e);
+      if (typeof ack === "function") ack({ ok: false, error: e.message });
+    }
+  });
 
   socket.on("setNickname", async (nickname) => {
     const nicknamePayload =
@@ -5016,6 +5059,7 @@ io.on("connection", (socket) => {
     }
 
     room.isGameStarted = true;
+    room.gameMultiplier = room.gameMultiplier || 1; // 배수가 설정되지 않으면 1(배수 없음)로 초기화
     // Do not reset bell accuracy totals here; we want them to persist across matches.
     // (Each bell press will increment the existing totals.)
     clearTimeAttackTimer(room);
