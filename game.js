@@ -1,5 +1,10 @@
-import { getUserKeyForGame } from "@apps-in-toss/web-framework";
-import { generateHapticFeedback } from "@apps-in-toss/web-framework";
+import {
+  generateHapticFeedback,
+  getUserKeyForGame,
+  IAP,
+  loadFullScreenAd,
+  showFullScreenAd,
+} from "@apps-in-toss/web-framework";
 import { title } from "process";
 import { App } from "@capacitor/app";
 import { Network } from "@capacitor/network";
@@ -23,6 +28,38 @@ const NOT5_CARD_TYPE = "not5";
 const SINGLE_NOT5_CARD_COUNT = 0;
 const TUTORIAL_STATE_KEY = "tutorialCompleted";
 const TUTORIAL_PROGRESS_KEY = "tutorialProgress";
+
+// 광고 및 인앱결제 상수
+const REMOVE_ADS_PRODUCT_SKU = "ait.0000018169.c994af03.c3660ae3e9.1852918968";
+const REMOVE_ADS_PRODUCT_NAME = "광고제거";
+
+function getIntegratedAdGroupId() {
+  if (typeof window === "undefined") return null;
+
+  return (
+    window.__INTEGRATED_AD_GROUP_ID ||
+    localStorage.getItem("integratedAdGroupId") ||
+    "ait-ad-test-interstitial-id"
+  );
+}
+
+function canUseIntegratedAd() {
+  try {
+    if (
+      !loadFullScreenAd ||
+      !showFullScreenAd ||
+      typeof loadFullScreenAd.isSupported !== "function" ||
+      typeof showFullScreenAd.isSupported !== "function"
+    ) {
+      return false;
+    }
+
+    return loadFullScreenAd.isSupported() && showFullScreenAd.isSupported();
+  } catch (error) {
+    console.warn("IntegratedAd 지원 여부 확인 실패", error);
+    return false;
+  }
+}
 
 // Reward character key (저장/잠금 해제에 사용되는 아이디)
 const PREMIUM_BEAR_KEY = "player_2"; // 보상으로 지급되는 캐릭터 키 (player_2)
@@ -619,6 +656,27 @@ class LobbyScene extends Phaser.Scene {
     super("LobbyScene");
   }
 
+  init() {
+    // 광고 관련 상태 변수
+    this.isOnline = false;
+    this.isLobbyIntegratedAdLoaded = false;
+    this.isLobbyIntegratedAdLoading = false;
+    this.unregisterLobbyIntegratedAdLoad = null;
+    this.adBtnImg = null;
+    this.adBtnText = null;
+    this.lobbyAdLoadTimeout = null;
+    this.lastLobbyAdToastAt = 0;
+
+    // 인앱결제(IAP) 관련 상태 변수
+    this.iapRemoveAdsSku = null;
+    this.iapRemoveAdsAmountLabel = "";
+    this.isIapProductLoading = false;
+    this.isIapPurchasing = false;
+    this.iapBtnImg = null;
+    this.iapBtnText = null;
+    this.iapPurchaseCleanup = null;
+  }
+
   // avatar helper methods (copied from GameScene) so lobby can use same logic
   getAvatarAnimKey(baseKey) {
     return `avatar_anim_${baseKey}`;
@@ -795,6 +853,384 @@ class LobbyScene extends Phaser.Scene {
     } catch (e) {
       console.warn("LobbyScene.rewardQuestCoins sync failed", e);
     }
+  }
+
+  // === IAP (인앱결제) 관련 헬퍼 메서드 ===
+  normalizeIapText(value) {
+    return String(value || "")
+      .replace(/\s/g, "")
+      .toLowerCase();
+  }
+
+  parseIapErrorMessage(error) {
+    if (!error) return "원인을 확인할 수 없어요.";
+
+    if (typeof error === "string") return error;
+
+    if (error instanceof Error && error.message) return error.message;
+
+    if (typeof error === "object") {
+      if (typeof error.code === "string") {
+        return error.code;
+      }
+
+      if (typeof error.message === "string") {
+        return error.message;
+      }
+
+      try {
+        return JSON.stringify(error);
+      } catch (_e) {
+        return "에러 객체를 문자열로 변환하지 못했어요.";
+      }
+    }
+
+    return String(error);
+  }
+
+  updateIapButtonState() {
+    if (!this.iapBtnImg || !this.iapBtnText) return;
+
+    if (localStorage.getItem("adsRemoved") === "true") {
+      this.iapBtnImg.setTint(0x16a34a);
+      this.iapBtnText.setText("광고 제거됨");
+      return;
+    }
+
+    if (this.isIapPurchasing) {
+      this.iapBtnImg.setTint(0xf59e0b);
+      this.iapBtnText.setText("결제 진행중...");
+      return;
+    }
+
+    if (this.isIapProductLoading) {
+      this.iapBtnImg.setTint(0x6b7280);
+      this.iapBtnText.setText("광고제거 상품 조회중...");
+      return;
+    }
+
+    if (this.iapRemoveAdsSku) {
+      const amountSuffix = this.iapRemoveAdsAmountLabel
+        ? ` ${this.iapRemoveAdsAmountLabel}`
+        : "";
+      this.iapBtnImg.setTint(0x2563eb);
+      this.iapBtnText.setText(`광고제거 구매${amountSuffix}`);
+      return;
+    }
+
+    this.iapBtnImg.setTint(0x6b7280);
+    this.iapBtnText.setText("광고제거 상품 없음");
+  }
+
+  async prepareRemoveAdsProduct() {
+    if (localStorage.getItem("adsRemoved") === "true") {
+      this.updateIapButtonState();
+      return;
+    }
+
+    if (!IAP || typeof IAP.getProductItemList !== "function") {
+      this.updateIapButtonState();
+      this.showToast("인앱결제를 지원하지 않는 환경입니다.", "#f1c40f");
+      return;
+    }
+
+    if (this.isIapProductLoading) return;
+
+    this.isIapProductLoading = true;
+    this.updateIapButtonState();
+
+    try {
+      const response = await IAP.getProductItemList();
+      const products = response?.products ?? [];
+
+      const targetProductBySku = products.find((product) => {
+        return product?.sku === REMOVE_ADS_PRODUCT_SKU;
+      });
+
+      const targetProductByName = products.find((product) => {
+        return (
+          this.normalizeIapText(product?.displayName) ===
+          this.normalizeIapText(REMOVE_ADS_PRODUCT_NAME)
+        );
+      });
+
+      const targetProduct = targetProductBySku || targetProductByName;
+
+      if (!targetProduct) {
+        this.iapRemoveAdsSku = null;
+        this.iapRemoveAdsAmountLabel = "";
+        this.showToast(
+          `'${REMOVE_ADS_PRODUCT_NAME}' 상품을 찾을 수 없어요.`,
+          "#e74c3c",
+        );
+        return;
+      }
+
+      this.iapRemoveAdsSku = targetProduct.sku;
+      this.iapRemoveAdsAmountLabel = targetProduct.displayAmount || "";
+    } catch (error) {
+      this.iapRemoveAdsSku = null;
+      this.iapRemoveAdsAmountLabel = "";
+      this.showToast(
+        `상품 조회 실패: ${this.parseIapErrorMessage(error)}`,
+        "#e74c3c",
+      );
+    } finally {
+      this.isIapProductLoading = false;
+      this.updateIapButtonState();
+    }
+  }
+
+  purchaseRemoveAdsProduct() {
+    if (localStorage.getItem("adsRemoved") === "true") {
+      this.showToast("이미 광고 제거가 적용되어 있어요.", "#2ecc71");
+      return;
+    }
+
+    if (!IAP || typeof IAP.createOneTimePurchaseOrder !== "function") {
+      this.showToast("인앱결제를 지원하지 않는 환경입니다.", "#f1c40f");
+      return;
+    }
+
+    if (!this.iapRemoveAdsSku) {
+      this.showToast(
+        "상품을 찾는 중이에요. 잠시 후 다시 시도해주세요.",
+        "#f1c40f",
+      );
+      this.prepareRemoveAdsProduct();
+      return;
+    }
+
+    if (this.isIapPurchasing) {
+      this.showToast("결제가 이미 진행 중입니다.", "#f1c40f");
+      return;
+    }
+
+    this.isIapPurchasing = true;
+    this.updateIapButtonState();
+
+    const cleanup = IAP.createOneTimePurchaseOrder({
+      options: {
+        sku: this.iapRemoveAdsSku,
+        processProductGrant: async ({ orderId }) => {
+          try {
+            localStorage.setItem("adsRemoved", "true");
+
+            if (IAP && typeof IAP.completeProductGrant === "function") {
+              await IAP.completeProductGrant({ params: { orderId } });
+            }
+
+            return true;
+          } catch (error) {
+            console.error("상품 지급 처리 실패", error);
+            this.showToast("상품 지급 처리에 실패했어요.", "#e74c3c");
+            return false;
+          }
+        },
+      },
+      onEvent: (event) => {
+        this.isIapPurchasing = false;
+
+        if (event?.type === "success") {
+          localStorage.setItem("adsRemoved", "true");
+          this.showToast("광고 제거 결제가 완료되었어요!", "#2ecc71");
+        }
+
+        this.updateIapButtonState();
+
+        if (typeof this.iapPurchaseCleanup === "function") {
+          this.iapPurchaseCleanup();
+          this.iapPurchaseCleanup = null;
+        }
+      },
+      onError: (error) => {
+        this.isIapPurchasing = false;
+        this.updateIapButtonState();
+        this.showToast(
+          `결제 실패: ${this.parseIapErrorMessage(error)}`,
+          "#e74c3c",
+        );
+
+        if (typeof this.iapPurchaseCleanup === "function") {
+          this.iapPurchaseCleanup();
+          this.iapPurchaseCleanup = null;
+        }
+      },
+    });
+
+    this.iapPurchaseCleanup = cleanup;
+  }
+
+  clearLobbyAdLoadTimeout() {
+    if (this.lobbyAdLoadTimeout) {
+      this.lobbyAdLoadTimeout.remove(false);
+      this.lobbyAdLoadTimeout = null;
+    }
+  }
+
+  // === 광고 관련 헬퍼 메서드 ===
+  parseIntegratedAdErrorMessage(error) {
+    if (!error) return "원인을 확인할 수 없어요.";
+
+    if (typeof error === "string") return error;
+
+    if (error instanceof Error && error.message) return error.message;
+
+    if (typeof error === "object") {
+      if (typeof error.message === "string") return error.message;
+      if (typeof error.reason === "string") return error.reason;
+      if (typeof error.code === "string") return `code: ${error.code}`;
+      try {
+        return JSON.stringify(error);
+      } catch (_e) {
+        return "에러 객체를 문자열로 변환하지 못했어요.";
+      }
+    }
+
+    return String(error);
+  }
+
+  showLobbyAdDiagnosticToast(message, color = "#f1c40f") {
+    const now = Date.now();
+    if (now - this.lastLobbyAdToastAt < 1800) return;
+
+    this.lastLobbyAdToastAt = now;
+    this.showToast(message, color);
+  }
+
+  updateLobbyAdButtonState() {
+    if (!this.adBtnImg || !this.adBtnText) return;
+
+    if (this.isLobbyIntegratedAdLoaded) {
+      this.adBtnImg.setTint(0x8b5cf6);
+      this.adBtnText.setText("광고 보기");
+      return;
+    }
+
+    if (this.isLobbyIntegratedAdLoading) {
+      this.adBtnImg.setTint(0x6b7280);
+      this.adBtnText.setText("광고 로딩중...");
+      return;
+    }
+
+    this.adBtnImg.setTint(0x6b7280);
+    this.adBtnText.setText("광고 준비중");
+  }
+
+  prepareLobbyIntegratedAd() {
+    const adGroupId = getIntegratedAdGroupId();
+    if (!adGroupId) {
+      this.isLobbyIntegratedAdLoading = false;
+      this.isLobbyIntegratedAdLoaded = false;
+      this.updateLobbyAdButtonState();
+      this.showLobbyAdDiagnosticToast(
+        "광고 ID가 설정되지 않았어요.",
+        "#e74c3c",
+      );
+      return;
+    }
+
+    if (!canUseIntegratedAd()) {
+      this.isLobbyIntegratedAdLoading = false;
+      this.isLobbyIntegratedAdLoaded = false;
+      this.updateLobbyAdButtonState();
+      this.showLobbyAdDiagnosticToast(
+        "광고 미지원 환경이에요. 토스 앱/버전을 확인해 주세요.",
+      );
+      return;
+    }
+
+    if (this.isLobbyIntegratedAdLoaded || this.isLobbyIntegratedAdLoading)
+      return;
+
+    this.isLobbyIntegratedAdLoading = true;
+    this.updateLobbyAdButtonState();
+    this.clearLobbyAdLoadTimeout();
+
+    this.lobbyAdLoadTimeout = this.time.delayedCall(8000, () => {
+      if (this.isLobbyIntegratedAdLoading && !this.isLobbyIntegratedAdLoaded) {
+        this.isLobbyIntegratedAdLoading = false;
+        this.updateLobbyAdButtonState();
+        this.showLobbyAdDiagnosticToast(
+          "광고 로딩이 지연되고 있어요. 네트워크 또는 앱 버전을 확인해 주세요.",
+        );
+      }
+    });
+
+    if (typeof this.unregisterLobbyIntegratedAdLoad === "function") {
+      this.unregisterLobbyIntegratedAdLoad();
+      this.unregisterLobbyIntegratedAdLoad = null;
+    }
+
+    this.unregisterLobbyIntegratedAdLoad = loadFullScreenAd({
+      options: { adGroupId },
+      onEvent: (event) => {
+        if (event.type === "loaded") {
+          this.clearLobbyAdLoadTimeout();
+          this.isLobbyIntegratedAdLoading = false;
+          this.isLobbyIntegratedAdLoaded = true;
+          this.updateLobbyAdButtonState();
+        }
+      },
+      onError: (error) => {
+        this.clearLobbyAdLoadTimeout();
+        this.isLobbyIntegratedAdLoading = false;
+        this.isLobbyIntegratedAdLoaded = false;
+        this.updateLobbyAdButtonState();
+        console.warn("Lobby IntegratedAd load 실패", error);
+        this.showLobbyAdDiagnosticToast(
+          `광고 로드 실패: ${this.parseIntegratedAdErrorMessage(error)}`,
+          "#e74c3c",
+        );
+      },
+    });
+  }
+
+  tryShowLobbyIntegratedAd() {
+    if (!canUseIntegratedAd()) {
+      this.showToast("광고 기능을 지원하지 않는 환경입니다.", "#f1c40f");
+      return;
+    }
+
+    if (!this.isLobbyIntegratedAdLoaded) {
+      this.showToast(
+        "광고 로딩 중입니다. 잠시 후 다시 시도해주세요.",
+        "#f1c40f",
+      );
+      this.prepareLobbyIntegratedAd();
+      return;
+    }
+
+    const adGroupId = getIntegratedAdGroupId();
+    if (!adGroupId) {
+      this.showToast("광고 설정이 없습니다.", "#e74c3c");
+      return;
+    }
+
+    this.isLobbyIntegratedAdLoaded = false;
+    this.updateLobbyAdButtonState();
+
+    showFullScreenAd({
+      options: { adGroupId },
+      onEvent: (event) => {
+        switch (event.type) {
+          case "dismissed":
+          case "failedToShow":
+            this.prepareLobbyIntegratedAd();
+            break;
+          default:
+            break;
+        }
+      },
+      onError: (error) => {
+        console.warn("Lobby IntegratedAd show 실패", error);
+        this.showLobbyAdDiagnosticToast(
+          `광고 표시 실패: ${this.parseIntegratedAdErrorMessage(error)}`,
+          "#e74c3c",
+        );
+        this.prepareLobbyIntegratedAd();
+      },
+    });
   }
 
   getAvatarDisplayKey(baseKey) {
@@ -3332,7 +3768,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     adRewardBtnImg.on("pointerdown", () => {
       this.sound.play("btn", { volume: 0.1 });
       buttonPress([adRewardBtnImg, adRewardBtnText], () => {
-        this.showToast("광고 보상은 준비 중입니다!", "#38bdf8");
+        this.tryShowLobbyIntegratedAd();
         if (typeof this.incrementMultiQuestCounter === "function") {
           this.incrementMultiQuestCounter("watch_ad", 1);
         }
@@ -7565,6 +8001,24 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
     this.questPopupContainer.add([closeBtn]);
     this.currentJoinPopupCloseHandler = () => this.closeQuestPopup();
+
+    // === 광고 및 인앱결제 초기화 ===
+    // 광고 및 IAP 제품 준비
+    if (typeof this.prepareRemoveAdsProduct === "function") {
+      try {
+        this.prepareRemoveAdsProduct();
+      } catch (e) {
+        console.warn("[LobbyScene.create] prepareRemoveAdsProduct failed", e);
+      }
+    }
+
+    if (typeof this.prepareLobbyIntegratedAd === "function") {
+      try {
+        this.prepareLobbyIntegratedAd();
+      } catch (e) {
+        console.warn("[LobbyScene.create] prepareLobbyIntegratedAd failed", e);
+      }
+    }
   }
 
   closeQuestPopup() {
