@@ -5073,7 +5073,7 @@ io.on("connection", (socket) => {
     }
 
     room.isGameStarted = true;
-    room.gameMultiplier = room.gameMultiplier || 1; // 배수가 설정되지 않으면 1(배수 없음)로 초기화
+    room.gameMultiplier = 1; // 🔴 [중요] 매 게임마다 배수 초기화 (클라이언트에서 배수 애니메이션으로 결정됨)
     // Do not reset bell accuracy totals here; we want them to persist across matches.
     // (Each bell press will increment the existing totals.)
     clearTimeAttackTimer(room);
