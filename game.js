@@ -13317,8 +13317,13 @@ class GameScene extends Phaser.Scene {
         
         // 🔴 [배수 초기화] 새 게임은 배수 미정 (애니메이션에서 설정됨)
         this.roundData.gameMultiplier = 1; // 기본값 (게임 시작 후 애니메이션에서 업데이트됨)
+        // 🔴 [중요] 플래그도 반드시 초기화! 다음 게임에서 애니메이션이 실행되도록
+        this._multiplierAnimationShown = false;
+        this._multiplierAnimationPlaying = false;
+        
         console.log('[applyGameStartPayload] 배수 초기화', { 
           gameMultiplier: this.roundData.gameMultiplier,
+          _multiplierAnimationShown: this._multiplierAnimationShown,
           isSingle: this.isSingle
         });
         
@@ -13354,11 +13359,26 @@ class GameScene extends Phaser.Scene {
           }
           this.applyDeferredCoins();
 
+          // 🔴 [중요] applyDeferredCoins 후의 현재 코인을 보존하여 override 방지
+          const coinsAfterDeferred = Number(this.myProfile?.coins) || 0;
+
           // Ensure we show the latest known server profile on start.
           if (socket && socket.profile) {
             this.myProfile = this.myProfile || {};
+            
+            // 🔴 [배수 포함된 최신 코인] 서버 코인 vs 이미 적용된 로컬 코인 비교
+            // 큰 값을 우선하여 코인 손실 방지
             if (Number.isFinite(Number(socket.profile.coins))) {
-              this.myProfile.coins = Number(socket.profile.coins);
+              const serverCoins = Number(socket.profile.coins);
+              const finalCoins = Math.max(coinsAfterDeferred, serverCoins);
+              this.myProfile.coins = finalCoins;
+              
+              console.log('[applyGameStartPayload] 코인 병합 (override 방지)', {
+                coinsAfterDeferred,
+                serverCoins,
+                finalCoins,
+                usedServer: serverCoins > coinsAfterDeferred
+              });
             }
             if (typeof socket.profile.level !== 'undefined') {
               this.myProfile.level = Number(socket.profile.level) || this.myProfile.level || 1;
@@ -21550,7 +21570,7 @@ class GameScene extends Phaser.Scene {
         else if (rand < 15) finalMultiplier = 5; // 10% 확률
         else if (rand < 40) finalMultiplier = 3; // 25% 확률
         else if (rand < 70) finalMultiplier = 2; // 30% 확률
-        else finalMultiplier = 1; // 30% 확률
+        else finalMultiplier = 2; // 30% 확률
         
         currentValue = finalMultiplier;
         this.roundData.gameMultiplier = finalMultiplier;

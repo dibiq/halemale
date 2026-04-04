@@ -1029,7 +1029,24 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
     // Skip bots: they should not be persisted to the player DB.
     if (p && p.isBot) return;
 
-    const currentCoins = Number(p.coins) || 0;
+    // 🔴 [중요] socket.coins도 함께 고려하여 게임 중 획득한 코인 포함
+    let sock =
+      io.sockets && io.sockets.sockets ? io.sockets.sockets.get(p.id) : null;
+
+    const playerCoins = Number(p.coins) || 0;
+    const socketCoins = (sock && Number(sock.coins)) || 0;
+
+    // 더 큰 값을 사용 (게임 중 획득한 코인이 포함될 수 있음)
+    const currentCoins = Math.max(playerCoins, socketCoins);
+
+    console.log("[finalizeGame] 코인 선정", {
+      playerName: p.nickname,
+      playerCoins,
+      socketCoins,
+      selected: currentCoins,
+      usedSocket: socketCoins > playerCoins,
+    });
+
     const currentItems = Array.isArray(p.items) ? p.items : [];
 
     // Ensure we consistently resolve the player by a single unique key.
@@ -1040,9 +1057,6 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
         : p.id;
 
     try {
-      let sock =
-        io.sockets && io.sockets.sockets ? io.sockets.sockets.get(p.id) : null;
-
       // If lookup by socket id failed, try to find a socket by nickname or id.
       if (!sock && io.sockets && io.sockets.sockets) {
         try {
