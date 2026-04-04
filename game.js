@@ -13315,6 +13315,12 @@ class GameScene extends Phaser.Scene {
             : this.isSingle;
         this._startOfMatchCoins = Number(this.myProfile?.coins) || 0; // 시작 시점 코인 스냅샷
         
+        // 🔴 [중요] roomId 설정 - 배수 애니메이션에서 서버로 전송할 때 필요
+        if (data?.roomId) {
+          this.currentRoomId = data.roomId;
+          console.log('[applyGameStartPayload] roomId 설정', { roomId: this.currentRoomId });
+        }
+        
         // 🔴 [배수 초기화] 새 게임은 배수 미정 (애니메이션에서 설정됨)
         this.roundData.gameMultiplier = 1; // 기본값 (게임 시작 후 애니메이션에서 업데이트됨)
         // 🔴 [중요] 플래그도 반드시 초기화! 다음 게임에서 애니메이션이 실행되도록
