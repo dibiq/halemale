@@ -21609,7 +21609,7 @@ class GameScene extends Phaser.Scene {
           try {
             if (typeof socket !== 'undefined' && socket) {
               const multiplierPayload = {
-                roomId: this.roomId,
+                roomId: this.currentRoomId,  // ← 수정: this.roomId → this.currentRoomId
                 gameMultiplier: finalMultiplier,
                 timestamp: Date.now(),
               };
@@ -21627,7 +21627,7 @@ class GameScene extends Phaser.Scene {
               
               // 재확인: 약간 뒤에 다시 전송 (서버 수신 확인용)
               this.time.delayedCall(500, () => {
-                socket.emit('getGameMultiplier', { roomId: this.roomId }, (current) => {
+                socket.emit('getGameMultiplier', { roomId: this.currentRoomId }, (current) => {  // ← 수정
                   console.log('[playMultiplierSelectionAnimation] 서버 배수 재확인', { 
                     sent: finalMultiplier, 
                     serverCurrent: current?.gameMultiplier 

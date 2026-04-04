@@ -895,7 +895,7 @@ function setPlayerElimination(player, eliminated) {
   }
 }
 
-const TIME_ATTACK_DURATION_MS = 60 * 1000; // 1분
+const TIME_ATTACK_DURATION_MS = 10 * 1000; // 1분
 
 function clearTimeAttackTimer(room) {
   if (!room) return;
@@ -2031,6 +2031,22 @@ io.on("connection", (socket) => {
       }
     } catch (e) {
       console.warn("[setGameMultiplier] 오류", e);
+      if (typeof ack === "function") ack({ ok: false, error: e.message });
+    }
+  });
+
+  // 🔴 [배수 조회] 클라이언트가 서버에 저장된 배수를 확인할 때 사용
+  socket.on("getGameMultiplier", (data, ack) => {
+    try {
+      const { roomId } = data || {};
+      const room = rooms[roomId];
+      const gameMultiplier = (room && room.gameMultiplier) || 1;
+
+      if (typeof ack === "function") {
+        ack({ ok: true, gameMultiplier });
+      }
+    } catch (e) {
+      console.warn("[getGameMultiplier] 오류", e);
       if (typeof ack === "function") ack({ ok: false, error: e.message });
     }
   });
