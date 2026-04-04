@@ -929,6 +929,17 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
   console.log(
     "[DEBUG] finalizeGame entry trace (should appear whenever a game ends)",
   );
+
+  // 🔴 [중요] 순위 보상 시작 직전 진단 로그
+  console.log("[DIAGNOSTIC] finalizeGame check - about to validate args", {
+    hasRoom: !!room,
+    hasIo: !!io,
+    hasWinner: !!winner,
+    isSortedArray: Array.isArray(sorted),
+    sortedLength: Array.isArray(sorted) ? sorted.length : "NOT_ARRAY",
+    roomGameMultiplier: (room && room.gameMultiplier) || "NO_ROOM",
+  });
+
   if (!room || !io || !winner || !Array.isArray(sorted)) {
     console.log("[DEBUG] finalizeGame aborted due to invalid args");
     debugLines.push("[DEBUG] finalizeGame aborted due to invalid args");
@@ -960,6 +971,16 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
     sortedCount: sorted.length,
     roomGameMultiplier: room.gameMultiplier,
     timestamp: new Date().toISOString(),
+  });
+  console.log("[🔴 CRITICAL] 순위 보상 시작 - sorted array details:", {
+    length: sorted && sorted.length,
+    players:
+      sorted &&
+      sorted.map((p) => ({
+        id: p.id,
+        nickname: p.nickname,
+        currentCoins: p.coins,
+      })),
   });
 
   sorted.forEach((player, rankIndex) => {
