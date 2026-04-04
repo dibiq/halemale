@@ -956,19 +956,28 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
   );
 
   // 순위별 보상(1등 30, 2등 20, 3등 10) - 배수 적용
+  console.log("[finalizeGame] 순위 보상 시작", {
+    sortedCount: sorted.length,
+    roomGameMultiplier: room.gameMultiplier,
+    timestamp: new Date().toISOString(),
+  });
+
   sorted.forEach((player, rankIndex) => {
     const baseCoinReward = RANK_REWARD_COINS[rankIndex] || 0;
     const multiplier = room.gameMultiplier || 1;
     const coinReward = Math.floor(baseCoinReward * multiplier);
 
+    const beforeCoins = Number(player.coins) || 0;
+
     if (coinReward > 0) {
-      player.coins = (Number(player.coins) || 0) + coinReward;
-      console.log("[finalizeGame] 코인 보상 (배수 적용)", {
-        playerName: player.name,
+      player.coins = beforeCoins + coinReward;
+      console.log("💰 [finalizeGame] 순위 보상 (배수 적용)", {
+        nickname: player.nickname,
         rank: rankIndex + 1,
-        base: baseCoinReward,
+        baseReward: baseCoinReward,
         multiplier: multiplier,
-        totalReward: coinReward,
+        earnedReward: coinReward,
+        beforeCoins,
         newTotalCoins: player.coins,
       });
     }
@@ -1080,7 +1089,21 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
         if (typeof sock.experience !== "undefined")
           p.experience = sock.experience;
         if (typeof sock.level !== "undefined") p.level = sock.level;
-        if (typeof sock.coins !== "undefined") p.coins = sock.coins;
+        // 🔴 [중요] socket.coins와 현재 p.coins 중 더 큰 값을 선택
+        // p.coins에는 이미 순위 보상이 포함되어 있으므로, 둘 중 더 큰 값을 사용
+        if (typeof sock.coins !== "undefined") {
+          const sockCoins = Number(sock.coins) || 0;
+          const currentCoins = Number(p.coins) || 0;
+          const finalCoins = Math.max(sockCoins, currentCoins);
+          console.log("💰 [finalizeGame] 코인 선택 (순위 보상 보호)", {
+            nickname: p.nickname,
+            socketCoins: sockCoins,
+            currentCoins: currentCoins,
+            selectedCoins: finalCoins,
+            usedSocket: sockCoins > currentCoins,
+          });
+          p.coins = finalCoins;
+        }
         if (Array.isArray(sock.items)) p.items = sock.items;
       }
 
@@ -1200,9 +1223,23 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
         beforeCoins: Number(p.coins) || 0,
       };
       const rankIndex = sorted.findIndex((sp) => sp.id === p.id);
-      const earnedCoins =
+      // 🔴 [중요] 배수를 적용한 실제 획득 코인 계산
+      const baseCoinReward =
         rankIndex >= 0 ? RANK_REWARD_COINS[rankIndex] || 0 : 0;
+      const multiplier = room.gameMultiplier || 1;
+      const earnedCoins = Math.floor(baseCoinReward * multiplier);
       const finalCoins = Number(p.coins) || 0;
+
+      console.log("[gameEnded] 멀티플레이 순위 보상 포함", {
+        nickname: p.nickname,
+        rank: rankIndex + 1,
+        beforeCoins: before.beforeCoins,
+        baseReward: baseCoinReward,
+        multiplier,
+        earnedCoins,
+        finalCoins,
+      });
+
       return {
         id: p.id,
         nickname: p.nickname,

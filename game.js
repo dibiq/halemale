@@ -23050,7 +23050,8 @@ class GameScene extends Phaser.Scene {
       if (isUpdate || !this.textures.exists("coin")) {
         // If coin textures are unavailable, still allow user to proceed.
         if (!isUpdate) {
-          enableConfirmButton();
+          // 🔴 2초 추가 딜레이: 서버 반영 안정성을 위해
+          this.time.delayedCall(2000, enableConfirmButton);
         }
         return;
       }
@@ -23197,7 +23198,9 @@ class GameScene extends Phaser.Scene {
           console.warn('[result] applyDeferredRewards failed', e);
         }
 
-        enableConfirmButton();
+        // 🔴 2초 추가 딜레이: 서버 반영 안정성을 위해
+        console.log('[result] 확인 버튼 활성화를 2초 지연합니다 (서버 반영 대기)');
+        this.time.delayedCall(2000, enableConfirmButton);
       };
 
       const tryApplyDeferred = () => {
