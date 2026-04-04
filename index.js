@@ -984,6 +984,15 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
   });
 
   sorted.forEach((player, rankIndex) => {
+    // Skip bots: they should not receive rank rewards
+    if (player && player.isBot) {
+      console.log("⏭️ [finalizeGame] 봇 플레이어는 순위 보상 제외", {
+        nickname: player.nickname,
+        rank: rankIndex + 1,
+      });
+      return;
+    }
+
     const baseCoinReward = RANK_REWARD_COINS[rankIndex] || 0;
     const multiplier = room.gameMultiplier || 1;
     const coinReward = Math.floor(baseCoinReward * multiplier);

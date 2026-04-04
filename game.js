@@ -22783,6 +22783,21 @@ class GameScene extends Phaser.Scene {
     // 시상대 결과 중에는 프로필 즉시 반영 금지
     this.isResultOverlayActive = true;
 
+    // 🔴 [중요] 게임 종료 후 현재 코인값을 즉시 서버로 저장 (배수가 적용된 최종값)
+    if (!isUpdate && !this.isSingle) {
+      console.log('[result] 게임 종료 - 현재 코인값을 즉시 서버로 저장합니다', {
+        currentCoins: Number(this.myProfile?.coins),
+        timestamp: new Date().toISOString()
+      });
+      try {
+        if (typeof this.emitInventory === 'function') {
+          this.emitInventory('gameEnded', { requireServerProfile: false });
+        }
+      } catch (e) {
+        console.warn('[result] 즉시 동기화 실패', e);
+      }
+    }
+
     // 기존 게임 로그 데이터 및 텍스트 객체 제거
     if (this.logTexts) {
       this.logTexts.forEach((txt) => txt.destroy());
