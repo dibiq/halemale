@@ -177,7 +177,8 @@ async function savePlayer(
   }
 
   console.log(
-    `\n[savePlayer] id=${id} dbId=${dbId} level=${level} coins=${coins} exp=${experience} avetime=${avetime} ratio=${ratio}`,
+    `\n💾 [savePlayer] DB 저장 시작 - id=${id} dbId=${dbId} level=${level} coins=${coins} exp=${experience} avetime=${avetime}`,
+    { timestamp: new Date().toISOString() },
   );
   if (!pool) return;
 
@@ -1039,12 +1040,14 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
     // 더 큰 값을 사용 (게임 중 획득한 코인이 포함될 수 있음)
     const currentCoins = Math.max(playerCoins, socketCoins);
 
-    console.log("[finalizeGame] 코인 선정", {
+    console.log("💰 [finalizeGame] 게임 종료 후 코인 최종 집계", {
       playerName: p.nickname,
+      roomId: room.roomId,
       playerCoins,
       socketCoins,
-      selected: currentCoins,
-      usedSocket: socketCoins > playerCoins,
+      selectedCoins: currentCoins,
+      useSocket: socketCoins > playerCoins,
+      timestamp: new Date().toISOString(),
     });
 
     const currentItems = Array.isArray(p.items) ? p.items : [];
@@ -1137,9 +1140,16 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
         avetime: av,
         ratio: ratioToSave,
       });
-      console.log(
-        `[finalizeGame] calling savePlayer for id=${p.id} nickname=${p.nickname} dbId=${dbId} avetime=${av} ratio=${ratioToSave}`,
-      );
+      console.log(`💾 [finalizeGame] savePlayer 호출 준비`, {
+        id: p.id,
+        nickname: p.nickname,
+        dbId: dbId,
+        coinsToSave: currentCoins,
+        levelToSave,
+        expToSave,
+        avetime: av,
+        ratio: ratioToSave,
+      });
 
       savePlayer(
         dbId,
@@ -1793,6 +1803,14 @@ function handleAiFlip(room, io, playerId) {
     const rewardInfo = applyCoinCardReward(room, p, io);
     coinReward = rewardInfo?.reward ?? COIN_CARD_REWARD;
     coinTotal = rewardInfo?.coinTotal ?? null;
+
+    console.log("💰 [server] 코인카드 보상 처리됨", {
+      playerId: p.id,
+      playerName: p.nickname,
+      reward: coinReward,
+      newTotal: coinTotal,
+      isBot: p.isBot,
+    });
   }
 
   const totals = getFruitTotals(room.players);
@@ -3690,7 +3708,20 @@ io.on("connection", (socket) => {
     if (typeof payload.coins !== "undefined") {
       const incomingCoins = Number(payload.coins);
       if (Number.isFinite(incomingCoins)) {
+        const beforeCoins = Number(socket.coins) || 0;
         socket.coins = incomingCoins;
+
+        // 💰 코인 동기화 로그
+        const reason =
+          typeof payload.reason === "string" ? payload.reason : "sync";
+        console.log(`💰 [handleSyncPlayerInventory] 코인 수신 및 저장`, {
+          nickname: socket.nickname,
+          reason,
+          beforeCoins,
+          incomingCoins,
+          delta: incomingCoins - beforeCoins,
+          timestamp: new Date().toISOString(),
+        });
       }
     }
     // Accept client-provided experience/level updates so gameplay-awarded

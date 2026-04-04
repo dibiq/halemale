@@ -737,11 +737,7 @@ class LobbyScene extends Phaser.Scene {
         }
       }
 
-      try {
-        localStorage.setItem('profileCoins', String(next));
-      } catch (e) {
-        console.warn('[LobbyScene.setCoinsAbsolute] localStorage persist failed', e);
-      }
+      // 🔴 [보안] 코인은 로컬 저장소에 저장하지 않음 (서버에서만 관리)
 
       if (options.sync && typeof this.safeSyncInventory === "function") {
         try {
@@ -858,20 +854,44 @@ class LobbyScene extends Phaser.Scene {
   rewardQuestCoins(amount, reason, questKey) {
     if (!Number.isFinite(amount) || amount <= 0) return;
 
-    this.modifyCoins(Number(amount), { sync: true });
+    const beforeCoins = Number(this.myProfile?.coins) || 0;
+    console.log(`🎯 [rewardQuestCoins] 싱글퀘스트 보상 시작`, {
+      questKey,
+      reason,
+      amount: Number(amount),
+      beforeCoins,
+      isSingle: this.isSingle,
+      timestamp: new Date().toISOString()
+    });
+
+    this.modifyCoins(Number(amount), { sync: true, reason: 'questReward', questKey });
+    
+    const afterCoins = Number(this.myProfile?.coins) || 0;
+    console.log(`✅ [rewardQuestCoins] 퀘스트 보상 적용됨`, {
+      questKey,
+      amount: Number(amount),
+      beforeCoins,
+      afterCoins,
+      delta: afterCoins - beforeCoins
+    });
+    
     if (!this.isSingle) {
       this.showToast(`퀘스트 보상 ${amount}💰 (${reason})`, "#22c55e");
     }
+    
+    // Explicitly sync quest reward to server with full coins amount
     try {
-      if (typeof this.safeSyncInventory === "function") {
-        this.safeSyncInventory("questReward", {
-          coins: Number(amount),
+      if (typeof this.emitInventory === "function") {
+        this.emitInventory("questReward", { 
+          amount: Number(amount),
           questKey,
           reason,
+          requireServerProfile: false 
         });
+        console.log(`🛰️ [rewardQuestCoins] 서버로 동기화됨`, { amount, questKey });
       }
     } catch (e) {
-      console.warn("LobbyScene.rewardQuestCoins sync failed", e);
+      console.warn("LobbyScene.rewardQuestCoins emitInventory failed", e);
     }
   }
 
@@ -2489,10 +2509,11 @@ class LobbyScene extends Phaser.Scene {
       ),
     );
 
+    // 🔴 [보안] 코인은 반드시 서버에서만 로드 (로컬 저장소 사용 금지)
     this.myProfile = {
       nickname: this.myNickname || savedNickname || "요리사",
       level: 1,
-      coins: 0,
+      coins: 0,  // 서버로부터 받을 때까지 기본값
       experience: 0,
       owned_characters: initialOwnedCharacters,
       current_character: initialAvatarKey || "player_1",
@@ -7954,19 +7975,21 @@ if (this.isGameEnded || this.isResultOverlayActive) {
                   if (typeof this.updateMyProfileUI === "function") {
                     this.updateMyProfileUI();
                   }
+                  // Sync to server when modifyCoins is unavailable
+                  try {
+                    if (typeof this.emitInventory === "function") {
+                      this.emitInventory("questReward", { 
+                        amount: amount,
+                        questKey: quest.key,
+                        requireServerProfile: false 
+                      });
+                    }
+                  } catch (e) {
+                    console.warn("quest reward sync failed (fallback)", e);
+                  }
                 }
                 if (!this.isSingle) {
                   this.showToast(`퀘스트 보상 ${amount}💰 (${runtime.title})`, "#22c55e");
-                }
-                try {
-                  if (typeof this.safeSyncInventory === "function") {
-                    this.safeSyncInventory("questReward", {
-                      coins: amount,
-                      questKey: quest.key,
-                    });
-                  }
-                } catch (e) {
-                  console.warn("quest reward sync failed (fallback)", e);
                 }
               }
             }
@@ -11265,34 +11288,15 @@ class GameScene extends Phaser.Scene {
   applyDeferredProfileUpdates() {
     if (!this._deferredMyProfile) return;
 
-    const localCoins = Number(this.myProfile?.coins) || 0;
-    const incomingCoins = Number(this._deferredMyProfile?.coins) || 0;
-    
-    console.log('[result] applyDeferredProfileUpdates called', {
-      localCoins,
-      incomingCoins,
-      preferLocal: localCoins > incomingCoins,
-    });
-
     this._isApplyingDeferredProfile = true;
     try {
-      // 🔴 [중요] 로컬에서 적용된 코인(배수 포함)을 우선시
+      // 🔴 [보안] 서버에서 받은 프로필을 절대적으로 신뢰
       const incoming = { ...this._deferredMyProfile };
       
-      // 코인: 로컬 수정 값이 더 크면 그것을 사용 (배수 적용된 보상)
-      if (typeof incoming.coins !== 'undefined') {
-        if (localCoins > incomingCoins) {
-          console.log('[result] 로컬 코인 우선 사용 (배수 반영)', { localCoins, incomingCoins });
-          incoming.coins = localCoins;
-        } else if (localCoins === incomingCoins) {
-          console.log('[result] 로컬/서버 코인 동일', { coins: localCoins });
-          incoming.coins = localCoins;
-        } else {
-          // 서버 코인이 더 크면 서버 값 사용 (오류 복구)
-          console.log('[result] 서버 코인 더 큼, 서버 값 사용', { localCoins, incomingCoins });
-          incoming.coins = incomingCoins;
-        }
-      }
+      console.log('[result] applyDeferredProfileUpdates called', {
+        serverCoins: incoming.coins,
+        applyingServerCoins: true
+      });
       
       this.updateMyProfileUI(incoming);
     } catch (e) {
@@ -11322,19 +11326,9 @@ class GameScene extends Phaser.Scene {
       const next = prev + Number(delta || 0);
       this.myProfile.coins = next;
       console.log('[modifyCoins] applied', { prev, delta: Number(delta || 0), next });
-      // Persist coins locally for single-player so the value survives scene switches
-      try {
-        if (this.isSingle) {
-          try {
-            localStorage.setItem('profileCoins', String(this.myProfile.coins));
-            console.log('[modifyCoins] persisted to localStorage', { key: 'profileCoins', value: this.myProfile.coins });
-          } catch (e) {
-            console.warn('[modifyCoins] failed to persist local profileCoins', e);
-          }
-        }
-      } catch (e) {
-        /* ignore */
-      }
+      
+      // 🔴 [보안] 코인은 로컬 저장소에 저장하지 않음 (서버에서만 관리)
+      // 싱글플레이도 서버와 동기화되어야 함
 
       // Decide whether to update UI now.
       const isLiveMultiplayer =
@@ -11392,6 +11386,16 @@ class GameScene extends Phaser.Scene {
     if (next === null) return;
     const prev = Number(this.myProfile?.coins) || 0;
     const delta = next - prev;
+    
+    if (delta !== 0) {
+      console.log('💰 [setCoinsAbsolute] 절대값으로 코인 설정', {
+        prev,
+        next,
+        delta,
+        sync: options?.sync
+      });
+    }
+    
     this.modifyCoins(delta, options);
   }
 
@@ -12308,6 +12312,30 @@ class GameScene extends Phaser.Scene {
   async create() {
     // GameScene의 init 혹은 create 상단에 추가
     const gameScene = this;
+
+    // ✅ GameScene에서도 emitInventory 메서드 정의 (싱글플레이/멀티플레이 모두에서 코인 동기화)
+    if (typeof this.emitInventory !== 'function') {
+      this.emitInventory = (reason = 'game', options = {}) => {
+        try {
+          if (!socket || !socket.connected) return;
+          
+          const payload = {
+            reason,
+            coins: Number(this.myProfile?.coins) || 0,
+            nickname: this.myNickname || localStorage.getItem('nickname') || '요리사',
+          };
+
+          socket.emit('syncPlayerInventory', payload);
+          socket.emit('syncInventory', payload);
+          socket.emit('updatePlayerInventory', payload);
+          socket.emit('updateProfile', payload);
+          socket.emit('savePlayerProfile', payload);
+          console.log(`🛰️ [GameScene] inventory synced (${reason})`, { coins: payload.coins });
+        } catch (e) {
+          console.warn('[GameScene] emitInventory failed', reason, e);
+        }
+      };
+    }
 
     // Track whether we've already incremented the main-menu quest for this single-run.
     // This prevents double-counting if the same scene instance is reused between matches.
@@ -13365,25 +13393,19 @@ class GameScene extends Phaser.Scene {
           }
           this.applyDeferredCoins();
 
-          // 🔴 [중요] applyDeferredCoins 후의 현재 코인을 보존하여 override 방지
-          const coinsAfterDeferred = Number(this.myProfile?.coins) || 0;
-
+          // 🔴 [보안] 코인은 반드시 서버 값만 신뢰 (로컬 값 무시)
           // Ensure we show the latest known server profile on start.
           if (socket && socket.profile) {
             this.myProfile = this.myProfile || {};
             
-            // 🔴 [배수 포함된 최신 코인] 서버 코인 vs 이미 적용된 로컬 코인 비교
-            // 큰 값을 우선하여 코인 손실 방지
+            // 🔴 [중요] 서버 코인을 절대적으로 신뢰
             if (Number.isFinite(Number(socket.profile.coins))) {
               const serverCoins = Number(socket.profile.coins);
-              const finalCoins = Math.max(coinsAfterDeferred, serverCoins);
-              this.myProfile.coins = finalCoins;
+              this.myProfile.coins = serverCoins;  // 서버 코인만 사용
               
-              console.log('[applyGameStartPayload] 코인 병합 (override 방지)', {
-                coinsAfterDeferred,
+              console.log('[applyGameStartPayload] 코인 동기화 (서버 신뢰)', {
                 serverCoins,
-                finalCoins,
-                usedServer: serverCoins > coinsAfterDeferred
+                appliedCoins: this.myProfile.coins
               });
             }
             if (typeof socket.profile.level !== 'undefined') {
@@ -13644,9 +13666,22 @@ class GameScene extends Phaser.Scene {
 
         if (data.playerId === myId) {
           if (Number.isFinite(Number(data.coinTotal))) {
+            const serverCoinTotal = Number(data.coinTotal);
+            const prevCoins = Number(this.myProfile?.coins) || 0;
+            const delta = serverCoinTotal - prevCoins;
+            
+            console.log('💰 [cardReward] 코인카드 보상 수신 및 적용', {
+              reward: Number(data.coinReward) || COIN_CARD_REWARD,
+              prevCoins,
+              serverCoinTotal,
+              delta,
+              isSingle: this.isSingle
+            });
+            
             this.profileStats = this.profileStats || {};
-            this.profileStats.coins = Number(data.coinTotal);
-            this.setCoinsAbsolute(Number(data.coinTotal), { sync: false, coinCardUpdate: true });
+            this.profileStats.coins = serverCoinTotal;
+            // 🔴 중요: coinCardUpdate는 true, 하지만 sync도 true로 설정하여 서버 동기화
+            this.setCoinsAbsolute(serverCoinTotal, { sync: true, coinCardUpdate: true });
           }
         }
       }
@@ -14373,6 +14408,17 @@ class GameScene extends Phaser.Scene {
       // 💡 즉시 띄우지 않고 1~1.5초 정도 여유를 줌
       this.time.delayedCall(100, () => {
         this.playFinishAnimation(() => {
+          // 🔴 [중요] 결과창 진입 직전 모든 지연된 코인 적용
+          try {
+            console.log('🎮 [gameEnd] 결과창 진입 전 지연된 코인 적용', {
+              deferredCoins: this._deferredCoinsDelta,
+              isSingle: this.isSingle
+            });
+            this.applyDeferredCoins();
+          } catch (e) {
+            console.warn('[gameEnd] applyDeferredCoins 실패', e);
+          }
+
           if (this.isSingle) {
             // 싱글 플레이는 전용 결과창을 사용.
             this.showSingleResultOverlay(data.ranking, data.result || "WIN");
@@ -17276,6 +17322,20 @@ class GameScene extends Phaser.Scene {
 
     // 2. 종료 연출(FINISH!) 실행 후 결과창 노출 (멀티플레이 결과창과 동일하게)
     this.playFinishAnimation(() => {
+      // 🔴 [중요] 결과창 진입 직전 모든 지연된 코인 적용
+      try {
+        console.log('🎮 [singleplayGameEnd] 결과창 진입 전 지연된 코인 적용 시작', {
+          deferredCoins: this._deferredCoinsDelta,
+          currentCoins: Number(this.myProfile?.coins) || 0
+        });
+        this.applyDeferredCoins();
+        console.log('✅ [singleplayGameEnd] 모든 지연 코인 적용 완료', {
+          finalCoins: Number(this.myProfile?.coins) || 0
+        });
+      } catch (e) {
+        console.warn('[singleplayGameEnd] applyDeferredCoins 실패', e);
+      }
+
       // 멀티플레이 결과창과 동일한 podium/캐릭터 연출을 재활용
       this.showResultOverlay(sortedPlayers.slice(0, 3), false, {
         result,
@@ -22892,8 +22952,14 @@ class GameScene extends Phaser.Scene {
     ];
 
     const resultOverlayBaselineCoins =
-      Number(this._startOfMatchCoins) || Number(this.myProfile?.coins) || 0;
-    console.log('[result] overlay baseline coins', { resultOverlayBaselineCoins });
+      Number(this.myProfile?.coins) || Number(this._startOfMatchCoins) || 0;
+    console.log('[result] overlay baseline coins 설정 (모든 보상 누적됨)', { 
+      resultOverlayBaselineCoins,
+      currentProfileCoins: Number(this.myProfile?.coins),
+      startOfMatchCoins: Number(this._startOfMatchCoins),
+      deferredCoins: this._deferredCoinsDelta,
+      note: '🔴 이 값이 게임 중 모든 보상(퀘스트, 카드, 순위)을 포함해야 함'
+    });
 
     rankedPlayers.forEach((player, index) => {
       const pos = podiumPositions[index];
@@ -23047,12 +23113,26 @@ class GameScene extends Phaser.Scene {
                 baseAwardedForMe += Number(baseRankRewardCoins[idx] || 0); // 배수 미적용
                 awardedForMe += Number(coinCountByRank[idx] || 0); // 배수 적용
                 myRankIdx = idx;
+                console.log(`🏁 [result/ranking] 내 순위 감지됨 (순위: ${idx + 1})`, {
+                  rank: idx + 1,
+                  playerId: String(p.id),
+                  baseReward: baseRankRewardCoins[idx] || 0,
+                  appliedReward: coinCountByRank[idx] || 0,
+                  multiplier,
+                  cumulativeTotal: baselineCoins + awardedForMe
+                });
               }
             } catch (e) {
               // ignore per-player comparison issues
             }
           });
-          console.log('[result] awardedForMe computed', { awardedForMe, baseAwardedForMe, multiplier, myRankIdx });
+          console.log('[result] 🎮 게임 순위 보상 계산 완료', { 
+            awardedForMe, 
+            baseAwardedForMe, 
+            multiplier, 
+            myRankIdx: myRankIdx + 1,
+            mySocketId 
+          });
 
           if (awardedForMe > 0) {
             const serverCoins = Number(this._deferredMyProfile?.coins);
@@ -23095,8 +23175,17 @@ class GameScene extends Phaser.Scene {
 
             if (missingCoins > 0) {
               try {
-                this.modifyCoins(missingCoins, { sync: true, force: true, coinCardUpdate: true });
-                console.log('[result/reward] after modifyCoins', { newCoins: Number(this.myProfile?.coins) || 0, missingCoins, expectedFinal: expectedFinalCoins });
+                const beforeModify = Number(this.myProfile?.coins) || 0;
+                this.modifyCoins(missingCoins, { sync: true, force: true, coinCardUpdate: true, reason: 'rankReward', rank: myRankIdx + 1 });
+                const afterModify = Number(this.myProfile?.coins) || 0;
+                console.log('💰 [result/reward] 게임 순위 보상 적용됨', { 
+                  beforeModify,
+                  missingCoins, 
+                  afterModify,
+                  expectedFinalCoins,
+                  delta: afterModify - beforeModify,
+                  isSingle: this.isSingle
+                });
               } catch (e) {
                 console.warn('[result/reward] modifyCoins failed', e);
               }
@@ -23255,48 +23344,10 @@ class GameScene extends Phaser.Scene {
     // EXP end-of-game text animation removed — XP is shown during gameplay
 
     const goToLobby = () => {
-      // 🔴 [최종 보장] 로비 이동 전 마지막 코인 검증
-      try {
-        const rankRewardCoins = this._resultRankRewardCoins || [];
-        const baselineCoins = this._resultBaselineCoins || 0;
-        const rankedPlayersData = this._resultRankedPlayers || [];
-        
-        if (rankRewardCoins.length > 0 && baselineCoins > 0) {
-          const myRank = rankedPlayersData.findIndex(p => 
-            p && String(p.id) === String(socket?.id)
-          );
-          if (myRank >= 0 && myRank < 3) {
-            const awardedAmount = rankRewardCoins[myRank] || 0;
-            const expectedFinalCoins = baselineCoins + awardedAmount;
-            const currentCoins = Number(this.myProfile?.coins) || 0;
-            
-            console.log('[goToLobby] 로비 이동 전 최종 검증', { 
-              currentCoins, 
-              expectedFinalCoins,
-              myRank,
-              awardedAmount,
-              deficit: expectedFinalCoins - currentCoins
-            });
-            
-            // 최종 검증: 부족하면 추가
-            if (currentCoins < expectedFinalCoins) {
-              const finalMissing = expectedFinalCoins - currentCoins;
-              console.log('[goToLobby] ⚠️ 부족한 코인 발견! 마지막 보장', { 
-                currentCoins, 
-                expectedFinalCoins, 
-                finalMissing 
-              });
-              this.modifyCoins(finalMissing, { sync: true, force: true, coinCardUpdate: true });
-            } else if (currentCoins === expectedFinalCoins) {
-              console.log('[goToLobby] ✅ 코인이 정확함', { currentCoins, expectedFinalCoins });
-            }
-          }
-        }
-      } catch (e) {
-        console.warn('[goToLobby] 최종 검증 중 오류', e);
-      }
-
-      // 결과 overlay가 끝났으므로 대기 상태 해제
+      // 🔴 [보안] 클라이언트에서 코인 검증/조정하지 않음
+      // 서버에서 배수 적용된 코인을 최종 확정한 후 클라이언트에 전송
+      // 클라이언트는 서버 코인을 절대적으로 신뢰
+      
       this.isResultOverlayActive = false;
 
       // 싱글 플레이일 경우에는 멀티 재입장 조건 없이 바로 메인 로비로 이동
@@ -23325,8 +23376,18 @@ class GameScene extends Phaser.Scene {
 
         // Sync final single-player coin state to server/local.
         try {
+          const finalCoins = Number(this.myProfile?.coins) || 0;
+          console.log(`🌟 [goToLobby/single] 최종 코인 동기화 시작`, {
+            finalCoins,
+            startCoins: this._startOfMatchCoins,
+            gained: finalCoins - (this._startOfMatchCoins || 0),
+            isSingle: true,
+            timestamp: new Date().toISOString()
+          });
+
           if (typeof this.emitInventory === "function") {
             this.emitInventory("postProfileSync", { requireServerProfile: false });
+            console.log(`🛰️ [goToLobby/single] 서버 동기화 완료`, { finalCoins });
           }
         } catch (e) {
           console.warn("goToLobby(single): postProfileSync emit failed", e);
