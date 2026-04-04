@@ -1550,40 +1550,31 @@ function buildAiPlayer(room) {
 
 function scheduleAiTurn(room, io) {
   if (!room) {
-    console.log("[AI][DEBUG] scheduleAiTurn: room 없음");
+    //console.log("[AI][DEBUG] scheduleAiTurn: room 없음");
     return;
   }
   if (!room.isGameStarted) {
-    console.log("[AI][DEBUG] scheduleAiTurn: 게임 미시작");
+    //console.log("[AI][DEBUG] scheduleAiTurn: 게임 미시작");
     return;
   }
-  console.log("[AI][DEBUG] scheduleAiTurn: ensureAiState, clearAiTurnTimer");
+  //console.log("[AI][DEBUG] scheduleAiTurn: ensureAiState, clearAiTurnTimer");
   ensureAiState(room);
   clearAiTurnTimer(room);
 
   const debugRoom = room.roomId || "?";
-  console.log(
-    `[AI] scheduleAiTurn start room=${debugRoom} turnIndex=${room.turnIndex}`,
-  );
+
   emitServerDebug(room, "ai.scheduleStart", { turnIndex: room.turnIndex });
 
   // always give bots a chance to ring first
-  console.log("[AI][DEBUG] scheduleAiTurn: scheduleAiBell 호출");
   scheduleAiBell(room, io);
 
   if (room.bellPending || room.bellLocked) {
-    console.log(
-      `[AI][DEBUG] scheduleAiTurn: bellPending=${!!room.bellPending}, bellLocked=${!!room.bellLocked} -> 턴 지연`,
-    );
     room.aiTimers.turn = setTimeout(() => scheduleAiTurn(room, io), 50);
     return;
   }
 
   const pauseRemaining = getSpecialPauseRemaining(room);
   if (pauseRemaining > 0) {
-    console.log(
-      `[AI][DEBUG] scheduleAiTurn: pauseRemaining=${pauseRemaining} -> 턴 지연`,
-    );
     room.aiTimers.turn = setTimeout(
       () => scheduleAiTurn(room, io),
       pauseRemaining + 20,
@@ -1593,37 +1584,23 @@ function scheduleAiTurn(room, io) {
 
   const current = room.players[room.turnIndex];
   if (!isBotPlayer(current)) {
-    console.log(
-      `[AI][DEBUG] scheduleAiTurn: 현재 턴 플레이어가 봇이 아님 (id=${current && current.id}) -> 스킵`,
-    );
     return;
   }
   if (!current.myDeck || current.myDeck.length === 0) {
-    console.log(
-      `[AI][DEBUG] scheduleAiTurn: 봇 덱 없음 (id=${current && current.id}) -> 스킵`,
-    );
     return;
   }
   if (room.isFlipping) {
-    console.log(`[AI][DEBUG] scheduleAiTurn: room.isFlipping true -> 스킵`);
     return;
   }
 
   if (computeBellSuccessCondition(room)) {
-    console.log(
-      `[AI][DEBUG] scheduleAiTurn: bell 조건 true (id=${current.id}) -> 2초 후 벨 시도`,
-    );
     setTimeout(() => {
       handleAiBell(room, io, current.id);
     }, 1759);
     return;
   }
 
-  console.log(
-    `[AI][DEBUG] scheduleAiTurn: 봇 ${current.id} 카드 제출 예약 (2200ms 후)`,
-  );
   room.aiTimers.turn = setTimeout(() => {
-    console.log(`[AI] flip timeout fired for room=${debugRoom}`);
     if (!room.isGameStarted) {
       console.log("[AI] flip timeout: 게임 종료됨");
       return;
@@ -1635,12 +1612,8 @@ function scheduleAiTurn(room, io) {
       !room.bellPending &&
       !computeBellSuccessCondition(room)
     ) {
-      console.log(`[AI] handleAiFlip 실행: ${current.id}`);
       handleAiFlip(room, io, current.id);
     } else {
-      console.log(
-        `[AI] flip aborted: active=${active && active.id}, bellPending=${!!room.bellPending}, bellCondition=${computeBellSuccessCondition(room)}`,
-      );
     }
   }, 2200);
 }
@@ -1710,30 +1683,20 @@ function scheduleAiBell(room, io) {
 
 function handleAiFlip(room, io, playerId) {
   if (!room || !room.isGameStarted) return;
-  console.log(
-    "[AI] handleAiFlip called for",
-    playerId,
-    "turnIndex=",
-    room.turnIndex,
-  );
+
   if (room.bellPending) {
-    console.log("[AI][DEBUG] handleAiFlip: bellPending true -> 스킵");
     return;
   }
   if (computeBellSuccessCondition(room)) {
-    console.log("[AI][DEBUG] handleAiFlip: bell 조건 true -> 스킵");
     return;
   }
   if (room.bellLocked) {
-    console.log("[AI][DEBUG] handleAiFlip: bellLocked true -> 스킵");
     return;
   }
   if (room.isFlipping) {
-    console.log("[AI][DEBUG] handleAiFlip: isFlipping true -> 스킵");
     return;
   }
   if (getSpecialPauseRemaining(room) > 0) {
-    console.log("[AI][DEBUG] handleAiFlip: pauseRemaining > 0 -> 스킵");
     return;
   }
 
@@ -1743,17 +1706,14 @@ function handleAiFlip(room, io, playerId) {
 
   const p = room.players.find((pl) => pl.id === playerId);
   if (!p) {
-    console.log(`[AI][DEBUG] handleAiFlip: playerId=${playerId} 플레이어 없음`);
+    // console.log(`[AI][DEBUG] handleAiFlip: playerId=${playerId} 플레이어 없음`);
     return;
   }
   if (!p.myDeck || p.myDeck.length === 0) {
-    console.log(`[AI][DEBUG] handleAiFlip: playerId=${playerId} 덱 없음`);
+    // console.log(`[AI][DEBUG] handleAiFlip: playerId=${playerId} 덱 없음`);
     return;
   }
   if (room.players[room.turnIndex]?.id !== playerId) {
-    console.log(
-      `[AI][DEBUG] handleAiFlip: turnIndex=${room.turnIndex} playerId=${playerId} 불일치 -> 스킵`,
-    );
     return;
   }
 
