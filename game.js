@@ -11376,6 +11376,18 @@ class GameScene extends Phaser.Scene {
           console.warn('modifyCoins sync failed', e);
         }
       }
+      
+      // 🔴 [싱글플레이] sync 옵션이 없어도 싱글플레이일 때는 항상 저장
+      if (this.isSingle && !sync) {
+        try {
+          console.log('[modifyCoins] 싱글플레이 자동 저장', { coins: this.myProfile.coins, delta });
+          if (typeof this.emitInventory === 'function') {
+            this.emitInventory('coinsChanged', { requireServerProfile: false });
+          }
+        } catch (e) {
+          console.warn('[modifyCoins] 싱글플레이 저장 실패', e);
+        }
+      }
     } catch (e) {
       console.warn('modifyCoins error', e);
     }
@@ -22783,10 +22795,58 @@ class GameScene extends Phaser.Scene {
     // 시상대 결과 중에는 프로필 즉시 반영 금지
     this.isResultOverlayActive = true;
 
-    // 🔴 [중요] 게임 종료 후 현재 코인값을 즉시 서버로 저장 (배수가 적용된 최종값)
-    if (!isUpdate && !this.isSingle) {
-      console.log('[result] 게임 종료 - 현재 코인값을 즉시 서버로 저장합니다', {
-        currentCoins: Number(this.myProfile?.coins),
+    // 🔴 게임 종료 직후 → 현재 코인값을 즉시 서버 저장 (멀티/싱글 동일)
+    if (!isUpdate) {
+      const currentCoins = Number(this.myProfile?.coins) || 0;
+      
+      // finalCoins가 있으면 우선 적용 (순위 보상 등)
+      if (resultData && Array.isArray(resultData.ranking)) {
+        const mySocketId = this.isSingle ? (this.myId || "PLAYER_ME") : (socket && socket.id);
+        const myData = resultData.ranking.find(p => String(p.id) === String(mySocketId));
+        if (myData && typeof myData.finalCoins === 'number' && myData.finalCoins >= 0) {
+          console.log('[result] 서버 최종값 적용', {
+            isSingle: this.isSingle,
+            serverFinalCoins: myData.finalCoins,
+            clientBeforeCoins: currentCoins,
+            earnedCoins: myData.earnedCoins,
+          });
+          this.myProfile.coins = myData.finalCoins;
+        }
+      }
+      
+      // 🔴 [싱글플레이] finalCoins가 없으면 순위 보상을 클라이언트에서 계산해서 추가
+      if (this.isSingle && (!resultData || !Array.isArray(resultData.ranking))) {
+        if (Array.isArray(players) && players.length > 0) {
+          const myId = this.myId || "PLAYER_ME";
+          const myRankIndex = players.findIndex(p => String(p.id) === String(myId));
+          if (myRankIndex >= 0) {
+            const baseRewardCoins = [30, 20, 10];
+            const multiplier = this.roundData?.gameMultiplier || 1;
+            const baseReward = baseRewardCoins[myRankIndex] || 0;
+            const rankReward = Math.floor(baseReward * multiplier);
+            
+            if (rankReward > 0) {
+              console.log('[result] 싱글플레이 순위 보상 추가', {
+                myRankIndex: myRankIndex + 1,
+                baseReward,
+                multiplier,
+                rankReward,
+                beforeCoins: this.myProfile.coins,
+              });
+              this.myProfile.coins += rankReward;
+              console.log('[result] 순위 보상 적용 완료', {
+                afterCoins: this.myProfile.coins,
+              });
+            }
+          }
+        }
+      }
+      
+      // 현재 코인값을 즉시 저장
+      const finalCoins = Number(this.myProfile?.coins) || 0;
+      console.log('[result] 게임 종료 → 코인 저장', {
+        isSingle: this.isSingle,
+        finalCoins: finalCoins,
         timestamp: new Date().toISOString()
       });
       try {
@@ -22794,7 +22854,7 @@ class GameScene extends Phaser.Scene {
           this.emitInventory('gameEnded', { requireServerProfile: false });
         }
       } catch (e) {
-        console.warn('[result] 즉시 동기화 실패', e);
+        console.warn('[result] 저장 실패', e);
       }
     }
 
@@ -23080,148 +23140,37 @@ class GameScene extends Phaser.Scene {
       const multiplier = this.roundData?.gameMultiplier || 1;
       const rankRewardCoins = baseRankRewardCoins.map(coin => Math.floor(coin * multiplier));
       
-      // 🔴 [중요] 확인 버튼 핸들러에서 접근할 수 있도록 this에 저장
-      this._resultRankRewardCoins = rankRewardCoins;
-      this._resultBaselineCoins = resultOverlayBaselineCoins;
-      this._resultRankedPlayers = rankedPlayers;
+      const totalRankCoins = rankedPlayers.reduce(
+        (sum, _, idx) => sum + (baseRankRewardCoins[idx] || 0),
+        0,
+      );
+      console.log('[result] 코인 애니메이션 시작', { 
+        totalRankCoins,
+        rankedPlayersCount: rankedPlayers.length,
+        multiplier,
+      });
       
-      const coinCountByRank = rankRewardCoins;
+      // 코인 애니메이션에 필요한 변수들
       const floorYMin = height * 0.72;
       const floorYMax = height * 0.86;
       const floorXMin = width * 0.2;
       const floorXMax = width * 0.8;
       let coinSequence = 0;
-
-      // 🔴 [수정] totalRankCoins도 배수 미적용 기준으로 계산 (코인 애니메이션이 baseRankRewardCoins 기준이므로)
-      const totalRankCoins = rankedPlayers.reduce(
-        (sum, _, idx) => sum + (baseRankRewardCoins[idx] || 0),
-        0,
-      );
-      console.log('[result] playCoinCollectAnimation start', { 
-        totalRankCoins, 
-        rankedPlayersCount: rankedPlayers.length,
-        baseRankRewardCoins,
-        multiplier,
-        rankRewardCoins,
-      });
       let arrivedCoins = 0;
-      let rewardApplied = false;
 
       const applyDeferredRewards = () => {
-        if (rewardApplied) return;
-        rewardApplied = true;
-
-        try {
-          const coinCountByRank = rankRewardCoins;
-          let awardedForMe = 0;
-          const mySocketId = this.isSingle ? (this.myId || "PLAYER_ME") : (socket && socket.id);
-          console.log('[result] computing awardedForMe', { mySocketId, rankedPlayers });
-          
-          // 배수 미적용 기본 보상 계산 (서버가 주는 코인)
-          let baseAwardedForMe = 0;
-          let myRankIdx = -1;
-          
-          rankedPlayers.forEach((p, idx) => {
-            try {
-              if (!p || typeof p.id === 'undefined') return;
-              if (!mySocketId) return;
-              if (String(p.id) === String(mySocketId)) {
-                baseAwardedForMe += Number(baseRankRewardCoins[idx] || 0); // 배수 미적용
-                awardedForMe += Number(coinCountByRank[idx] || 0); // 배수 적용
-                myRankIdx = idx;
-                console.log(`🏁 [result/ranking] 내 순위 감지됨 (순위: ${idx + 1})`, {
-                  rank: idx + 1,
-                  playerId: String(p.id),
-                  baseReward: baseRankRewardCoins[idx] || 0,
-                  appliedReward: coinCountByRank[idx] || 0,
-                  multiplier,
-                  cumulativeTotal: baselineCoins + awardedForMe
-                });
-              }
-            } catch (e) {
-              // ignore per-player comparison issues
-            }
-          });
-          console.log('[result] 🎮 게임 순위 보상 계산 완료', { 
-            awardedForMe, 
-            baseAwardedForMe, 
-            multiplier, 
-            myRankIdx: myRankIdx + 1,
-            mySocketId 
-          });
-
-          if (awardedForMe > 0) {
-            const serverCoins = Number(this._deferredMyProfile?.coins);
-            const currentCoins = Number(this.myProfile?.coins) || 0;
-            const baselineCoins = Number(resultOverlayBaselineCoins) || 0;
-            
-            // 🔴 [중요] 최종 보상은 배수가 적용된 전체 금액(awardedForMe)을 기준으로 계산
-            // 서버가 배수를 포함했든 안 했든, 클라이언트가 최종 보정을 책임짐
-            const expectedFinalCoins = baselineCoins + awardedForMe; // 배수 포함 최종값
-            
-            let missingCoins = 0;
-            if (Number.isFinite(serverCoins) && serverCoins >= 0) {
-              // 서버에서 받은 코인 vs 예상 최종 코인
-              if (serverCoins >= expectedFinalCoins) {
-                // 서버가 이미 배수를 포함했거나, 초과로 준 경우
-                missingCoins = 0;
-                console.log('[result/reward] serverCoins already satisfies expected reward (배수 포함)', { 
-                  serverCoins, 
-                  expectedFinalCoins,
-                  missingCoins 
-                });
-              } else {
-                // 서버가 부족한 경우 (배수 미적용 또는 부분 적용)
-                missingCoins = expectedFinalCoins - serverCoins;
-                console.log('[result/reward] serverCoins is lower than expected, adding missing (배수 적용된 전체)', { 
-                  serverCoins, 
-                  expectedFinalCoins, 
-                  missingCoins 
-                });
-              }
-            } else {
-              // 서버 코인 정보 없는 경우: 현재 코인에서 예상 최종값까지 계산
-              missingCoins = Math.max(0, expectedFinalCoins - currentCoins);
-              console.log('[result/reward] no server coin snapshot, fallback with multiplier applied', { 
-                currentCoins, 
-                expectedFinalCoins,
-                missingCoins 
-              });
-            }
-
-            if (missingCoins > 0) {
-              try {
-                const beforeModify = Number(this.myProfile?.coins) || 0;
-                this.modifyCoins(missingCoins, { sync: true, force: true, coinCardUpdate: true, reason: 'rankReward', rank: myRankIdx + 1 });
-                const afterModify = Number(this.myProfile?.coins) || 0;
-                console.log('💰 [result/reward] 게임 순위 보상 적용됨', { 
-                  beforeModify,
-                  missingCoins, 
-                  afterModify,
-                  expectedFinalCoins,
-                  delta: afterModify - beforeModify,
-                  isSingle: this.isSingle
-                });
-              } catch (e) {
-                console.warn('[result/reward] modifyCoins failed', e);
-              }
-            } else {
-              console.log('[result/reward] no additional coins needed', { serverCoins, expectedFinalCoins, missingCoins });
-            }
-          }
-        } catch (e) {
-          console.warn('[result] applyDeferredRewards failed', e);
-        }
+        // 🔴 [심플화] 서버에서 이미 코인을 계산했으므로, 단순히 2초 대기 후 확인 버튼 활성화
+        console.log('[result] 애니메이션 완료 - 확인 버튼 활성화 대기', {
+          currentCoins: Number(this.myProfile?.coins),
+          timestamp: new Date().toISOString()
+        });
 
         // 🔴 2초 추가 딜레이: 서버 반영 안정성을 위해
-        console.log('[result] 확인 버튼 활성화를 2초 지연합니다 (서버 반영 대기)');
         this.time.delayedCall(2000, enableConfirmButton);
       };
 
       const tryApplyDeferred = () => {
-        if (rewardApplied) return;
         if (totalRankCoins > 0 && arrivedCoins < totalRankCoins) return;
-
         applyDeferredRewards();
       };
 
@@ -23538,43 +23487,11 @@ class GameScene extends Phaser.Scene {
 
       this.sound.play("btn", { volume: 0.1 });
       
-      // 🔴 [최종 보장] 확인 버튼 클릭 시 최종 코인 검증
-      try {
-        const rankRewardCoins = this._resultRankRewardCoins || [];
-        const baselineCoins = this._resultBaselineCoins || 0;
-        const rankedPlayersData = this._resultRankedPlayers || [];
-        
-        const myRank = rankedPlayersData.findIndex(p => 
-          p && String(p.id) === String(socket?.id)
-        );
-        if (myRank >= 0 && myRank < 3) {
-          const awardedAmount = rankRewardCoins[myRank] || 0;
-          const expectedFinalCoins = baselineCoins + awardedAmount;
-          const currentCoins = Number(this.myProfile?.coins) || 0;
-          
-          console.log('[result/final] 확인 버튼 클릭 시 최종 검증', { 
-            currentCoins, 
-            expectedFinalCoins,
-            myRank,
-            awardedAmount
-          });
-          
-          // 최종 검증: 부족하면 추가
-          if (currentCoins < expectedFinalCoins) {
-            const finalMissing = expectedFinalCoins - currentCoins;
-            console.log('[result/final] 최종 보장: 부족한 코인 추가', { 
-              currentCoins, 
-              expectedFinalCoins, 
-              finalMissing 
-            });
-            this.modifyCoins(finalMissing, { sync: true, force: true, coinCardUpdate: true });
-          } else {
-            console.log('[result/final] 이미 최종 금액 도달', { currentCoins, expectedFinalCoins });
-          }
-        }
-      } catch (e) {
-        console.warn('[result/final] 최종 검증 실패', e);
-      }
+      // 🔴 [심플화] 서버에서 이미 모든 계산이 완료되었으므로, 바로 로비로 이동
+      console.log('[result] 확인 버튼 클릭 - 로비로 이동', {
+        finalCoins: Number(this.myProfile?.coins),
+        timestamp: new Date().toISOString()
+      });
       
       goToLobby();
     });
