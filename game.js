@@ -12704,6 +12704,7 @@ class GameScene extends Phaser.Scene {
     const createProfileCard = () => {
       const cardW = this.cameras.main.width * 0.24;
       const cardH = this.cameras.main.height * 0.14;
+      const cardHExpanded = cardH * 1.35; // 배경 패널 높이 조정
       this.profileCardBaseW = cardW;
       this.profileCardBaseH = cardH;
       const safePaddingLocal = Math.max(this.cameras.main.width * 0.06, 24);
@@ -12718,14 +12719,14 @@ class GameScene extends Phaser.Scene {
       
       // background plate
       const bg = this.add
-        .rectangle(0, 0, cardW, cardH, 0x000000, 0.6)
+        .rectangle(15, 30, cardW * 1.3, cardHExpanded, 0x000000, 0.6)
         .setStrokeStyle(2, 0xffffff);
 
       // layout helpers
       const padding = Math.max(cardW * 0.06, 10);
       const leftX = -cardW / 2 + padding;
-      const levelY = -cardH * 0.28;
-      const expBarY = levelY + cardH * 0.18;
+      const levelY = -cardH * 0.32;
+      const expBarY = levelY + cardH * 0.22;
 
       // level + nickname text (top)
       const levelTxt = this.add
@@ -12774,7 +12775,7 @@ class GameScene extends Phaser.Scene {
       const expTxt = this.add
         .text(expBarX + expBarWidth * 0.05, expBarY, `EXP ${currentExp % XP_PER_LEVEL}/${XP_PER_LEVEL}`, {
           fontFamily: "Jua",
-          fontSize: `${cardH * 0.09}px`,
+          fontSize: `${cardH * 0.13}px`,
           color: "#ffffff",
         })
         .setOrigin(0, 0.5);
@@ -12794,25 +12795,25 @@ class GameScene extends Phaser.Scene {
       const avgRaw = this.computeAvgReaction();
       const avg = avgRaw.toFixed(2);
       const reactTxt = this.add
-        .text(leftX, cardH * 0.06, `반응속도: ${avg}s`, {
+        .text(leftX, cardH * 0.12, `반응속도: ${avg}s`, {
           fontFamily: "Jua",
-          fontSize: `${cardH * 0.13}px`,
+          fontSize: `${cardH * 0.16}px`,
           color: "#ffffff",
         })
         .setOrigin(0, 0.5);
       const ratio = Number(this.myProfile?.ratio ?? 0) || 0;
       const ratioTxt = this.add
-        .text(leftX, cardH * 0.22, `정답률: ${ratio}%`, {
+        .text(leftX, cardH * 0.36, `정답률: ${ratio}%`, {
           fontFamily: "Jua",
-          fontSize: `${cardH * 0.13}px`,
+          fontSize: `${cardH * 0.16}px`,
           color: "#ffffff",
         })
         .setOrigin(0, 0.5);
 
       const coinTxt = this.add
-        .text(leftX, cardH * 0.34, `보유코인: ${this.myProfile?.coins || 0}`, {
+        .text(leftX, cardH * 0.60, `보유코인: ${this.myProfile?.coins || 0}`, {
           fontFamily: "Jua",
-          fontSize: `${cardH * 0.13}px`,
+          fontSize: `${cardH * 0.16}px`,
           color: "#ffffff",
         })
         .setOrigin(0, 0.5);
