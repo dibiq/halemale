@@ -947,6 +947,9 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
   }
 
   clearTimeAttackTimer(room);
+  clearAiTurnTimer(room);
+  clearAiBellTimers(room);
+  clearTurnMonitor(room);
   room.isGameStarted = false;
 
   const beforeStateById = new Map(
@@ -1443,7 +1446,8 @@ function processSkipTurn(room, io) {
   // clear any bell lock when advancing the turn; this covers cases where
   // processSkipTurn is called from elsewhere as well, including right after
   // a bell result has been emitted.
-  if (room.bellLocked) room.bellLocked = false;
+  if (room.bellLocked) room.bellLocked = false; // 턴 모니터링 초기화 (새로운 턴이 시작됨)
+  clearTurnMonitor(room);
 
   let loopCount = 0; // reset counter for this call
 
@@ -1494,6 +1498,9 @@ function processSkipTurn(room, io) {
     `[AI][DEBUG] processSkipTurn: scheduleAiTurn 호출 room=${room.roomId} turnIndex=${room.turnIndex}`,
   );
   scheduleAiTurn(room, io);
+
+  // 📊 방장이 턴 모니터링 시작 - AI 봇이 4초 이상 응답 없으면 자동 진행
+  startTurnMonitoring(room, io);
   console.log(`[AI][DEBUG] processSkipTurn: scheduleAiTurn 호출 완료`);
 }
 
@@ -1569,7 +1576,7 @@ function ensureAiState(room) {
   if (!room) return;
   if (typeof room.aiCounter !== "number") room.aiCounter = 0;
   if (!room.aiTimers) {
-    room.aiTimers = { turn: null, bells: {} };
+    room.aiTimers = { turn: null, bells: {}, monitor: null };
   }
   if (!room.aiTimers.bells) room.aiTimers.bells = {};
 }
@@ -1587,6 +1594,52 @@ function clearAiBellTimers(room) {
     if (timer) clearTimeout(timer);
   });
   room.aiTimers.bells = {};
+}
+
+function clearTurnMonitor(room) {
+  if (room && room.aiTimers && room.aiTimers.monitor) {
+    clearInterval(room.aiTimers.monitor);
+    room.aiTimers.monitor = null;
+  }
+}
+
+function startTurnMonitoring(room, io) {
+  if (!room) return;
+  ensureAiState(room);
+  clearTurnMonitor(room);
+
+  // 턴 시작 시간 기록
+  room.turnStartTime = Date.now();
+
+  // 1초마다 현재 플레이어 상태 확인
+  room.aiTimers.monitor = setInterval(() => {
+    if (!room || !room.isGameStarted) {
+      clearTurnMonitor(room);
+      return;
+    }
+
+    const currentPlayer = room.players[room.turnIndex];
+    if (!currentPlayer) {
+      clearTurnMonitor(room);
+      return;
+    }
+
+    // AI 봇이 아니거나 이미 카드를 뒤집는 중이면 모니터링만 계속
+    if (!isBotPlayer(currentPlayer) || room.isFlipping || room.bellPending) {
+      return;
+    }
+
+    // 4초 이상 응답 없으면 강제 스킵
+    const elapsedMs = Date.now() - (room.turnStartTime || Date.now());
+    if (elapsedMs >= 4000) {
+      console.log(
+        `⏱️ [AI 타임아웃] room=${room.roomId}, botId=${currentPlayer.id}, ` +
+          `botNickname=${currentPlayer.nickname}, elapsedMs=${elapsedMs}ms - 강제 진행`,
+      );
+      clearTurnMonitor(room);
+      processSkipTurn(room, io);
+    }
+  }, 1000);
 }
 
 function isBotPlayer(player) {
@@ -4717,6 +4770,7 @@ io.on("connection", (socket) => {
     if (!hasHumanPlayers) {
       clearAiBellTimers(room);
       clearAiTurnTimer(room);
+      clearTurnMonitor(room);
       delete rooms[roomId];
       broadcastPublicRooms();
       if (typeof ack === "function") ack({ ok: true });
@@ -4768,6 +4822,8 @@ io.on("connection", (socket) => {
         // then let processSkipTurn reschedule as needed.
         clearAiBellTimers(room);
         clearAiTurnTimer(room);
+        clearTurnMonitor(room);
+        clearTurnMonitor(room);
       }
       io.to(roomId).emit("playerLeft", {
         playerId: targetId,
