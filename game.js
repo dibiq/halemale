@@ -709,7 +709,7 @@ class LobbyScene extends Phaser.Scene {
 
   getAvatarAnimMaxFrame(baseKey) {
     // player_1/player_2/player_3/player_4은 최대 91 프레임을 사용하여 자연스럽게 재생
-    return /^player_[1-4]$/.test(baseKey) ? 91 : 2;
+    return /^player_[1-4]$/.test(baseKey) ? 48 : 2;
   }
 
   setCoinsAbsolute(total, options = {}) {
@@ -2090,6 +2090,7 @@ class LobbyScene extends Phaser.Scene {
     this.load.audio("bell", `${ASSET_SERVER}/sounds/bell.mp3${VERSION}`);
     this.load.audio("effect", `${ASSET_SERVER}/sounds/effect.mp3${VERSION}`);
     this.load.audio("bubble", `${ASSET_SERVER}/sounds/bubble.mp3${VERSION}`);
+    this.load.audio("buy", `${ASSET_SERVER}/sounds/buy.wav${VERSION}`);
 
     this.load.audio("btn", `${ASSET_SERVER}/sounds/btn.wav${VERSION}`);
     this.load.audio("readygo", `${ASSET_SERVER}/sounds/readygo.mp3${VERSION}`);
@@ -2180,7 +2181,7 @@ class LobbyScene extends Phaser.Scene {
     }
 
     // Frame 1 is loaded early so the avatar has a valid placeholder.
-    for (let i = 2; i <= 91; i += 1) {
+    for (let i = 2; i <= 48; i += 1) {
       this.load.image(
         `player_1_frame_${i}`,
         `assets/images/player_1_sprite/${i}.png${PLAYER1_SPRITE_VERSION}`,
@@ -2188,7 +2189,7 @@ class LobbyScene extends Phaser.Scene {
     }
 
     // Frame 1 is loaded early so the avatar has a valid placeholder.
-    for (let i = 2; i <= 91; i += 1) {
+    for (let i = 2; i <= 48; i += 1) {
       this.load.image(
         `player_2_frame_${i}`,
         `assets/images/player_2_sprite/${i}.png${PLAYER2_SPRITE_VERSION}`,
@@ -2196,13 +2197,13 @@ class LobbyScene extends Phaser.Scene {
     }
 
     // Frame 1 is loaded early so the avatar has a valid placeholder.
-    for (let i = 2; i <= 91; i += 1) {
+    for (let i = 2; i <= 48; i += 1) {
       this.load.image(
         `player_3_frame_${i}`,
         `assets/images/player_3_sprite/${i}.png${PLAYER3_SPRITE_VERSION}`,
       );
     }
-    for (let i = 2; i <= 91; i += 1) {
+    for (let i = 2; i <= 48; i += 1) {
       this.load.image(
         `player_4_frame_${i}`,
         `assets/images/player_4_sprite/${i}.png${PLAYER4_SPRITE_VERSION}`,
@@ -5422,7 +5423,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
   getAvatarAnimMaxFrame(baseKey) {
     // player_1/player_2/player_3/player_4 모두 91 프레임까지 허용
-    return /^player_[1-4]$/.test(baseKey) ? 91 : 2;
+    return /^player_[1-4]$/.test(baseKey) ? 48 : 2;
   }
 
   getMybgAnimKey() {
@@ -5594,7 +5595,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
   getAvatarAnimMaxFrame(baseKey) {
     // player_1/player_2/player_3/player_4은 최대 91 프레임을 사용하여 자연스럽게 재생
-    return /^player_[1-4]$/.test(baseKey) ? 91 : 2;
+    return /^player_[1-4]$/.test(baseKey) ? 48 : 2;
   }
 
   // choose a texture key to display for a given avatar base key
@@ -7401,6 +7402,15 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       });
 
       if (currentTab === "special") {
+        // special 탭 구매: buy 효과음 재생
+        try {
+          if (this.cache.audio && this.cache.audio.exists("buy")) {
+            this.sound.play("buy", { volume: 0.5 });
+          }
+        } catch (e) {
+          // buy 사운드 재생 실패
+        }
+        
         const card = specialCards[tabIndexes.special];
         const currentCoins = Number(this.myProfile.coins) || 0;
         const price = Number(card.price) || 0;
@@ -7486,6 +7496,9 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         const isOwned = !!ownedCharacters[character.key];
 
         if (isOwned) {
+          // 로컬 상태 먼저 업데이트 (UI 즉시 반영용)
+          this.equipCharacter(character.key);
+          
           // 서버에 케릭터 착용 요청
           if (!this.isSingle && socket.connected) {
             const resolvedPlayerId =
@@ -7498,9 +7511,6 @@ if (this.isGameEnded || this.isResultOverlayActive) {
               nickname: resolvedPlayerId,
               characterKey: character.key,
             });
-          } else {
-            // 싱글플레이어 모드에서만 로컬 착용
-            this.equipCharacter(character.key);
           }
 
           this.showToast(`${character.name} 착용 완료!`, "#2ecc71");
@@ -7511,6 +7521,15 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         if (this.myProfile.coins < character.price) {
           this.showToast("코인이 부족합니다!", "#e74c3c");
           return;
+        }
+
+        // character 탭 구매: buy 효과음 재생
+        try {
+          if (this.cache.audio && this.cache.audio.exists("buy")) {
+            this.sound.play("buy", { volume: 0.5 });
+          }
+        } catch (e) {
+          // buy 사운드 재생 실패
         }
 
         // 서버에 케릭터 구매 요청 (로컬 상태 변경 없이)
@@ -7566,6 +7585,15 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       }
 
       if (currentTab === "coin") {
+        // coin 탭 구매: buy 효과음 재생
+        try {
+          if (this.cache.audio && this.cache.audio.exists("buy")) {
+            this.sound.play("buy", { volume: 0.5 });
+          }
+        } catch (e) {
+          // buy 사운드 재생 실패
+        }
+        
         const product = coinProducts[tabIndexes.coin];
         this.buyCoin(product.amount);
         this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
@@ -12026,7 +12054,7 @@ class GameScene extends Phaser.Scene {
 
   getAvatarAnimMaxFrame(baseKey) {
     // player_1/player_2/player_3/player_4 모두 풀 프레임(최대 91) 재생
-    return /^player_[1-4]$/.test(baseKey) ? 91 : 2;
+    return /^player_[1-4]$/.test(baseKey) ? 48 : 2;
   }
 
   // choose current avatar key, mirror LobbyScene logic
@@ -21816,21 +21844,19 @@ class GameScene extends Phaser.Scene {
     
     // 숫자만 변경되는 텍스트 (더 큰 사이즈, 중앙 정렬)
     const numberTexts = [];
-    for (let i = 0; i < 3; i++) {
-      const numText = this.add
-        .text(centerX, centerY - height * 0.12, `${currentValue}배`, {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${boxSize * 0.55}px`,
-          color: "#ffffff",
-          stroke: "#000000",
-          strokeThickness: 5,
-          fontWeight: "bold",
-        })
-        .setOrigin(0.5)
-        .setDepth(11002 + i)
-        .setAlpha(1);
-      numberTexts.push(numText);
-    }
+    const numText = this.add
+      .text(centerX, centerY - height * 0.12, `${currentValue}배`, {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${boxSize * 0.55}px`,
+        color: "#ffffff",
+        stroke: "#000000",
+        strokeThickness: 5,
+        fontWeight: "bold",
+      })
+      .setOrigin(0.5)
+      .setDepth(11002)
+      .setAlpha(1);
+    numberTexts.push(numText);
     
     // 안내 텍스트
     const instructionText = this.add
@@ -21906,6 +21932,21 @@ class GameScene extends Phaser.Scene {
           ease: "Power2.easeOut",
           yoyo: true,
           hold: 100,
+          onStart: () => {
+            // 배수 확정 효과음 재생
+            try {
+              if (this.cache.audio && this.cache.audio.exists("effect")) {
+                this.sound.play("effect", { volume: 0.5 });
+              }
+            } catch (e) {
+              // 효과음 재생 실패
+            }
+            
+            // 숫자 텍스트 색상 변경 (노란색)
+            numberTexts.forEach(numText => {
+              numText.setColor("#FFD700");
+            });
+          },
         });
         
         // 안내 텍스트 변경
