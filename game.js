@@ -1719,7 +1719,7 @@ class LobbyScene extends Phaser.Scene {
           try {
             b.setInteractive({ useHandCursor: true });
             b.on('pointerdown', () => {
-              try { this.sound.play('btn', { volume: 0.12 }); } catch (e) {}
+              try { this.sound.play('btn', { volume: 0.4 }); } catch (e) {}
               closeInline();
               try { this.unlockPremiumBear(); } catch (e) { console.warn('[premium] inline unlock failed', e); }
             });
@@ -3584,7 +3584,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     }
 
     avatarLeftBtn.on("pointerdown", () => {
-      this.sound.play("btn", { volume: 0.08 });
+      this.sound.play("btn", { volume: 0.4 });
       this.tweens.add({
         targets: [avatarLeftBtn, avatarLeftIcon],
         scaleX: 0.95,
@@ -3599,7 +3599,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     });
 
     avatarRightBtn.on("pointerdown", () => {
-      this.sound.play("btn", { volume: 0.08 });
+      this.sound.play("btn", { volume: 0.4 });
       this.tweens.add({
         targets: [avatarRightBtn, avatarRightIcon],
         scaleX: 0.95,
@@ -3809,7 +3809,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     this.iapBtnImg = premiumSubBtnImg;
     this.iapBtnText = premiumSubBtnText;
     premiumSubBtnImg.on("pointerdown", () => {
-      this.sound.play("btn", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.4 });
       buttonPress([premiumSubBtnImg, premiumSubBtnText], () => {
         this.purchaseRemoveAdsProduct();
       });
@@ -3850,7 +3850,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
     questBtn.add([questBtnImg, questBtnText]);
     questBtnImg.on("pointerdown", () => {
-      this.sound.play("btn", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.4 });
       buttonPress([questBtnImg, questBtnText], () => {
         this.showQuestPopup();
       });
@@ -3927,7 +3927,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       this.checkConnection();
 
       // 효과음
-      this.sound.play("btn", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.4 });
 
       // 팅기는 연출
       this.tweens.add({
@@ -3967,7 +3967,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     ]);
 
     singleBtnImg.on("pointerdown", () => {
-      this.sound.play("btn", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.4 });
       this.tweens.add({
         targets: [singleBtnImg, singleBtn.list[1]],
         scaleX: "*=0.95",
@@ -4003,7 +4003,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     shopBtn.add([shopBtnImg, shopBtnText]);
 
     shopBtnImg.on("pointerdown", () => {
-      this.sound.play("btn", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.4 });
       buttonPress([shopBtnImg, shopBtnText], () => {
         this.showShopPopup();
       });
@@ -4851,7 +4851,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       if (!btn || !btn.active) return;
       btn.setInteractive({ useHandCursor: true });
       btn.on("pointerdown", () => {
-        this.sound.play("btn", { volume: 0.12 });
+        this.sound.play("btn", { volume: 0.4 });
         close();
         if (typeof onConfirm === "function") onConfirm();
       });
@@ -4947,7 +4947,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     };
 
     btn.on("pointerdown", () => {
-      this.sound.play("btn", { volume: 0.12 });
+      this.sound.play("btn", { volume: 0.4 });
       close();
       if (typeof onConfirm === "function") onConfirm();
     });
@@ -5117,7 +5117,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         try {
           btn.setInteractive({ useHandCursor: true });
           btn.on("pointerdown", () => {
-            this.sound.play("btn", { volume: 0.12 });
+            this.sound.play("btn", { volume: 0.4 });
             close();
             try {
               this.unlockPremiumBear();
@@ -5314,7 +5314,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     };
 
     startBtn.on("pointerdown", () => {
-      this.sound.play("btn", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.4 });
       this.tweens.add({
         targets: [startBtn, startBtnText],
         scaleX: "*=0.95",
@@ -5341,7 +5341,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       .setInteractive({ useHandCursor: true });
 
     skipText.on("pointerdown", () => {
-      this.sound.play("btn", { volume: 0.08 });
+      this.sound.play("btn", { volume: 0.4 });
       this.closeTutorialOverlay();
     });
 
@@ -6035,7 +6035,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
     // 효과음
     try {
-      this.sound.play("pass", { volume: 0.5 });
+      this.sound.play("pass", { volume: 0.7 });
     } catch (e) {}
 
     // 보여주기 애니메이션
@@ -6150,7 +6150,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     this.toastLayer.add(toast);
 
     try {
-      this.sound.play("pass", { volume: 0.5 });
+      this.sound.play("pass", { volume: 0.7 });
     } catch (e) {}
 
     this.tweens.add({
@@ -6302,7 +6302,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
     cancelBtnImg.on("pointerdown", () => {
       // 1. 효과음 재생
-      this.sound.play("btn", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.4 });
 
       // 2. 햅틱 피드백 (기존 코드 유지)
       if (window.ReactNativeWebView) {
@@ -6327,7 +6327,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       const code = el.value.trim();
 
       // 1. 클릭 효과음
-      this.sound.play("btn", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.4 });
 
       // 2. 클릭 연출 (이미지와 텍스트 동시 적용)
       this.tweens.add({
@@ -6564,7 +6564,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       .setInteractive({ useHandCursor: true });
 
     closeBtn.on("pointerdown", () => {
-      this.sound.play("btn", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.4 });
       this.closeSingleDifficultyPopup();
     });
 
@@ -6591,7 +6591,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         .setOrigin(0.5);
 
       btnImg.on("pointerdown", () => {
-        this.sound.play("btn", { volume: 0.1 });
+        this.sound.play("btn", { volume: 0.4 });
         this.tweens.add({
           targets: [btnImg, btnText],
           scaleX: "*=0.95",
@@ -7017,7 +7017,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         .setOrigin(0.5);
 
       tabBg.on("pointerdown", () => {
-        this.sound.play("btn", { volume: 0.08 });
+        this.sound.play("btn", { volume: 0.4 });
         currentTab = tab.key;
         updateTabVisuals();
         renderShopContent();
@@ -7357,7 +7357,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             ? characterItems.length
             : coinProducts.length;
 
-      this.sound.play("btn", { volume: 0.08 });
+      this.sound.play("btn", { volume: 0.4 });
       this.tweens.add({
         targets: leftBtn,
         scale: "*=0.95",
@@ -7378,7 +7378,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             ? characterItems.length
             : coinProducts.length;
 
-      this.sound.play("btn", { volume: 0.08 });
+      this.sound.play("btn", { volume: 0.4 });
       this.tweens.add({
         targets: rightBtn,
         scale: "*=0.95",
@@ -7391,7 +7391,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     });
 
     buyBtn.on("pointerdown", () => {
-      this.sound.play("btn", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.4 });
       this.tweens.add({
         targets: buyBtn,
         scale: "*=0.95",
@@ -7586,7 +7586,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       .setInteractive({ useHandCursor: true });
 
     closeBtn.on("pointerdown", () => {
-      this.sound.play("btn", { volume: 0.08 });
+      this.sound.play("btn", { volume: 0.4 });
       this.tweens.add({
         targets: closeBtn,
         scale: "*=0.95",
@@ -7827,7 +7827,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       .setDisplaySize(width * 0.1, width * 0.1)
       .setInteractive({ useHandCursor: true });
     closeBtn.on("pointerdown", () => {
-      this.sound.play("btn", { volume: 0.08 });
+      this.sound.play("btn", { volume: 0.4 });
       this.tweens.add({
         targets: closeBtn,
         scale: "*=0.95",
@@ -7942,7 +7942,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
         const handleClaim = () => {
           console.debug("[claimBtn] clicked", { questKey: quest.key, ready: entry.ready, rewardCoins: quest.rewardCoins });
-          this.sound.play("btn", { volume: 0.08 });
+          this.sound.play("btn", { volume: 0.4 });
           if (!entry.ready) {
             this.showToast("아직 수령할 보상이 없어요!", "#f97316");
             return;
@@ -7950,7 +7950,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           if (quest.rewardCoins) {
             // play sound + burst animation from button location
             try {
-              this.sound.play("pop", { volume: 0.3 });
+              this.sound.play("pop", { volume: 0.5 });
             } catch (e) {}
 
             if (typeof this.ensureQuestCoinBurst === "function") {
@@ -8180,7 +8180,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     this.coinShopElements.push(closeBtnIcon);
 
     closeBtn.on("pointerdown", () => {
-      this.sound.play("btn", { volume: 0.08 });
+      this.sound.play("btn", { volume: 0.4 });
       this.tweens.add({
         targets: closeBtn,
         scale: "*=0.95",
@@ -8229,7 +8229,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       this.coinShopElements.push(productText);
 
       productBtn.on("pointerdown", () => {
-        this.sound.play("btn", { volume: 0.1 });
+        this.sound.play("btn", { volume: 0.4 });
         this.tweens.add({
           targets: [productBg, productText],
           scale: "*=0.95",
@@ -8401,7 +8401,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             }
 
             currentTab = tabName;
-            this.sound.play("btn", { volume: 0.1 });
+            this.sound.play("btn", { volume: 0.4 });
 
             // 모든 탭 색상 업데이트
             allTabs.forEach((tab) => {
@@ -8591,7 +8591,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
                 .setOrigin(0, 0.5);
 
               itemBg.on("pointerdown", () => {
-                this.sound.play("btn", { volume: 0.1 });
+                this.sound.play("btn", { volume: 0.4 });
 
                 if (window.ReactNativeWebView) {
                   generateHapticFeedback({ type: "impactLight" }).catch(
@@ -8721,7 +8721,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             // 이전 버튼 클릭
             prevBtnText.on("pointerdown", () => {
               if (currentPage > 0) {
-                this.sound.play("btn", { volume: 0.1 });
+                this.sound.play("btn", { volume: 0.4 });
                 currentPage--;
                 displayRoomsPage();
                 updateButtonStates();
@@ -8731,7 +8731,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             // 다음 버튼 클릭
             nextBtnText.on("pointerdown", () => {
               if (currentPage < totalPages - 1) {
-                this.sound.play("btn", { volume: 0.1 });
+                this.sound.play("btn", { volume: 0.4 });
                 currentPage++;
                 displayRoomsPage();
                 updateButtonStates();
@@ -8850,19 +8850,19 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           };
 
           publicBtnImg.on("pointerdown", () => {
-            this.sound.play("btn", { volume: 0.1 });
+            this.sound.play("btn", { volume: 0.4 });
             updateToggle(true);
           });
           publicBtnText.on("pointerdown", () => {
-            this.sound.play("btn", { volume: 0.1 });
+            this.sound.play("btn", { volume: 0.4 });
             updateToggle(true);
           });
           privateBtnImg.on("pointerdown", () => {
-            this.sound.play("btn", { volume: 0.1 });
+            this.sound.play("btn", { volume: 0.4 });
             updateToggle(false);
           });
           privateBtnText.on("pointerdown", () => {
-            this.sound.play("btn", { volume: 0.1 });
+            this.sound.play("btn", { volume: 0.4 });
             updateToggle(false);
           });
 
@@ -8893,7 +8893,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           };
 
           itemToggleImg.on("pointerdown", () => {
-            this.sound.play("btn", { volume: 0.1 });
+            this.sound.play("btn", { volume: 0.4 });
             isItemMode = !isItemMode;
             updateItemToggle();
             if (isItemMode) {
@@ -8903,7 +8903,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             }
           });
           itemToggleText.on("pointerdown", () => {
-            this.sound.play("btn", { volume: 0.1 });
+            this.sound.play("btn", { volume: 0.4 });
             isItemMode = !isItemMode;
             updateItemToggle();
             if (isItemMode) {
@@ -8940,7 +8940,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           };
 
           modeToggleImg.on("pointerdown", () => {
-            this.sound.play("btn", { volume: 0.1 });
+            this.sound.play("btn", { volume: 0.4 });
             isTimeAttack = !isTimeAttack;
             updateModeToggle();
             if (isTimeAttack) {
@@ -8950,7 +8950,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             }
           });
           modeToggleText.on("pointerdown", () => {
-            this.sound.play("btn", { volume: 0.1 });
+            this.sound.play("btn", { volume: 0.4 });
             isTimeAttack = !isTimeAttack;
             updateModeToggle();
             if (isTimeAttack) {
@@ -9022,7 +9022,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             const code = el.value.trim();
 
             if (code) {
-              this.sound.play("btn", { volume: 0.1 });
+              this.sound.play("btn", { volume: 0.4 });
               this.tweens.add({
                 targets: [joinBtnImg, joinBtnText],
                 scaleX: "*=0.95",
@@ -9100,7 +9100,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
               return;
             }
 
-            this.sound.play("btn", { volume: 0.1 });
+            this.sound.play("btn", { volume: 0.4 });
             allTabs.forEach((t) => {
               t.img.setTint(t.name === tab.name ? activeTabTint : 0x7f8c8d);
             });
@@ -9146,7 +9146,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           .setInteractive({ useHandCursor: true });
 
         closeBtn.on("pointerdown", () => {
-          this.sound.play("btn", { volume: 0.08 });
+          this.sound.play("btn", { volume: 0.4 });
           if (window.ReactNativeWebView) {
             generateHapticFeedback({ type: "impactLight" }).catch(() => {});
           }
@@ -9272,7 +9272,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     this.currentJoinPopupCloseHandler = closePwPopup;
 
     cancelBtnImg.on("pointerdown", () => {
-      this.sound.play("btn", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.4 });
       closePwPopup();
     });
 
@@ -9282,7 +9282,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         this.showToast("비밀번호 4자리를 입력해주세요!", "#e74c3c");
         return;
       }
-      this.sound.play("btn", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.4 });
       this.tweens.add({
         targets: [confirmBtnImg, confirmBtnText],
         scaleX: "*=0.95",
@@ -9662,7 +9662,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         aiBtn.on("pointerdown", () => {
           if (this.aiAddPending) return;
           this.aiAddPending = true;
-          this.sound.play("btn", { volume: 0.1 });
+          this.sound.play("btn", { volume: 0.4 });
           this.tweens.add({
             targets: [aiBtn, aiBtnText],
             scaleX: "*=0.95",
@@ -9728,7 +9728,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       if (isHost && !isThisPlayerHost) {
         profileImg.setInteractive({ useHandCursor: true });
         profileImg.on("pointerdown", () => {
-          this.sound.play("btn", { volume: 0.1 });
+          this.sound.play("btn", { volume: 0.4 });
           const kickBtnY = cardTop + cardH - height * 0.03;
           const kickBtn = this.add
             .rectangle(
@@ -9758,7 +9758,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           this.lobbyUIContainer.add([kickBtn, kickBtnText]);
 
           kickBtn.on("pointerdown", () => {
-            this.sound.play("btn", { volume: 0.1 });
+            this.sound.play("btn", { volume: 0.4 });
             this.tweens.add({
               targets: [kickBtn, kickBtnText],
               scaleX: "*=0.95",
@@ -9915,7 +9915,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     };
 
     sendBtnImg.on("pointerdown", () => {
-      this.sound.play("btn", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.4 });
       this.tweens.add({
         targets: [sendBtnImg, sendBtnText],
         scale: "*=0.95",
@@ -9972,7 +9972,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           return;
         }
 
-        this.sound.play("btn", { volume: 0.1 });
+        this.sound.play("btn", { volume: 0.4 });
         this.tweens.add({
           targets: [startBtnImg, startBtnText],
           scale: "*=0.95",
@@ -10085,7 +10085,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       this.lobbyUIContainer.add([readyBtnImg, readyBtnText]);
 
       readyBtnImg.on("pointerdown", () => {
-        this.sound.play("btn", { volume: 0.1 });
+        this.sound.play("btn", { volume: 0.4 });
         this.tweens.add({
           targets: [readyBtnImg, readyBtnText],
           scale: "*=0.95",
@@ -10125,7 +10125,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     this.lobbyUIContainer.add([shopBtnImg, shopBtnText]);
 
     shopBtnImg.on("pointerdown", () => {
-      this.sound.play("btn", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.4 });
       this.tweens.add({
         targets: [shopBtnImg, shopBtnText],
         scale: "*=0.95",
@@ -10157,7 +10157,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     this.lobbyUIContainer.add([inviteBtnImg, inviteBtnText]);
 
     inviteBtnImg.on("pointerdown", () => {
-      this.sound.play("btn", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.4 });
       this.tweens.add({
         targets: [inviteBtnImg, inviteBtnText],
         scale: "*=0.95",
@@ -10192,7 +10192,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     this.lobbyUIContainer.add([exitBtnImg, exitBtnText]);
 
     exitBtnImg.on("pointerdown", () => {
-      this.sound.play("btn", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.4 });
       this.tweens.add({
         targets: [exitBtnImg, exitBtnText],
         scale: "*=0.95",
@@ -10332,7 +10332,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       .setDepth(4003);
 
     okBtn.on("pointerdown", () => {
-      this.sound.play("btn", { volume: 0.08 });
+      this.sound.play("btn", { volume: 0.4 });
       closePopup();
     });
   }
@@ -10575,12 +10575,12 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         const scene = this;
         rowBg.setInteractive({ useHandCursor: true }).on("pointerdown", () => {
           if (isVideo) {
-            scene.sound.play("btn", { volume: 0.1 });
+            scene.sound.play("btn", { volume: 0.4 });
             scene.showToast("광고 보상은 준비 중입니다!", "#38bdf8");
             return;
           }
           if (scene.isDailyRewardClaimPending) return;
-          scene.sound.play("btn", { volume: 0.1 });
+          scene.sound.play("btn", { volume: 0.4 });
           scene.isDailyRewardClaimPending = true;
           if (typeof scene.updateDailyRewardButtonState === "function") {
             scene.updateDailyRewardButtonState();
@@ -10663,7 +10663,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     // });
 
     closeBtn.on("pointerdown", () => {
-      this.sound.play("btn", { volume: 0.08 });
+      this.sound.play("btn", { volume: 0.4 });
       closePopup();
     });
   }
@@ -10745,7 +10745,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
     cancelBtn.on("pointerdown", () => {
       // 1. 효과음 재생
-      this.sound.play("btn", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.4 });
 
       // 2. 햅틱 피드백 (기존 코드 유지)
       if (window.ReactNativeWebView) {
@@ -10786,7 +10786,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
     confirmBtn.on("pointerdown", () => {
       // 1. 효과음 재생
-      this.sound.play("btn", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.4 });
 
       // 2. 햅틱 피드백 (기본 코드 유지)
       if (window.ReactNativeWebView) {
@@ -10885,7 +10885,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
     overlay.setInteractive();
     // overlay.on("pointerdown", () => {
-    //   this.sound.play("btn", { volume: 0.1 });
+    //   this.sound.play("btn", { volume: 0.4 });
     //   destroyPopup();
     // });
 
@@ -10994,7 +10994,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         .setDepth(30006);
 
       inviteBtn.on("pointerdown", () => {
-        this.sound.play("btn", { volume: 0.1 });
+        this.sound.play("btn", { volume: 0.4 });
         this.tweens.add({
           targets: [inviteBtn, inviteBtnText],
           scaleX: "*=0.9",
@@ -11026,7 +11026,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     allObjects.push(closeBtn);
 
     closeBtn.on("pointerdown", () => {
-      this.sound.play("btn", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.4 });
       destroyPopup();
     });
   }
@@ -11069,7 +11069,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     // remove outside click closing for invite receive
     // overlay.setInteractive();
     // overlay.on("pointerdown", () => {
-    //   this.sound.play("btn", { volume: 0.1 });
+    //   this.sound.play("btn", { volume: 0.4 });
     //   destroyPopup();
     // });
     const popupWidth = width * 0.75;
@@ -11104,7 +11104,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
     overlay.setInteractive();
     overlay.on("pointerdown", () => {
-      this.sound.play("btn", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.4 });
       destroyPopup();
     });
 
@@ -11218,7 +11218,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         acceptBtn.setTint(0x999999);
       } catch (e) {}
 
-      this.sound.play("btn", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.4 });
       this.tweens.add({
         targets: [acceptBtn, acceptBtnText],
         scaleX: "*=0.9",
@@ -11236,7 +11236,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     });
 
     declineBtn.on("pointerdown", () => {
-      this.sound.play("btn", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.4 });
       this.tweens.add({
         targets: [declineBtn, declineBtnText],
         scaleX: "*=0.9",
@@ -11894,7 +11894,7 @@ class GameScene extends Phaser.Scene {
         if (oldText !== newText) {
           safeSetText(this.profileRatioTxt, newText);
 
-          // 색상 변경: 상승=빨 red, 하락=파 blue, 유지=white
+          // 색상 변경: 상승=빨강, 하락=파랑, 유지=흰색
           let color = "#ffffff";
           if (ratioVal > prevRatioVal) {
             color = "#ff4d4d";
@@ -12799,6 +12799,8 @@ class GameScene extends Phaser.Scene {
           fontFamily: "Jua",
           fontSize: `${cardH * 0.16}px`,
           color: "#ffffff",
+          stroke: "#000000",
+          strokeThickness: 3,
         })
         .setOrigin(0, 0.5);
       const ratio = Number(this.myProfile?.ratio ?? 0) || 0;
@@ -12807,6 +12809,8 @@ class GameScene extends Phaser.Scene {
           fontFamily: "Jua",
           fontSize: `${cardH * 0.16}px`,
           color: "#ffffff",
+          stroke: "#000000",
+          strokeThickness: 3,
         })
         .setOrigin(0, 0.5);
 
@@ -12815,6 +12819,8 @@ class GameScene extends Phaser.Scene {
           fontFamily: "Jua",
           fontSize: `${cardH * 0.16}px`,
           color: "#ffffff",
+          stroke: "#000000",
+          strokeThickness: 3,
         })
         .setOrigin(0, 0.5);
 
@@ -13116,7 +13122,7 @@ class GameScene extends Phaser.Scene {
         this._debugForceWinBtn = forceBtn;
         this._debugForceWinTxt = forceTxt;
         forceBtn.on("pointerdown", () => {
-          this.sound.play("btn", { volume: 0.12 });
+          this.sound.play("btn", { volume: 0.4 });
           console.debug("[debug] tutorial force-win pressed");
           try {
             if (typeof this.endSingleGame === "function") {
@@ -13166,7 +13172,7 @@ class GameScene extends Phaser.Scene {
         this._debugCompleteTutorialTxt = completeTxt;
 
         completeBtn.on("pointerdown", () => {
-          this.sound.play("btn", { volume: 0.12 });
+          this.sound.play("btn", { volume: 0.4 });
           console.debug("[debug] complete tutorial pressed");
           try {
             if (typeof this.showTutorialCompletionOverlay === "function") {
@@ -13301,7 +13307,7 @@ class GameScene extends Phaser.Scene {
             : "";
 
       if (candidateNickname && !data.isRejoin) {
-        this.sound.play("pop", { volume: 0.2 });
+        this.sound.play("pop", { volume: 0.5 });
         this.showToast(`${candidateNickname}님이 입장했습니다!`, "#2ecc71");
       }
 
@@ -13318,7 +13324,7 @@ class GameScene extends Phaser.Scene {
 
     socket.off("hostChanged").on("hostChanged", (data) => {
       this.roundData.hostId = data.hostId;
-      this.sound.play("pass", { volume: 0.1 });
+      this.sound.play("pass", { volume: 0.7 });
       this.showToast(data.message || "방장이 변경되었습니다.", "#f1c40f");
       if (this.resultContainer) this.showResultOverlay(data.players, true);
     });
@@ -14119,7 +14125,7 @@ class GameScene extends Phaser.Scene {
             if (!(this.isGameEnded && !this.isSingle)) {
               if (this.profileReactTxt) {
                 const avgVal = newAvg.toFixed(2);
-                this.profileReactTxt.setText(`Avg: ${avgVal}s`);
+                this.profileReactTxt.setText(`반응속도: ${avgVal}s`);
               }
             } else {
               console.debug('skip profileReactTxt update due to game end');
@@ -15098,17 +15104,19 @@ class GameScene extends Phaser.Scene {
     // ✅ 배수 정보는 항상 표시 (카드 제출 여부 상관없이)
     const multiplier = this.roundData?.gameMultiplier || 1;
     const multiplierTxt = this.add
-      .text(cx, cy - width * 0.11, `${multiplier}배 판`, {
+      .text(cx, cy - width * 0.11, `${multiplier}배`, {
         fontFamily: "Jua",
-        fontSize: `${width * 0.035}px`,
-        color: "#FFD700",
+        fontSize: `${width * 0.050}px`,
+        color: "#FF4444",
         fontWeight: "bold",
         stroke: "#000000",
-        strokeThickness: 3,
+        strokeThickness: 6,
       })
       .setOrigin(0.5)
       .setDepth(2001);
     this.playerTableGroup.add(multiplierTxt);
+    // 배수 텍스트 참조 저장 (애니메이션 완료 후 업데이트용)
+    this.multiplierDisplayTxt = multiplierTxt;
     
 
     // 카드 합계는 0보다 클 때만 표시
@@ -15961,7 +15969,7 @@ class GameScene extends Phaser.Scene {
               this.specialUsedThisTurn[myIdForFlag] = true;
             } catch (e) {}
 
-            this.sound.play("btn", { volume: 0.1 });
+            this.sound.play("btn", { volume: 0.4 });
             this.tweens.add({
               targets: [cardBg, cardImg, countTxt],
               scale: "*=0.95",
@@ -16541,7 +16549,7 @@ class GameScene extends Phaser.Scene {
             ease: "Cubic.out",
             onStart: () => {
               if (this.cache.audio.exists("pass")) {
-                this.sound.play("pass", { volume: 0.2 });
+                this.sound.play("pass", { volume: 0.7 });
               }
             },
             onComplete: () => {
@@ -16625,7 +16633,7 @@ class GameScene extends Phaser.Scene {
       now - this.lastFlipSfx.at > 120
     ) {
       if (this.cache.audio.exists("cardflip")) {
-        this.sound.play("cardflip", { volume: 0.4 });
+        this.sound.play("cardflip", { volume: 0.6 });
       }
       this.lastFlipSfx = { key: flipSfxKey, at: now };
       this.lastFlipSfxByPlayer[playerId] = now;
@@ -18065,7 +18073,7 @@ class GameScene extends Phaser.Scene {
 
     // showSingleResultOverlay 내부 다시하기 버튼 수정
     restartBtn.on("pointerdown", () => {
-      this.sound.play("btn", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.4 });
 
       // 1. 모든 타이머와 트윈 중지
       this.time.removeAllEvents();
@@ -18106,7 +18114,7 @@ class GameScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     exitBtn.on("pointerdown", () => {
-      this.sound.play("btn", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.4 });
       try {
         this.scene.start("LobbyScene", {
           preventAutoStartSingleAfterTutorial: true,
@@ -18260,7 +18268,7 @@ class GameScene extends Phaser.Scene {
               ease: "Cubic.out",
               onStart: () => {
                 if (this.cache.audio.exists("pass")) {
-                  this.sound.play("pass", { volume: 0.2 });
+                  this.sound.play("pass", { volume: 0.7 });
                 }
               },
               onComplete: () => {
@@ -19310,49 +19318,6 @@ class GameScene extends Phaser.Scene {
       // 항상 트윈/텍스트를 시도해서 보이지 않는 경우가 없도록 함.
       this.playExpGainAnimation(xpGain);
 
-      // 떠오르는 +N XP 텍스트
-      try {
-        const expBounds =
-          this.profileExpText && typeof this.profileExpText.getBounds === "function"
-            ? this.profileExpText.getBounds()
-            : null;
-        const { width, height } = this.cameras.main;
-        const hasVisibleBounds =
-          expBounds &&
-          expBounds.centerX >= 0 &&
-          expBounds.centerX <= width &&
-          expBounds.top >= 0 &&
-          expBounds.top <= height;
-        const x = hasVisibleBounds ? expBounds.centerX : width * 0.1;
-        const y = hasVisibleBounds ? expBounds.top - 20 : height * 0.06;
-        const txt = this.add
-          .text(x, y, `+${xpGain} XP`, {
-            fontFamily: GAME_FONTS.main,
-            fontSize: `${this.cameras.main.width * 0.032}px`,
-            color: "#ffffff",
-            stroke: "#000000",
-            strokeThickness: 4,
-            fontWeight: "bold",
-          })
-          .setOrigin(0.5)
-          .setDepth(1000005)
-          .setScrollFactor(0);
-        this.tweens.add({
-          targets: txt,
-          y: y - 36,
-          alpha: 0,
-          duration: 900,
-          ease: "Power1",
-          onComplete: () => {
-            try {
-              txt.destroy();
-            } catch (e) {}
-          },
-        });
-      } catch (e) {
-        /* ignore */
-      }
-
       // 효과음: bubble
       try {
         if (this.cache && this.cache.audio && this.cache.audio.exists("bubble")) {
@@ -19442,7 +19407,7 @@ class GameScene extends Phaser.Scene {
           const currentRatio = Number(ratio);
           let highlightColor = "#ffffff";
           if (currentRatio > prevRatio) {
-            highlightColor = "#ff4d4d"; // 상승: 빨간
+            highlightColor = "#ff4d4d"; // 상승: 빨강
           } else if (currentRatio < prevRatio) {
             highlightColor = "#4da6ff"; // 하락: 파랑
           }
@@ -19544,10 +19509,10 @@ class GameScene extends Phaser.Scene {
       const txt = this.add
         .text(baseX, baseY, `+${xpGain} XP`, {
           fontFamily: GAME_FONTS.main,
-          fontSize: `${this.cameras.main.width * 0.032}px`,
-          color: "#ffffff",
-          stroke: "#000000",
-          strokeThickness: 4,
+          fontSize: `${this.cameras.main.width * 0.060}px`,
+          color: "#FFD700",
+          stroke: "#FF6B35",
+          strokeThickness: 6,
           fontWeight: "bold",
         })
         .setOrigin(0.5)
@@ -19556,11 +19521,11 @@ class GameScene extends Phaser.Scene {
 
       this.tweens.add({
         targets: txt,
-        y: baseY - 60,
+        y: baseY - 100,
         alpha: 0,
-        scale: { from: 1, to: 1.25 },
-        duration: 1600,
-        ease: "Sine.easeOut",
+        scale: { from: 0.5, to: 1.6 },
+        duration: 1800,
+        ease: "Back.easeOut",
         onComplete: () => {
           try {
             txt.destroy();
@@ -20142,7 +20107,7 @@ class GameScene extends Phaser.Scene {
     ]);
 
     const finalizeTutorial = () => {
-      this.sound.play("btn", { volume: 0.12 });
+      this.sound.play("btn", { volume: 0.4 });
       this.hasCompletedTutorial = true;
       try {
         localStorage.setItem(TUTORIAL_STATE_KEY, "true");
@@ -20298,7 +20263,7 @@ class GameScene extends Phaser.Scene {
           };
 
           btn.on("pointerdown", () => {
-            this.sound.play("btn", { volume: 0.12 });
+            this.sound.play("btn", { volume: 0.4 });
             closeTmp();
             beginSingleEasy();
           });
@@ -21834,35 +21799,31 @@ class GameScene extends Phaser.Scene {
     let finalMultiplier = 1;
     let animationCompleted = false;
     
-    // 배경 어두운 오버레이
-    const overlay = this.add
-      .rectangle(centerX, centerY, width, height, 0x000000, 0)
-      .setDepth(11000);
+    console.log('[playMultiplierSelectionAnimation] 배수 선택 애니메이션 시작');
     
-    console.log('[playMultiplierSelectionAnimation] 오버레이 생성 완료');
-    
-    this.tweens.add({
-      targets: overlay,
-      alpha: 0.7,
-      duration: 300,
-      ease: "Power2.easeInOut",
-    });
-    
-    // 배수 디스플레이 - 큰 네모칸
-    const boxSize = Math.min(width * 0.4, height * 0.25);
+    // 배수 디스플레이 - 세련된 원형 박스
+    const boxSize = Math.min(width * 0.35, height * 0.22);
     const box = this.add
-      .rectangle(centerX, centerY - height * 0.1, boxSize, boxSize, 0x2d5016, 0.9)
-      .setStrokeStyle(5, 0xffd700)
+      .rectangle(centerX, centerY - height * 0.12, boxSize * 1.2, boxSize, 0x16213e, 0)
+      .setStrokeStyle(3, 0x00d4ff, 0)
       .setDepth(11001);
     
-    // 숫자만 변경되는 텍스트 (여러 개 겹쳐서 동시에 변경)
+    // 박스에 그림자 효과
+    const boxShadow = this.add
+      .rectangle(centerX + 4, centerY - height * 0.12 + 4, boxSize * 1.2, boxSize, 0x000000, 0)
+      .setStrokeStyle(3, 0x00d4ff, 0)
+      .setDepth(11000);
+    
+    // 숫자만 변경되는 텍스트 (더 큰 사이즈, 중앙 정렬)
     const numberTexts = [];
     for (let i = 0; i < 3; i++) {
       const numText = this.add
-        .text(centerX - boxSize * 0.12, centerY - height * 0.1, `${currentValue}`, {
-          fontFamily: "Arial Black",
-          fontSize: `${boxSize * 0.35}px`,
-          color: "#FFD700",
+        .text(centerX, centerY - height * 0.12, `${currentValue}배`, {
+          fontFamily: GAME_FONTS.main,
+          fontSize: `${boxSize * 0.55}px`,
+          color: "#ffffff",
+          stroke: "#000000",
+          strokeThickness: 5,
           fontWeight: "bold",
         })
         .setOrigin(0.5)
@@ -21871,24 +21832,15 @@ class GameScene extends Phaser.Scene {
       numberTexts.push(numText);
     }
     
-    // "배" 글자 - 고정 (숫자 오른쪽)
-    const unitText = this.add
-      .text(centerX + boxSize * 0.08, centerY - height * 0.1, "배", {
-        fontFamily: "Arial Black",
-        fontSize: `${boxSize * 0.25}px`,
-        color: "#FFD700",
-        fontWeight: "bold",
-      })
-      .setOrigin(0.5)
-      .setDepth(11002)
-      .setAlpha(1);
-    
     // 안내 텍스트
     const instructionText = this.add
-      .text(centerX, centerY + height * 0.15, "배수가 결정 중입니다...", {
+      .text(centerX, centerY + height * 0.18, "모두 집중하세요!", {
         fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.045}px`,
+        fontSize: `${width * 0.050}px`,
         color: "#ffffff",
+        fontWeight: "bold",
+        stroke: "#000000",
+        strokeThickness: 3,
       })
       .setOrigin(0.5)
       .setDepth(11001)
@@ -21937,9 +21889,14 @@ class GameScene extends Phaser.Scene {
         
         // 숫자 텍스트 최종 업데이트
         numberTexts.forEach(numText => {
-          numText.setText(`${finalMultiplier}`);
+          numText.setText(`${finalMultiplier}배 적용!`);
           numText.setScale(1.3);
         });
+        
+        // 배수 UI 즉시 업데이트 (배수 결정되는 순간)
+        if (this.multiplierDisplayTxt && typeof this.multiplierDisplayTxt.setText === 'function') {
+          this.multiplierDisplayTxt.setText(`${finalMultiplier}배`);
+        }
         
         // 박스와 숫자 텍스트 강조
         this.tweens.add({
@@ -21992,15 +21949,14 @@ class GameScene extends Phaser.Scene {
           }
 
           this.tweens.add({
-            targets: [overlay, box, ...numberTexts, unitText, instructionText],
+            targets: [box, boxShadow, ...numberTexts, instructionText],
             alpha: 0,
             duration: 500,
             ease: "Power2.easeIn",
             onComplete: () => {
-              try { overlay.destroy(); } catch (e) {}
               try { box.destroy(); } catch (e) {}
+              try { boxShadow.destroy(); } catch (e) {}
               numberTexts.forEach(t => { try { t.destroy(); } catch (e) {} });
-              try { unitText.destroy(); } catch (e) {}
               try { instructionText.destroy(); } catch (e) {}
             },
           });
@@ -22029,8 +21985,17 @@ class GameScene extends Phaser.Scene {
           
           // 모든 숫자 텍스트 업데이트
           numberTexts.forEach(numText => {
-            numText.setText(`${currentValue}`);
+            numText.setText(`${currentValue}배`);
           });
+          
+          // 슬롯 회전 사운드 (매번 변할 때마다)
+          try {
+            if (this.cache.audio && this.cache.audio.exists("btn")) {
+              this.sound.play("btn", { volume: 0.3 });
+            }
+          } catch (e) {
+            /* 사운드 재생 실패는 무시 */
+          }
           
           lastChangeTime = now;
           
@@ -23752,14 +23717,14 @@ class GameScene extends Phaser.Scene {
 
     confirmBtn.on("pointerdown", () => {
       if (!isResultReadyToConfirm) {
-        this.sound.play("btn", { volume: 0.1 });
+        this.sound.play("btn", { volume: 0.4 });
         if (typeof this.showToast === "function") {
           this.showToast("코인 업데이트가 완료된 후에 이동합니다.", "#f1c40f");
         }
         return;
       }
 
-      this.sound.play("btn", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.4 });
       
       // 🔴 [심플화] 서버에서 이미 모든 계산이 완료되었으므로, 바로 로비로 이동
       console.log('[result] 확인 버튼 클릭 - 로비로 이동', {
@@ -23918,6 +23883,16 @@ class GameScene extends Phaser.Scene {
       alpha: 1,
       duration: 400,
       ease: "Bounce.easeOut",
+      onStart: () => {
+        // 게임종료 텍스트 애니메이션 시작 시 effect 효과음 재생
+        try {
+          if (this.cache.audio && this.cache.audio.exists("effect")) {
+            this.sound.play("effect", { volume: 0.5 });
+          }
+        } catch (e) {
+          // effect 사운드 재생 실패는 무시
+        }
+      },
       onComplete: () => {
         // 1초 뒤에 위로 사라지며 콜백 실행
         this.time.delayedCall(1000, () => {
@@ -24119,7 +24094,7 @@ class GameScene extends Phaser.Scene {
     this.toastLayer.add(toast);
 
     try {
-      this.sound.play("pass", { volume: 0.5 });
+      this.sound.play("pass", { volume: 0.7 });
     } catch (e) {}
 
     this.tweens.add({
@@ -24252,7 +24227,7 @@ class GameScene extends Phaser.Scene {
       .setDepth(4003);
 
     cancelBtn.on("pointerdown", () => {
-      this.sound.play("btn", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.4 });
       this.tweens.add({
         targets: [cancelBtn, cancelTxt],
         scaleX: "*=0.95",
@@ -24283,7 +24258,7 @@ class GameScene extends Phaser.Scene {
       .setDepth(4003);
 
     confirmBtn.on("pointerdown", () => {
-      this.sound.play("btn", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.4 });
       this.tweens.add({
         targets: [confirmBtn, confirmTxt],
         scaleX: "*=0.95",
@@ -24436,7 +24411,7 @@ class GameScene extends Phaser.Scene {
         .setDepth(302);
 
       inviteBtn.on("pointerdown", () => {
-        this.sound.play("btn", { volume: 0.1 });
+        this.sound.play("btn", { volume: 0.4 });
         this.tweens.add({
           targets: [inviteBtn, inviteBtnText],
           scaleX: "*=0.9",
@@ -24474,7 +24449,7 @@ class GameScene extends Phaser.Scene {
       .setInteractive({ useHandCursor: true });
 
     closeBtn.on("pointerdown", () => {
-      this.sound.play("btn", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.4 });
       popupBg.destroy();
       titleText.destroy();
       subText.destroy();
@@ -24486,7 +24461,7 @@ class GameScene extends Phaser.Scene {
 
     // 사용자가 클릭한 영역 외 팝업 배경 클릭 시 닫기
     popupBg.on("pointerdown", () => {
-      this.sound.play("btn", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.4 });
       popupBg.destroy();
       titleText.destroy();
       subText.destroy();
@@ -24632,7 +24607,7 @@ class GameScene extends Phaser.Scene {
     };
 
     acceptBtn.on("pointerdown", () => {
-      this.sound.play("btn", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.4 });
       this.tweens.add({
         targets: [acceptBtn, acceptBtnText],
         scaleX: "*=0.9",
@@ -24649,7 +24624,7 @@ class GameScene extends Phaser.Scene {
     });
 
     declineBtn.on("pointerdown", () => {
-      this.sound.play("btn", { volume: 0.1 });
+      this.sound.play("btn", { volume: 0.4 });
       this.tweens.add({
         targets: [declineBtn, declineBtnText],
         scaleX: "*=0.9",
