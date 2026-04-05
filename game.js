@@ -935,33 +935,30 @@ class LobbyScene extends Phaser.Scene {
 
     if (localStorage.getItem("adsRemoved") === "true") {
       this.iapBtnImg.setTint(0x16a34a);
-      this.iapBtnText.setText("광고 제거됨");
+      // 버튼 텍스트는 항상 "프리미엄구독"으로 유지 (색상으로만 상태 표시)
       return;
     }
 
     if (this.isIapPurchasing) {
       this.iapBtnImg.setTint(0xf59e0b);
-      this.iapBtnText.setText("결제 진행중...");
+      // 버튼 텍스트는 항상 "프리미엄구독"으로 유지 (색상으로만 상태 표시)
       return;
     }
 
     if (this.isIapProductLoading) {
       this.iapBtnImg.setTint(0x6b7280);
-      this.iapBtnText.setText("광고제거 상품 조회중...");
+      // 버튼 텍스트는 항상 "프리미엄구독"으로 유지 (색상으로만 상태 표시)
       return;
     }
 
     if (this.iapRemoveAdsSku) {
-      const amountSuffix = this.iapRemoveAdsAmountLabel
-        ? ` ${this.iapRemoveAdsAmountLabel}`
-        : "";
       this.iapBtnImg.setTint(0x2563eb);
-      this.iapBtnText.setText(`광고제거 구매${amountSuffix}`);
+      // 버튼 텍스트는 항상 "프리미엄구독"으로 유지 (색상으로만 상태 표시)
       return;
     }
 
     this.iapBtnImg.setTint(0x6b7280);
-    this.iapBtnText.setText("광고제거 상품 없음");
+    // 버튼 텍스트는 항상 "프리미엄구독"으로 유지 (색상으로만 상태 표시)
   }
 
   async prepareRemoveAdsProduct() {
@@ -24860,8 +24857,8 @@ try {
 // so the full 9:16 world is visible with black bars on the shorter axis.
 // the body background color has already been set to match the game, so
 // the "bars" are invisible.
-const isPortraitInit = window.innerHeight > window.innerWidth;
-const initialMode = isPortraitInit ? Phaser.Scale.ENVELOP : Phaser.Scale.FIT;
+// 모바일에서 좌우가 잘리지 않도록 FIT 모드 사용 (화면 내에 모든 콘텐츠 표시)
+const initialMode = Phaser.Scale.FIT;
 
 const config = {
   type: Phaser.AUTO,
@@ -24884,8 +24881,8 @@ window.game = game; // 디버그용으로 전역에 노출
 // adjust when orientation/size changes
 window.addEventListener("resize", () => {
   if (!game || !game.scale) return;
-  const portrait = window.innerHeight > window.innerWidth;
-  const mode = portrait ? Phaser.Scale.ENVELOP : Phaser.Scale.FIT;
+  // 항상 FIT 모드 유지 (모바일에서 좌우 제약 방지)
+  const mode = Phaser.Scale.FIT;
   if (game.scale.scaleMode !== mode) {
     // Phaser 3에서는 setMode 대신 다른 방식 사용
     game.scale.scaleMode = mode;
