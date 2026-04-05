@@ -2224,15 +2224,6 @@ io.on("connection", (socket) => {
       console.log(`${socket.nickname}의 데이터를 불러왔습니다:`, savedData);
       console.log(`   avetime=${savedData.avetime}`);
 
-      // 🔴 [DEBUG] coins 로드 추적
-      const dbCoins = savedData.coins;
-      console.log("💰 [setNickname] DB에서 코인 로드", {
-        nickname: socket.nickname,
-        dbCoins,
-        isValid: Number.isFinite(Number(dbCoins)),
-        willBe: Number(dbCoins) || 0,
-      });
-
       let parsedItems = [];
       let parsedSpecialCards = {};
 
@@ -2273,7 +2264,23 @@ io.on("connection", (socket) => {
 
       // 이 데이터를 socket 객체에 담아두거나 클라이언트에 보내주면 됩니다.
       socket.level = savedData.level;
-      socket.coins = savedData.coins;
+      // 🔴 [중요] DB coins 값을 명시적으로 검증 후 설정 (null/undefined 방지)
+      const dbCoins = Number(savedData.coins);
+      if (!Number.isFinite(dbCoins) || dbCoins < 0) {
+        console.error("⚠️ [setNickname] DB 코인 값 이상 감지", {
+          nickname: socket.nickname,
+          dbCoinsRaw: savedData.coins,
+          dbCoinsNumber: dbCoins,
+          willSet: 0,
+        });
+        socket.coins = 0; // 이상한 값은 0으로 초기화 (새 유저)
+      } else {
+        socket.coins = dbCoins; // 정상적인 값 설정
+        console.log("✅ [setNickname] DB 코인 정상 로드", {
+          nickname: socket.nickname,
+          coins: socket.coins,
+        });
+      }
       // Persisted experience is stored as "remainder" XP (0..XP_PER_LEVEL-1).
       // If missing, start at 0 so level is driven by savedData.level.
       socket.experience = Number(savedData.experience) || 0;

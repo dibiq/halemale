@@ -827,11 +827,13 @@ class LobbyScene extends Phaser.Scene {
         }
       }
 
-      try {
-        localStorage.setItem('profileCoins', String(next));
-      } catch (e) {
-        console.warn('[LobbyScene.modifyCoins] localStorage persist failed', e);
-      }
+      // 🔴 [보안] localStorage에 코인을 저장하지 않음 (DB만 신뢰)
+      // 로컬 캐시가 오래되면 게임 시작 시 잘못된 초기값이 될 수 있음
+      // try {
+      //   localStorage.setItem('profileCoins', String(next));
+      // } catch (e) {
+      //   console.warn('[modifyCoins] localStorage persist failed', e);
+      // }
 
       if (options.sync && typeof this.safeSyncInventory === "function") {
         try {
@@ -4455,10 +4457,12 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       normalizedCurrentCharacter;
 
     let resolvedCoins = Number(profile.coins ?? prev.coins ?? 0) || 0;
-    if (this.fromSingleGame || this.isSingle) {
-      const storedCoins = Number(localStorage.getItem("profileCoins")) || 0;
-      resolvedCoins = Math.max(resolvedCoins, storedCoins);
-    }
+    // 🔴 [보안] localStorage에서 코인을 읽지 않음 (DB만 신뢰)
+    // 로컬 캐시가 오래되면 잘못된 초기값을 설정할 수 있음
+    // if (this.fromSingleGame || this.isSingle) {
+    //   const storedCoins = Number(localStorage.getItem("profileCoins")) || 0;
+    //   resolvedCoins = Math.max(resolvedCoins, storedCoins);
+    // }
 
     this.myProfile = {
       ...prev,
@@ -11742,12 +11746,14 @@ class GameScene extends Phaser.Scene {
         ? Number(profile.coins)
         : Number(prev.coins) || 0;
 
-      try {
-        const stored = Number(localStorage.getItem("profileCoins")) || 0;
-        incomingCoins = Math.max(incomingCoins, stored, Number(prev.coins) || 0);
-      } catch (e) {
-        console.warn("[updateMyProfileUI] failed to read profileCoins from localStorage", e);
-      }
+      // 🔴 [보안] localStorage에서 코인을 읽지 않음 (DB만 신뢰)
+      // 로컬 캐시는 게임 시작 시 오래된 값을 사용할 수 있음
+      // try {
+      //   const stored = Number(localStorage.getItem("profileCoins")) || 0;
+      //   incomingCoins = Math.max(incomingCoins, stored, Number(prev.coins) || 0);
+      // } catch (e) {
+      //   console.warn("[updateMyProfileUI] failed to read profileCoins from localStorage", e);
+      // }
 
       // 🔴 [중요] 멀티플레이 결과 화면 중 코인 업데이트
       // 이미 applyDeferredProfileUpdates에서 대비했으므로, 여기서는 로컬 값 우선
@@ -11767,7 +11773,6 @@ class GameScene extends Phaser.Scene {
       console.log('[result] updateMyProfileUI coin merge', {
         profileCoins: Number(profile.coins),
         prevCoins: Number(prev.coins),
-        localCoins: Number(localStorage.getItem("profileCoins")) || 0,
         incomingCoins,
         isApplyingDeferred: this._isApplyingDeferredProfile,
       });
@@ -13662,10 +13667,28 @@ class GameScene extends Phaser.Scene {
           if (socket && socket.profile) {
             this.myProfile = this.myProfile || {};
             
-            // 🔴 [중요] 서버 코인을 절대적으로 신뢰
+            // 🔴 [중요] 서버 코인을 절대적으로 신뢰하되, 검증 필수
             if (Number.isFinite(Number(socket.profile.coins))) {
               const serverCoins = Number(socket.profile.coins);
-              this.myProfile.coins = serverCoins;  // 서버 코인만 사용
+              
+              // 🔴 [보안] 코인이 음수나 이상한 값이면 로그 및 경고
+              if (serverCoins < 0) {
+                console.error('❌ [applyGameStartPayload] 음수 코인 감지!', {
+                  serverCoins,
+                  willReset: true
+                });
+                this.myProfile.coins = 0;
+              } else if (serverCoins === 30 && this._startOfMatchCoins === undefined) {
+                // 게임 시작 후 처음 코인이 30인 경우 의심 - 정상 여부 판단
+                console.warn('⚠️ [applyGameStartPayload] 신규 유저 또는 초기화 상태? 코인=30', {
+                  serverCoins,
+                  startOfMatchCoins: this._startOfMatchCoins,
+                  timestamp: new Date().toISOString()
+                });
+                this.myProfile.coins = serverCoins;
+              } else {
+                this.myProfile.coins = serverCoins;  // 정상값 사용
+              }
               
               console.log('[applyGameStartPayload] 코인 동기화 (서버 신뢰)', {
                 serverCoins,
