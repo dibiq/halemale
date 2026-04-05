@@ -594,8 +594,25 @@ function applyCoinCardReward(room, player, io) {
   const reward = Math.max(0, Number(COIN_CARD_REWARD) || 0);
   if (reward <= 0) return null;
 
+  // 🔴 [DEBUG] 코인 30 리셋 추적
+  const prevPlayerCoins = Number(player.coins) || 0;
+
   player.coins = (Number(player.coins) || 0) + reward;
   let coinTotal = Number(player.coins) || 0;
+
+  // 체크: 만약 prevPlayerCoins이 0이었다면 경고
+  if (prevPlayerCoins === 0) {
+    console.warn(
+      "⚠️ [applyCoinCardReward] 플레이어 코인이 0이었음 (undefined/null에서 0으로 변환됨)",
+      {
+        playerId: player.id,
+        nickname: player.nickname,
+        prevPlayerCoinsRaw: player.coins - reward,
+        afterReward: player.coins,
+        reward,
+      },
+    );
+  }
 
   const targetSocket =
     io && io.sockets && io.sockets.sockets
@@ -603,8 +620,34 @@ function applyCoinCardReward(room, player, io) {
       : null;
 
   if (targetSocket) {
+    const prevSocketCoins = Number(targetSocket.coins) || 0;
     targetSocket.coins = (Number(targetSocket.coins) || 0) + reward;
     coinTotal = Number(targetSocket.coins) || coinTotal;
+
+    // 체크: socket.coins이 0이었다면 경고
+    if (prevSocketCoins === 0) {
+      console.warn(
+        "⚠️ [applyCoinCardReward] 소켓 코인이 0이었음 (undefined/null에서 0으로 변환됨)",
+        {
+          playerId: player.id,
+          nickname: targetSocket.nickname,
+          prevSocketCoinsRaw: targetSocket.coins - reward,
+          afterReward: targetSocket.coins,
+          reward,
+        },
+      );
+    }
+
+    console.log("💰 [applyCoinCardReward] 코인 보상 처리", {
+      playerId: player.id,
+      nickname: targetSocket.nickname,
+      prevPlayerCoins,
+      prevSocketCoins,
+      reward,
+      newPlayerTotal: player.coins,
+      newSocketTotal: targetSocket.coins,
+      coinTotal,
+    });
 
     const mergedItems = {
       items: Array.isArray(targetSocket.items) ? targetSocket.items : [],
@@ -2180,6 +2223,16 @@ io.on("connection", (socket) => {
     if (savedData) {
       console.log(`${socket.nickname}의 데이터를 불러왔습니다:`, savedData);
       console.log(`   avetime=${savedData.avetime}`);
+
+      // 🔴 [DEBUG] coins 로드 추적
+      const dbCoins = savedData.coins;
+      console.log("💰 [setNickname] DB에서 코인 로드", {
+        nickname: socket.nickname,
+        dbCoins,
+        isValid: Number.isFinite(Number(dbCoins)),
+        willBe: Number(dbCoins) || 0,
+      });
+
       let parsedItems = [];
       let parsedSpecialCards = {};
 
@@ -2249,6 +2302,7 @@ io.on("connection", (socket) => {
       console.log(`✅ setNickname - ${socket.nickname} DB 로드 완료:`, {
         level: socket.level,
         coins: socket.coins,
+        coinsAfterLoad: socket.coins,
         exp: socket.experience,
         avetime: socket.avetime,
         ratio: socket.ratio,

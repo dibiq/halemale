@@ -11540,6 +11540,31 @@ class GameScene extends Phaser.Scene {
       if (!this.myProfile) this.myProfile = {};
       const prev = Number(this.myProfile.coins) || 0;
       const next = prev + Number(delta || 0);
+      
+      // 🔴 [DEBUG] 코인 30 리셋 추적
+      if (next === 30 && prev > 30) {
+        console.error('🚨 [코인 리셋 감지] coinsが30으로 리셋됨!', {
+          prev,
+          delta,
+          next,
+          sync: options?.sync,
+          stack: new Error().stack
+        });
+      } else if (delta === 30 && prev === 0) {
+        console.warn('⚠️ [주의] 코인이 0에서 30으로 (첫 보상?)', {
+          prev,
+          delta,
+          next,
+          sync: options?.sync
+        });
+      } else if (next === 30) {
+        console.log('💰 [modifyCoins] next = 30', {
+          prev,
+          delta,
+          next
+        });
+      }
+      
       this.myProfile.coins = next;
       console.log('[modifyCoins] applied', { prev, delta: Number(delta || 0), next });
       
@@ -11615,13 +11640,24 @@ class GameScene extends Phaser.Scene {
     const prev = Number(this.myProfile?.coins) || 0;
     const delta = next - prev;
     
-    if (delta !== 0) {
-      console.log('💰 [setCoinsAbsolute] 절대값으로 코인 설정', {
-        prev,
-        next,
-        delta,
-        sync: options?.sync
-      });
+    if (delta !== 0 || next === 30) {
+      // 🔴 [DEBUG] 코인 30 리셋 추적 - 스택 트레이스 출력
+      if (next === 30 && prev > 30) {
+        console.error('🚨 [코인 리셋 감지] 코인이 갑자기 30으로 리셋됨!', {
+          prev,
+          next,
+          delta,
+          sync: options?.sync,
+          stack: new Error().stack
+        });
+      } else {
+        console.log('💰 [setCoinsAbsolute] 절대값으로 코인 설정', {
+          prev,
+          next,
+          delta,
+          sync: options?.sync
+        });
+      }
     }
     
     this.modifyCoins(delta, options);
@@ -16257,7 +16293,8 @@ class GameScene extends Phaser.Scene {
           this._winAvatarSprite = this.add
             .sprite(centerX, centerY, avatarKey)
             .setDepth(11100)
-            .setVisible(false);
+            .setVisible(false)
+            .setDisplaySize(width * 0.05, height * 0.045); // 캐릭터 크기 조정 (70% of screen)
         }
         const tempSprite = this._winAvatarSprite;
         tempSprite.x = centerX;
@@ -16663,7 +16700,7 @@ class GameScene extends Phaser.Scene {
       targets: tempCard,
       x: startPos.x + Math.cos(rad) * dist * 0.7 + targetOffsetX,
       y: startPos.y + Math.sin(rad) * dist + targetOffsetY,
-      duration: 100 * (this.animationDurationMultiplier || 1), // 모바일 최적화: 동적 애니메이션 시간
+      duration: 60 * (this.animationDurationMultiplier || 1), // 카드 날아가는 속도 (현재: 60ms, 더 빠르게)
       ease: "Power2.out",
       onComplete: () => {
         // 💡 애니메이션 종료 후: 싱글플레이는 이미 openStack에 추가되어 있으므로
