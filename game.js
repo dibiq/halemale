@@ -20089,7 +20089,7 @@ class GameScene extends Phaser.Scene {
 
     const reward = this.tutorialState.rewardCoins || 80;
     const awardedItems = {
-      4: 1, // 자물쇠 1개
+      // 자물쇠는 멀티플레이 전용: 싱글플레이 튜토리얼에서는 제공하지 않음
     };
     const rewardText = this.add
       .text(
@@ -21426,36 +21426,8 @@ class GameScene extends Phaser.Scene {
     const loser = players.find((p) => p.id === failedPlayerId);
     if (!loser || (Number(loser.cards) || 0) <= 0) return;
 
-    // 자동 자물쇠 처리: 패널티 대상이 로컬 플레이어이고 자물쇠(lock, id=4)를 보유한 경우
-    try {
-      const myIdCheck = this.myId || "PLAYER_ME";
-      if (failedPlayerId === myIdCheck) {
-        const owned = JSON.parse(localStorage.getItem("specialCards")) || {};
-        const lockCount = Number(owned[4] || 0);
-        if (lockCount > 0) {
-          // 로컬 차감
-          owned[4] = lockCount - 1;
-          if (owned[4] <= 0) delete owned[4];
-          localStorage.setItem("specialCards", JSON.stringify(owned));
-          // 인벤토리 동기화 시도
-          try {
-            this.safeSyncInventory("autoUseLock", { usedCardId: 4 });
-          } catch (e) {
-            /* ignore */
-          }
-          this.showToast(
-            "자물쇠 사용: 패널티 면제되었습니다! (싱글)",
-            "#2ecc71",
-          );
-          // UI 갱신
-          if (this.roundData && this.roundData.players)
-            this.renderTable(this.roundData.players);
-          return;
-        }
-      }
-    } catch (e) {
-      console.warn("processPenaltySingle auto-lock error", e);
-    }
+    // 자물쇠는 멀티플레이 전용: 싱글플레이에서는 사용되지 않음
+    // (자동 자물쇠 처리를 완전히 제거함)
 
     if (!this.isTutorialMode && failedPlayerId === (this.myId || "PLAYER_ME")) {
       this.handleQuestEvent("penalty");
