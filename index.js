@@ -2739,6 +2739,14 @@ io.on("connection", (socket) => {
     socket.currentCharacter = characterKey;
     socket.avatarKey = characterKey;
 
+    console.log("🛒 [handleBuyCharacter] 구매 후 업데이트:", {
+      characterKey,
+      currentOwnedCharacters,
+      newOwnedCharacters: socket.ownedCharacters,
+      coins: socket.coins,
+      currentCharacter: socket.currentCharacter,
+    });
+
     const mergedItems = {
       items: Array.isArray(socket.items) ? socket.items : [],
       specialCards: socket.specialCards || {},
@@ -2760,7 +2768,7 @@ io.on("connection", (socket) => {
       );
 
       // 성공시 클라이언트에 최신 프로필 전송
-      socket.emit("myProfile", {
+      const profileToSend = {
         nickname: targetPlayerId,
         level: Number(socket.level) || 1,
         coins: Number(socket.coins) || 0,
@@ -2776,7 +2784,15 @@ io.on("connection", (socket) => {
         specialCards: socket.specialCards || {},
         owned_characters: socket.ownedCharacters || ["player_1"],
         current_character: socket.currentCharacter || "player_1",
+      };
+
+      console.log("🛒 [handleBuyCharacter] DB 저장 후 클라이언트에 전송:", {
+        owned_characters: profileToSend.owned_characters,
+        current_character: profileToSend.current_character,
+        coins: profileToSend.coins,
       });
+
+      socket.emit("myProfile", profileToSend);
 
       // 성공 응답 전송
       socket.emit("characterPurchased", {
