@@ -2181,7 +2181,7 @@ class LobbyScene extends Phaser.Scene {
     }
 
     // Frame 1 is loaded early so the avatar has a valid placeholder.
-    for (let i = 2; i <= 48; i += 1) {
+    for (let i = 2; i <= 40; i += 1) {
       this.load.image(
         `player_1_frame_${i}`,
         `assets/images/player_1_sprite/${i}.png${PLAYER1_SPRITE_VERSION}`,
@@ -2189,7 +2189,7 @@ class LobbyScene extends Phaser.Scene {
     }
 
     // Frame 1 is loaded early so the avatar has a valid placeholder.
-    for (let i = 2; i <= 48; i += 1) {
+    for (let i = 2; i <= 40; i += 1) {
       this.load.image(
         `player_2_frame_${i}`,
         `assets/images/player_2_sprite/${i}.png${PLAYER2_SPRITE_VERSION}`,
@@ -2197,13 +2197,13 @@ class LobbyScene extends Phaser.Scene {
     }
 
     // Frame 1 is loaded early so the avatar has a valid placeholder.
-    for (let i = 2; i <= 48; i += 1) {
+    for (let i = 2; i <= 40; i += 1) {
       this.load.image(
         `player_3_frame_${i}`,
         `assets/images/player_3_sprite/${i}.png${PLAYER3_SPRITE_VERSION}`,
       );
     }
-    for (let i = 2; i <= 48; i += 1) {
+    for (let i = 2; i <= 40; i += 1) {
       this.load.image(
         `player_4_frame_${i}`,
         `assets/images/player_4_sprite/${i}.png${PLAYER4_SPRITE_VERSION}`,
@@ -5423,7 +5423,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
   getAvatarAnimMaxFrame(baseKey) {
     // player_1/player_2/player_3/player_4 모두 91 프레임까지 허용
-    return /^player_[1-4]$/.test(baseKey) ? 48 : 2;
+    return /^player_[1-4]$/.test(baseKey) ? 40 : 2;
   }
 
   getMybgAnimKey() {
@@ -11528,6 +11528,12 @@ class GameScene extends Phaser.Scene {
     this._initialProfileApplied = false;
     // Flag set when the big "게임종료!" text is visible on screen
     this.isResultTextVisible = false;
+
+    // 게임 광고 상태 관리 (사전 로드 및 자동 재로드)
+    this.isGameAdLoaded = false;
+    this.isGameAdLoading = false;
+    this.unregisterGameAd = null;
+    this.gameAdRetryTimer = null; // 광고 로드 재시도 타이머
   }
 
   applyDeferredProfileUpdates() {
@@ -12070,7 +12076,7 @@ class GameScene extends Phaser.Scene {
 
   getAvatarAnimMaxFrame(baseKey) {
     // player_1/player_2/player_3/player_4 모두 풀 프레임(최대 91) 재생
-    return /^player_[1-4]$/.test(baseKey) ? 48 : 2;
+    return /^player_[1-4]$/.test(baseKey) ? 40 : 2;
   }
 
   // choose current avatar key, mirror LobbyScene logic
@@ -12647,6 +12653,86 @@ class GameScene extends Phaser.Scene {
       };
     }
 
+    // 🎬 게임 시작시 광고 미리 로드 함수
+    const prepareGameAd = () => {
+      const getAdGroupId = () => {
+        if (typeof window === "undefined") return null;
+        return (
+          window.__INTEGRATED_AD_GROUP_ID ||
+          localStorage.getItem("integratedAdGroupId") ||
+          "ait-ad-test-interstitial-id"
+        );
+      };
+
+      const canUseAd = () => {
+        try {
+          if (
+            !loadFullScreenAd ||
+            !showFullScreenAd ||
+            typeof loadFullScreenAd.isSupported !== "function" ||
+            typeof showFullScreenAd.isSupported !== "function"
+          ) {
+            return false;
+          }
+          return loadFullScreenAd.isSupported() && showFullScreenAd.isSupported();
+        } catch (error) {
+          console.warn("[game-ad] 광고 지원 여부 확인 실패", error);
+          return false;
+        }
+      };
+
+      const adGroupId = getAdGroupId();
+      if (!adGroupId || !canUseAd()) {
+        console.warn("[game-ad] 광고 미리 로드 불가 (지원 여부 확인 또는 adGroupId 부재)");
+        return;
+      }
+
+      if (this.isGameAdLoaded || this.isGameAdLoading) {
+        return; // 이미 로드 중/완료
+      }
+
+      this.isGameAdLoading = true;
+      console.log("[game-ad] 게임 시작 후 광고 미리 로드 시작");
+
+      if (typeof this.unregisterGameAd === "function") {
+        this.unregisterGameAd();
+        this.unregisterGameAd = null;
+      }
+
+      this.unregisterGameAd = loadFullScreenAd({
+        options: { adGroupId },
+        onEvent: (event) => {
+          console.log("[game-ad] 광고 이벤트:", event.type);
+          if (event.type === "loaded") {
+            this.isGameAdLoading = false;
+            this.isGameAdLoaded = true;
+            console.log("[game-ad] ✅ 광고 사전 로드 완료");
+          }
+        },
+        onError: (error) => {
+          console.warn("[game-ad] 광고 로드 실패", error);
+          this.isGameAdLoading = false;
+          this.isGameAdLoaded = false;
+
+          // 🔄 5초 후 자동 재시도
+          if (this.gameAdRetryTimer) {
+            this.gameAdRetryTimer.remove();
+            this.gameAdRetryTimer = null;
+          }
+
+          this.gameAdRetryTimer = this.time.delayedCall(5000, () => {
+            console.log("[game-ad] 광고 로드 재시도 중...");
+            prepareGameAd.call(this);
+          });
+        },
+      });
+    };
+
+    // 게임 시작 후 광고 미리 로드 (2초 딜레이)
+    this.time.delayedCall(2000, () => {
+      prepareGameAd.call(this);
+    });
+
     // Track whether we've already incremented the main-menu quest for this single-run.
     // This prevents double-counting if the same scene instance is reused between matches.
     this._hasIncrementedSinglePlayQuest = false;
@@ -12733,6 +12819,11 @@ class GameScene extends Phaser.Scene {
             }
           });
           this._aiRingTimers = null;
+        }
+        // 🎬 광고 재시도 타이머 정리
+        if (this.gameAdRetryTimer) {
+          this.gameAdRetryTimer.remove();
+          this.gameAdRetryTimer = null;
         }
         this.timeAttackText = null;
       });
@@ -23375,6 +23466,112 @@ class GameScene extends Phaser.Scene {
 
     let isResultReadyToConfirm = false;
     let adRewardWatched = false; // 광고 시청 여부
+    let isResultAdLoaded = false; // 광고 로드 상태
+    let isResultAdLoading = false; // 광고 로딩 중
+    let unregisterResultAd = null; // 광고 로드 unregister 함수
+
+    const updateResultAdButtonState = () => {
+      if (adRewardWatched) {
+        adRewardBtn.setAlpha(0.5);
+        adRewardTxt.setAlpha(0.5);
+        adRewardTxt.setText("광고보상 완료!");
+        return;
+      }
+
+      if (isResultAdLoaded) {
+        adRewardBtn.setAlpha(1);
+        adRewardTxt.setAlpha(1);
+        adRewardTxt.setText("🎬 광고 보고 5배 보상받기");
+        return;
+      }
+
+      if (isResultAdLoading) {
+        adRewardBtn.setAlpha(0.7);
+        adRewardTxt.setAlpha(0.7);
+        adRewardTxt.setText("광고 준비중...");
+        return;
+      }
+
+      adRewardBtn.setAlpha(0.5);
+      adRewardTxt.setAlpha(0.5);
+      adRewardTxt.setText("광고 준비중...");
+    };
+
+    const prepareResultAd = () => {
+      // 🎬 게임 시작때 미리 로드한 광고가 있으면 사용
+      if (this.isGameAdLoaded) {
+        console.log("[result-ad] ✅ 사전 로드된 광고 사용");
+        isResultAdLoading = false;
+        isResultAdLoaded = true;
+        updateResultAdButtonState();
+        return;
+      }
+
+      // game_ad.js의 getIntegratedAdGroupId() 참고
+      const getAdGroupId = () => {
+        if (typeof window === "undefined") return null;
+        return (
+          window.__INTEGRATED_AD_GROUP_ID ||
+          localStorage.getItem("integratedAdGroupId") ||
+          "ait-ad-test-interstitial-id"
+        );
+      };
+
+      // 광고 지원 확인
+      const canUseAd = () => {
+        try {
+          if (
+            !loadFullScreenAd ||
+            !showFullScreenAd ||
+            typeof loadFullScreenAd.isSupported !== "function" ||
+            typeof showFullScreenAd.isSupported !== "function"
+          ) {
+            return false;
+          }
+          return loadFullScreenAd.isSupported() && showFullScreenAd.isSupported();
+        } catch (error) {
+          console.warn("[result-ad] 광고 지원 여부 확인 실패", error);
+          return false;
+        }
+      };
+
+      const adGroupId = getAdGroupId();
+      if (!adGroupId || !canUseAd()) {
+        isResultAdLoading = false;
+        isResultAdLoaded = false;
+        updateResultAdButtonState();
+        return;
+      }
+
+      if (isResultAdLoaded || isResultAdLoading) return;
+
+      isResultAdLoading = true;
+      updateResultAdButtonState();
+
+      if (typeof unregisterResultAd === "function") {
+        unregisterResultAd();
+        unregisterResultAd = null;
+      }
+
+      // game_ad.js의 loadFullScreenAd 패턴 참고
+      unregisterResultAd = loadFullScreenAd({
+        options: { adGroupId },
+        onEvent: (event) => {
+          console.log("[result-ad] 광고 이벤트:", event.type);
+          if (event.type === "loaded") {
+            isResultAdLoading = false;
+            isResultAdLoaded = true;
+            updateResultAdButtonState();
+          }
+        },
+        onError: (error) => {
+          console.warn("[result-ad] 광고 로드 실패", error);
+          isResultAdLoading = false;
+          isResultAdLoaded = false;
+          updateResultAdButtonState();
+        },
+      });
+    };
 
     const enableConfirmButton = () => {
       isResultReadyToConfirm = true;
@@ -23387,16 +23584,8 @@ class GameScene extends Phaser.Scene {
       confirmTxt.setAlpha(1);
       confirmTxt.setText("확인");
       
-      // 광고보상 버튼도 활성화
-      if (!adRewardWatched) {
-        try {
-          adRewardBtn.setInteractive({ useHandCursor: true });
-        } catch (e) {
-          // ignore
-        }
-        adRewardBtn.setAlpha(1);
-        adRewardTxt.setAlpha(1);
-      }
+      // 광고 준비 시작 (코인 업데이트 완료 후)
+      prepareResultAd();
     };
     const disableConfirmButton = () => {
       isResultReadyToConfirm = false;
@@ -23431,16 +23620,57 @@ class GameScene extends Phaser.Scene {
         return;
       }
 
-      this.sound.play("btn", { volume: 0.4 });
-      console.log('[result] 광고보상 버튼 클릭 - 광고 시청 시뮬레이션');
-
-      // 광고 시청 시뮬레이션 (실제로는 광고 SDK 연동 필요)
-      if (typeof this.showToast === "function") {
-        this.showToast("광고를 시청하고 있습니다...", "#2ecc71");
+      if (!isResultAdLoaded) {
+        this.sound.play("btn", { volume: 0.4 });
+        if (typeof this.showToast === "function") {
+          this.showToast("광고 준비 중입니다. 잠시 후 다시 시도해주세요.", "#f1c40f");
+        }
+        return;
       }
 
-      // 3초 후 광고 시청 완료 처리
-      this.time.delayedCall(3000, () => {
+      this.sound.play("btn", { volume: 0.4 });
+      console.log('[result] 광고보상 버튼 클릭 - 보상 광고 시청');
+
+      // game_ad.js의 getIntegratedAdGroupId() 함수 참고
+      const getAdGroupId = () => {
+        if (typeof window === "undefined") return null;
+        return (
+          window.__INTEGRATED_AD_GROUP_ID ||
+          localStorage.getItem("integratedAdGroupId") ||
+          "ait-ad-test-interstitial-id"
+        );
+      };
+
+      const adGroupId = getAdGroupId();
+      if (!adGroupId) {
+        if (typeof this.showToast === "function") {
+          this.showToast("광고를 불러올 수 없습니다.", "#e74c3c");
+        }
+        return;
+      }
+
+      // showFullScreenAd 호출 (game_ad.js 방식)
+      showFullScreenAd({
+        options: { adGroupId },
+        onEvent: (event) => {
+          console.log('[ad] 광고 이벤트:', event.type);
+          
+          // 광고 완료 시 보상 지급
+          if (event.type === "closed" || event.type === "completed") {
+            this.time.delayedCall(500, () => {
+              applyAdReward();
+            });
+          }
+        },
+        onError: (error) => {
+          console.warn('[ad] 광고 오류:', error);
+          if (typeof this.showToast === "function") {
+            this.showToast("광고 재생 중 오류가 발생했습니다.", "#e74c3c");
+          }
+        },
+      });
+
+      const applyAdReward = () => {
         adRewardWatched = true;
 
         // 기존 코인 가져오기
@@ -23476,15 +23706,8 @@ class GameScene extends Phaser.Scene {
           this.showToast(`🎉 광고보상 ${adReward} 코인 획득!`, "#FFD700");
         }
 
-        // 광고보상 버튼 비활성화
-        try {
-          adRewardBtn.disableInteractive();
-        } catch (e) {
-          // ignore
-        }
-        adRewardBtn.setAlpha(0.5);
-        adRewardTxt.setAlpha(0.5);
-        adRewardTxt.setText("광고보상 완료!");
+        // 광고보상 버튼 상태 업데이트
+        updateResultAdButtonState();
 
         // 로컬 스토리지 동기화
         try {
@@ -23499,7 +23722,207 @@ class GameScene extends Phaser.Scene {
         } catch (e) {
           console.warn('[result] 광고보상 동기화 실패', e);
         }
-      });
+
+        // 🎬 광고 시청 후 자동 재로드
+        console.log('[result-ad] 광고 시청 완료 - 다음 라운드 광고 사전 로드 시작');
+        this.isGameAdLoaded = false;
+        this.isGameAdLoading = false;
+        if (typeof this.unregisterGameAd === "function") {
+          this.unregisterGameAd();
+          this.unregisterGameAd = null;
+        }
+
+        // 2초 후 다시 광고 로드
+        this.time.delayedCall(2000, () => {
+          const getAdGroupId = () => {
+            if (typeof window === "undefined") return null;
+            return (
+              window.__INTEGRATED_AD_GROUP_ID ||
+              localStorage.getItem("integratedAdGroupId") ||
+              "ait-ad-test-interstitial-id"
+            );
+          };
+
+          const canUseAd = () => {
+            try {
+              if (
+                !loadFullScreenAd ||
+                !showFullScreenAd ||
+                typeof loadFullScreenAd.isSupported !== "function" ||
+                typeof showFullScreenAd.isSupported !== "function"
+              ) {
+                return false;
+              }
+              return loadFullScreenAd.isSupported() && showFullScreenAd.isSupported();
+            } catch (error) {
+              console.warn("[game-ad-reload] 광고 지원 여부 확인 실패", error);
+              return false;
+            }
+          };
+
+          const adGroupId = getAdGroupId();
+          if (!adGroupId || !canUseAd()) {
+            console.warn("[game-ad-reload] 광고 재로드 불가");
+            return;
+          }
+
+          if (this.isGameAdLoaded || this.isGameAdLoading) {
+            return;
+          }
+
+          this.isGameAdLoading = true;
+          console.log("[game-ad-reload] 다음 라운드 광고 로드 시작");
+
+          this.unregisterGameAd = loadFullScreenAd({
+            options: { adGroupId },
+            onEvent: (event) => {
+              console.log("[game-ad-reload] 광고 이벤트:", event.type);
+              if (event.type === "loaded") {
+                this.isGameAdLoading = false;
+                this.isGameAdLoaded = true;
+                console.log("[game-ad-reload] ✅ 다음 라운드 광고 사전 로드 완료");
+              }
+            },
+            onError: (error) => {
+              console.warn("[game-ad-reload] 광고 로드 실패", error);
+              this.isGameAdLoading = false;
+              this.isGameAdLoaded = false;
+
+              // 🔄 5초 후 자동 재시도
+              if (this.gameAdRetryTimer) {
+                this.gameAdRetryTimer.remove();
+                this.gameAdRetryTimer = null;
+              }
+
+              this.gameAdRetryTimer = this.time.delayedCall(5000, () => {
+                console.log("[game-ad-reload] 광고 로드 재시도 중...");
+                const getAdGroupId = () => {
+                  if (typeof window === "undefined") return null;
+                  return (
+                    window.__INTEGRATED_AD_GROUP_ID ||
+                    localStorage.getItem("integratedAdGroupId") ||
+                    "ait-ad-test-interstitial-id"
+                  );
+                };
+
+                const canUseAd = () => {
+                  try {
+                    if (
+                      !loadFullScreenAd ||
+                      !showFullScreenAd ||
+                      typeof loadFullScreenAd.isSupported !== "function" ||
+                      typeof showFullScreenAd.isSupported !== "function"
+                    ) {
+                      return false;
+                    }
+                    return loadFullScreenAd.isSupported() && showFullScreenAd.isSupported();
+                  } catch (error) {
+                    console.warn("[game-ad-reload-retry] 광고 지원 여부 확인 실패", error);
+                    return false;
+                  }
+                };
+
+                const adGroupId = getAdGroupId();
+                if (!adGroupId || !canUseAd()) {
+                  console.warn("[game-ad-reload-retry] 광고 재로드 불가");
+                  return;
+                }
+
+                if (this.isGameAdLoaded || this.isGameAdLoading) {
+                  return;
+                }
+
+                this.isGameAdLoading = true;
+                console.log("[game-ad-reload-retry] 다음 라운드 광고 로드 재시도");
+
+                this.unregisterGameAd = loadFullScreenAd({
+                  options: { adGroupId },
+                  onEvent: (event) => {
+                    console.log("[game-ad-reload-retry] 광고 이벤트:", event.type);
+                    if (event.type === "loaded") {
+                      this.isGameAdLoading = false;
+                      this.isGameAdLoaded = true;
+                      console.log("[game-ad-reload-retry] ✅ 다음 라운드 광고 사전 로드 완료");
+                    }
+                  },
+                  onError: (error) => {
+                    console.warn("[game-ad-reload-retry] 광고 로드 실패", error);
+                    this.isGameAdLoading = false;
+                    this.isGameAdLoaded = false;
+
+                    // 🔄 5초 후 다시 재시도 (로드 성공할 때까지 무한 반복)
+                    if (this.gameAdRetryTimer) {
+                      this.gameAdRetryTimer.remove();
+                      this.gameAdRetryTimer = null;
+                    }
+
+                    this.gameAdRetryTimer = this.time.delayedCall(5000, () => {
+                      console.log("[game-ad-reload-retry] 광고 로드 재시도 중...");
+                      
+                      const getAdGroupId = () => {
+                        if (typeof window === "undefined") return null;
+                        return (
+                          window.__INTEGRATED_AD_GROUP_ID ||
+                          localStorage.getItem("integratedAdGroupId") ||
+                          "ait-ad-test-interstitial-id"
+                        );
+                      };
+
+                      const canUseAd = () => {
+                        try {
+                          if (
+                            !loadFullScreenAd ||
+                            !showFullScreenAd ||
+                            typeof loadFullScreenAd.isSupported !== "function" ||
+                            typeof showFullScreenAd.isSupported !== "function"
+                          ) {
+                            return false;
+                          }
+                          return loadFullScreenAd.isSupported() && showFullScreenAd.isSupported();
+                        } catch (error) {
+                          return false;
+                        }
+                      };
+
+                      const adGroupId = getAdGroupId();
+                      if (!adGroupId || !canUseAd() || this.isGameAdLoaded || this.isGameAdLoading) {
+                        return;
+                      }
+
+                      this.isGameAdLoading = true;
+                      this.unregisterGameAd = loadFullScreenAd({
+                        options: { adGroupId },
+                        onEvent: (event) => {
+                          if (event.type === "loaded") {
+                            this.isGameAdLoading = false;
+                            this.isGameAdLoaded = true;
+                            console.log("[game-ad-reload-retry] ✅ 광고 사전 로드 완료");
+                          }
+                        },
+                        onError: (error) => {
+                          console.warn("[game-ad-reload-retry] 광고 로드 실패", error);
+                          this.isGameAdLoading = false;
+                          this.isGameAdLoaded = false;
+                          
+                          // 다시 5초 후 재시도
+                          if (this.gameAdRetryTimer) {
+                            this.gameAdRetryTimer.remove();
+                            this.gameAdRetryTimer = null;
+                          }
+                          this.gameAdRetryTimer = this.time.delayedCall(5000, () => {
+                            console.log("[game-ad-reload-retry] 광고 로드 다시 재시도 중...");
+                            // 이 부분에서도 동일한 로직이 반복되도록 설계됨
+                          });
+                        },
+                      });
+                    });
+                  },
+                });
+              });
+            },
+          });
+        });
+      };
     });
 
     container.add([countdownText, adRewardBtn, adRewardTxt, confirmBtn, confirmTxt]);
@@ -23880,23 +24303,33 @@ class GameScene extends Phaser.Scene {
     });
 
     let remainSeconds = 20;
-    this.resultCountdownTimer = this.time.addEvent({
-      delay: 1000,
-      loop: true,
-      callback: () => {
-        remainSeconds -= 1;
-        if (remainSeconds <= 0) {
-          remainSeconds = 0;
-        }
-        countdownText.setText(
-          `20초뒤 대기실로 이동합니다.. (${remainSeconds})`,
-        );
-      },
-    });
+    
+    // 멀티플레이에서만 자동 나가기 타이머 실행
+    if (!this.isSingle) {
+      this.resultCountdownTimer = this.time.addEvent({
+        delay: 1000,
+        loop: true,
+        callback: () => {
+          remainSeconds -= 1;
+          if (remainSeconds <= 0) {
+            remainSeconds = 0;
+          }
+          countdownText.setText(
+            `20초뒤 대기실로 이동합니다.. (${remainSeconds})`,
+          );
+        },
+      });
 
-    this.resultAutoLeaveTimer = this.time.delayedCall(20000, () => {
-      goToLobby();
-    });
+      this.resultAutoLeaveTimer = this.time.delayedCall(20000, () => {
+        goToLobby();
+      });
+    } else {
+      // 싱글플레이에서는 타이머 미실행
+      this.resultCountdownTimer = null;
+      this.resultAutoLeaveTimer = null;
+      // 싱글플레이에서는 카운트다운 텍스트 숨김
+      countdownText.setVisible(false);
+    }
 
     if (!isUpdate) {
       this.tweens.add({
