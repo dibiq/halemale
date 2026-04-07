@@ -454,6 +454,14 @@ function ensurePlayer3Frames(scene) {
   ensurePlayerFrames(scene, "player_3_sprite", "player_3");
 }
 
+function ensurePlayer4Frames(scene) {
+  ensurePlayerFrames(scene, "player_4_sprite", "player_4");
+}
+
+function ensurePlayer5Frames(scene) {
+  ensurePlayerFrames(scene, "player_5_sprite", "player_5");
+}
+
 function ensureMainbgFrames(scene) {
   try {
     if (!scene || !scene.textures) return;
@@ -703,13 +711,13 @@ class LobbyScene extends Phaser.Scene {
   }
 
   getAvatarAnimFrameRate(baseKey) {
-    // player_1/player_2/player_3/player_4 모두 빠른 프레임으로 재생
-    return baseKey === "player_1" || baseKey === "player_2" || baseKey === "player_3" || baseKey === "player_4" ? 18 : 2;
+    // player_1/player_2/player_3/player_4/player_5 모두 빠른 프레임으로 재생
+    return baseKey === "player_1" || baseKey === "player_2" || baseKey === "player_3" || baseKey === "player_4" || baseKey === "player_5" ? 18 : 2;
   }
 
   getAvatarAnimMaxFrame(baseKey) {
-    // player_1/player_2/player_3/player_4은 최대 91 프레임을 사용하여 자연스럽게 재생
-    return /^player_[1-4]$/.test(baseKey) ? 48 : 2;
+    // player_1/player_2/player_3/player_4/player_5은 최대 40 프레임을 사용하여 자연스럽게 재생
+    return /^player_[1-5]$/.test(baseKey) ? 40 : 2;
   }
 
   setCoinsAbsolute(total, options = {}) {
@@ -1888,6 +1896,9 @@ class LobbyScene extends Phaser.Scene {
     const PLAYER4_SPRITE_VERSION = VERSION
       ? `${VERSION}&p4=20260228_1`
       : "?p4=20260228_1";
+    const PLAYER5_SPRITE_VERSION = VERSION
+      ? `${VERSION}&p5=20260301_1`
+      : "?p5=20260301_1";
 
     this.load.image(
       "popupclose",
@@ -1917,6 +1928,10 @@ class LobbyScene extends Phaser.Scene {
     this.load.image(
       "player_4_frame_1",
       `assets/images/player_4_sprite/1.png${PLAYER4_SPRITE_VERSION}`,
+    );
+    this.load.image(
+      "player_5_frame_1",
+      `assets/images/player_5_sprite/1.png${PLAYER5_SPRITE_VERSION}`,
     );
 
     // Remaining frames are deferred and loaded in loadDeferredAssets().
@@ -2170,6 +2185,9 @@ class LobbyScene extends Phaser.Scene {
     const PLAYER4_SPRITE_VERSION = VERSION
       ? `${VERSION}&p4=20260228_1`
       : "?p4=20260228_1";
+    const PLAYER5_SPRITE_VERSION = VERSION
+      ? `${VERSION}&p5=20260301_1`
+      : "?p5=20260301_1";
 
     // deferred frame loads (reduces initial startup time)
     // We already loaded frame 1 early for placeholders.
@@ -2207,6 +2225,12 @@ class LobbyScene extends Phaser.Scene {
       this.load.image(
         `player_4_frame_${i}`,
         `assets/images/player_4_sprite/${i}.png${PLAYER4_SPRITE_VERSION}`,
+      );
+    }
+    for (let i = 2; i <= 40; i += 1) {
+      this.load.image(
+        `player_5_frame_${i}`,
+        `assets/images/player_5_sprite/${i}.png${PLAYER5_SPRITE_VERSION}`,
       );
     }
 
@@ -2372,7 +2396,7 @@ class LobbyScene extends Phaser.Scene {
             ? keys.filter(
                 (key) =>
                   typeof key === "string" &&
-                  (/^player_[1-4]$/.test(key) || key === PREMIUM_BEAR_KEY),
+                  (/^player_[1-5]$/.test(key) || key === PREMIUM_BEAR_KEY),
               )
             : [];
 
@@ -2396,7 +2420,7 @@ class LobbyScene extends Phaser.Scene {
         const currentCharacter = this.getSelectedAvatarKey();
         if (
           typeof currentCharacter === "string" &&
-          (/^(player_[1-4]|premium_bear)$/.test(currentCharacter))
+          (/^(player_[1-5]|premium_bear)$/.test(currentCharacter))
         ) {
           payload.currentCharacter = currentCharacter;
           payload.current_character = currentCharacter;
@@ -3038,7 +3062,7 @@ class LobbyScene extends Phaser.Scene {
       if (
         profile &&
         typeof profile.current_character === "string" &&
-        /^player_[1-4]$/.test(profile.current_character)
+        /^player_[1-5]$/.test(profile.current_character)
       ) {
         const canApplyServerCharacter =
           profile.current_character === "player_1" ||
@@ -3056,7 +3080,7 @@ class LobbyScene extends Phaser.Scene {
       if (
         profile &&
         typeof profile.avatarKey === "string" &&
-        /^player_[1-4]$/.test(profile.avatarKey)
+        /^player_[1-5]$/.test(profile.avatarKey)
       ) {
         const canApplyAvatarKey =
           profile.avatarKey === "player_1" ||
@@ -4436,7 +4460,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         ["player_1"].concat(
           incomingOwnedCharacters.filter(
             (key) =>
-              typeof key === "string" && /^(player_[1-4]|premium_bear)$/.test(key),
+              typeof key === "string" && /^(player_[1-5]|premium_bear)$/.test(key),
           ),
         ),
       ),
@@ -5589,13 +5613,13 @@ if (this.isGameEnded || this.isResultOverlayActive) {
   }
 
   getAvatarAnimFrameRate(baseKey) {
-    // player_1/player_2/player_3/player_4 모두 빠른 프레임으로 재생
-    return baseKey === "player_1" || baseKey === "player_2" || baseKey === "player_3" || baseKey === "player_4" ? 18 : 2;
+    // player_1/player_2/player_3/player_4/player_5 모두 빠른 프레임으로 재생
+    return baseKey === "player_1" || baseKey === "player_2" || baseKey === "player_3" || baseKey === "player_4" || baseKey === "player_5" ? 18 : 2;
   }
 
   getAvatarAnimMaxFrame(baseKey) {
-    // player_1/player_2/player_3/player_4은 최대 91 프레임을 사용하여 자연스럽게 재생
-    return /^player_[1-4]$/.test(baseKey) ? 48 : 2;
+    // player_1/player_2/player_3/player_4/player_5은 최대 40 프레임을 사용하여 자연스럽게 재생
+    return /^player_[1-5]$/.test(baseKey) ? 40 : 2;
   }
 
   // choose a texture key to display for a given avatar base key
@@ -5627,7 +5651,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     let baseKey = null;
     if (
       typeof forcedKey === "string" &&
-      /^player_[1-4]$/.test(forcedKey.trim())
+      /^player_[1-5]$/.test(forcedKey.trim())
     ) {
       baseKey = forcedKey.trim();
     } else {
@@ -6764,6 +6788,12 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         description: "전용 스프라이트 애니메이션으로 움직이는 캐릭터",
         price: 560,
       },
+      {
+        key: "player_5",
+        name: "또르 곰돌이",
+        description: "귀여운 또르 곰돌이 캐릭터에요",
+        price: 680,
+      },
     ];
 
     const coinProducts = [
@@ -6777,13 +6807,13 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
       if (Array.isArray(rawValue)) {
         rawValue.forEach((key) => {
-          if (typeof key === "string" && /^(player_[1-4]|premium_bear)$/.test(key)) {
+          if (typeof key === "string" && /^(player_[1-5]|premium_bear)$/.test(key)) {
             normalized[key] = true;
           }
         });
       } else if (rawValue && typeof rawValue === "object") {
         Object.entries(rawValue).forEach(([key, value]) => {
-          if (typeof key === "string" && /^(player_[1-4]|premium_bear)$/.test(key)) {
+          if (typeof key === "string" && /^(player_[1-5]|premium_bear)$/.test(key)) {
             normalized[key] = !!value;
           }
         });
@@ -6903,7 +6933,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         const currentCharacter = this.getSelectedAvatarKey();
         if (
           typeof currentCharacter === "string" &&
-          /^player_[1-4]$/.test(currentCharacter)
+          /^player_[1-5]$/.test(currentCharacter)
         ) {
           payload.currentCharacter = currentCharacter;
           payload.current_character = currentCharacter;
@@ -9739,7 +9769,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       this.lobbyUIContainer.add(cardBg);
 
       // 프로필 이미지 - 애니메이션 적용
-      const baseAvatarKey = /^player_[1-4]$/.test(p.avatarKey)
+      const baseAvatarKey = /^player_[1-5]$/.test(p.avatarKey)
         ? p.avatarKey
         : `player_${i + 1}`;
       const avatarTextureKey = this.textures.exists(`${baseAvatarKey}_1`)
@@ -10966,7 +10996,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         .setInteractive({ useHandCursor: true });
 
       // 유저 아이콘
-      const baseUserAvatar = /^player_[1-4]$/.test(safeUser.avatarKey)
+      const baseUserAvatar = /^player_[1-5]$/.test(safeUser.avatarKey)
         ? safeUser.avatarKey
         : "player_1";
 
@@ -11754,7 +11784,7 @@ class GameScene extends Phaser.Scene {
         typeof profile.experience !== "undefined";
 
       const normalizeCharacterKey = (value) =>
-        typeof value === "string" && /^(player_[1-4]|premium_bear)$/.test(value)
+        typeof value === "string" && /^(player_[1-5]|premium_bear)$/.test(value)
           ? value
           : null;
 
@@ -11768,7 +11798,7 @@ class GameScene extends Phaser.Scene {
         new Set(
           ["player_1"].concat(
             incomingOwnedCharacters.filter(
-              (key) => typeof key === "string" && /^player_[1-4]$/.test(key),
+              (key) => typeof key === "string" && /^player_[1-5]$/.test(key),
             ),
           ),
         ),
@@ -12076,7 +12106,7 @@ class GameScene extends Phaser.Scene {
 
   getAvatarAnimMaxFrame(baseKey) {
     // player_1/player_2/player_3/player_4 모두 풀 프레임(최대 91) 재생
-    return /^player_[1-4]$/.test(baseKey) ? 40 : 2;
+    return /^player_[1-5]$/.test(baseKey) ? 40 : 2;
   }
 
   // choose current avatar key, mirror LobbyScene logic
@@ -23360,7 +23390,7 @@ class GameScene extends Phaser.Scene {
     const resolveAvatarKey = (player) => {
       const directKey =
         player?.avatarKey || player?.characterKey || player?.current_character;
-      if (typeof directKey === "string" && /^player_[1-4]$/.test(directKey)) {
+      if (typeof directKey === "string" && /^player_[1-5]$/.test(directKey)) {
         return directKey;
       }
 
@@ -23371,7 +23401,7 @@ class GameScene extends Phaser.Scene {
         roundPlayer?.avatarKey ||
         roundPlayer?.characterKey ||
         roundPlayer?.current_character;
-      if (typeof roundKey === "string" && /^player_[1-4]$/.test(roundKey)) {
+      if (typeof roundKey === "string" && /^player_[1-5]$/.test(roundKey)) {
         return roundKey;
       }
 
@@ -24942,7 +24972,7 @@ class GameScene extends Phaser.Scene {
         .setInteractive({ useHandCursor: true });
 
       // 유저 아이콘
-      const baseUserAvatar = /^player_[1-4]$/.test(safeUser.avatarKey)
+      const baseUserAvatar = /^player_[1-5]$/.test(safeUser.avatarKey)
         ? safeUser.avatarKey
         : "player_1";
 
