@@ -24,6 +24,26 @@ const pool = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL }) : null;
 const DAILY_LOGIN_REWARD_COINS = 20;
 const DAILY_LOGIN_TIMEZONE = "Asia/Seoul";
 
+// ✅ 【전역 상수】플레이어 캐릭터 관리 - 6, 7, 8 추가 시 여기만 수정
+const VALID_PLAYER_NUMBERS = [1, 2, 3, 4, 5]; // 6, 7, 8... 추가하면 자동 적용
+const VALID_PLAYERS = VALID_PLAYER_NUMBERS.map((n) => `player_${n}`);
+const VALID_PLAYER_KEYS_PATTERN = new RegExp(
+  `^player_(${VALID_PLAYER_NUMBERS.join("|")})$`,
+);
+const VALID_CHARACTER_KEYS = [...VALID_PLAYERS, "premium_bear"];
+const VALID_CHARACTER_KEYS_PATTERN = new RegExp(
+  `^(player_(${VALID_PLAYER_NUMBERS.join("|")})|premium_bear)$`,
+);
+
+// ✅ 【검증 함수】모든 곳에서 사용 - VALID_PLAYER_NUMBERS 변경만으로 자동 반영
+function isValidPlayerKey(value) {
+  return typeof value === "string" && VALID_PLAYER_KEYS_PATTERN.test(value);
+}
+
+function isValidCharacterKey(value) {
+  return typeof value === "string" && VALID_CHARACTER_KEYS_PATTERN.test(value);
+}
+
 function getDateStringInTimeZone(date = new Date(), timeZone) {
   const formatter = new Intl.DateTimeFormat("en-CA", {
     timeZone,
@@ -183,14 +203,10 @@ async function savePlayer(
   if (!pool) return;
 
   const normalizedOwnedCharacters = Array.isArray(ownedCharacters)
-    ? ownedCharacters.filter((key) =>
-        /^(player_[1-5]|premium_bear)$/.test(String(key)),
-      )
+    ? ownedCharacters.filter((key) => isValidCharacterKey(key))
     : null;
 
-  const normalizedCurrentCharacter = /^(player_[1-5]|premium_bear)$/.test(
-    String(currentCharacter || ""),
-  )
+  const normalizedCurrentCharacter = isValidCharacterKey(currentCharacter)
     ? currentCharacter
     : null;
 
@@ -718,7 +734,7 @@ function injectThunderCardsToPlayers(players, thunderCount) {
 }
 
 function normalizeCharacterKey(value) {
-  return /^player_[1-5]$/.test(String(value || "")) ? String(value) : null;
+  return isValidPlayerKey(String(value || "")) ? String(value) : null;
 }
 
 function normalizeOwnedCharacters(value) {
@@ -726,21 +742,18 @@ function normalizeOwnedCharacters(value) {
 
   if (Array.isArray(value)) {
     value.forEach((key) => {
-      const normalizedKey = normalizeCharacterKey(key);
-      if (normalizedKey) normalized.add(normalizedKey);
+      if (isValidCharacterKey(key)) normalized.add(key);
     });
   } else if (value && typeof value === "object") {
     Object.entries(value).forEach(([key, owned]) => {
-      const normalizedKey = normalizeCharacterKey(key);
-      if (normalizedKey && owned) normalized.add(normalizedKey);
+      if (isValidCharacterKey(key) && owned) normalized.add(key);
     });
   } else if (typeof value === "string") {
     try {
       const parsed = JSON.parse(value);
       return normalizeOwnedCharacters(parsed);
     } catch (err) {
-      const normalizedKey = normalizeCharacterKey(value);
-      if (normalizedKey) normalized.add(normalizedKey);
+      if (isValidCharacterKey(value)) normalized.add(value);
     }
   }
 
@@ -2204,7 +2217,7 @@ io.on("connection", (socket) => {
 
     const avatarKey =
       typeof nicknamePayload.avatarKey === "string" &&
-      /^player_[1-5]$/.test(nicknamePayload.avatarKey)
+      isValidPlayerKey(nicknamePayload.avatarKey)
         ? nicknamePayload.avatarKey
         : socket.avatarKey || "player_1";
 
@@ -4210,7 +4223,7 @@ io.on("connection", (socket) => {
     console.log("🏠 createRoom 호출됨, 받은 data:", JSON.stringify(data));
     const nickname = typeof data === "object" ? data.nickname : socket.nickname;
     const avatarKey =
-      typeof data === "object" && /^player_[1-5]$/.test(data.avatarKey)
+      typeof data === "object" && isValidPlayerKey(data.avatarKey)
         ? data.avatarKey
         : socket.avatarKey || "player_1";
     socket.nickname = nickname || "요리사";
@@ -4390,7 +4403,7 @@ io.on("connection", (socket) => {
     const nickname =
       (typeof data === "object" ? data.nickname : socket.nickname) || "요리사";
     const avatarKey =
-      typeof data === "object" && /^player_[1-5]$/.test(data.avatarKey)
+      typeof data === "object" && isValidPlayerKey(data.avatarKey)
         ? data.avatarKey
         : socket.avatarKey || "player_1";
     const room = rooms[roomId];
@@ -4541,7 +4554,7 @@ io.on("connection", (socket) => {
     console.log("🌐 joinPublicRoom 호출됨, 받은 data:", JSON.stringify(data));
     const roomId = data.roomId;
     const nickname = data.nickname || socket.nickname || "요리사";
-    const avatarKey = /^player_[1-5]$/.test(data.avatarKey)
+    const avatarKey = isValidPlayerKey(data.avatarKey)
       ? data.avatarKey
       : socket.avatarKey || "player_1";
     const inputPassword = data.password || null;

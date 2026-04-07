@@ -29,6 +29,24 @@ const SINGLE_NOT5_CARD_COUNT = 0;
 const TUTORIAL_STATE_KEY = "tutorialCompleted";
 const TUTORIAL_PROGRESS_KEY = "tutorialProgress";
 
+// ✅ 【전역 상수】플레이어 캐릭터 관리 - 6, 7, 8 추가 시 여기만 수정
+const VALID_PLAYER_NUMBERS = [1, 2, 3, 4, 5]; // 6, 7, 8... 추가하면 자동 적용
+const VALID_PLAYERS = VALID_PLAYER_NUMBERS.map((n) => `player_${n}`);
+const VALID_PLAYER_KEYS_PATTERN = new RegExp(`^player_(${VALID_PLAYER_NUMBERS.join("|")})$`);
+const VALID_CHARACTER_KEYS = [...VALID_PLAYERS, "premium_bear"];
+const VALID_CHARACTER_KEYS_PATTERN = new RegExp(
+  `^(player_(${VALID_PLAYER_NUMBERS.join("|")})|premium_bear)$`,
+);
+
+// ✅ 【검증 함수】모든 곳에서 사용 - VALID_PLAYER_NUMBERS 변경만으로 자동 반영
+function isValidPlayerKey(value) {
+  return typeof value === "string" && VALID_PLAYER_KEYS_PATTERN.test(value);
+}
+
+function isValidCharacterKey(value) {
+  return typeof value === "string" && VALID_CHARACTER_KEYS_PATTERN.test(value);
+}
+
 // 광고 및 인앱결제 상수
 const REMOVE_ADS_PRODUCT_SKU = "ait.0000021415.cc877a1d.40741f3a87.5118088536";
 const REMOVE_ADS_PRODUCT_NAME = "프리미엄 구독 서비스";
@@ -2406,7 +2424,7 @@ class LobbyScene extends Phaser.Scene {
             ? keys.filter(
                 (key) =>
                   typeof key === "string" &&
-                  (/^player_[1-5]$/.test(key) || key === PREMIUM_BEAR_KEY),
+                  isValidCharacterKey(key),
               )
             : [];
 
@@ -2430,7 +2448,7 @@ class LobbyScene extends Phaser.Scene {
         const currentCharacter = this.getSelectedAvatarKey();
         if (
           typeof currentCharacter === "string" &&
-          (/^(player_[1-5]|premium_bear)$/.test(currentCharacter))
+          isValidCharacterKey(currentCharacter)
         ) {
           payload.currentCharacter = currentCharacter;
           payload.current_character = currentCharacter;
@@ -2521,7 +2539,7 @@ class LobbyScene extends Phaser.Scene {
     this.profileAvatarIndex = savedAvatarIndex >= 0 ? savedAvatarIndex : 0;
     const initialAvatarKey =
       typeof savedAvatarKey === "string" &&
-      (/^(player_[1-4]|player_2)$/.test(savedAvatarKey))
+      isValidCharacterKey(savedAvatarKey)
         ? savedAvatarKey
         : this.profileAvatarKeys[this.profileAvatarIndex] || "player_1";
 
@@ -2538,7 +2556,7 @@ class LobbyScene extends Phaser.Scene {
     const initialOwnedCharacters = Array.from(
       new Set(
         ["player_1", ...storedOwnedCharacters].filter(
-          (key) => typeof key === "string" && /^(player_[1-4]|player_2)$/.test(key),
+          (key) => typeof key === "string" && isValidCharacterKey(key),
         ),
       ),
     );
