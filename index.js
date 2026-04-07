@@ -25,7 +25,7 @@ const DAILY_LOGIN_REWARD_COINS = 20;
 const DAILY_LOGIN_TIMEZONE = "Asia/Seoul";
 
 // ✅ 【전역 상수】플레이어 캐릭터 관리 - 6, 7, 8 추가 시 여기만 수정
-const VALID_PLAYER_NUMBERS = [1, 2, 3, 4, 5]; // 6, 7, 8... 추가하면 자동 적용
+const VALID_PLAYER_NUMBERS = [1, 2, 3, 4, 5, 6]; // 6, 7, 8... 추가하면 자동 적용
 const VALID_PLAYERS = VALID_PLAYER_NUMBERS.map((n) => `player_${n}`);
 const VALID_PLAYER_KEYS_PATTERN = new RegExp(
   `^player_(${VALID_PLAYER_NUMBERS.join("|")})$`,
