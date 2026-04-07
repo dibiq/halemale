@@ -184,11 +184,11 @@ async function savePlayer(
 
   const normalizedOwnedCharacters = Array.isArray(ownedCharacters)
     ? ownedCharacters.filter((key) =>
-        /^(player_[1-4]|premium_bear)$/.test(String(key)),
+        /^(player_[1-5]|premium_bear)$/.test(String(key)),
       )
     : null;
 
-  const normalizedCurrentCharacter = /^(player_[1-4]|premium_bear)$/.test(
+  const normalizedCurrentCharacter = /^(player_[1-5]|premium_bear)$/.test(
     String(currentCharacter || ""),
   )
     ? currentCharacter
@@ -718,7 +718,7 @@ function injectThunderCardsToPlayers(players, thunderCount) {
 }
 
 function normalizeCharacterKey(value) {
-  return /^player_[1-4]$/.test(String(value || "")) ? String(value) : null;
+  return /^player_[1-5]$/.test(String(value || "")) ? String(value) : null;
 }
 
 function normalizeOwnedCharacters(value) {
@@ -2204,7 +2204,7 @@ io.on("connection", (socket) => {
 
     const avatarKey =
       typeof nicknamePayload.avatarKey === "string" &&
-      /^player_[1-4]$/.test(nicknamePayload.avatarKey)
+      /^player_[1-5]$/.test(nicknamePayload.avatarKey)
         ? nicknamePayload.avatarKey
         : socket.avatarKey || "player_1";
 
@@ -2699,6 +2699,12 @@ io.on("connection", (socket) => {
       normalizeCharacterKey(payload.currentCharacter) ||
       normalizeCharacterKey(payload.current_character);
     const characterPrice = Number(payload.characterPrice ?? payload.price ?? 0);
+
+    console.log("🛒 [DEBUG] buyCharacter characterKey validation:", {
+      payloadCharacterKey: payload.characterKey,
+      normalizedValue: characterKey,
+      characterPrice,
+    });
 
     if (!characterKey) {
       socket.emit("buyCharacterError", "유효하지 않은 캐릭터입니다.");
@@ -4188,7 +4194,7 @@ io.on("connection", (socket) => {
     console.log("🏠 createRoom 호출됨, 받은 data:", JSON.stringify(data));
     const nickname = typeof data === "object" ? data.nickname : socket.nickname;
     const avatarKey =
-      typeof data === "object" && /^player_[1-4]$/.test(data.avatarKey)
+      typeof data === "object" && /^player_[1-5]$/.test(data.avatarKey)
         ? data.avatarKey
         : socket.avatarKey || "player_1";
     socket.nickname = nickname || "요리사";
@@ -4368,7 +4374,7 @@ io.on("connection", (socket) => {
     const nickname =
       (typeof data === "object" ? data.nickname : socket.nickname) || "요리사";
     const avatarKey =
-      typeof data === "object" && /^player_[1-4]$/.test(data.avatarKey)
+      typeof data === "object" && /^player_[1-5]$/.test(data.avatarKey)
         ? data.avatarKey
         : socket.avatarKey || "player_1";
     const room = rooms[roomId];
@@ -4519,7 +4525,7 @@ io.on("connection", (socket) => {
     console.log("🌐 joinPublicRoom 호출됨, 받은 data:", JSON.stringify(data));
     const roomId = data.roomId;
     const nickname = data.nickname || socket.nickname || "요리사";
-    const avatarKey = /^player_[1-4]$/.test(data.avatarKey)
+    const avatarKey = /^player_[1-5]$/.test(data.avatarKey)
       ? data.avatarKey
       : socket.avatarKey || "player_1";
     const inputPassword = data.password || null;

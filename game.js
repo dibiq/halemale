@@ -1294,6 +1294,9 @@ class LobbyScene extends Phaser.Scene {
     if (baseKey === "player_4") {
       if (this.textures.exists("player_4_frame_1")) return "player_4_frame_1";
     }
+    if (baseKey === "player_5") {
+      if (this.textures.exists("player_5_frame_1")) return "player_5_frame_1";
+    }
     const sheetKey = `${baseKey}_sprite_a`;
     if (this.textures.exists(sheetKey)) return sheetKey;
     return null;
@@ -1386,7 +1389,7 @@ class LobbyScene extends Phaser.Scene {
           }
         }
       }
-      if (baseKey === "player_1" || baseKey === "player_2" || baseKey === "player_3" || baseKey === "player_4") {
+      if (baseKey === "player_1" || baseKey === "player_2" || baseKey === "player_3" || baseKey === "player_4" || baseKey === "player_5") {
         const playerKey = baseKey;
         const maxFrame = this.getAvatarAnimMaxFrame(baseKey);
 
@@ -1542,7 +1545,7 @@ class LobbyScene extends Phaser.Scene {
         ? target.getData("avatarBaseY")
         : target.y;
     const animKey = this.ensureAvatarAnimation(baseKey);
-    if (baseKey === "player_1" || baseKey === "player_2" || baseKey === "player_3" || baseKey === "player_4") {
+    if (baseKey === "player_1" || baseKey === "player_2" || baseKey === "player_3" || baseKey === "player_4" || baseKey === "player_5") {
       target.setOrigin(0.5, 1);
       if (avatarDisplayWidth > 0 && avatarDisplayHeight > 0) {
         target.setDisplaySize(avatarDisplayWidth, avatarDisplayHeight);
@@ -1557,6 +1560,8 @@ class LobbyScene extends Phaser.Scene {
           ? "player_3_frame_1"
           : (baseKey === "player_4" && this.textures.exists("player_4_frame_1"))
           ? "player_4_frame_1"
+          : (baseKey === "player_5" && this.textures.exists("player_5_frame_1"))
+          ? "player_5_frame_1"
           : `${baseKey}_1`;
       if (firstFrameKey && this.textures.exists(firstFrameKey)) {
         target.setTexture(firstFrameKey);
@@ -2503,7 +2508,7 @@ class LobbyScene extends Phaser.Scene {
       }
     }
 
-    this.profileAvatarKeys = ["player_1", "player_2", "player_3", "player_4", PREMIUM_BEAR_KEY].filter(
+    this.profileAvatarKeys = ["player_1", "player_2", "player_3", "player_4", "player_5", PREMIUM_BEAR_KEY].filter(
       (key, idx, arr) => arr.indexOf(key) === idx,
     );
     const savedAvatarKey = localStorage.getItem("profileAvatarKey");
@@ -4445,7 +4450,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       typeof profile.experience !== "undefined";
 
     const normalizeCharacterKey = (value) =>
-      typeof value === "string" && /^(player_[1-4]|premium_bear)$/.test(value)
+      typeof value === "string" && /^(player_[1-5]|premium_bear)$/.test(value)
         ? value
         : null;
 
@@ -7213,11 +7218,12 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           const key = character.key;
 
           // ensure frame sequence is generated for players with the sprite sheet
-          if (key === "player_1" || key === "player_2" || key === "player_3" || key === "player_4") {
+          if (key === "player_1" || key === "player_2" || key === "player_3" || key === "player_4" || key === "player_5") {
             ensurePlayerFrames(this, "player_1_sprite", "player_1");
             ensurePlayerFrames(this, "player_2_sprite", "player_2");
             ensurePlayerFrames(this, "player_3_sprite", "player_3");
             ensurePlayerFrames(this, "player_4_sprite", "player_4");
+            ensurePlayerFrames(this, "player_5_sprite", "player_5");
           }
 
           let avatarTexture = null;
@@ -7238,7 +7244,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             .setDisplaySize(width * 0.3, width * 0.3);
 
           const animKey = this.ensureAvatarAnimation(character.key);
-          if (!animKey && (character.key === "player_3" || character.key === "player_4")) {
+          if (!animKey && (character.key === "player_3" || character.key === "player_4" || character.key === "player_5")) {
             console.debug(`${character.key} animation key not found`, {
               frame1: this.textures.exists(`${character.key}_frame_1`),
               frame2: this.textures.exists(`${character.key}_frame_2`),
