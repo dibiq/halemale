@@ -7153,7 +7153,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           .setOrigin(0.5);
 
         const ownedText = this.add
-          .text(0, height * -0.089, `보유중: ${ownedCount}개`, {
+          .text(0, height * -0.089, `보유: ${ownedCount}개`, {
             fontFamily: GAME_FONTS.main,
             fontSize: `${width * 0.035}px`,
             color: "#2ecc71",
@@ -11710,6 +11710,22 @@ class GameScene extends Phaser.Scene {
   // replicate lobby's profile updater so GameScene has its own
   updateMyProfileUI(profile = {}) {
     try {
+      // 싱글플레이 잔여 profile 텍스트가 없으면 조기 반환 (멀티→싱글 전환 시 null 참조 방지)
+      if (
+        this.isSingle &&
+        !this.profileNameTxt &&
+        !this.profileLevelTxt &&
+        !this.profileCoinsTxt &&
+        !this.profileCoinTxt &&
+        !this.profileIdText &&
+        !this.profileCoinText &&
+        !this.profileExpBarFill &&
+        !this.profileExpText &&
+        !this.profileReactTxt
+      ) {
+        return;
+      }
+
       // identical logic to LobbyScene version; keeps game UI in sync
       const prev = this.myProfile || {};
       const prevRatioVal = Number(prev.ratio);
@@ -23331,6 +23347,20 @@ class GameScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
+    // 광고보상 버튼 (확인 버튼 위에 배치)
+    const adRewardBtn = this.add
+      .image(width / 2, height * 0.75, "uibtn")
+      .setDisplaySize(width * 0.45, height * 0.075)
+      .setTint(0xFFA500); // 주황색 틴트
+    const adRewardTxt = this.add
+      .text(width / 2, height * 0.75, "광고보면 5배 보상받기", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.045}px`,
+        color: "#ffffff",
+        fontWeight: "bold",
+      })
+      .setOrigin(0.5);
+
     const confirmBtn = this.add
       .image(width / 2, height * 0.83, "uibtn")
       .setDisplaySize(width * 0.45, height * 0.075);
@@ -23344,6 +23374,8 @@ class GameScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     let isResultReadyToConfirm = false;
+    let adRewardWatched = false; // 광고 시청 여부
+
     const enableConfirmButton = () => {
       isResultReadyToConfirm = true;
       try {
@@ -23354,6 +23386,17 @@ class GameScene extends Phaser.Scene {
       confirmBtn.setAlpha(1);
       confirmTxt.setAlpha(1);
       confirmTxt.setText("확인");
+      
+      // 광고보상 버튼도 활성화
+      if (!adRewardWatched) {
+        try {
+          adRewardBtn.setInteractive({ useHandCursor: true });
+        } catch (e) {
+          // ignore
+        }
+        adRewardBtn.setAlpha(1);
+        adRewardTxt.setAlpha(1);
+      }
     };
     const disableConfirmButton = () => {
       isResultReadyToConfirm = false;
@@ -23371,7 +23414,95 @@ class GameScene extends Phaser.Scene {
 
     disableConfirmButton();
 
-    container.add([countdownText, confirmBtn, confirmTxt]);
+    // 광고보상 버튼 클릭 이벤트
+    adRewardBtn.on("pointerdown", () => {
+      if (!isResultReadyToConfirm) {
+        this.sound.play("btn", { volume: 0.4 });
+        if (typeof this.showToast === "function") {
+          this.showToast("코인 업데이트가 완료된 후에 사용 가능합니다.", "#f1c40f");
+        }
+        return;
+      }
+
+      if (adRewardWatched) {
+        if (typeof this.showToast === "function") {
+          this.showToast("이미 광고보상을 받았습니다!", "#f1c40f");
+        }
+        return;
+      }
+
+      this.sound.play("btn", { volume: 0.4 });
+      console.log('[result] 광고보상 버튼 클릭 - 광고 시청 시뮬레이션');
+
+      // 광고 시청 시뮬레이션 (실제로는 광고 SDK 연동 필요)
+      if (typeof this.showToast === "function") {
+        this.showToast("광고를 시청하고 있습니다...", "#2ecc71");
+      }
+
+      // 3초 후 광고 시청 완료 처리
+      this.time.delayedCall(3000, () => {
+        adRewardWatched = true;
+
+        // 기존 코인 가져오기
+        const currentCoins = Number(this.myProfile?.coins) || 0;
+        
+        // 순위 보상 계산
+        const baseRankRewardCoins = [30, 20, 10];
+        const multiplier = this.roundData?.gameMultiplier || 1;
+        let totalRankReward = 0;
+        
+        rankedPlayers.forEach((_, idx) => {
+          const baseReward = baseRankRewardCoins[idx] || 0;
+          totalRankReward += baseReward * multiplier;
+        });
+
+        // 광고 보상: 순위 보상의 5배
+        const adReward = Math.floor(totalRankReward * 5);
+        const newCoins = currentCoins + adReward;
+
+        console.log('[result] 광고보상 적용', {
+          currentCoins,
+          totalRankReward,
+          adReward,
+          newCoins,
+        });
+
+        // 코인 업데이트
+        this.myProfile.coins = newCoins;
+        this.updateMyProfileUI(this.myProfile);
+
+        // 광고보상 토스트
+        if (typeof this.showToast === "function") {
+          this.showToast(`🎉 광고보상 ${adReward} 코인 획득!`, "#FFD700");
+        }
+
+        // 광고보상 버튼 비활성화
+        try {
+          adRewardBtn.disableInteractive();
+        } catch (e) {
+          // ignore
+        }
+        adRewardBtn.setAlpha(0.5);
+        adRewardTxt.setAlpha(0.5);
+        adRewardTxt.setText("광고보상 완료!");
+
+        // 로컬 스토리지 동기화
+        try {
+          localStorage.setItem("profileCoins", String(newCoins));
+          if (typeof this.emitInventory === "function") {
+            this.emitInventory("adReward", { 
+              adReward,
+              newCoins,
+              totalRankReward,
+            });
+          }
+        } catch (e) {
+          console.warn('[result] 광고보상 동기화 실패', e);
+        }
+      });
+    });
+
+    container.add([countdownText, adRewardBtn, adRewardTxt, confirmBtn, confirmTxt]);
 
     const playCoinCollectAnimation = () => {
       if (isUpdate || !this.textures.exists("coin")) {
