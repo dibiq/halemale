@@ -23525,7 +23525,8 @@ class GameScene extends Phaser.Scene {
     const adRewardBtn = this.add
       .image(width / 2, height * 0.75, "uibtn")
       .setDisplaySize(width * 0.45, height * 0.075)
-      .setTint(0xFFA500); // 주황색 틴트
+      .setTint(0xFFA500)
+      .setInteractive({ useHandCursor: true }); // 주황색 틴트
     const adRewardTxt = this.add
       .text(width / 2, height * 0.75, "광고보면 5배 보상받기", {
         fontFamily: GAME_FONTS.main,
@@ -23534,6 +23535,25 @@ class GameScene extends Phaser.Scene {
         fontWeight: "bold",
       })
       .setOrigin(0.5);
+
+    const resultAdDebugText = this.add
+      .text(width / 2, height * 0.9, "[광고 디버그] 준비중...", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.03}px`,
+        color: "#ffd700",
+        align: "center",
+        wordWrap: { width: width * 0.85 },
+      })
+      .setOrigin(0.5);
+
+    container.add(resultAdDebugText);
+
+    const setResultAdDebug = (message) => {
+      if (resultAdDebugText) {
+        resultAdDebugText.setText(`[광고 디버그] ${message}`);
+      }
+      console.log(`[result-ad-debug] ${message}`);
+    };
 
     const confirmBtn = this.add
       .image(width / 2, height * 0.83, "uibtn")
@@ -23554,7 +23574,26 @@ class GameScene extends Phaser.Scene {
     let unregisterResultAd = null; // 광고 로드 unregister 함수
 
     const updateResultAdButtonState = () => {
+      const disableButton = () => {
+        try {
+          if (adRewardBtn.disableInteractive) {
+            adRewardBtn.disableInteractive();
+          }
+        } catch (e) {
+          // ignore
+        }
+      };
+
+      const enableButton = () => {
+        try {
+          adRewardBtn.setInteractive({ useHandCursor: true });
+        } catch (e) {
+          // ignore
+        }
+      };
+
       if (adRewardWatched) {
+        disableButton();
         adRewardBtn.setAlpha(0.5);
         adRewardTxt.setAlpha(0.5);
         adRewardTxt.setText("광고보상 완료!");
@@ -23562,12 +23601,14 @@ class GameScene extends Phaser.Scene {
       }
 
       if (isResultAdLoaded) {
+        enableButton();
         adRewardBtn.setAlpha(1);
         adRewardTxt.setAlpha(1);
         adRewardTxt.setText("🎬 광고 보고 5배 보상받기");
         return;
       }
 
+      disableButton();
       if (isResultAdLoading) {
         adRewardBtn.setAlpha(0.7);
         adRewardTxt.setAlpha(0.7);
@@ -23623,13 +23664,18 @@ class GameScene extends Phaser.Scene {
         isResultAdLoading = false;
         isResultAdLoaded = false;
         updateResultAdButtonState();
+        setResultAdDebug("광고를 사용할 수 없습니다. 환경 또는 adGroupId를 확인하세요.");
         return;
       }
 
-      if (isResultAdLoaded || isResultAdLoading) return;
+      if (isResultAdLoaded || isResultAdLoading) {
+        setResultAdDebug("이미 광고 로딩 중이거나 준비된 상태입니다.");
+        return;
+      }
 
       isResultAdLoading = true;
       updateResultAdButtonState();
+      setResultAdDebug("광고 로딩 시작");
 
       if (typeof unregisterResultAd === "function") {
         unregisterResultAd();
@@ -23649,6 +23695,7 @@ class GameScene extends Phaser.Scene {
         },
         onError: (error) => {
           console.warn("[result-ad] 광고 로드 실패", error);
+          setResultAdDebug(`광고 로드 실패: ${error?.message || String(error)}`);
           isResultAdLoading = false;
           isResultAdLoaded = false;
           updateResultAdButtonState();
@@ -23729,17 +23776,24 @@ class GameScene extends Phaser.Scene {
         if (typeof this.showToast === "function") {
           this.showToast("광고를 불러올 수 없습니다.", "#e74c3c");
         }
+        setResultAdDebug("광고 groupId를 찾을 수 없습니다.");
         return;
       }
 
       // showFullScreenAd 호출 (game_ad.js 방식)
+      setResultAdDebug("광고 재생 시도");
       showFullScreenAd({
         options: { adGroupId },
         onEvent: (event) => {
           console.log('[ad] 광고 이벤트:', event.type);
+          setResultAdDebug(`광고 이벤트: ${event.type}`);
           
           // 광고 완료 시 보상 지급
-          if (event.type === "closed" || event.type === "completed") {
+          if (
+            event.type === "closed" ||
+            event.type === "completed" ||
+            event.type === "dismissed"
+          ) {
             this.time.delayedCall(500, () => {
               applyAdReward();
             });
@@ -23747,6 +23801,7 @@ class GameScene extends Phaser.Scene {
         },
         onError: (error) => {
           console.warn('[ad] 광고 오류:', error);
+          setResultAdDebug(`광고 오류: ${error?.message || String(error)}`);
           if (typeof this.showToast === "function") {
             this.showToast("광고 재생 중 오류가 발생했습니다.", "#e74c3c");
           }
@@ -23779,6 +23834,7 @@ class GameScene extends Phaser.Scene {
           adReward,
           newCoins,
         });
+        setResultAdDebug(`광고 보상 적용: ${adReward} 코인 (총 ${newCoins})`);
 
         // 코인 업데이트
         this.myProfile.coins = newCoins;
