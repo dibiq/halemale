@@ -865,15 +865,29 @@ class LobbyScene extends Phaser.Scene {
       //   console.warn('[modifyCoins] localStorage persist failed', e);
       // }
 
-      if (options.sync && typeof this.safeSyncInventory === "function") {
-        try {
-          this.safeSyncInventory("modifyCoins", {
-            coins: next,
-            delta: amount,
-            questMode: true,
-          });
-        } catch (e) {
-          console.warn("LobbyScene.modifyCoins safeSyncInventory failed", e);
+      if (options.sync) {
+        const safeCoins = next;
+        if (typeof socket !== "undefined" && socket && typeof socket === "object") {
+          try {
+            socket.coins = safeCoins;
+          } catch (e) {}
+          try {
+            if (!socket.profile || typeof socket.profile !== "object") {
+              socket.profile = {};
+            }
+            socket.profile.coins = safeCoins;
+          } catch (e) {}
+        }
+        if (typeof this.safeSyncInventory === "function") {
+          try {
+            this.safeSyncInventory("modifyCoins", {
+              coins: next,
+              delta: amount,
+              questMode: true,
+            });
+          } catch (e) {
+            console.warn("LobbyScene.modifyCoins safeSyncInventory failed", e);
+          }
         }
       }
       return next;
@@ -2577,6 +2591,7 @@ class LobbyScene extends Phaser.Scene {
       current_character: initialAvatarKey || "player_1",
       avatarKey: initialAvatarKey || "player_1",
     };
+
     this.hasServerProfileSnapshot = false;
     this.hasReceivedProfileStats = false;
     this.dailyRewardAvailable = false;
@@ -6921,7 +6936,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     };
 
     this.syncInventoryToServer = (reason, extra = {}) => {
-      if (this.isSingle || !socket.connected) return;
+      if (!socket.connected) return;
 
       const resolvedPlayerId =
         this.myProfile.nickname ||
@@ -6952,11 +6967,29 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         ...extra,
       };
 
-      if (this.hasServerProfileSnapshot) {
-        const safeCoins = Number(this.myProfile.coins);
-        if (Number.isFinite(safeCoins)) {
-          payload.coins = safeCoins;
+      // 🔴 [중요] 튜토리얼 중에도 코인이 서버로 전송되도록:
+      // hasServerProfileSnapshot 상태와 관계없이 항상 this.myProfile.coins를 payload에 포함
+      const safeCoins = Number(this.myProfile.coins);
+      if (Number.isFinite(safeCoins)) {
+        payload.coins = safeCoins;
+      }
+
+      if (typeof payload.coins !== 'undefined' && socket) {
+        const payloadCoins = Number(payload.coins);
+        if (Number.isFinite(payloadCoins)) {
+          try {
+            socket.coins = payloadCoins;
+          } catch (e) {}
+          try {
+            if (!socket.profile || typeof socket.profile !== 'object') {
+              socket.profile = {};
+            }
+            socket.profile.coins = payloadCoins;
+          } catch (e) {}
         }
+      }
+
+      if (this.hasServerProfileSnapshot) {
         const safeAvetime = Number(this.myProfile.avetime);
         if (Number.isFinite(safeAvetime)) {
           payload.avetime = safeAvetime;
@@ -18789,7 +18822,19 @@ class GameScene extends Phaser.Scene {
     this.tutorialState.stageRewardsTotal =
       (this.tutorialState.stageRewardsTotal || 0) + amount;
 
+    const beforeCoins = Number(this.myProfile?.coins) || 0;
     this.modifyCoins(Number(amount), { sync: true });
+    const afterCoins = Number(this.myProfile?.coins) || 0;
+
+    console.log(`💰 [rewardTutorialCoins] ${reason}`, {
+      amount,
+      beforeCoins,
+      afterCoins,
+      totalRewardsThisStage: this.tutorialState.stageRewardsTotal,
+      socketCoins: socket?.coins,
+      socketProfileCoins: socket?.profile?.coins,
+      timestamp: new Date().toISOString()
+    });
 
     this.showToast(`보상 ${amount}💰 (${reason})`, "#22c55e");
 
@@ -24286,23 +24331,28 @@ class GameScene extends Phaser.Scene {
           console.warn("goToLobby(single): applyDeferred profile/coins failed", e);
         }
 
-        // Sync final single-player coin state to server/local.
+        // 서버로 최종 코인 저장 후 서버에서 최신 프로필 다시 로드
         try {
           const finalCoins = Number(this.myProfile?.coins) || 0;
-          console.log(`🌟 [goToLobby/single] 최종 코인 동기화 시작`, {
+          console.log(`🌟 [goToLobby/single] 코인 동기화`, {
             finalCoins,
-            startCoins: this._startOfMatchCoins,
-            gained: finalCoins - (this._startOfMatchCoins || 0),
-            isSingle: true,
             timestamp: new Date().toISOString()
           });
 
+          // 서버로 코인 저장
           if (typeof this.emitInventory === "function") {
-            this.emitInventory("postProfileSync", { requireServerProfile: false });
-            console.log(`🛰️ [goToLobby/single] 서버 동기화 완료`, { finalCoins });
+            this.emitInventory("coinsChanged", { requireServerProfile: false });
           }
+          
+          // 메인으로 돌아갈 때: 서버에서 최신 프로필 강제 요청
+          this.time.delayedCall(250, () => {
+            if (socket && socket.emit) {
+              socket.emit("requestProfile", { id: this.myProfile.nickname });
+              console.log(`🛰️ [goToLobby/single] 서버에서 최신 프로필 요청`);
+            }
+          });
         } catch (e) {
-          console.warn("goToLobby(single): postProfileSync emit failed", e);
+          console.warn("goToLobby(single): sync failed", e);
         }
 
         try {

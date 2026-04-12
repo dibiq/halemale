@@ -56,6 +56,13 @@ self.addEventListener("fetch", (event) => {
 
   const url = request.url;
   const isNavigate = request.mode === "navigate";
+  const isLocalhost = url.includes("localhost") || url.includes("127.0.0.1");
+
+  // 🔴 [중요] localhost/개발 서버: 서비스 워커 우회, 직접 fetch
+  if (isLocalhost) {
+    event.respondWith(fetch(request));
+    return;
+  }
 
   if (isNavigate) {
     event.respondWith(
@@ -88,6 +95,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // 그 외 모든 요청
   event.respondWith(
     fetch(request)
       .then((response) => response)

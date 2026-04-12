@@ -4219,6 +4219,63 @@ io.on("connection", (socket) => {
     }
   });
 
+  // 🛰️ 클라이언트에서 서버에 최신 프로필을 명시적으로 요청할 때
+  socket.on("requestProfile", async (payload) => {
+    try {
+      const targetPlayerId =
+        typeof socket.nickname === "string" && socket.nickname.trim()
+          ? socket.nickname.trim()
+          : typeof payload === "object" &&
+              typeof payload.id === "string" &&
+              payload.id.trim()
+            ? payload.id.trim()
+            : null;
+
+      if (!targetPlayerId) {
+        console.warn("[requestProfile] no target player id");
+        return;
+      }
+
+      // DB에서 최신 플레이어 정보 로드
+      const playerData = await getPlayer(targetPlayerId);
+      if (!playerData) {
+        console.warn(`[requestProfile] player not found: ${targetPlayerId}`);
+        return;
+      }
+
+      const items = playerData.items
+        ? JSON.parse(playerData.items)
+        : { items: [], specialCards: {} };
+      const ownedCharacters = playerData.owned_characters
+        ? JSON.parse(playerData.owned_characters)
+        : ["player_1"];
+      const currentCharacter = playerData.current_character || "player_1";
+
+      // 클라이언트에 최신 프로필 전송
+      socket.emit("myProfile", {
+        nickname: targetPlayerId,
+        level: Number(playerData.level) || 1,
+        coins: Number(playerData.coins) || 0,
+        experience: Number(playerData.experience) || 0,
+        avetime: Number(playerData.avetime) || 0,
+        ratio: Number(playerData.ratio) || 0,
+        bellCorrect: Number(playerData.bell_correct) || 0,
+        bellTotal: Number(playerData.bell_total) || 0,
+        items,
+        ownedCharacters,
+        currentCharacter,
+      });
+
+      console.log(`🛰️ [requestProfile] 최신 프로필 전송: ${targetPlayerId}`, {
+        coins: playerData.coins,
+        level: playerData.level,
+        experience: playerData.experience,
+      });
+    } catch (e) {
+      console.warn("[requestProfile] handler error", e);
+    }
+  });
+
   socket.on("createRoom", async (data) => {
     console.log("🏠 createRoom 호출됨, 받은 data:", JSON.stringify(data));
     const nickname = typeof data === "object" ? data.nickname : socket.nickname;
