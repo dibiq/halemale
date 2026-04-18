@@ -13584,6 +13584,24 @@ class GameScene extends Phaser.Scene {
       } catch (e) {}
       // cache again in case stats update separately
       try { socket.profile = profile; } catch (e) {}
+      
+      // 🔴 [중요 수정] this.myProfile 업데이트 - 게임 중 코인 동기화의 핵심
+      if (profile && typeof profile === 'object') {
+        this.myProfile = this.myProfile || {};
+        if (typeof profile.coins === 'number' && profile.coins >= 0) {
+          this.myProfile.coins = profile.coins;
+        }
+        if (typeof profile.level === 'number') {
+          this.myProfile.level = profile.level;
+        }
+        if (typeof profile.experience === 'number') {
+          this.myProfile.experience = profile.experience;
+        }
+        if (profile.nickname) {
+          this.myProfile.nickname = profile.nickname;
+        }
+      }
+      
       // update local profile stats for toast/etc
       const prevStats = this.profileStats || {
         level: 1,
@@ -13921,6 +13939,22 @@ class GameScene extends Phaser.Scene {
                   willReset: true
                 });
                 this.myProfile.coins = 0;
+              } else if (serverCoins === 0) {
+                // 🔴 [중요 수정] socket.profile이 아직 업데이트 안 됨 - 기존 코인 유지
+                // 서버에서 0이 오는 것은 socket 연결 초기화 상태일 가능성 높음
+                const existingCoins = Number(this.myProfile?.coins) || 0;
+                console.warn('⚠️ [applyGameStartPayload] socket.profile.coins=0 감지 (미갱신?)', {
+                  serverCoins: 0,
+                  existingCoins: existingCoins,
+                  willRetainExisting: true,
+                  timestamp: new Date().toISOString()
+                });
+                // 기존 코인이 있으면 유지, 없으면 0 (신규 유저 or 진짜 0)
+                if (existingCoins > 0) {
+                  this.myProfile.coins = existingCoins;
+                } else {
+                  this.myProfile.coins = 0;
+                }
               } else if (serverCoins === 30 && this._startOfMatchCoins === undefined) {
                 // 게임 시작 후 처음 코인이 30인 경우 의심 - 정상 여부 판단
                 console.warn('⚠️ [applyGameStartPayload] 신규 유저 또는 초기화 상태? 코인=30', {
