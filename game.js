@@ -11634,6 +11634,7 @@ class GameScene extends Phaser.Scene {
     this.isResultTextVisible = false;
 
     // 게임 광고 상태 관리 (사전 로드 및 자동 재로드)
+    // 🔴 [수정] create()에서 registry 상태를 읽도록 이동
     this.isGameAdLoaded = false;
     this.isGameAdLoading = false;
     this.unregisterGameAd = null;
@@ -12757,6 +12758,45 @@ class GameScene extends Phaser.Scene {
       };
     }
 
+    // 🔴 [추가] Registry에서 광고 상태 복원 (씬 간에 유지)
+    this.isGameAdLoaded = this.registry.get("gameAdLoaded") || false;
+    this.isGameAdLoading = this.registry.get("gameAdLoading") || false;
+    console.log("[GameScene create] 광고 상태 복원", {
+      isGameAdLoaded: this.isGameAdLoaded,
+      isGameAdLoading: this.isGameAdLoading,
+    });
+
+    // 🔴 [추가] 게임 화면 광고 상태 디버그 텍스트 (싱글플레이에서만 표시)
+    let adDebugText = null;
+    const updateAdDebugText = () => {
+      if (!adDebugText) return;
+      let adStatus = "❌ 로드 안됨";
+      if (this.isGameAdLoading) {
+        adStatus = "⏳ 로딩 중...";
+      } else if (this.isGameAdLoaded) {
+        adStatus = "✅ 광고 준비 완료";
+      }
+      const timestamp = new Date().toLocaleTimeString('ko-KR');
+      adDebugText.setText(`[광고] ${adStatus}\n${timestamp}`);
+    };
+
+    // 🔴 [추가] 디버그 텍스트 객체 생성 (싱글플레이에서만 표시)
+    if (this.isSingle) {
+      const { width, height } = this.cameras.main;
+      adDebugText = this.add.text(width * 0.05, height * 0.05, "", {
+        fontFamily: "Arial",
+        fontSize: "16px",
+        color: "#00ff00",
+        backgroundColor: "#000000",
+        padding: { x: 8, y: 8 },
+      })
+      .setOrigin(0, 0)
+      .setDepth(9999)
+      .setScrollFactor(0);
+      
+      updateAdDebugText(); // 초기 상태 표시
+    }
+
     // 🎬 게임 시작시 광고 미리 로드 함수
     const prepareGameAd = () => {
       const getAdGroupId = () => {
@@ -12796,6 +12836,10 @@ class GameScene extends Phaser.Scene {
       }
 
       this.isGameAdLoading = true;
+      // 🔴 [수정] registry에 저장하여 씬 간에 유지
+      this.registry.set("gameAdLoading", true);
+      // 🔴 [추가] 디버그 테늤트 업데이트
+      updateAdDebugText();
       console.log("[game-ad] 게임 시작 후 광고 미리 로드 시작");
 
       if (typeof this.unregisterGameAd === "function") {
@@ -12810,6 +12854,11 @@ class GameScene extends Phaser.Scene {
           if (event.type === "loaded") {
             this.isGameAdLoading = false;
             this.isGameAdLoaded = true;
+            // 🔴 [수정] registry에 저장하여 씬 간에 유지
+            this.registry.set("gameAdLoading", false);
+            this.registry.set("gameAdLoaded", true);
+            // 🔴 [추가] 디버그 테늤트 업데이트
+            updateAdDebugText();
             console.log("[game-ad] ✅ 광고 사전 로드 완료");
           }
         },
@@ -12817,6 +12866,11 @@ class GameScene extends Phaser.Scene {
           console.warn("[game-ad] 광고 로드 실패", error);
           this.isGameAdLoading = false;
           this.isGameAdLoaded = false;
+          // 🔴 [수정] registry에 저장하여 씬 간에 유지
+          this.registry.set("gameAdLoading", false);
+          this.registry.set("gameAdLoaded", false);
+          // 🔴 [추가] 디버그 테늤트 업데이트
+          updateAdDebugText();
 
           // 🔄 5초 후 자동 재시도
           if (this.gameAdRetryTimer) {
@@ -12826,16 +12880,18 @@ class GameScene extends Phaser.Scene {
 
           this.gameAdRetryTimer = this.time.delayedCall(5000, () => {
             console.log("[game-ad] 광고 로드 재시도 중...");
+            // 🔴 [추가] 재시도 시작 상태 업데이트
+            this.isGameAdLoading = true;
+            this.registry.set("gameAdLoading", true);
+            updateAdDebugText();
             prepareGameAd.call(this);
           });
         },
       });
     };
 
-    // 게임 시작 후 광고 미리 로드 (2초 딜레이)
-    this.time.delayedCall(2000, () => {
-      prepareGameAd.call(this);
-    });
+    // 🔴 [수정] 게임 시작 후 즉시 광고 미리 로드 (딜레이 제거)
+    prepareGameAd.call(this);
 
     // Track whether we've already incremented the main-menu quest for this single-run.
     // This prevents double-counting if the same scene instance is reused between matches.
@@ -23605,7 +23661,7 @@ class GameScene extends Phaser.Scene {
     });
 
     const countdownText = this.add
-      .text(width / 2, height * 0.76, "20초뒤 대기실로 이동합니다.. (20)", {
+      .text(width / 2, height * 0.78, "20초뒤 대기실로 이동합니다.. (20)", {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.035}px`,
         color: "#ffffff",
@@ -23614,14 +23670,14 @@ class GameScene extends Phaser.Scene {
 
     // 광고보상 버튼 (확인 버튼 위에 배치) - 싱글플레이에서만 표시
     const adRewardBtn = this.add
-      .image(width / 2, height * 0.75, "uibtn")
+      .image(width / 2, height * 0.82, "uibtn")
       .setDisplaySize(width * 0.45, height * 0.075)
       .setTint(0xFFA500)
       .setInteractive({ useHandCursor: true }) // 주황색 틴트
       .setVisible(this.isSingle); // 🔴 [수정] 싱글플레이에서만 보이기
     
     const adRewardTxt = this.add
-      .text(width / 2, height * 0.75, "광고보면 5배 보상받기", {
+      .text(width / 2, height * 0.82, "광고보면 5배 보상받기", {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.045}px`,
         color: "#ffffff",
@@ -23631,7 +23687,7 @@ class GameScene extends Phaser.Scene {
       .setVisible(this.isSingle); // 🔴 [수정] 싱글플레이에서만 보이기
 
     const resultAdDebugText = this.add
-      .text(width / 2, height * 0.9, "[광고 디버그] 준비중...", {
+      .text(width / 2, height * 0.97, "[광고 디버그] 준비중...", {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.03}px`,
         color: "#ffd700",
@@ -23642,6 +23698,40 @@ class GameScene extends Phaser.Scene {
 
     container.add(resultAdDebugText);
 
+    // 🔴 [추가] 결과 화면에서 광고 상태 표시 (좌상단 아래로)
+    const resultAdStateDebugText = this.add
+      .text(width * 0.05, height * 0.18, "", {
+        fontFamily: "Arial",
+        fontSize: "14px",
+        color: "#00ff00",
+        backgroundColor: "#000000",
+        padding: { x: 8, y: 8 },
+      })
+      .setOrigin(0, 0)
+      .setDepth(10000);
+    
+    container.add(resultAdStateDebugText);
+    
+    const updateResultAdStateDebug = () => {
+      const gameAdLoadedReg = this.registry.get("gameAdLoaded");
+      const gameAdLoadingReg = this.registry.get("gameAdLoading");
+      let adStatus = "❌ 로드 안됨";
+      if (this.isGameAdLoading || gameAdLoadingReg) {
+        adStatus = "⏳ 로딩 중...";
+      } else if (this.isGameAdLoaded || gameAdLoadedReg) {
+        adStatus = "✅ 광고 준비 완료";
+      }
+      resultAdStateDebugText.setText(
+        `[게임 광고 상태]\n` +
+        `상태: ${adStatus}\n` +
+        `this: ${this.isGameAdLoaded ? "✅" : "❌"}\n` +
+        `registry: ${gameAdLoadedReg ? "✅" : "❌"}\n` +
+        `로딩: ${this.isGameAdLoading ? "진행중" : "안함"}`
+      );
+    };
+    
+    updateResultAdStateDebug();
+
     const setResultAdDebug = (message) => {
       if (resultAdDebugText) {
         resultAdDebugText.setText(`[광고 디버그] ${message}`);
@@ -23650,10 +23740,10 @@ class GameScene extends Phaser.Scene {
     };
 
     const confirmBtn = this.add
-      .image(width / 2, height * 0.83, "uibtn")
+      .image(width / 2, height * 0.90, "uibtn")
       .setDisplaySize(width * 0.45, height * 0.075);
     const confirmTxt = this.add
-      .text(width / 2, height * 0.83, "코인 획득중..", {
+      .text(width / 2, height * 0.90, "코인 획득중..", {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.055}px`,
         color: "#ffffff",
@@ -23716,8 +23806,22 @@ class GameScene extends Phaser.Scene {
     };
 
     const prepareResultAd = () => {
+      // 🔴 [수정] 디버그: 결과 화면에서 광고 상태 확인
+      const gameAdLoadedFromRegistry = this.registry.get("gameAdLoaded");
+      const gameAdLoadingFromRegistry = this.registry.get("gameAdLoading");
+      console.log("[result-ad] 광고 상태 확인", {
+        thisIsGameAdLoaded: this.isGameAdLoaded,
+        thisIsGameAdLoading: this.isGameAdLoading,
+        registryGameAdLoaded: gameAdLoadedFromRegistry,
+        registryGameAdLoading: gameAdLoadingFromRegistry,
+      });
+      
+      // 🔴 [추가] 상태 디버그 텍스트 업데이트
+      updateResultAdStateDebug();
+
       // 🎬 게임 시작때 미리 로드한 광고가 있으면 사용
-      if (this.isGameAdLoaded) {
+      // 🔴 [수정] this.isGameAdLoaded와 registry 값 모두 확인
+      if (this.isGameAdLoaded || gameAdLoadedFromRegistry) {
         console.log("[result-ad] ✅ 사전 로드된 광고 사용");
         isResultAdLoading = false;
         isResultAdLoaded = true;
@@ -23758,12 +23862,16 @@ class GameScene extends Phaser.Scene {
         isResultAdLoading = false;
         isResultAdLoaded = false;
         updateResultAdButtonState();
+        // 🔴 [추가] 디버그 텍스트 업데이트
+        updateResultAdStateDebug();
         setResultAdDebug("광고를 사용할 수 없습니다. 환경 또는 adGroupId를 확인하세요.");
         return;
       }
 
       if (isResultAdLoaded || isResultAdLoading) {
         setResultAdDebug("이미 광고 로딩 중이거나 준비된 상태입니다.");
+        // 🔴 [추가] 디버그 텍스트 업데이트
+        updateResultAdStateDebug();
         return;
       }
 
@@ -23785,6 +23893,8 @@ class GameScene extends Phaser.Scene {
             isResultAdLoading = false;
             isResultAdLoaded = true;
             updateResultAdButtonState();
+            // 🔴 [추가] 디버그 테늤트 업데이트
+            updateResultAdStateDebug();
           }
         },
         onError: (error) => {
@@ -23793,6 +23903,8 @@ class GameScene extends Phaser.Scene {
           isResultAdLoading = false;
           isResultAdLoaded = false;
           updateResultAdButtonState();
+          // 🔴 [추가] 디버그 테늤트 업데이트
+          updateResultAdStateDebug();
         },
       });
     };
@@ -23808,8 +23920,7 @@ class GameScene extends Phaser.Scene {
       confirmTxt.setAlpha(1);
       confirmTxt.setText("확인");
       
-      // 광고 준비 시작 (코인 업데이트 완료 후)
-      prepareResultAd();
+      // 🔴 [수정] 코인 업데이트와 무관하게 광고는 별도로 준비됨
     };
     const disableConfirmButton = () => {
       isResultReadyToConfirm = false;
@@ -23827,17 +23938,15 @@ class GameScene extends Phaser.Scene {
 
     disableConfirmButton();
 
+    // 🔴 [추가] 코인 업데이트와 무관하게 광고 미리 준비 시작
+    console.log("[result-ad] 광고 준비 시작 (코인 업데이트와 무관)");
+    prepareResultAd();
+
     // 광고보상 버튼 클릭 이벤트
     adRewardBtn.on("pointerdown", () => {
-      if (!isResultReadyToConfirm) {
-        this.sound.play("btn", { volume: 0.4 });
-        if (typeof this.showToast === "function") {
-          this.showToast("코인 업데이트가 완료된 후에 사용 가능합니다.", "#f1c40f");
-        }
-        return;
-      }
-
+      // 🔴 [수정] 광고는 코인 업데이트와 무관하게 독립적으로 실행
       if (adRewardWatched) {
+        this.sound.play("btn", { volume: 0.4 });
         if (typeof this.showToast === "function") {
           this.showToast("이미 광고보상을 받았습니다!", "#f1c40f");
         }
@@ -23846,8 +23955,15 @@ class GameScene extends Phaser.Scene {
 
       if (!isResultAdLoaded) {
         this.sound.play("btn", { volume: 0.4 });
-        if (typeof this.showToast === "function") {
-          this.showToast("광고 준비 중입니다. 잠시 후 다시 시도해주세요.", "#f1c40f");
+        // 로딩 중 vs 실패 상태를 구분해서 메시지 표시
+        if (isResultAdLoading) {
+          if (typeof this.showToast === "function") {
+            this.showToast("광고 준비 중입니다. 잠시 후 다시 시도해주세요.", "#f1c40f");
+          }
+        } else {
+          if (typeof this.showToast === "function") {
+            this.showToast("시청가능한 광고가 없습니다.", "#f1c40f");
+          }
         }
         return;
       }
@@ -23960,6 +24076,9 @@ class GameScene extends Phaser.Scene {
         console.log('[result-ad] 광고 시청 완료 - 다음 라운드 광고 사전 로드 시작');
         this.isGameAdLoaded = false;
         this.isGameAdLoading = false;
+        // 🔴 [수정] registry 업데이트
+        this.registry.set("gameAdLoaded", false);
+        this.registry.set("gameAdLoading", false);
         if (typeof this.unregisterGameAd === "function") {
           this.unregisterGameAd();
           this.unregisterGameAd = null;
@@ -24004,6 +24123,8 @@ class GameScene extends Phaser.Scene {
           }
 
           this.isGameAdLoading = true;
+          // 🔴 [수정] registry 업데이트
+          this.registry.set("gameAdLoading", true);
           console.log("[game-ad-reload] 다음 라운드 광고 로드 시작");
 
           this.unregisterGameAd = loadFullScreenAd({
@@ -24013,6 +24134,9 @@ class GameScene extends Phaser.Scene {
               if (event.type === "loaded") {
                 this.isGameAdLoading = false;
                 this.isGameAdLoaded = true;
+                // 🔴 [수정] registry 업데이트
+                this.registry.set("gameAdLoading", false);
+                this.registry.set("gameAdLoaded", true);
                 console.log("[game-ad-reload] ✅ 다음 라운드 광고 사전 로드 완료");
               }
             },
@@ -24020,6 +24144,9 @@ class GameScene extends Phaser.Scene {
               console.warn("[game-ad-reload] 광고 로드 실패", error);
               this.isGameAdLoading = false;
               this.isGameAdLoaded = false;
+              // 🔴 [수정] registry 업데이트
+              this.registry.set("gameAdLoading", false);
+              this.registry.set("gameAdLoaded", false);
 
               // 🔄 5초 후 자동 재시도
               if (this.gameAdRetryTimer) {
@@ -24066,6 +24193,8 @@ class GameScene extends Phaser.Scene {
                 }
 
                 this.isGameAdLoading = true;
+                // 🔴 [수정] registry 업데이트
+                this.registry.set("gameAdLoading", true);
                 console.log("[game-ad-reload-retry] 다음 라운드 광고 로드 재시도");
 
                 this.unregisterGameAd = loadFullScreenAd({
@@ -24075,6 +24204,9 @@ class GameScene extends Phaser.Scene {
                     if (event.type === "loaded") {
                       this.isGameAdLoading = false;
                       this.isGameAdLoaded = true;
+                      // 🔴 [수정] registry 업데이트
+                      this.registry.set("gameAdLoading", false);
+                      this.registry.set("gameAdLoaded", true);
                       console.log("[game-ad-reload-retry] ✅ 다음 라운드 광고 사전 로드 완료");
                     }
                   },
@@ -24082,6 +24214,9 @@ class GameScene extends Phaser.Scene {
                     console.warn("[game-ad-reload-retry] 광고 로드 실패", error);
                     this.isGameAdLoading = false;
                     this.isGameAdLoaded = false;
+                    // 🔴 [수정] registry 업데이트
+                    this.registry.set("gameAdLoading", false);
+                    this.registry.set("gameAdLoaded", false);
 
                     // 🔄 5초 후 다시 재시도 (로드 성공할 때까지 무한 반복)
                     if (this.gameAdRetryTimer) {
@@ -24584,11 +24719,83 @@ class GameScene extends Phaser.Scene {
 
       this.sound.play("btn", { volume: 0.4 });
       
-      // 🔴 [심플화] 서버에서 이미 모든 계산이 완료되었으므로, 바로 로비로 이동
       console.log('[result] 확인 버튼 클릭 - 로비로 이동', {
         finalCoins: Number(this.myProfile?.coins),
         timestamp: new Date().toISOString()
       });
+      
+      // 🔴 [추가] 게임 종료 전에 다음 라운드 광고 미리 로드
+      const prepareNextGameAd = () => {
+        const getAdGroupId = () => {
+          if (typeof window === "undefined") return null;
+          return (
+            window.__INTEGRATED_AD_GROUP_ID ||
+            localStorage.getItem("integratedAdGroupId") ||
+            "ait-ad-test-interstitial-id"
+          );
+        };
+
+        const canUseAd = () => {
+          try {
+            if (
+              !loadFullScreenAd ||
+              !showFullScreenAd ||
+              typeof loadFullScreenAd.isSupported !== "function" ||
+              typeof showFullScreenAd.isSupported !== "function"
+            ) {
+              return false;
+            }
+            return loadFullScreenAd.isSupported() && showFullScreenAd.isSupported();
+          } catch (error) {
+            console.warn("[result-ad-preload] 광고 지원 여부 확인 실패", error);
+            return false;
+          }
+        };
+
+        const adGroupId = getAdGroupId();
+        if (!adGroupId || !canUseAd()) {
+          console.warn("[result-ad-preload] 광고 미리 로드 불가");
+          return;
+        }
+
+        if (this.isGameAdLoaded || this.isGameAdLoading) {
+          console.log("[result-ad-preload] 이미 광고가 로드되어 있습니다");
+          return;
+        }
+
+        this.isGameAdLoading = true;
+        this.registry.set("gameAdLoading", true);
+        console.log("[result-ad-preload] 🎬 다음 라운드 광고 미리 로드 시작");
+
+        if (typeof this.unregisterGameAd === "function") {
+          this.unregisterGameAd();
+          this.unregisterGameAd = null;
+        }
+
+        this.unregisterGameAd = loadFullScreenAd({
+          options: { adGroupId },
+          onEvent: (event) => {
+            console.log("[result-ad-preload] 광고 이벤트:", event.type);
+            if (event.type === "loaded") {
+              this.isGameAdLoading = false;
+              this.isGameAdLoaded = true;
+              this.registry.set("gameAdLoading", false);
+              this.registry.set("gameAdLoaded", true);
+              console.log("[result-ad-preload] ✅ 다음 라운드 광고 미리 로드 완료");
+            }
+          },
+          onError: (error) => {
+            console.warn("[result-ad-preload] 광고 로드 실패", error);
+            this.isGameAdLoading = false;
+            this.isGameAdLoaded = false;
+            this.registry.set("gameAdLoading", false);
+            this.registry.set("gameAdLoaded", false);
+          },
+        });
+      };
+
+      // 다음 라운드 광고 미리 로드
+      prepareNextGameAd.call(this);
       
       goToLobby();
     });
