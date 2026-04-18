@@ -13585,27 +13585,10 @@ class GameScene extends Phaser.Scene {
       // cache again in case stats update separately
       try { socket.profile = profile; } catch (e) {}
       
-      // 🔴 [중요 수정] this.myProfile 업데이트 - 게임 중 코인 동기화의 핵심
-      if (profile && typeof profile === 'object') {
-        this.myProfile = this.myProfile || {};
-        if (typeof profile.coins === 'number' && profile.coins >= 0) {
-          this.myProfile.coins = profile.coins;
-        }
-        if (typeof profile.level === 'number') {
-          this.myProfile.level = profile.level;
-        }
-        if (typeof profile.experience === 'number') {
-          this.myProfile.experience = profile.experience;
-        }
-        if (profile.nickname) {
-          this.myProfile.nickname = profile.nickname;
-        }
-      }
-      
-      // update local profile stats for toast/etc
-      const prevStats = this.profileStats || {
+      // 🔴 [일관성] profileStats는 사용하지 않고, myProfile로만 관리
+      const prevStats = {
         level: 1,
-        coins: 0,
+        coins: Number(this.myProfile?.coins) || 0,
         experience: 0,
       };
       const prevLevel = Number(prevStats.level) || 1;
@@ -13618,14 +13601,30 @@ class GameScene extends Phaser.Scene {
         : prevLevel;
       const safeCoins = Number.isFinite(incomingCoins)
         ? incomingCoins
-        : Number(prevStats.coins) || 0;
+        : Number(this.myProfile?.coins) || 0;
       const safeExperience = Number.isFinite(incomingExperience)
         ? incomingExperience
-        : Number(prevStats.experience) || 0;
+        : 0;
 
+      // 🔴 [중요] 게임 진행 중에는 로컬 코인이 더 높으면 유지
+      let finalCoins = safeCoins;
+      if (this.isGameStarted && !this.isGameEnded && !this.isResultOverlayActive) {
+        const localCoins = Number(this.myProfile?.coins) || 0;
+        if (localCoins > safeCoins) {
+          finalCoins = localCoins;
+        }
+      }
+
+      // 🔴 [일관성] myProfile에 새 값 할당
+      this.myProfile = this.myProfile || {};
+      this.myProfile.level = newLevel;
+      this.myProfile.coins = finalCoins;
+      this.myProfile.experience = safeExperience;
+      
+      // 이전 profileStats도 최신 상태로 유지 (레거시 코드용)
       this.profileStats = {
         level: newLevel,
-        coins: safeCoins,
+        coins: finalCoins,
         experience: safeExperience,
       };
 
@@ -14242,9 +14241,7 @@ class GameScene extends Phaser.Scene {
               isSingle: this.isSingle
             });
             
-            this.profileStats = this.profileStats || {};
-            this.profileStats.coins = serverCoinTotal;
-            // 🔴 중요: coinCardUpdate는 true, 하지만 sync도 true로 설정하여 서버 동기화
+            // 🔴 [일관성] setCoinsAbsolute는 myProfile도 업데이트하므로, sync=true로 설정
             this.setCoinsAbsolute(serverCoinTotal, { sync: true, coinCardUpdate: true });
           }
         }
@@ -20911,24 +20908,25 @@ class GameScene extends Phaser.Scene {
 
     if (randomCard?.type === COIN_CARD_TYPE) {
       const reward = COIN_CARD_REWARD;
-      const newTotal =
-        (Number(this.profileStats?.coins) || 0) + reward;
+      const beforeCoins = Number(this.myProfile?.coins) || 0;
+      const newTotal = beforeCoins + reward;
+      
       this.playCoinCardRewardAnimation(playerId, reward, newTotal);
+      
       if (playerId === myId) {
-        this.profileStats = this.profileStats || {};
-        this.profileStats.coins = newTotal;
-        this.setCoinsAbsolute(newTotal, { sync: false });
-        const nickname =
-          localStorage.getItem("nickname") ||
-          (this.myProfile && this.myProfile.nickname) ||
-          "요리사";
-        if (socket && socket.connected) {
-          socket.emit("updateProfile", {
-            nickname,
-            id: nickname,
-            coins: this.profileStats.coins,
-          });
-        }
+        // 🔴 [일관성] modifyCoins 사용 - 다른 보상과 동일한 방식
+        console.log('💰 [coinCard] 코인카드 보상 시작', {
+          reward,
+          beforeCoins,
+          newTotal,
+          isSingle: this.isSingle
+        });
+        
+        this.modifyCoins(reward, { sync: true, reason: 'coinCard' });
+        
+        console.log('💰 [coinCard] 코인카드 보상 적용 완료', {
+          coins: this.myProfile.coins
+        });
       }
     }
 
@@ -23347,16 +23345,21 @@ class GameScene extends Phaser.Scene {
             const rankReward = Math.floor(baseReward * multiplier);
             
             if (rankReward > 0) {
+              const beforeCoins = Number(this.myProfile?.coins) || 0;
               console.log('[result] 싱글플레이 순위 보상 추가', {
                 myRankIndex: myRankIndex + 1,
                 baseReward,
                 multiplier,
                 rankReward,
-                beforeCoins: this.myProfile.coins,
+                beforeCoins: beforeCoins,
               });
-              this.myProfile.coins += rankReward;
+              
+              // 🔴 [일관성] modifyCoins 사용
+              this.modifyCoins(rankReward, { sync: false, reason: 'rankReward' });
+              
               console.log('[result] 순위 보상 적용 완료', {
                 afterCoins: this.myProfile.coins,
+                delta: this.myProfile.coins - beforeCoins
               });
             }
           }
@@ -23370,6 +23373,15 @@ class GameScene extends Phaser.Scene {
         finalCoins: finalCoins,
         timestamp: new Date().toISOString()
       });
+      
+      // 🔴 [일관성] 싱글/멀티 모두 게임 결과 최종 코인값을 보존 (로비 복귀 시 복원용)
+      this._postGameFinalCoins = finalCoins;
+      console.log('[result] 게임 결과 최종 코인 보존', {
+        finalCoins,
+        isSingle: this.isSingle,
+        timestamp: new Date().toISOString()
+      });
+      
       try {
         if (typeof this.emitInventory === 'function') {
           this.emitInventory('gameEnded', { requireServerProfile: false });
@@ -24357,10 +24369,33 @@ class GameScene extends Phaser.Scene {
 
         // Ensure any deferred profile update and coins are applied before leaving.
         try {
+          // 🔴 [싱글플레이] 게임 결과 최종 코인값 보존
+          const postGameFinalCoins = this._postGameFinalCoins;
+          
           if (this._deferredMyProfile) {
             this.applyDeferredProfileUpdates();
           }
           this.applyDeferredCoins();
+          
+          // 🔴 [싱글플레이] 게임 결과 최종 코인값 복원
+          if (typeof postGameFinalCoins === 'number' && postGameFinalCoins > 0) {
+            const finalCoins = postGameFinalCoins;
+            const currentCoins = Number(this.myProfile?.coins) || 0;
+            
+            if (currentCoins !== finalCoins) {
+              console.log('[goToLobby/single] 싱글플레이 최종 코인 복원', {
+                beforeRestore: currentCoins,
+                restored: finalCoins
+              });
+              
+              this.myProfile.coins = finalCoins;
+              if (typeof this.updateMyProfileUI === 'function') {
+                try {
+                  this.updateMyProfileUI({ coins: finalCoins });
+                } catch (e) {}
+              }
+            }
+          }
         } catch (e) {
           console.warn("goToLobby(single): applyDeferred profile/coins failed", e);
         }
@@ -24467,10 +24502,40 @@ class GameScene extends Phaser.Scene {
 
       // 종료/시상대 후 지연된 프로필 업데이트가 있으면 반영
       try {
+        // 🔴 [멀티플레이] 게임 결과 후 최종 코인값 보존
+        const postGameFinalCoins = this._postGameFinalCoins;
+        
         if (this._deferredMyProfile) {
           this.applyDeferredProfileUpdates();
         }
         this.applyDeferredCoins();
+        
+        // 🔴 [멀티플레이] 게임 결과 최종 코인값 복원
+        if (!this.isSingle && typeof postGameFinalCoins === 'number' && postGameFinalCoins > 0) {
+          const finalCoins = postGameFinalCoins;
+          const currentCoins = Number(this.myProfile?.coins) || 0;
+          
+          if (currentCoins !== finalCoins) {
+            console.log('[goToLobby] 멀티플레이 최종 코인 복원', {
+              beforeRestore: currentCoins,
+              restored: finalCoins,
+              timestamp: new Date().toISOString()
+            });
+            
+            this.myProfile.coins = finalCoins;
+            
+            // UI 업데이트
+            if (typeof this.updateMyProfileUI === 'function') {
+              try {
+                this.updateMyProfileUI({ coins: finalCoins });
+              } catch (e) {}
+            }
+          } else {
+            console.log('[goToLobby] 멀티플레이 최종 코인 일치', {
+              coins: finalCoins
+            });
+          }
+        }
       } catch (e) {
         console.warn("goToLobby: failed to apply deferred profile/coins", e);
       }
