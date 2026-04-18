@@ -23612,12 +23612,14 @@ class GameScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    // 광고보상 버튼 (확인 버튼 위에 배치)
+    // 광고보상 버튼 (확인 버튼 위에 배치) - 싱글플레이에서만 표시
     const adRewardBtn = this.add
       .image(width / 2, height * 0.75, "uibtn")
       .setDisplaySize(width * 0.45, height * 0.075)
       .setTint(0xFFA500)
-      .setInteractive({ useHandCursor: true }); // 주황색 틴트
+      .setInteractive({ useHandCursor: true }) // 주황색 틴트
+      .setVisible(this.isSingle); // 🔴 [수정] 싱글플레이에서만 보이기
+    
     const adRewardTxt = this.add
       .text(width / 2, height * 0.75, "광고보면 5배 보상받기", {
         fontFamily: GAME_FONTS.main,
@@ -23625,7 +23627,8 @@ class GameScene extends Phaser.Scene {
         color: "#ffffff",
         fontWeight: "bold",
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setVisible(this.isSingle); // 🔴 [수정] 싱글플레이에서만 보이기
 
     const resultAdDebugText = this.add
       .text(width / 2, height * 0.9, "[광고 디버그] 준비중...", {
