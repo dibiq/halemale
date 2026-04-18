@@ -122,12 +122,22 @@
     <!-- 🔴 [추가] 콘솔 로거 (Eruda) - 모바일에서 콘솔 메시지 확인 가능 -->
     <script src="https://cdn.jsdelivr.net/npm/eruda@3/dist/eruda.min.js"></script>
     <script>
-      if (typeof eruda !== "undefined") {
-        eruda.init();
-        console.log(
-          "[Eruda] 콘솔 로거 초기화 완료 - 화면 우측 하단의 아이콘을 탭하면 개발자 도구 열기",
-        );
-      }
+      // Eruda를 명시적으로 초기화하고 Z-index 높이기
+      window.addEventListener("load", () => {
+        setTimeout(() => {
+          if (typeof eruda !== "undefined") {
+            eruda.init();
+            console.log(
+              "[Eruda] ✅ 콘솔 로거 초기화 - 우측 하단 아이콘 탭하면 개발자 도구 열기",
+            );
+            // Eruda 패널의 Z-index를 매우 높게 설정
+            const erudaRoot = document.querySelector(".__eruda-root__");
+            if (erudaRoot) {
+              erudaRoot.style.zIndex = "2147483647";
+            }
+          }
+        }, 1000);
+      });
     </script>
   </body>
 </html>
