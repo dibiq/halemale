@@ -118,5 +118,16 @@
         document.body.appendChild(btn);
       });
     </script>
+
+    <!-- 🔴 [추가] 콘솔 로거 (Eruda) - 모바일에서 콘솔 메시지 확인 가능 -->
+    <script src="https://cdn.jsdelivr.net/npm/eruda@3/dist/eruda.min.js"></script>
+    <script>
+      if (typeof eruda !== "undefined") {
+        eruda.init();
+        console.log(
+          "[Eruda] 콘솔 로거 초기화 완료 - 화면 우측 하단의 아이콘을 탭하면 개발자 도구 열기",
+        );
+      }
+    </script>
   </body>
 </html>
