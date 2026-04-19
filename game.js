@@ -405,6 +405,17 @@ socket.off("serverHello").on("serverHello", (payload) => {
 
 });
 
+// NOTE: adReward와 dailyReward 리스너는 GameScene의 create에서 등록됨
+// (scene이 정의되지 않은 시점에서 여기서 등록하면 scene 참조 실패)
+
+// 광고 보상 이벤트 - 실시간 코인 업데이트
+// socket.off("adReward").on("adReward", (data) => { ... });
+
+// 일반 보상 이벤트 - 실시간 코인 업데이트  
+// socket.off("dailyReward").on("dailyReward", (data) => { ... });
+
+// 여기서 scene이 정의되지 않았으므로 GameScene에서 다시 리스너 등록해야 함
+
 // -----------------------------------------------------------------------------
 // utility for cutting player sprite sheet into frames (columns)
 // called early in both LobbyScene and GameScene so UI can display when owned.
@@ -10774,6 +10785,36 @@ if (this.isGameEnded || this.isResultOverlayActive) {
                 // 일반 코인 보상과 동일하게 socket.emit을 사용 (광고용 별도 이벤트)
                 socket.emit("claimAdReward");
                 console.log('[daily-ad] ✅ socket.emit("claimAdReward") 호출');
+                
+                // 🔴 [중요] 로컬에서 즉시 코인 업데이트 (서버 응답 대기 없이)
+                // 결과 화면과 동일한 방식 - 사용자 경험 개선
+                if (scene && scene.myProfile) {
+                  const currentCoins = Number(scene.myProfile.coins) || 0;
+                  const newCoins = currentCoins + 100;
+                  scene.myProfile.coins = newCoins;
+                  
+                  // 메인 화면 코인 텍스트 즉시 업데이트
+                  if (typeof scene.updateMyProfileUI === "function") {
+                    scene.updateMyProfileUI(scene.myProfile);
+                    console.log('[daily-ad] ✅ 로컬 코인 즉시 업데이트:', newCoins);
+                  }
+                }
+                
+                // 타임아웃: 3초 내에 응답 없으면 상태 초기화
+                const responseTimeout = scene.time.delayedCall(3000, () => {
+                  console.warn('[daily-ad] ⚠️ 서버 응답 타임아웃 (3초)');
+                  scene.isDailyRewardClaimPending = false;
+                });
+                
+                // 서버 에러 응답 처리
+                const handleAdRewardError = (message) => {
+                  if (responseTimeout) responseTimeout.remove();
+                  console.error('[daily-ad] ❌ dailyRewardError 이벤트 수신:', message);
+                  scene.showToast(message || "광고 보상 처리 중 오류가 발생했습니다.", "#e74c3c");
+                  scene.isDailyRewardClaimPending = false;
+                };
+                socket.once("dailyRewardError", handleAdRewardError);
+                
                 scene.showToast("✅ 서버 요청 완료!", "#27ae60");
 
                 // 1. 코인 폭발 이펙트 표시 (일반 보상과 동일)
@@ -10829,10 +10870,10 @@ if (this.isGameEnded || this.isResultOverlayActive) {
                 }
 
                 // 광고 상태 초기화
-                if (typeof scene.unregisterGameAd === "function") {
-                  console.log('[daily-ad] ✅ unregisterGameAd 호출');
-                  scene.unregisterGameAd();
-                  scene.unregisterGameAd = null;
+                if (typeof scene.unregisterAttendanceAd === "function") {
+                  console.log('[daily-ad] ✅ unregisterAttendanceAd 호출');
+                  scene.unregisterAttendanceAd();
+                  scene.unregisterAttendanceAd = null;
                 }
                 if (typeof scene.unregisterShowAd === "function") {
                   console.log('[daily-ad] ✅ unregisterShowAd 호출');
@@ -10847,6 +10888,11 @@ if (this.isGameEnded || this.isResultOverlayActive) {
                 scene.registry.set("gameAdLoaded", false);
                 scene.registry.set("gameAdShowing", false);
                 scene.registry.set("gameAdLoading", false);
+                
+                // 출석 체크 광고 상태도 초기화 (다음번 클릭 시 다시 로드 가능하게)
+                // gameAd를 사용하므로 gameAd 상태는 계속 유지됨
+                // 다음 광고 자동 미리 로드는 광고 종료 후 실행됨
+                
                 console.log('[daily-ad] ========== ✅ 서버 요청 완료 ==========');
               } catch (e) {
                 console.error('[daily-ad] ❌ 보상 오류:', e.message);
@@ -10864,9 +10910,6 @@ if (this.isGameEnded || this.isResultOverlayActive) {
                     scene.unregisterShowAd = null;
                   }
                   if (scene) {
-                    scene.isGameAdLoaded = false;
-                    scene.isGameAdShowing = false;
-                    scene.isGameAdLoading = false;
                     scene.isDailyRewardClaimPending = false;
                     scene.registry.set("gameAdLoaded", false);
                     scene.registry.set("gameAdShowing", false);
@@ -10887,7 +10930,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
               return;
             }
 
-            // 광고 로드 상태 확인
+            // 광고 로드 상태 확인 (결과 화면과 동일한 gameAd 사용)
             const isGameAdLoaded = scene.registry.get("gameAdLoaded") || scene.isGameAdLoaded;
             const isGameAdLoading = scene.registry.get("gameAdLoading") || scene.isGameAdLoading;
             console.log("[daily-ad] 광고 상태:", { isGameAdLoaded, isGameAdLoading });
@@ -10895,7 +10938,6 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             // 광고가 이미 로드됨 - 바로 재생
             if (isGameAdLoaded) {
               console.log("[daily-ad] 광고 이미 로드됨 - 재생");
-              scene.isGameAdShowing = true;
               scene.isDailyRewardClaimPending = true;
               scene.registry.set("gameAdShowing", true);
               // 토스트는 띄우지 않음
@@ -10903,8 +10945,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
               // 만약 30초 후에도 이벤트가 감지되지 않으면 상태 초기화 (타임아웃)
               const adTimeout = scene.time.delayedCall(30000, () => {
                 console.warn("[daily-ad] 광고 이벤트 타임아웃 - 상태 초기화");
-                scene.isGameAdShowing = false;
-                scene.registry.set("gameAdShowing", false);
+                scene.registry.set("attendanceAdShowing", false);
               });
               
               scene.unregisterShowAd = showFullScreenAd({
@@ -10927,13 +10968,18 @@ if (this.isGameEnded || this.isResultOverlayActive) {
                   
                   if (eventType === "closed" || eventType === "completed" || eventType === "dismissed" || eventType === "success") {
                     console.log("[daily-ad] ✅ 광고 종료 이벤트 감지:", eventType);
-                    scene.isGameAdShowing = false;
                     scene.registry.set("gameAdShowing", false);
                     scene.showToast("📺 광고 종료됨! 보상 처리 중...", "#38bdf8");
                     console.log("[daily-ad] 광고 종료 - 500ms 후 보상");
                     scene.time.delayedCall(500, () => {
                       console.log("[daily-ad] applyDailyAdReward 호출");
                       applyDailyAdReward();
+                      
+                      // 광고 종료 후 gameAd 상태 초기화 (다음 클릭 시 다시 로드 가능하게)
+                      console.log("[daily-ad] gameAd 상태 초기화");
+                      scene.registry.set("gameAdLoaded", false);
+                      scene.registry.set("gameAdLoading", false);
+                      scene.registry.set("gameAdShowing", false);
                     });
                   } else {
                     console.log("[daily-ad] ⚠️ 예상치 못한 이벤트 타입:", eventType);
@@ -10946,10 +10992,9 @@ if (this.isGameEnded || this.isResultOverlayActive) {
                     adTimeout.remove();
                   }
                   scene.showToast("광고 재생 오류", "#e74c3c");
-                  scene.isGameAdLoaded = false;
-                  scene.isGameAdShowing = false;
                   scene.registry.set("gameAdLoaded", false);
                   scene.registry.set("gameAdShowing", false);
+                  scene.registry.set("gameAdLoading", false);
                 }
               });
               return;
@@ -10962,24 +11007,31 @@ if (this.isGameEnded || this.isResultOverlayActive) {
               return;
             }
 
-            // 광고가 없으면 로드만 시작 (자동 재생 하지 않음)
+            // 광고가 없으면 미리 로드 요청
             console.log("[daily-ad] 광고 없음 - 로드 시작");
-            scene.isGameAdLoading = true;
-            scene.registry.set("gameAdLoading", true);
             scene.showToast("광고를 준비 중입니다...", "#38bdf8");
             
+            // 로드 상태 설정
+            scene.isGameAdLoading = true;
+            scene.registry.set("gameAdLoading", true);
+            
+            // 결과 화면과 동일한 방식으로 gameAd 로드
+            const adGroupId_attendance = (
+              window.__INTEGRATED_AD_GROUP_ID ||
+              localStorage.getItem("integratedAdGroupId") ||
+              "ait-ad-test-interstitial-id"
+            );
+            
             scene.unregisterGameAd = loadFullScreenAd({
-              options: { adGroupId },
+              options: { adGroupId: adGroupId_attendance },
               onEvent: (event) => {
                 console.log("[daily-ad] loadFullScreenAd 이벤트:", event.type);
                 if (event.type === "loaded") {
-                  console.log("[daily-ad] ✅ 광고 로드 완료 - 재생하지 않음");
+                  console.log("[daily-ad] ✅ 광고 로드 완료");
                   scene.isGameAdLoaded = true;
                   scene.isGameAdLoading = false;
-                  scene.isDailyRewardClaimPending = false;
                   scene.registry.set("gameAdLoaded", true);
                   scene.registry.set("gameAdLoading", false);
-                  // 자동 재생 하지 않음 - 사용자가 다시 클릭할 때만 재생
                   scene.showToast("광고 준비 완료! 다시 클릭하면 재생됩니다.", "#FFD700");
                 }
               },
@@ -10992,43 +11044,73 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             });
             return;
           }
-          if (scene.isDailyRewardClaimPending) return;
-          scene.sound.play("btn", { volume: 0.4 });
-          scene.isDailyRewardClaimPending = true;
-          if (typeof scene.updateDailyRewardButtonState === "function") {
-            scene.updateDailyRewardButtonState();
-          }
-          showCoinBurstEffect(scene, rowX, rowY, scene.dailyRewardAmount);
-          socket.emit("claimDailyReward");
-          // immediately mark this day claimed and add stamp
-          if (rowDateStr) {
-            this.claimedDailyDates.add(rowDateStr);
-            try {
-              this.markDailyRewardClaimed(rowDateStr);
-            } catch (e) {
-              // ignore
+          
+          // 🟢 일반 보상 처리 (다른 요일 클릭, canClaim=true인 경우)
+          if (canClaim) {
+            console.log("[daily-reward] 일반 보상 처리 시작");
+            scene.sound.play("btn", { volume: 0.4 });
+            scene.isDailyRewardClaimPending = true;
+            
+            // 일반 보상 서버 요청
+            if (typeof socket !== "undefined") {
+              console.log("[daily-reward] socket.emit('claimDailyReward') 호출");
+              socket.emit("claimDailyReward");
             }
-            const stamp = this.add
-              .text(rowX, rowY, "획득", {
-                fontFamily:
-                  typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
-                fontSize: `${width * 0.055}px`,
-                color: "#ffffff",
-                fontWeight: "bold",
-                stroke: "#000000",
-                strokeThickness: 4,
-              })
-              .setOrigin(0.5)
-              .setDepth(4004)
-              .setScale(0);
-            stamp.setRotation(-0.3);
-            this.tweens.add({
-              targets: stamp,
-              scale: 1,
-              duration: 450,
-              ease: "Back.out",
-            });
-            rows.push(stamp);
+            
+            // 🔴 [중요] 로컬에서 즉시 코인 업데이트
+            // 결과 화면과 동일한 방식 - 사용자 경험 개선
+            if (scene && scene.myProfile) {
+              const currentCoins = Number(scene.myProfile.coins) || 0;
+              const dailyRewardAmount = Number(scene.dailyRewardAmount) || 50;
+              const newCoins = currentCoins + dailyRewardAmount;
+              scene.myProfile.coins = newCoins;
+              
+              // 메인 화면 코인 텍스트 즉시 업데이트
+              if (typeof scene.updateMyProfileUI === "function") {
+                scene.updateMyProfileUI(scene.myProfile);
+                console.log('[daily-reward] ✅ 로컬 코인 즉시 업데이트:', newCoins);
+              }
+            }
+            
+            // 코인 폭발 이펙트 표시
+            try {
+              showCoinBurstEffect(scene, rowX, rowY, 50);
+              console.log('[daily-reward] ✅ showCoinBurstEffect 호출');
+            } catch (e) {
+              console.warn('[daily-reward] ⚠️ showCoinBurstEffect 실패:', e.message);
+            }
+            
+            // 스탠프 생성
+            if (rowDateStr) {
+              try {
+                scene.claimedDailyDates.add(rowDateStr);
+                scene.markDailyRewardClaimed(rowDateStr);
+                
+                const stamp = scene.add
+                  .text(rowX, rowY, "획득", {
+                    fontFamily:
+                      typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
+                    fontSize: `${width * 0.055}px`,
+                    color: "#ffffff",
+                    fontWeight: "bold",
+                    stroke: "#000000",
+                    strokeThickness: 4,
+                  })
+                  .setOrigin(0.5)
+                  .setDepth(4004)
+                  .setScale(0);
+                stamp.setRotation(-0.3);
+                scene.tweens.add({
+                  targets: stamp,
+                  scale: 1,
+                  duration: 450,
+                  ease: "Back.out",
+                });
+                console.log('[daily-reward] ✅ 스탠프 생성');
+              } catch (e) {
+                console.warn('[daily-reward] ⚠️ 스탠프 생성 실패:', e.message);
+              }
+            }
           }
         });
       }
@@ -13038,6 +13120,24 @@ class GameScene extends Phaser.Scene {
         }
       };
     }
+
+    // 광고 보상 이벤트 - 실시간 코인 업데이트
+    socket.off("adReward").on("adReward", (data) => {
+      console.log("[adReward] 광고 보상 이벤트 수신:", data);
+      if (typeof gameScene.setCoinsAbsolute === "function") {
+        gameScene.setCoinsAbsolute(data.totalCoins);
+        console.log("[adReward] 코인 업데이트:", data.totalCoins);
+      }
+    });
+
+    // 일반 보상 이벤트 - 실시간 코인 업데이트
+    socket.off("dailyReward").on("dailyReward", (data) => {
+      console.log("[dailyReward] 일반 보상 이벤트 수신:", data);
+      if (typeof gameScene.setCoinsAbsolute === "function") {
+        gameScene.setCoinsAbsolute(data.totalCoins);
+        console.log("[dailyReward] 코인 업데이트:", data.totalCoins);
+      }
+    });
 
     // 🔴 [추가] Registry에서 광고 상태 복원 (씬 간에 유지)
     this.isGameAdLoaded = this.registry.get("gameAdLoaded") || false;
