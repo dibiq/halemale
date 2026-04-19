@@ -2488,6 +2488,43 @@ io.on("connection", (socket) => {
     }
   });
 
+  // 광고 보상 이벤트 (출석 체크 광고)
+  socket.on("claimAdReward", async (data) => {
+    const adRewardCoins = 100; // 광고 보상 코인
+    const previousCoins = Number(socket.coins) || 0;
+    socket.coins = previousCoins + adRewardCoins;
+
+    const mergedItems = {
+      items: Array.isArray(socket.items) ? socket.items : [],
+      specialCards: socket.specialCards || {},
+    };
+
+    try {
+      await savePlayer(
+        socket.nickname,
+        socket.level,
+        socket.coins,
+        mergedItems,
+        socket.experience,
+        socket.ownedCharacters,
+        socket.currentCharacter,
+        socket.lastCheckinDate,
+        typeof socket.avetime === "number" && socket.avetime > 0
+          ? socket.avetime
+          : null,
+      );
+
+      socket.emit("adReward", {
+        amount: adRewardCoins,
+        totalCoins: socket.coins,
+      });
+    } catch (err) {
+      socket.coins = previousCoins;
+      console.warn("ad reward claim failed", err);
+      socket.emit("adRewardError", "광고 보상 처리 중 오류가 발생했습니다.");
+    }
+  });
+
   // 특수카드 구매 이벤트
   socket.on("buySpecialCard", async (data) => {
     const { cardId, cardPrice, avetime } = data || {};
