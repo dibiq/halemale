@@ -7418,7 +7418,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
         // 🎨 제목
         const nameText = this.add
-          .text(0, -200, "💎 코인 충전하기 💎", {
+          .text(0, -220, "코인 충전하기", {
             fontFamily: GAME_FONTS.main,
             fontSize: `${width * 0.08}px`,
             color: "#ffd700",
@@ -7430,29 +7430,51 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
         // 🎨 코인 수량 섹션 (coinpack 이미지)
         const coinIconAmount = this.add
-          .image(0, -50, "coinpack")
+          .image(0, -15, "coinpack")
           .setDisplaySize(width * 0.3, width * 0.3)
           .setOrigin(0.5);
+
+        const amountText = this.add
+          .text(0, 200, `${product.amount}개`, {
+            fontFamily: GAME_FONTS.main,
+            fontSize: `${width * 0.07}px`,
+            color: "#ffffff",
+            fontWeight: "bold",
+            stroke: "#000000",
+            strokeThickness: 6,
+          })
+          .setOrigin(0.5);
+
+        // 🎨 할인율 계산 및 표시
+        let discountPercentage = 0;
+        if (index === 1) {
+          // 3000개: 33.3% 할인
+          discountPercentage = 33;
+        } else if (index === 2) {
+          // 10000개: 50% 할인
+          discountPercentage = 50;
+        }
 
         // 🎨 할인/추천 배지 (3번째 상품에만 표시)
         const elementsToAdd = [
           nameText,
           coinIconAmount,
+          amountText,
         ];
 
-        // 3번째 아이템(index 2)에만 "가장 인기있는 상품" 배지 표시
-        if (index === 2) {
-          const badgeText = this.add
-            .text(0, 145, "⭐ 가장 인기있는 상품! ⭐", {
+        // 할인율이 0이 아닐 때만 표시
+        if (discountPercentage > 0) {
+          const discountText = this.add
+            .text(0, 270, `🔥 ${discountPercentage}% SALE! 🔥`, {
               fontFamily: GAME_FONTS.main,
-              fontSize: `${width * 0.048}px`,
-              color: "#ffff00",
+              fontSize: `${width * 0.055}px`,
+              color: "#ff6b6b",
               fontWeight: "bold",
-              stroke: "#ff6b6b",
-              strokeThickness: 2,
+              stroke: "#000000",
+              strokeThickness: 3,
             })
             .setOrigin(0.5);
-          elementsToAdd.push(badgeText);
+          elementsToAdd.push(discountText);
         }
 
         cardDisplayContainer.add(elementsToAdd);
