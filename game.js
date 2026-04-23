@@ -2003,6 +2003,7 @@ class LobbyScene extends Phaser.Scene {
       `${ASSET_SERVER}/images/invitebg.png${VERSION}`,
     );
     this.load.image("coin", `${ASSET_SERVER}/images/coin.png${VERSION}`);
+    this.load.image("coinpack", `${ASSET_SERVER}/images/coinpack.png${VERSION}`);
     this.load.image("exp", `${ASSET_SERVER}/images/exp.png${VERSION}`);
     this.load.image(
       "statusbg",
@@ -6863,9 +6864,9 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     ];
 
     const coinProducts = [
-      { amount: 500, display: "$0.99" },
-      { amount: 1000, display: "$1.99" },
-      { amount: 3000, display: "$4.99" },
+      { amount: 1000, display: "1100원" },
+      { amount: 3000, display: "2200원" },
+      { amount: 10000, display: "5500원" },
     ];
 
     const normalizeOwnedCharacters = (rawValue) => {
@@ -7415,53 +7416,48 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       if (currentTab === "coin") {
         const product = coinProducts[index];
 
+        // 🎨 제목
         const nameText = this.add
-          .text(0, -80, "💎 코인 패키지", {
+          .text(0, -200, "💎 코인 충전하기 💎", {
             fontFamily: GAME_FONTS.main,
-            fontSize: `${width * 0.065}px`,
+            fontSize: `${width * 0.08}px`,
             color: "#ffd700",
             fontWeight: "bold",
             stroke: "#000000",
-            strokeThickness: 5,
+            strokeThickness: 6,
           })
           .setOrigin(0.5);
 
-        const amountText = this.add
-          .text(0, -25, `💰 ${product.amount} 충전`, {
-            fontFamily: GAME_FONTS.main,
-            fontSize: `${width * 0.05}px`,
-            color: "#4ecdc4",
-            fontWeight: "bold",
-            stroke: "#000000",
-            strokeThickness: 3,
-          })
+        // 🎨 코인 수량 섹션 (coinpack 이미지)
+        const coinIconAmount = this.add
+          .image(0, -50, "coinpack")
+          .setDisplaySize(width * 0.3, width * 0.3)
           .setOrigin(0.5);
 
-        const priceText = this.add
-          .text(0, 25, product.display, {
-            fontFamily: GAME_FONTS.main,
-            fontSize: `${width * 0.05}px`,
-            color: "#ffffff",
-            fontWeight: "bold",
-            stroke: "#000000",
-            strokeThickness: 4,
-          })
-          .setOrigin(0.5);
+        // 🎨 할인/추천 배지 (3번째 상품에만 표시)
+        const elementsToAdd = [
+          nameText,
+          coinIconAmount,
+        ];
 
-        const tipText = this.add
-          .text(0, 65, "구매 시 즉시 코인 추가", {
-            fontFamily: GAME_FONTS.main,
-            fontSize: `${width * 0.032}px`,
-            color: "#2ecc71",
-            fontWeight: "bold",
-            stroke: "#000000",
-            strokeThickness: 3,
-          })
-          .setOrigin(0.5);
+        // 3번째 아이템(index 2)에만 "가장 인기있는 상품" 배지 표시
+        if (index === 2) {
+          const badgeText = this.add
+            .text(0, 145, "⭐ 가장 인기있는 상품! ⭐", {
+              fontFamily: GAME_FONTS.main,
+              fontSize: `${width * 0.048}px`,
+              color: "#ffff00",
+              fontWeight: "bold",
+              stroke: "#ff6b6b",
+              strokeThickness: 2,
+            })
+            .setOrigin(0.5);
+          elementsToAdd.push(badgeText);
+        }
 
-        cardDisplayContainer.add([nameText, amountText, priceText, tipText]);
+        cardDisplayContainer.add(elementsToAdd);
 
-        buyBtnText.setText("충전하기");
+        buyBtnText.setText(product.display);
       }
     };
 
