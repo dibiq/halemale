@@ -1189,6 +1189,9 @@ class LobbyScene extends Phaser.Scene {
               // 코인 추가
               const nickname = this.myProfile.nickname || localStorage.getItem("nickname") || "추추";
               
+              // 로컬 코인 즉시 추가 (낙관적 업데이트)
+              this.myProfile.coins = Number(this.myProfile.coins || 0) + Number(product.amount);
+              
               if (!this.isSingle && socket?.connected) {
                 // 멀티플레이: 서버에 코인 추가 요청
                 socket.emit("addCoins", {
@@ -1207,12 +1210,9 @@ class LobbyScene extends Phaser.Scene {
                   nickname,
                   status: "PURCHASED",
                 });
-              } else {
-                // 싱글플레이: 로컬 코인 추가
-                this.myProfile.coins = Number(this.myProfile.coins || 0) + Number(product.amount);
               }
 
-              // UI 업데이트
+              // UI 업데이트 (로컬 코인으로 즉시 업데이트)
               if (this.shopCoinText) {
                 this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
               }
@@ -1316,6 +1316,9 @@ class LobbyScene extends Phaser.Scene {
           // 코인 추가
           const nickname = this.myProfile.nickname || localStorage.getItem("nickname") || "추추";
 
+          // 로컬 코인 즉시 추가 (낙관적 업데이트)
+          this.myProfile.coins = Number(this.myProfile.coins || 0) + coinAmount;
+
           if (!this.isSingle && socket?.connected) {
             // 멀티플레이: 서버에 코인 추가 요청
             socket.emit("addCoins", {
@@ -1334,14 +1337,14 @@ class LobbyScene extends Phaser.Scene {
               nickname,
               status: "PURCHASED",
             });
-          } else {
-            // 싱글플레이: 로컬 코인 추가
-            this.myProfile.coins = Number(this.myProfile.coins || 0) + coinAmount;
           }
 
-          // UI 업데이트
+          // UI 업데이트 (로컬 코인으로 즉시 업데이트)
           if (this.shopCoinText) {
             this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
+          }
+          if (this.coinShopCurrentCoinText) {
+            this.coinShopCurrentCoinText.setText(`현재 보유: 💰 ${this.myProfile.coins}`);
           }
           if (typeof this.updateMyProfileUI === "function") {
             this.updateMyProfileUI();
