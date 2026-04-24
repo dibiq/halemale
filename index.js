@@ -2698,6 +2698,96 @@ io.on("connection", (socket) => {
     );
   });
 
+  // 인앱결제 내역 저장
+  socket.on("savePurchaseHistory", async (data) => {
+    const { orderId, sku, amount, price, nickname, status } = data || {};
+
+    if (!orderId || !sku || !nickname || !pool) {
+      console.error(
+        `❌ savePurchaseHistory: 필수 정보 부족 또는 DB 없음`,
+        data,
+      );
+      socket.emit("purchaseHistorySaveError", "필수 정보가 없습니다.");
+      return;
+    }
+
+    try {
+      // 1️⃣ JSONB 방식: players 테이블의 purchase_history 컬럼에 직접 저장
+      const purchaseRecord = JSON.stringify({
+        orderId,
+        sku,
+        amount, // 코인 수량
+        price,
+        status: status || "PURCHASED",
+        purchasedAt: new Date().toISOString(),
+      });
+
+      const query = `
+        UPDATE players 
+        SET purchase_history = COALESCE(purchase_history, '[]'::jsonb) || $1::jsonb
+        WHERE id = $2
+      `;
+
+      const result = await pool.query(query, [`[${purchaseRecord}]`, nickname]);
+
+      if (result.rowCount === 0) {
+        console.warn(
+          `⚠️ savePurchaseHistory: 플레이어를 찾을 수 없음 (${nickname}), 새로 생성 시도`,
+        );
+        // 플레이어가 없으면 생성
+        const insertQuery = `
+          INSERT INTO players (id, purchase_history)
+          VALUES ($1, $2::jsonb)
+          ON CONFLICT (id) DO UPDATE
+          SET purchase_history = COALESCE(players.purchase_history, '[]'::jsonb) || $2::jsonb
+        `;
+        await pool.query(insertQuery, [nickname, `[${purchaseRecord}]`]);
+      }
+
+      console.log(`✅ 결제 내역 저장 완료:`, JSON.parse(purchaseRecord));
+      socket.emit("purchaseHistorySaved", {
+        orderId,
+        message: "결제 내역이 저장되었습니다.",
+      });
+    } catch (error) {
+      console.error(`❌ savePurchaseHistory 오류:`, error);
+      socket.emit("purchaseHistorySaveError", error.message);
+    }
+  });
+
+  // 선택사항: 별도 테이블 사용 방식 (추후 확장성이 필요할 때 사용)
+  // socket.on("savePurchaseHistory", async (data) => {
+  //   const { orderId, sku, amount, price, nickname, status } = data || {};
+  //
+  //   if (!orderId || !sku || !nickname || !pool) {
+  //     socket.emit("purchaseHistorySaveError", "필수 정보가 없습니다.");
+  //     return;
+  //   }
+  //
+  //   try {
+  //     // 2️⃣ 별도 테이블 방식: purchase_history 테이블에 저장
+  //     const query = `
+  //       INSERT INTO purchase_history (player_id, order_id, sku, amount, price, status)
+  //       VALUES ($1, $2, $3, $4, $5, $6)
+  //       ON CONFLICT (order_id) DO NOTHING
+  //     `;
+  //
+  //     await pool.query(query, [
+  //       nickname,
+  //       orderId,
+  //       sku,
+  //       amount,
+  //       price,
+  //       status || "PURCHASED",
+  //     ]);
+  //
+  //     socket.emit("purchaseHistorySaved", { orderId, message: "결제 내역이 저장되었습니다." });
+  //   } catch (error) {
+  //     console.error(`❌ savePurchaseHistory 오류:`, error);
+  //     socket.emit("purchaseHistorySaveError", error.message);
+  //   }
+  // });
+
   const handleBuyCharacter = async (data) => {
     const payload = data && typeof data === "object" ? data : {};
     // allow average reaction time to be included when coins/characters change

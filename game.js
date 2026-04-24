@@ -1197,6 +1197,16 @@ class LobbyScene extends Phaser.Scene {
                   playerId: socket.id,
                   timestamp: new Date().toISOString(),
                 });
+                
+                // 결제 내역 서버에 저장
+                socket.emit("savePurchaseHistory", {
+                  orderId,
+                  sku: product.sku,
+                  amount: product.amount,
+                  price: product.display,
+                  nickname,
+                  status: "PURCHASED",
+                });
               } else {
                 // 싱글플레이: 로컬 코인 추가
                 this.myProfile.coins = Number(this.myProfile.coins || 0) + Number(product.amount);
@@ -1262,6 +1272,92 @@ class LobbyScene extends Phaser.Scene {
       } else {
         this.showToast(`결제 초기화 실패: ${error?.message || "알 수 없는 오류"}`, "#e74c3c");
       }
+    }
+  }
+
+  // 미결 주문 복원 (결제 완료되었으나 상품 지급이 실패한 경우)
+  async restorePendingOrders() {
+    if (!IAP || typeof IAP.getPendingOrders !== "function") {
+      console.warn("getPendingOrders를 지원하지 않는 환경입니다.");
+      return;
+    }
+
+    try {
+      const pendingOrders = await IAP.getPendingOrders();
+
+      if (!pendingOrders || pendingOrders.length === 0) {
+        console.log("복원할 미결 주문이 없습니다.");
+        return;
+      }
+
+      console.log(`🔄 미결 주문 ${pendingOrders.length}개 발견, 복원 중...`, pendingOrders);
+
+      for (const order of pendingOrders) {
+        const { orderId, sku } = order;
+
+        if (!orderId || !sku) continue;
+
+        try {
+          // SKU를 기반으로 코인 수량 찾기
+          let coinAmount = 0;
+          if (sku === COIN_PRODUCT_SKUS[1000]) {
+            coinAmount = 1000;
+          } else if (sku === COIN_PRODUCT_SKUS[3000]) {
+            coinAmount = 3000;
+          } else if (sku === COIN_PRODUCT_SKUS[10000]) {
+            coinAmount = 10000;
+          }
+
+          if (coinAmount === 0) {
+            console.warn(`알 수 없는 SKU 형식: ${sku}`);
+            continue;
+          }
+
+          // 코인 추가
+          const nickname = this.myProfile.nickname || localStorage.getItem("nickname") || "추추";
+
+          if (!this.isSingle && socket?.connected) {
+            // 멀티플레이: 서버에 코인 추가 요청
+            socket.emit("addCoins", {
+              amount: coinAmount,
+              nickname,
+              playerId: socket.id,
+              timestamp: new Date().toISOString(),
+            });
+
+            // 결제 내역 서버에 저장
+            socket.emit("savePurchaseHistory", {
+              orderId,
+              sku,
+              amount: coinAmount,
+              price: "복원됨",
+              nickname,
+              status: "PURCHASED",
+            });
+          } else {
+            // 싱글플레이: 로컬 코인 추가
+            this.myProfile.coins = Number(this.myProfile.coins || 0) + coinAmount;
+          }
+
+          // UI 업데이트
+          if (this.shopCoinText) {
+            this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
+          }
+          if (typeof this.updateMyProfileUI === "function") {
+            this.updateMyProfileUI();
+          }
+
+          // 지급 완료 처리
+          if (IAP && typeof IAP.completeProductGrant === "function") {
+            await IAP.completeProductGrant({ params: { orderId } });
+            console.log(`✅ 미결 주문 복원 완료: ${orderId}`);
+          }
+        } catch (error) {
+          console.error(`❌ 미결 주문 복원 실패 (${orderId}):`, error);
+        }
+      }
+    } catch (error) {
+      console.error("미결 주문 조회 실패:", error);
     }
   }
 
@@ -3302,6 +3398,17 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       // 상점이 열려있다면 새로고침하여 최신 소유 정보 반영
       if (this.isShopOpen && typeof renderShopContent === "function") {
         renderShopContent();
+      }
+
+      // 📦 미결 주문 복원 (결제는 완료되었으나 상품 지급이 실패한 경우)
+      try {
+        if (typeof this.restorePendingOrders === "function") {
+          this.restorePendingOrders().catch((err) => {
+            console.warn("미결 주문 복원 중 오류:", err);
+          });
+        }
+      } catch (err) {
+        console.warn("미결 주문 복원 호출 실패:", err);
       }
     });
 
