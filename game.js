@@ -51,6 +51,13 @@ function isValidCharacterKey(value) {
 const REMOVE_ADS_PRODUCT_SKU = "ait.0000021415.cc877a1d.40741f3a87.5118088536";
 const REMOVE_ADS_PRODUCT_NAME = "프리미엄 구독 서비스";
 
+// 코인 상품 SKU
+const COIN_PRODUCT_SKUS = {
+  1000: "ait.0000021415.1f17ec88.80ded8b406.6602154993",
+  3000: "ait.0000021415.0945b5b2.435c01c347.6602202648",
+  10000: "ait.0000021415.b2b314b7.6f59f8d57c.6602291704",
+};
+
 function getIntegratedAdGroupId() {
   if (typeof window === "undefined") return null;
 
@@ -1153,6 +1160,109 @@ class LobbyScene extends Phaser.Scene {
     });
 
     this.iapPurchaseCleanup = cleanup;
+  }
+
+  purchaseCoinProduct(product) {
+    if (!IAP || typeof IAP.createOneTimePurchaseOrder !== "function") {
+      this.showToast("인앱결제를 지원하지 않는 환경입니다.", "#f1c40f");
+      return;
+    }
+
+    if (!product || !product.sku) {
+      this.showToast("상품 정보를 찾을 수 없습니다.", "#f1c40f");
+      return;
+    }
+
+    if (this.isIapPurchasing) {
+      this.showToast("결제가 이미 진행 중입니다.", "#f1c40f");
+      return;
+    }
+
+    this.isIapPurchasing = true;
+
+    try {
+      const cleanup = IAP.createOneTimePurchaseOrder({
+        options: {
+          sku: product.sku,
+          processProductGrant: async ({ orderId }) => {
+            try {
+              // 코인 추가
+              const nickname = this.myProfile.nickname || localStorage.getItem("nickname") || "추추";
+              
+              if (!this.isSingle && socket?.connected) {
+                // 멀티플레이: 서버에 코인 추가 요청
+                socket.emit("addCoins", {
+                  amount: product.amount,
+                  nickname,
+                  playerId: socket.id,
+                  timestamp: new Date().toISOString(),
+                });
+              } else {
+                // 싱글플레이: 로컬 코인 추가
+                this.myProfile.coins = Number(this.myProfile.coins || 0) + Number(product.amount);
+              }
+
+              // UI 업데이트
+              if (this.shopCoinText) {
+                this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
+              }
+              if (this.coinShopCurrentCoinText) {
+                this.coinShopCurrentCoinText.setText(`현재 보유: 💰 ${this.myProfile.coins}`);
+              }
+              if (typeof this.updateMyProfileUI === "function") {
+                this.updateMyProfileUI();
+              }
+
+              if (IAP && typeof IAP.completeProductGrant === "function") {
+                await IAP.completeProductGrant({ params: { orderId } });
+              }
+
+              return true;
+            } catch (error) {
+              console.error("상품 지급 처리 실패", error);
+              this.showToast("상품 지급 처리에 실패했어요.", "#e74c3c");
+              return false;
+            }
+          },
+        },
+        onEvent: (event) => {
+          this.isIapPurchasing = false;
+
+          if (event?.type === "success") {
+            this.showToast(`💰 ${product.amount} 코인 충전 완료!`, "#2ecc71");
+          }
+
+          if (typeof this.iapPurchaseCleanup === "function") {
+            this.iapPurchaseCleanup();
+            this.iapPurchaseCleanup = null;
+          }
+        },
+        onError: (error) => {
+          this.isIapPurchasing = false;
+          this.showToast(
+            `결제 실패: ${this.parseIapErrorMessage(error)}`,
+            "#e74c3c",
+          );
+
+          if (typeof this.iapPurchaseCleanup === "function") {
+            this.iapPurchaseCleanup();
+            this.iapPurchaseCleanup = null;
+          }
+        },
+      });
+
+      this.iapPurchaseCleanup = cleanup;
+    } catch (error) {
+      this.isIapPurchasing = false;
+      console.error("인앱결제 시작 실패:", error);
+      
+      // PC 환경 또는 IAP 미지원 환경에서의 친화적 메시지
+      if (error?.message?.includes("getOperationalEnvironment")) {
+        this.showToast("📱 모바일 디바이스에서만 결제가 가능합니다.", "#f1c40f");
+      } else {
+        this.showToast(`결제 초기화 실패: ${error?.message || "알 수 없는 오류"}`, "#e74c3c");
+      }
+    }
   }
 
   clearLobbyAdLoadTimeout() {
@@ -6864,9 +6974,9 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     ];
 
     const coinProducts = [
-      { amount: 1000, display: "1100원" },
-      { amount: 3000, display: "2200원" },
-      { amount: 10000, display: "5500원" },
+      { amount: 1000, display: "1100원", sku: COIN_PRODUCT_SKUS[1000] },
+      { amount: 3000, display: "2200원", sku: COIN_PRODUCT_SKUS[3000] },
+      { amount: 10000, display: "5500원", sku: COIN_PRODUCT_SKUS[10000] },
     ];
 
     const normalizeOwnedCharacters = (rawValue) => {
@@ -7728,12 +7838,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         }
         
         const product = coinProducts[tabIndexes.coin];
-        this.buyCoin(product.amount);
-        this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
-        // 💡 buyCoin 함수에서 이미 서버에 addCoins 이벤트를 전송하므로
-        // safeSyncInventory 호출은 중복이며 오류를 발생시킬 수 있음
-        this.showToast(`💰 ${product.amount} 코인 구매 완료!`, "#2ecc71");
-        renderShopContent();
+        this.purchaseCoinProduct(product);
       }
     });
 
