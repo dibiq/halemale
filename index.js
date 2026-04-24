@@ -2698,7 +2698,7 @@ io.on("connection", (socket) => {
     );
   });
 
-  // 인앱결제 내역 저장
+  // 인앱결제 내역 저장 (멱등성 설계: 중복 요청 안전 처리)
   socket.on("savePurchaseHistory", async (data) => {
     const { orderId, sku, amount, price, nickname, status } = data || {};
 
@@ -2712,7 +2712,35 @@ io.on("connection", (socket) => {
     }
 
     try {
-      // 1️⃣ JSONB 방식: players 테이블의 purchase_history 컬럼에 직접 저장
+      // 1️⃣ 멱등성 확인: 이미 저장된 orderId는 건너뛰기
+      const checkQuery = `
+        SELECT purchase_history
+        FROM players
+        WHERE id = $1
+      `;
+
+      const checkResult = await pool.query(checkQuery, [nickname]);
+
+      if (checkResult.rows.length > 0) {
+        const history = checkResult.rows[0].purchase_history || [];
+        const isDuplicate =
+          Array.isArray(history) &&
+          history.some((record) => record.orderId === orderId);
+
+        if (isDuplicate) {
+          console.warn(
+            `⚠️ savePurchaseHistory: 중복 orderId 감지 (${orderId}), 멱등 처리`,
+          );
+          socket.emit("purchaseHistorySaved", {
+            orderId,
+            message: "이미 저장된 주문입니다.",
+            isDuplicate: true,
+          });
+          return;
+        }
+      }
+
+      // 2️⃣ 결제 내역 저장
       const purchaseRecord = JSON.stringify({
         orderId,
         sku,
@@ -2744,14 +2772,115 @@ io.on("connection", (socket) => {
         await pool.query(insertQuery, [nickname, `[${purchaseRecord}]`]);
       }
 
-      console.log(`✅ 결제 내역 저장 완료:`, JSON.parse(purchaseRecord));
+      console.log(
+        `✅ 결제 내역 저장 완료 [orderId: ${orderId}, amount: ${amount}]`,
+      );
       socket.emit("purchaseHistorySaved", {
         orderId,
         message: "결제 내역이 저장되었습니다.",
       });
     } catch (error) {
-      console.error(`❌ savePurchaseHistory 오류:`, error);
-      socket.emit("purchaseHistorySaveError", error.message);
+      console.error(
+        `❌ savePurchaseHistory 오류 [orderId: ${orderId}]:`,
+        error,
+      );
+
+      // 에러 종류에 따른 상세 메시지
+      let errorMessage = "결제 내역 저장에 실패했습니다.";
+      if (error.code === "23505") {
+        // 유니크 제약 위반 - 중복 orderId
+        errorMessage = "이미 처리된 주문입니다. 서버에 문의하세요.";
+      } else if (error.code === "ECONNREFUSED") {
+        errorMessage = "DB 연결 오류입니다. 잠시 후 다시 시도하세요.";
+      }
+
+      socket.emit("purchaseHistorySaveError", {
+        orderId,
+        message: errorMessage,
+        errorCode: error.code,
+      });
+    }
+  });
+
+  // 환불 처리 (선택: 나중에 구현 가능)
+  socket.on("handleRefund", async (data) => {
+    const { orderId, nickname } = data || {};
+
+    if (!orderId || !nickname || !pool) {
+      socket.emit("refundError", "필수 정보가 없습니다.");
+      return;
+    }
+
+    try {
+      // 해당 orderId의 상태를 REFUNDED로 변경
+      const query = `
+        UPDATE players
+        SET purchase_history = jsonb_set(
+          purchase_history,
+          (SELECT ARRAY[key::text] FROM jsonb_each_text(purchase_history) 
+           WHERE value::jsonb->>'orderId' = $1 LIMIT 1),
+          jsonb_set(
+            (SELECT value FROM jsonb_each(purchase_history) 
+             WHERE value->>'orderId' = $1 LIMIT 1),
+            '{status}',
+            '"REFUNDED"'::jsonb
+          )
+        )
+        WHERE id = $2
+      `;
+
+      await pool.query(query, [orderId, nickname]);
+      console.log(`✅ 환불 처리 완료 [orderId: ${orderId}]`);
+      socket.emit("refundHandled", {
+        orderId,
+        message: "환불 처리되었습니다.",
+      });
+    } catch (error) {
+      console.error(`❌ handleRefund 오류 [orderId: ${orderId}]:`, error);
+      socket.emit("refundError", "환불 처리에 실패했습니다.");
+    }
+  });
+
+  // 결제 내역 조회 API
+  socket.on("getPurchaseHistory", async (data) => {
+    const { nickname } = data || {};
+
+    if (!nickname || !pool) {
+      socket.emit("purchaseHistoryError", "필수 정보가 없습니다.");
+      return;
+    }
+
+    try {
+      const query = `
+        SELECT purchase_history
+        FROM players
+        WHERE id = $1
+      `;
+
+      const result = await pool.query(query, [nickname]);
+
+      if (result.rows.length === 0) {
+        console.warn(`⚠️ getPurchaseHistory: 플레이어 미발견 (${nickname})`);
+        socket.emit("purchaseHistory", {
+          nickname,
+          history: [],
+          message: "플레이어를 찾을 수 없습니다.",
+        });
+        return;
+      }
+
+      const history = result.rows[0].purchase_history || [];
+      socket.emit("purchaseHistory", {
+        nickname,
+        history,
+        count: Array.isArray(history) ? history.length : 0,
+      });
+    } catch (error) {
+      console.error(
+        `❌ getPurchaseHistory 오류 [nickname: ${nickname}]:`,
+        error,
+      );
+      socket.emit("purchaseHistoryError", "결제 내역 조회에 실패했습니다.");
     }
   });
 

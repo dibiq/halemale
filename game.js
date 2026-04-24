@@ -975,7 +975,16 @@ class LobbyScene extends Phaser.Scene {
 
     if (typeof error === "object") {
       if (typeof error.code === "string") {
-        return error.code;
+        // 토스 IAP 에러 코드 매핑
+        const errorCodeMap = {
+          "USER_CANCELLED": "결제가 취소되었어요.",
+          "PAYMENT_FAILED": "결제가 실패했어요. 다시 시도해주세요.",
+          "PAYMENT_COMPLETED": "결제는 완료되었으나 상품 지급이 실패했습니다.",
+          "PRODUCT_NOT_GRANTED_BY_PARTNER": "상품 지급 처리에 실패했어요.",
+          "NETWORK_ERROR": "네트워크 연결을 확인하세요.",
+          "UNKNOWN_ERROR": "알 수 없는 오류가 발생했어요.",
+        };
+        return errorCodeMap[error.code] || error.code;
       }
 
       if (typeof error.message === "string") {
@@ -3616,6 +3625,28 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         this.setCoinsAbsolute(Number(data.newCoins), { sync: false });
       }
     });
+
+    // 💡 결제 내역 저장 성공
+    socket.off("purchaseHistorySaved").on("purchaseHistorySaved", (data) => {
+      console.log("✅ 결제 내역 저장 완료:", data);
+      if (data && data.isDuplicate) {
+        console.warn("⚠️ 중복 orderId 감지 - 멱등 처리됨");
+      }
+    });
+
+    // 💡 결제 내역 저장 실패
+    socket.off("purchaseHistorySaveError").on(
+      "purchaseHistorySaveError",
+      (error) => {
+        console.error("❌ 결제 내역 저장 실패:", error);
+        if (typeof error === "object" && error.message) {
+          this.showToast(
+            `결제 내역 저장 실패: ${error.message}`,
+            "#e74c3c",
+          );
+        }
+      },
+    );
 
     socket.off("lobbyChatMessage").on("lobbyChatMessage", (payload) => {
       if (!payload || typeof payload.message !== "string") return;
