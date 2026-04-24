@@ -1095,7 +1095,7 @@ class LobbyScene extends Phaser.Scene {
   playAdForCoinReward() {
     const REWARD_AMOUNT = 100;
     const LAST_CLAIM_KEY = "lastAdRewardClaim";
-    const COOLDOWN_HOURS = 0; // 디버그: 0으로 설정하면 쿨타임 없음
+    const COOLDOWN_HOURS = 0.5; // 디버그: 0으로 설정하면 쿨타임 없음
 
     // 🔴 1️⃣ 쿨타임 확인
     const lastClaimTime = localStorage.getItem(LAST_CLAIM_KEY);
@@ -26816,24 +26816,22 @@ try {
 }
 /* prettier-ignore-file */
 
-// pick scale mode based on orientation.  portrait devices get ENVELOP
-// which fills the width and crops top/bottom; landscape devices use FIT
-// so the full 9:16 world is visible with black bars on the shorter axis.
-// the body background color has already been set to match the game, so
-// the "bars" are invisible.
-// 모바일에서 좌우가 잘리지 않도록 FIT 모드 사용 (화면 내에 모든 콘텐츠 표시)
+// 🎮 모바일에서 여백 없이 화면을 꽉 채우기
+// FIT 모드: 콘텐츠 비율 유지 (좌우 검은 여백 생길 수 있음)
+// 하지만 HTML/CSS의 position:fixed + 100%로 여백 제거
 const initialMode = Phaser.Scale.FIT;
 
 const config = {
   type: Phaser.AUTO,
-  parent: "game-container", // 🔹 위에서 만든 div ID와 일치해야 함
-  width: 1080, // 기준 해상도 (세로형 게임 기준, 내부 논리 크기)
+  parent: "game-container",
+  width: 1080,
   height: 1920,
   backgroundColor: "#0f172a",
   scale: {
     mode: initialMode,
     autoCenter: Phaser.Scale.CENTER_BOTH,
     resolution: window.devicePixelRatio || 1,
+    expandParent: true, // ← 부모 컨테이너를 확장
   },
   dom: { createContainer: true }, // ✅ 여기를 추가
   scene: [LobbyScene, GameScene],
