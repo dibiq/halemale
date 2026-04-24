@@ -4414,7 +4414,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     // 광고보상 배지 업데이트
     this.hasAdRewardReady = () => {
       const LAST_CLAIM_KEY = "lastAdRewardClaim";
-      const COOLDOWN_HOURS = 0; // 같은 상수값
+      const COOLDOWN_HOURS = 0.5; // playAdForCoinReward()와 동일한 값
       const lastClaimTime = localStorage.getItem(LAST_CLAIM_KEY);
       
       if (!lastClaimTime) {
@@ -26817,21 +26817,21 @@ try {
 /* prettier-ignore-file */
 
 // 🎮 모바일에서 여백 없이 화면을 꽉 채우기
-// FIT 모드: 콘텐츠 비율 유지 (좌우 검은 여백 생길 수 있음)
-// 하지만 HTML/CSS의 position:fixed + 100%로 여백 제거
-const initialMode = Phaser.Scale.FIT;
+// ENVELOP 모드: 화면을 완전히 채움 (콘텐츠 일부가 잘릴 수 있지만 여백 없음)
+// 이는 가로/세로 모드에서 모두 화면을 꽉 채움
+const initialMode = Phaser.Scale.ENVELOP;
 
 const config = {
   type: Phaser.AUTO,
   parent: "game-container",
   width: 1080,
-  height: 1920,
+  height: 2160,  // ← 세로 길이를 1920에서 2160으로 증가 (16:9 비율)
   backgroundColor: "#0f172a",
   scale: {
     mode: initialMode,
     autoCenter: Phaser.Scale.CENTER_BOTH,
     resolution: window.devicePixelRatio || 1,
-    expandParent: true, // ← 부모 컨테이너를 확장
+    expandParent: true,
   },
   dom: { createContainer: true }, // ✅ 여기를 추가
   scene: [LobbyScene, GameScene],
@@ -26843,8 +26843,8 @@ window.game = game; // 디버그용으로 전역에 노출
 // adjust when orientation/size changes
 window.addEventListener("resize", () => {
   if (!game || !game.scale) return;
-  // 항상 FIT 모드 유지 (모바일에서 좌우 제약 방지)
-  const mode = Phaser.Scale.FIT;
+  // 항상 ENVELOP 모드 유지 (화면을 완전히 채움)
+  const mode = Phaser.Scale.ENVELOP;
   if (game.scale.scaleMode !== mode) {
     // Phaser 3에서는 setMode 대신 다른 방식 사용
     game.scale.scaleMode = mode;
