@@ -4981,8 +4981,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       !this.profileIdText &&
       !this.profileCoinText &&
       !this.profileExpBarFill &&
-      !this.profileExpText &&
-      !this.profileReactTxt
+      !this.profileExpText
     ) {
       return;
     }
@@ -5185,6 +5184,11 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
     // 경험치 숫자 텍스트 업데이트
     this.profileExpText.setText(`EXP  ${currentExp}/${XP_PER_LEVEL}`);
+
+    // 멀티플레이 프로필 패널 표시
+    if (!this.isSingle && typeof this.repositionProfileCard === 'function') {
+      this.repositionProfileCard();
+    }
   }
 
   // Helper: determine whether given playerId refers to an AI/bot.
@@ -12807,8 +12811,7 @@ class GameScene extends Phaser.Scene {
         !this.profileIdText &&
         !this.profileCoinText &&
         !this.profileExpBarFill &&
-        !this.profileExpText &&
-        !this.profileReactTxt
+        !this.profileExpText
       ) {
         return;
       }
@@ -12969,7 +12972,7 @@ class GameScene extends Phaser.Scene {
       safeSetText(this.profileNameTxt, this.myProfile.nickname || "");
       safeSetText(
         this.profileLevelTxt,
-        `Lv ${this.myProfile.level} ${this.myProfile.nickname || ""}`,
+        `Lv ${this.myProfile.level}`,
       );
       const isLiveMultiplayer =
         !this.isSingle && this.isGameStarted && !this.isResultOverlayActive && !this.isGameEnded;
@@ -13005,73 +13008,7 @@ class GameScene extends Phaser.Scene {
 
       this.setProfileCoinLabel(`보유코인: ${this.myProfile.coins}`);
       this._allowCoinTextUpdateForNextUI = false;
-
-      // make sure the react-time display stays in sync as well
-      safeSetText(
-        this.profileReactTxt,
-        `반응속도: ${this.computeAvgReaction().toFixed(2)}s`,
-      );
-
-      if (
-        this.profileRatioTxt &&
-        this.profileRatioTxt.active &&
-        !this.profileRatioTxt.destroyed &&
-        typeof this.profileRatioTxt.setText === "function"
-      ) {
-        const prevRatioVal = Number(prev.ratio) || 0;
-        const ratioVal = Number(this.myProfile.ratio) || 0;
-        const oldText = this.profileRatioTxt.text;
-        const newText = `정답률: ${ratioVal}%`;
-        if (oldText !== newText) {
-          safeSetText(this.profileRatioTxt, newText);
-
-          // 색상 변경: 상승=빨강, 하락=파랑, 유지=흰색
-          let color = "#ffffff";
-          if (ratioVal > prevRatioVal) {
-            color = "#ff4d4d";
-          } else if (ratioVal < prevRatioVal) {
-            color = "#4da6ff";
-          }
-          try {
-            if (color !== "#ffffff") {
-              try {
-                this.profileRatioTxt.setColor(color);
-              } catch (e) {
-                // ignore if text object is invalid/destroyed
-              }
-              this._ratioColorTimeout = setTimeout(() => {
-                try {
-                  if (
-                    this.profileRatioTxt &&
-                    typeof this.profileRatioTxt.setColor === "function"
-                  ) {
-                    this.profileRatioTxt.setColor("#ffffff");
-                  }
-                } catch (e) {
-                  // ignore errors when object is gone
-                }
-                this._ratioColorTimeout = null;
-              }, 550);
-            }
-          } catch (e) {
-            // ignore
-          }
-
-          // Animate to highlight the change
-          try {
-            this.tweens.add({
-              targets: this.profileRatioTxt,
-              scaleX: 1.15,
-              scaleY: 1.15,
-              duration: 140,
-              yoyo: true,
-              ease: "Sine.easeOut",
-            });
-          } catch (e) {
-            // ignore if tween not available
-          }
-        }
-      }
+      // (reaction time and accuracy text displays removed - no longer updated in multiplayer)
 
       // combine with lobby-style text if present (rare inside GameScene but safe)
     } catch (e) {
@@ -13954,46 +13891,33 @@ class GameScene extends Phaser.Scene {
     // (defined further down outside create())
 
     // create profile card method
+    // (패널 배경 제거 - 텍스트들만 카드덱 아래에 배치)
     const createProfileCard = () => {
       const cardW = this.cameras.main.width * 0.24;
       const cardH = this.cameras.main.height * 0.14;
-      const cardHExpanded = cardH * 1.35; // 배경 패널 높이 조정
-      this.profileCardBaseW = cardW;
-      this.profileCardBaseH = cardH;
-      const safePaddingLocal = Math.max(this.cameras.main.width * 0.06, 24);
-      // temporarily place offscreen and hide; we'll reposition when deck exists
-      // depth should be above basic UI but below most animating cards
-      const card = this.add
-        .container(-9999, -9999)
-        .setDepth(100) // match other UI elements, not the sliding cards
-        .setScrollFactor(0)
-        .setVisible(false);
-      // no need for bringToTop; depth already correct
-      
-      // background plate
-      const bg = this.add
-        .rectangle(15, 30, cardW * 1.3, cardHExpanded, 0x000000, 0.6)
-        .setStrokeStyle(2, 0xffffff);
 
       // layout helpers
       const padding = Math.max(cardW * 0.06, 10);
-      const leftX = -cardW / 2 + padding;
+      const leftX = padding;
       const levelY = -cardH * 0.32;
       const expBarY = levelY + cardH * 0.22;
 
-      // level + nickname text (top)
+      // level text (nickname removed - shown above as deck label)
       const levelTxt = this.add
         .text(
           leftX,
           levelY,
-          `Lv ${this.myProfile?.level || 1} ${this.myProfile?.nickname || ""}`,
+          `Lv ${this.myProfile?.level || 1}`,
           {
             fontFamily: "Jua",
-            fontSize: `${cardH * 0.14}px`,
+            fontSize: `${cardH * 0.12}px`,
             color: "#f1c40f",
           },
         )
-        .setOrigin(0, 0.5);
+        .setOrigin(0, 0.5)
+        .setScrollFactor(0)
+        .setDepth(100)
+        .setVisible(false);
       // keep reference for later updates
       this.profileLevelTxt = levelTxt;
 
@@ -14012,7 +13936,9 @@ class GameScene extends Phaser.Scene {
         expBarHeight,
         6,
       );
-      expBg.setDepth(1);
+      expBg.setDepth(100);
+      expBg.setScrollFactor(0);
+      expBg.setVisible(false);
 
       const expFill = this.add.graphics();
       expFill.fillStyle(0x2ecc71, 1);
@@ -14023,65 +13949,40 @@ class GameScene extends Phaser.Scene {
         expBarHeight,
         6,
       );
-      expFill.setDepth(1);
+      expFill.setDepth(100);
+      expFill.setScrollFactor(0);
+      expFill.setVisible(false);
 
       const expTxt = this.add
         .text(expBarX + expBarWidth * 0.05, expBarY, `EXP ${currentExp % XP_PER_LEVEL}/${XP_PER_LEVEL}`, {
           fontFamily: "Jua",
-          fontSize: `${cardH * 0.13}px`,
+          fontSize: `${cardH * 0.09}px`,
           color: "#ffffff",
         })
-        .setOrigin(0, 0.5);
+        .setOrigin(0, 0.5)
+        .setScrollFactor(0)
+        .setDepth(100)
+        .setVisible(false);
       this.profileExpBarBg = expBg;
       this.profileExpBarFill = expFill;
       this.profileExpText = expTxt;
 
-      // store layout for consistent updates (prevents misalignment)
-      this.profileExpBarLayout = {
-        x: expBarX,
-        y: expBarY - expBarHeight / 2,
-        width: expBarWidth,
-        height: expBarHeight,
-      };
-
-      // display average reaction time (Avg) and accuracy (정답률)
-      const avgRaw = this.computeAvgReaction();
-      const avg = avgRaw.toFixed(2);
-      const reactTxt = this.add
-        .text(leftX, cardH * 0.12, `반응속도: ${avg}s`, {
-          fontFamily: "Jua",
-          fontSize: `${cardH * 0.16}px`,
-          color: "#ffffff",
-          stroke: "#000000",
-          strokeThickness: 3,
-        })
-        .setOrigin(0, 0.5);
-      const ratio = Number(this.myProfile?.ratio ?? 0) || 0;
-      const ratioTxt = this.add
-        .text(leftX, cardH * 0.36, `정답률: ${ratio}%`, {
-          fontFamily: "Jua",
-          fontSize: `${cardH * 0.16}px`,
-          color: "#ffffff",
-          stroke: "#000000",
-          strokeThickness: 3,
-        })
-        .setOrigin(0, 0.5);
-
+      // display coin info only (removed: reaction time and accuracy)
       const coinTxt = this.add
-        .text(leftX, cardH * 0.60, `보유코인: ${this.myProfile?.coins || 0}`, {
+        .text(leftX, expBarY + cardH * 0.25, `보유코인: ${this.myProfile?.coins || 0}`, {
           fontFamily: "Jua",
-          fontSize: `${cardH * 0.16}px`,
+          fontSize: `${cardH * 0.12}px`,
           color: "#ffffff",
           stroke: "#000000",
           strokeThickness: 3,
         })
-        .setOrigin(0, 0.5);
+        .setOrigin(0, 0.5)
+        .setScrollFactor(0)
+        .setDepth(100)
+        .setVisible(false);
 
-      card.add([bg, levelTxt, expBg, expFill, expTxt, reactTxt, ratioTxt, coinTxt]);
-      this.profileCard = card;
-      // keep reference to react/ratio/coin text for updates
-      this.profileReactTxt = reactTxt;
-      this.profileRatioTxt = ratioTxt;
+      // store references for text updates
+      this.profileLevelTxt = levelTxt;
       this.profileCoinTxt = coinTxt;
       // populate text immediately if profile already known
       if (typeof this.updateMyProfileUI === 'function') {
@@ -15406,14 +15307,7 @@ class GameScene extends Phaser.Scene {
             const newAvg = this.computeAvgReaction();
             this.myProfile = this.myProfile || {};
             this.myProfile.avetime = newAvg;
-            if (!(this.isGameEnded && !this.isSingle)) {
-              if (this.profileReactTxt) {
-                const avgVal = newAvg.toFixed(2);
-                this.profileReactTxt.setText(`반응속도: ${avgVal}s`);
-              }
-            } else {
-              console.debug('skip profileReactTxt update due to game end');
-            }
+            // (reaction time text display removed - only tracking data for server sync)
             // we no longer sync on every ring; final average will be sent at game end
             // (this reduces unnecessary socket traffic)
           }
@@ -16972,7 +16866,7 @@ class GameScene extends Phaser.Scene {
 
     if (isMe) {
       this.myDeckSprite = deck;
-      if (typeof this.profileCard !== 'undefined') {
+      if (this.profileLevelTxt) {
         this.time.delayedCall(0, () => {
           if (typeof this.repositionProfileCard === 'function') {
             this.repositionProfileCard();
@@ -17021,16 +16915,101 @@ class GameScene extends Phaser.Scene {
   }
 
   repositionProfileCard() {
-    // move profile card to the right of my deck and make visible
-    if (!this.profileCard || !this.myDeckSprite) return;
-    const baseMargin = Math.max(this.cameras.main.width * 0.02, 12);
-    const extraOffset = Math.max(this.cameras.main.width * 0.02, 24); // push further right
-    //const newX = this.myDeckSprite.x + this.myDeckSprite.displayWidth / 2 + baseMargin + extraOffset;
-    const newX = this.myDeckSprite.x + this.myDeckSprite.displayWidth * 2;
+    // 멀티플레이에서 타이머 바 아래에 프로필 정보 배치 (패널 포함)
+    // 카드덱 → 닉네임(+160) → 타이머 바(+210) → 프로필 정보(+260+)
+    if (!this.myDeckSprite) return;
+    
+    const { width, height } = this.cameras.main;
+    
+    // 타이머 바 아래에 배치 (Y 위치 조정)
+    const profileBaseY = this.myDeckSprite.y + 270;
+    const profileX = this.myDeckSprite.x;
+    
+    // 패널 크기 및 위치 (더 작은 높이)
+    const panelWidth = width * 0.45;
+    const panelHeight = height * 0.032; // 높이 축소 (5.5% → 3.2%)
+    const panelX = profileX - panelWidth / 2;
+    const panelY = profileBaseY - panelHeight / 2;
+    
+    // 패널 배경 생성 또는 업데이트
+    if (!this.profilePanelBg) {
+      this.profilePanelBg = this.add.graphics();
+      this.profilePanelBg.setDepth(99);
+      this.profilePanelBg.setScrollFactor(0);
+    }
+    
+    // 패널 배경 그리기
+    this.profilePanelBg.clear();
+    this.profilePanelBg.fillStyle(0x1a2333, 0.8);
+    this.profilePanelBg.fillRoundedRect(panelX, panelY, panelWidth, panelHeight, 6);
+    this.profilePanelBg.lineStyle(2, 0x22c55e, 1);
+    this.profilePanelBg.strokeRoundedRect(panelX, panelY, panelWidth, panelHeight, 6);
+    
+    // 폰트 크기
+    const levelFontSize = width * 0.024;
+    const expFontSize = width * 0.024;
+    const coinFontSize = width * 0.024;
+    
+    const padding = panelWidth * 0.05;
+    const contentY = panelY + panelHeight / 2; // 패널 중앙에 배치
 
-    const newY = this.myDeckSprite.y;
-    this.profileCard.setPosition(newX, newY);
-    if (!this.profileCard.visible) this.profileCard.setVisible(true);
+    // 1️⃣ 레벨 텍스트 (왼쪽)
+    if (this.profileLevelTxt) {
+      this.profileLevelTxt.setPosition(panelX + padding, contentY);
+      this.profileLevelTxt.setFontSize(`${levelFontSize}px`);
+      this.profileLevelTxt.setOrigin(0, 0.5); // 왼쪽 정렬, 수직 중앙
+      if (!this.profileLevelTxt.visible) this.profileLevelTxt.setVisible(true);
+    }
+
+    // 2️⃣ 경험치 바 배치 (중간)
+    const expBarStartX = panelX + panelWidth * 0.16;
+    const expBarWidth = panelWidth * 0.40;
+    const expBarHeight = height * 0.012;
+
+    if (this.profileExpBarBg) {
+      this.profileExpBarBg.clear();
+      this.profileExpBarBg.fillStyle(0x2d3748, 1);
+      this.profileExpBarBg.fillRoundedRect(
+        expBarStartX,
+        contentY - expBarHeight / 2,
+        expBarWidth,
+        expBarHeight,
+        2,
+      );
+      if (!this.profileExpBarBg.visible) this.profileExpBarBg.setVisible(true);
+    }
+
+    // 경험치 채우기 바
+    if (this.profileExpBarFill) {
+      this.profileExpBarFill.clear();
+      const currentExp = Number(this.myProfile?.experience || 0);
+      const expRatio = (currentExp % XP_PER_LEVEL) / XP_PER_LEVEL;
+      this.profileExpBarFill.fillStyle(0x22c55e, 1);
+      this.profileExpBarFill.fillRoundedRect(
+        expBarStartX,
+        contentY - expBarHeight / 2,
+        expBarWidth * expRatio,
+        expBarHeight,
+        2,
+      );
+      if (!this.profileExpBarFill.visible) this.profileExpBarFill.setVisible(true);
+    }
+
+    // 경험치 텍스트 (바 위 왼쪽)
+    if (this.profileExpText) {
+      this.profileExpText.setPosition(expBarStartX + 5, contentY);
+      this.profileExpText.setFontSize(`${expFontSize}px`);
+      this.profileExpText.setOrigin(0, 0.5); // 왼쪽 정렬, 수직 중앙
+      if (!this.profileExpText.visible) this.profileExpText.setVisible(true);
+    }
+
+    // 3️⃣ 코인 텍스트 (오른쪽)
+    if (this.profileCoinTxt) {
+      this.profileCoinTxt.setPosition(panelX + panelWidth - padding, contentY);
+      this.profileCoinTxt.setFontSize(`${coinFontSize}px`);
+      this.profileCoinTxt.setOrigin(1, 0.5); // 오른쪽 정렬, 수직 중앙
+      if (!this.profileCoinTxt.visible) this.profileCoinTxt.setVisible(true);
+    }
   }
 
   drawPlayerDeck(p, layout) {
@@ -17056,8 +17035,8 @@ class GameScene extends Phaser.Scene {
     if (isMe) {
       // keep reference for later animation (also used by existing logic)
       this.myDeckSprite = deck;
-      // once my deck exists, reposition the profile card above and to the right of it
-      if (typeof this.profileCard !== 'undefined') {
+      // once my deck exists, reposition the profile card below it
+      if (this.profileLevelTxt) {
         // delay a tick to ensure container sizes are available
         this.time.delayedCall(0, () => {
           if (typeof this.repositionProfileCard === 'function') {
@@ -19290,10 +19269,13 @@ class GameScene extends Phaser.Scene {
   showSingleResultOverlay(players, result) {
     const { width, height } = this.cameras.main;
 
-    // hide profile card while single-game result is showing
-    if (this.profileCard) {
-      this.profileCard.setVisible(false);
-    }
+    // hide profile texts while single-game result is showing
+    if (this.profileLevelTxt) this.profileLevelTxt.setVisible(false);
+    if (this.profileExpBarBg) this.profileExpBarBg.setVisible(false);
+    if (this.profileExpBarFill) this.profileExpBarFill.setVisible(false);
+    if (this.profileExpText) this.profileExpText.setVisible(false);
+    if (this.profileCoinTxt) this.profileCoinTxt.setVisible(false);
+    if (this.profilePanelBg) this.profilePanelBg.setVisible(false);
 
     // 기존 결과창이 있다면 제거
     if (this.resultContainer) this.resultContainer.destroy();
@@ -19383,10 +19365,13 @@ class GameScene extends Phaser.Scene {
         this.resultContainer.destroy();
         this.resultContainer = null;
       }
-      // reveal profile card again once the overlay is dismissed
-      if (this.profileCard) {
-        this.profileCard.setVisible(true);
-      }
+      // reveal profile texts again once the overlay is dismissed
+      if (this.profileLevelTxt) this.profileLevelTxt.setVisible(true);
+      if (this.profileExpBarBg) this.profileExpBarBg.setVisible(true);
+      if (this.profileExpBarFill) this.profileExpBarFill.setVisible(true);
+      if (this.profileExpText) this.profileExpText.setVisible(true);
+      if (this.profileCoinTxt) this.profileCoinTxt.setVisible(true);
+      if (this.profilePanelBg) this.profilePanelBg.setVisible(true);
 
       // 4. 게임 다시 시작 연출부터 진행
       this.playReadyGoSequence(() => {
@@ -20702,53 +20687,7 @@ class GameScene extends Phaser.Scene {
         : (Number(this.myProfile?.ratio) || 0);
       this.myProfile = this.myProfile || {};
       this.myProfile.ratio = ratio;
-      if (this.isGameEnded && !this.isSingle) {
-        console.debug('skip profileRatioTxt update (updateBellAccuracy) due to game end');
-      } else if (this.profileRatioTxt && typeof this.profileRatioTxt.setText === "function") {
-        const oldText = this.profileRatioTxt.text;
-        const newText = `정답률: ${ratio}%`;
-        if (oldText !== newText) {
-          this.profileRatioTxt.setText(newText);
-
-          // color animation: rise=red, fall=blue, then reset to white
-          const prevRatio = Number(this.myProfile.ratio ?? 0);
-          const currentRatio = Number(ratio);
-          let highlightColor = "#ffffff";
-          if (currentRatio > prevRatio) {
-            highlightColor = "#ff4d4d"; // 상승: 빨강
-          } else if (currentRatio < prevRatio) {
-            highlightColor = "#4da6ff"; // 하락: 파랑
-          }
-          try {
-            // kill previous tweens/timeouts so we can always re-run
-            this.tweens.killTweensOf(this.profileRatioTxt);
-            if (this._ratioColorTimeout) {
-              clearTimeout(this._ratioColorTimeout);
-              this._ratioColorTimeout = null;
-            }
-            this.profileRatioTxt.setScale(1);
-            if (highlightColor !== "#ffffff") {
-              this.profileRatioTxt.setColor(highlightColor);
-              this._ratioColorTimeout = setTimeout(() => {
-                if (this.profileRatioTxt && typeof this.profileRatioTxt.setColor === "function") {
-                  this.profileRatioTxt.setColor("#ffffff");
-                }
-                this._ratioColorTimeout = null;
-              }, 550);
-            }
-            this.tweens.add({
-              targets: this.profileRatioTxt,
-              scaleX: 1.15,
-              scaleY: 1.15,
-              duration: 140,
-              yoyo: true,
-              ease: "Sine.easeOut",
-            });
-          } catch (e) {
-            // ignore if tweens are unavailable
-          }
-        }
-      }
+      // (accuracy text display removed - no longer updated in UI)
 
       // Persist bell accuracy locally and do not sync ratio to server.
       try {
@@ -24519,10 +24458,13 @@ class GameScene extends Phaser.Scene {
       this.resultCountdownTimer = null;
     }
 
-    // hide profile card while the result overlay is visible
-    if (this.profileCard) {
-      this.profileCard.setVisible(false);
-    }
+    // hide profile texts while the result overlay is visible
+    if (this.profileLevelTxt) this.profileLevelTxt.setVisible(false);
+    if (this.profileExpBarBg) this.profileExpBarBg.setVisible(false);
+    if (this.profileExpBarFill) this.profileExpBarFill.setVisible(false);
+    if (this.profileExpText) this.profileExpText.setVisible(false);
+    if (this.profileCoinTxt) this.profileCoinTxt.setVisible(false);
+    if (this.profilePanelBg) this.profilePanelBg.setVisible(false);
 
     if (this.resultContainer) {
       const prevY = this.resultContainer.y;
