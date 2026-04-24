@@ -17530,6 +17530,8 @@ class GameScene extends Phaser.Scene {
           );
 
     // Only show win text for real players (not AI/bots)
+    // 닉네임과 함께 획득 카드 텍스트 애니메이션 제거 - "성공!" 메시지로 충분
+    /*
     if (!this.isPlayerAi(winnerId)) {
       const winInfoText = this.add
         .text(targetPos.x, targetPos.y, `${winnerName}님 정답! ${gainedCards}장 획득!`, {
@@ -17560,6 +17562,7 @@ class GameScene extends Phaser.Scene {
         },
       });
     }
+    */
 
     // show single avatar animation at center once (for winner)
     let combo = 0;
