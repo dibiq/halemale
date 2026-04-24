@@ -7669,13 +7669,25 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
         // 🎨 제목
         const nameText = this.add
-          .text(0, -220, "코인 충전하기", {
+          .text(0, -250, "코인 충전하기", {
             fontFamily: GAME_FONTS.main,
-            fontSize: `${width * 0.08}px`,
+            fontSize: `${width * 0.06}px`,
             color: "#ffd700",
             fontWeight: "bold",
             stroke: "#000000",
             strokeThickness: 6,
+          })
+          .setOrigin(0.5);
+
+        // 🎨 환불 불가 안내문
+        const refundNoticeText = this.add
+          .text(0, -190, "(소모품 아이템으로 구매 후 환불불가)", {
+            fontFamily: GAME_FONTS.main,
+            fontSize: `${width * 0.035}px`,
+            color: "#52dd3d",
+            fontWeight: "bold",
+            stroke: "#000000",
+            strokeThickness: 5,
           })
           .setOrigin(0.5);
 
@@ -7709,6 +7721,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         // 🎨 할인/추천 배지 (3번째 상품에만 표시)
         const elementsToAdd = [
           nameText,
+          refundNoticeText,
           coinIconAmount,
           amountText,
         ];
