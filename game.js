@@ -1091,6 +1091,191 @@ class LobbyScene extends Phaser.Scene {
     }
   }
 
+  // ✨ 광고 시청 후 코인 100개 보상 함수 (LobbyScene)
+  playAdForCoinReward() {
+    const REWARD_AMOUNT = 100;
+    const LAST_CLAIM_KEY = "lastAdRewardClaim";
+    const COOLDOWN_HOURS = 0; // 디버그: 0으로 설정하면 쿨타임 없음
+
+    // 🔴 1️⃣ 쿨타임 확인
+    const lastClaimTime = localStorage.getItem(LAST_CLAIM_KEY);
+    if (lastClaimTime) {
+      const now = Date.now();
+      const lastTime = parseInt(lastClaimTime, 10);
+      const elapsedMs = now - lastTime;
+      const elapsedHours = elapsedMs / (1000 * 60 * 60);
+
+      if (elapsedHours < COOLDOWN_HOURS) {
+        // 분(minutes) 단위로 계산
+        const remainingMinutes = Math.ceil((COOLDOWN_HOURS - elapsedHours) * 60);
+        
+        // 1시간 이상이면 "시간", 아니면 "분" 단위로 표시
+        let timeText = "";
+        if (remainingMinutes >= 60) {
+          const hours = Math.ceil(remainingMinutes / 60);
+          timeText = `${hours}시간`;
+        } else {
+          timeText = `${remainingMinutes}분`;
+        }
+        
+        this.showToast(
+          `${timeText} 후 다시 광고를 볼 수 있습니다.`,
+          "#f1c40f",
+        );
+        return;
+      }
+    }
+
+    // 🟡 2️⃣ 광고 지원 확인 (try-catch로 브라우저 환경 에러 방지)
+    try {
+      if (
+        !loadFullScreenAd ||
+        !showFullScreenAd ||
+        typeof loadFullScreenAd.isSupported !== "function" ||
+        typeof showFullScreenAd.isSupported !== "function" ||
+        !loadFullScreenAd.isSupported() ||
+        !showFullScreenAd.isSupported()
+      ) {
+        this.showToast("광고를 지원하지 않는 환경입니다.", "#f1c40f");
+        return;
+      }
+    } catch (err) {
+      console.warn("[ad-reward] 광고 API 확인 실패:", err.message);
+      this.showToast("📱 모바일 디바이스에서만 광고를 볼 수 있습니다.", "#f1c40f");
+      return;
+    }
+
+    // 🟢 3️⃣ 광고 로드 시작
+    this.showToast("광고를 로딩 중입니다...", "#38bdf8");
+    const scene = this;
+
+    this.unregisterAdRewardAd = loadFullScreenAd({
+      options: {
+        adGroupId:
+          window.__INTEGRATED_AD_GROUP_ID ||
+          localStorage.getItem("integratedAdGroupId") ||
+          "ait-ad-test-interstitial-id",
+      },
+      onEvent: (event) => {
+        console.log("[ad-reward] 광고 로드 이벤트:", event.type);
+
+        if (event.type === "loaded") {
+          // 🟢 4️⃣ 광고 로드 완료 → 즉시 재생
+          console.log("[ad-reward] ✅ 광고 로드 완료");
+          scene.showToast("광고 준비 완료! 자동 재생 시작합니다.", "#FFD700");
+
+          // 500ms 후 재생
+          scene.time.delayedCall(500, () => {
+            console.log("[ad-reward] 광고 자동 재생 시작");
+
+            if (
+              typeof showFullScreenAd === "function" &&
+              !scene.isAdRewardShowing
+            ) {
+              scene.isAdRewardShowing = true;
+
+              scene.unregisterShowAdReward = showFullScreenAd({
+                options: {
+                  adGroupId:
+                    window.__INTEGRATED_AD_GROUP_ID ||
+                    localStorage.getItem("integratedAdGroupId") ||
+                    "ait-ad-test-interstitial-id",
+                },
+                onEvent: (evt) => {
+                  console.log("[ad-reward] 광고 재생 이벤트:", evt.type);
+                  const eventType = String(evt.type).toLowerCase();
+
+                  if (
+                    eventType === "closed" ||
+                    eventType === "completed" ||
+                    eventType === "dismissed" ||
+                    eventType === "success"
+                  ) {
+                    // 🔴 5️⃣ 광고 종료 → 보상 처리
+                    scene.isAdRewardShowing = false;
+                    scene.time.delayedCall(300, () => {
+                      console.log("[ad-reward] 보상 처리 시작");
+
+                      // 💰 코인 100개 로컬 업데이트
+                      if (scene.myProfile) {
+                        const currentCoins =
+                          Number(scene.myProfile.coins) || 0;
+                        const newCoins = currentCoins + REWARD_AMOUNT;
+                        scene.myProfile.coins = newCoins;
+
+                        // 🎨 UI 즉시 업데이트
+                        if (
+                          typeof scene.updateMyProfileUI === "function"
+                        ) {
+                          scene.updateMyProfileUI(scene.myProfile);
+                          console.log(
+                            "[ad-reward] ✅ 코인 업데이트:",
+                            newCoins,
+                          );
+                        }
+
+                        // 🎆 코인 폭발 이펙트
+                        try {
+                          const centerX = scene.sys.canvas.width / 2;
+                          const centerY = scene.sys.canvas.height / 2;
+                          showCoinBurstEffect(
+                            scene,
+                            centerX,
+                            centerY,
+                            REWARD_AMOUNT,
+                          );
+                          console.log("[ad-reward] ✅ 코인 폭발 이펙트 표시");
+                        } catch (e) {
+                          console.warn(
+                            "[ad-reward] ⚠️ 코인 폭발 이펙트 실패:",
+                            e.message,
+                          );
+                        }
+                      }
+
+                      // 🕐 쿨타임 저장
+                      localStorage.setItem(LAST_CLAIM_KEY, Date.now());
+
+                      // � 배지 업데이트 (쿨타임이 시작되었으므로 배지 숨김)
+                      if (typeof scene.updateAdRewardBadgeState === "function") {
+                        scene.updateAdRewardBadgeState();
+                      }
+
+                      // �📡 서버에 보상 저장
+                      if (typeof socket !== "undefined") {
+                        socket.emit("addCoins", {
+                          amount: REWARD_AMOUNT,
+                          source: "ad_reward",
+                        });
+                      }
+
+                      // ✅ 완료 메시지
+                      scene.showToast(
+                        `광고 시청 감사합니다! 💰 ${REWARD_AMOUNT}개 코인 획득!`,
+                        "#2ecc71",
+                      );
+
+                      console.log("[ad-reward] ✅ 보상 처리 완료");
+                    });
+                  }
+                },
+                onError: (err) => {
+                  console.warn("[ad-reward] 광고 재생 오류:", err);
+                  scene.isAdRewardShowing = false;
+                  scene.showToast("광고 재생 중 오류가 발생했습니다.", "#e74c3c");
+                },
+              });
+            }
+          });
+        }
+      },
+      onError: (error) => {
+        console.warn("[ad-reward] 광고 로드 실패:", error);
+        scene.showToast("광고 준비 실패. 다시 시도해주세요.", "#e74c3c");
+      },
+    });
+  }
+
   purchaseRemoveAdsProduct() {
     if (localStorage.getItem("adsRemoved") === "true") {
       this.showToast("이미 광고 제거가 적용되어 있어요.", "#2ecc71");
@@ -4127,28 +4312,46 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       });
     };
 
-    // === 프리미엄구독 버튼 (IAP) ===
-    const premiumSubBtn = this.add.container(adRewardBtnX, actionBtnBottomY);
-    const premiumSubBtnImg = this.add
+    // === 광고보상 버튼 (코인 100개) ===
+    const adRewardBtn = this.add.container(adRewardBtnX, actionBtnBottomY);
+    const adRewardBtnImg = this.add
       .image(0, 0, "uibtn")
       .setDisplaySize(bottomBtnW * 0.9, btnH * 1.05)
       .setInteractive()
-      .setTint(0xeb2454); // 프리미엄 색상
-    const premiumSubBtnText = this.add
-      .text(0, 0, "프리미엄구독", {
+      .setTint(0xeb2454); // 프리미엄 색상 유지
+    const adRewardBtnText = this.add
+      .text(0, 0, "광고보상", {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.03}px`,
         color: "#ffffff",
         fontWeight: "bold",
       })
       .setOrigin(0.5);
-    premiumSubBtn.add([premiumSubBtnImg, premiumSubBtnText]);
-    this.iapBtnImg = premiumSubBtnImg;
-    this.iapBtnText = premiumSubBtnText;
-    premiumSubBtnImg.on("pointerdown", () => {
+    // 🎆 광고보상 NEW 배지
+    const adRewardBadgeRadius = btnH * 0.18;
+    const adRewardBadge = this.add
+      .circle(adRewardBtnX + bottomBtnW * 0.35, actionBtnBottomY - btnH * 0.4, adRewardBadgeRadius, 0xffd54f, 1)
+      .setStrokeStyle(2, 0x1f2937, 0.9)
+      .setVisible(false);
+    const adRewardBadgeText = this.add
+      .text(adRewardBtnX + bottomBtnW * 0.35, actionBtnBottomY - btnH * 0.4, "NEW", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.02}px`,
+        color: "#1f2937",
+        fontWeight: "bold",
+      })
+      .setOrigin(0.5)
+      .setVisible(false);
+
+    adRewardBtn.add([adRewardBtnImg, adRewardBtnText]);
+    this.adRewardBtnImg = adRewardBtnImg;
+    this.adRewardBtnText = adRewardBtnText;
+    this.adRewardBadge = adRewardBadge;
+    this.adRewardBadgeText = adRewardBadgeText;
+    adRewardBtnImg.on("pointerdown", () => {
       this.sound.play("btn", { volume: 0.4 });
-      buttonPress([premiumSubBtnImg, premiumSubBtnText], () => {
-        this.purchaseRemoveAdsProduct();
+      buttonPress([adRewardBtnImg, adRewardBtnText], () => {
+        this.playAdForCoinReward();
       });
     });
 
@@ -4208,6 +4411,50 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       }
     };
 
+    // 광고보상 배지 업데이트
+    this.hasAdRewardReady = () => {
+      const LAST_CLAIM_KEY = "lastAdRewardClaim";
+      const COOLDOWN_HOURS = 0; // 같은 상수값
+      const lastClaimTime = localStorage.getItem(LAST_CLAIM_KEY);
+      
+      if (!lastClaimTime) {
+        return true; // 처음 사용 시 NEW 표시
+      }
+      
+      const now = Date.now();
+      const lastTime = parseInt(lastClaimTime, 10);
+      const elapsedMs = now - lastTime;
+      const elapsedHours = elapsedMs / (1000 * 60 * 60);
+      
+      return elapsedHours >= COOLDOWN_HOURS; // 쿨타임 지나면 true
+    };
+
+    this.updateAdRewardBadgeState = () => {
+      const shouldShow = this.hasAdRewardReady();
+      
+      if (this.adRewardBadge) this.adRewardBadge.setVisible(shouldShow);
+      if (this.adRewardBadgeText) this.adRewardBadgeText.setVisible(shouldShow);
+
+      if (shouldShow) {
+        if (!this.adRewardBadgeTween) {
+          this.adRewardBadgeTween = this.tweens.add({
+            targets: [this.adRewardBadge, this.adRewardBadgeText],
+            scaleX: "*=1.12",
+            scaleY: "*=1.12",
+            yoyo: true,
+            duration: 420,
+            repeat: -1,
+            ease: "Sine.easeInOut",
+          });
+        }
+      } else if (this.adRewardBadgeTween) {
+        this.adRewardBadgeTween.stop();
+        this.adRewardBadgeTween = null;
+        if (this.adRewardBadge) this.adRewardBadge.setScale(1);
+        if (this.adRewardBadgeText) this.adRewardBadgeText.setScale(1);
+      }
+    };
+
     this.updateQuestBadgeState = () => {
       const shouldShow = this.hasQuestRewardReady();
       try {
@@ -4241,6 +4488,11 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     };
 
     this.updateQuestBadgeState();
+    
+    // 광고보상 배지 초기화
+    if (typeof this.updateAdRewardBadgeState === "function") {
+      this.updateAdRewardBadgeState();
+    }
 
     const multiBtnImg = this.add
       .image(0, 0, "uibtn")
@@ -8154,6 +8406,9 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       if (typeof this.updateQuestBadgeState === "function") {
         this.updateQuestBadgeState();
       }
+      if (typeof this.updateAdRewardBadgeState === "function") {
+        this.updateAdRewardBadgeState();
+      }
 
       // If the quest became ready, show notification
       if (entry.ready) {
@@ -8190,6 +8445,9 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
       if (typeof this.updateQuestBadgeState === "function") {
         this.updateQuestBadgeState();
+      }
+      if (typeof this.updateAdRewardBadgeState === "function") {
+        this.updateAdRewardBadgeState();
       }
     } catch (e) {
       console.warn("incrementMultiQuestCounterFallback failed", e);
@@ -8430,6 +8688,12 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           // Update badge state immediately after claiming reward
           if (typeof this.updateQuestBadgeState === "function") {
             this.updateQuestBadgeState();
+          }
+          if (typeof this.updateAdRewardBadgeState === "function") {
+            this.updateAdRewardBadgeState();
+          }
+          if (typeof this.updateAdRewardBadgeState === "function") {
+            this.updateAdRewardBadgeState();
           }
 
           this.closeQuestPopup();
@@ -11314,14 +11578,14 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             if (isGameAdLoading) {
               console.log("[daily-ad] 광고 로드 중 - 자동 재생 플래그 설정");
               scene.autoPlayDailyAd = true;  // 로드 완료 후 자동 재생
-              scene.showToast("광고를 준비 중입니다...", "#f1c40f");
+              scene.showToast("광고를 로딩 중입니다...", "#f1c40f");
               return;
             }
 
             // 광고가 없으면 미리 로드 요청 + 자동 재생 플래그
             console.log("[daily-ad] 광고 없음 - 로드 시작 + 자동 재생 설정");
             scene.autoPlayDailyAd = true;  // 로드 완료 후 자동 재생
-            scene.showToast("광고를 준비 중입니다...", "#38bdf8");
+            scene.showToast("광고를 로딩 중입니다...", "#38bdf8");
             
             // 로드 상태 설정
             scene.isGameAdLoading = true;
