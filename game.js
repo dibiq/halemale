@@ -2961,6 +2961,12 @@ class LobbyScene extends Phaser.Scene {
             if (profile?.current_character) this.myProfile.current_character = profile.current_character;
             if (profile?.specialCards) this.myProfile.specialCards = profile.specialCards;
             
+            // 🔴 [중요] 상점이 열려있으면 코인 텍스트 업데이트
+            if (this.shopCoinText && typeof this.shopCoinText.setText === "function") {
+              this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
+              console.log('[LobbyScene] shopCoinText 업데이트', this.myProfile.coins);
+            }
+            
             // 🔴 [중요] _pendingInitialInventoryEmit이 true면 이제 emitInventory 호출
             if (this._pendingInitialInventoryEmit) {
               this._pendingInitialInventoryEmit = false;
@@ -7766,6 +7772,11 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
     const renderShopContent = () => {
       cardDisplayContainer.removeAll(true);
+
+      // 🔴 [중요] 상점 콘텐츠 새로고침할 때마다 코인 텍스트 최신화
+      if (this.shopCoinText && typeof this.shopCoinText.setText === "function") {
+        this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
+      }
 
       const index = tabIndexes[currentTab];
 
@@ -17301,15 +17312,22 @@ class GameScene extends Phaser.Scene {
           cardBg.setInteractive({ useHandCursor: true });
         }
 
+        // 🔴 마스크 생성: 슬롯 범위 안에서만 아이템이 보이도록
+        const maskGraphics = this.make.graphics({ x: 0, y: 0, add: false });
+        maskGraphics.fillStyle(0xffffff, 1);
+        maskGraphics.fillRoundedRect(cardX - cardSize / 2, cardY - cardSize / 2, cardSize, cardSize, 12);
+        const geometryMask = this.make.graphics().createGeometryMask(maskGraphics);
+
         let cardImg = null;
         if (this.textures.exists(card.key)) {
           cardImg = this.add
             .image(cardX, cardY - Math.round(cardSize * 0.06), card.key)
-            .setDisplaySize(cardSize * 0.75, cardSize * 0.75)
+            .setDisplaySize(cardSize * 1.25, cardSize * 1.25)  // 크기 증가: 0.95 → 1.15
             .setOrigin(0.5)
             .setDepth(101)
             .setScrollFactor(0)
-            .setAlpha(usedFlag ? 0.35 : 1);
+            .setAlpha(usedFlag ? 0.35 : 1)
+            .setMask(geometryMask);  // 마스크 적용
         } else {
           cardImg = this.add
             .text(cardX, cardY - Math.round(cardSize * 0.08), card.name, {
@@ -17321,35 +17339,11 @@ class GameScene extends Phaser.Scene {
             .setOrigin(0.5)
             .setDepth(101)
             .setScrollFactor(0)
-            .setAlpha(usedFlag ? 0.35 : 1);
+            .setAlpha(usedFlag ? 0.35 : 1)
+            .setMask(geometryMask);  // 마스크 적용
         }
 
-        // 💎 카운트 배지 (원형 배지)
-        const badgeBg = this.add
-          .circle(
-            cardX + Math.round(cardSize * 0.35),
-            cardY - Math.round(cardSize * 0.35),
-            Math.round(cardSize * 0.3),
-            usedFlag ? 0x666666 : 0xff6b6b,
-            usedFlag ? 0.6 : 0.95
-          )
-          .setDepth(102)
-          .setScrollFactor(0);
-
-        // 배지 테두리 (골드)
-        if (!usedFlag) {
-          const badgeBorder = this.add
-            .circle(
-              cardX + Math.round(cardSize * 0.35),
-              cardY - Math.round(cardSize * 0.35),
-              Math.round(cardSize * 0.3)
-            )
-            .setStrokeStyle(2, 0xfbbf24, 1)
-            .setFillStyle(0, 0)
-            .setDepth(103)
-            .setScrollFactor(0);
-        }
-
+        // 수량 텍스트만 표시 (배지 배경 제거)
         const countTxt = this.add
           .text(
             cardX + Math.round(cardSize * 0.35),
@@ -17399,29 +17393,6 @@ class GameScene extends Phaser.Scene {
             this.time.delayedCall(100, () => {
               this.useSpecialCard(card.id, card.name, card.cooldown || 12000);
             });
-          });
-
-          // 호버 효과
-          cardBg.on("pointerover", () => {
-            if (!cardBg._clicked) {
-              this.tweens.add({
-                targets: [cardImg],
-                scale: 1.08,
-                duration: 150,
-                ease: "Quad.easeOut",
-              });
-            }
-          });
-
-          cardBg.on("pointerout", () => {
-            if (!cardBg._clicked) {
-              this.tweens.add({
-                targets: [cardImg],
-                scale: 1,
-                duration: 150,
-                ease: "Quad.easeOut",
-              });
-            }
           });
         }
 
