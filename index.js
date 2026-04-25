@@ -1277,27 +1277,49 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
         bellCorrectToSave,
         bellTotalToSave,
       ).catch((e) => console.warn("savePlayer game end failed", e));
+
+      // 🔴 Emit final level/experience after game ends to ensure persistence.
+      // This is safe because we've already synchronized with client via requestProfileSync.
+      io.to(p.id).emit("myProfile", {
+        nickname: p.nickname,
+        level: levelToSave,
+        coins: currentCoins,
+        experience: expToSave,
+        items: currentItems,
+        avetime: p.avetime ?? 0,
+        ratio: typeof p.ratio === "number" ? p.ratio : 0,
+        bellCorrect: typeof p.bellCorrect === "number" ? p.bellCorrect : 0,
+        bellTotal: typeof p.bellTotal === "number" ? p.bellTotal : 0,
+        avatarKey: p.avatarKey || "player_1",
+        specialCards: p.specialCards || {},
+        owned_characters: p.owned_characters || [],
+        current_character: p.current_character || p.avatarKey || "player_1",
+      });
     } catch (e) {
       console.warn("finalizeGame savePlayer wrapper error", e);
     }
 
-    // 🔴 Emit final level/experience after game ends to ensure persistence.
-    // This is safe because we've already synchronized with client via requestProfileSync.
-    io.to(p.id).emit("myProfile", {
-      nickname: p.nickname,
-      level: levelToSave,
-      coins: currentCoins,
-      experience: expToSave,
-      items: currentItems,
-      avetime: p.avetime ?? 0,
-      ratio: typeof p.ratio === "number" ? p.ratio : 0,
-      bellCorrect: typeof p.bellCorrect === "number" ? p.bellCorrect : 0,
-      bellTotal: typeof p.bellTotal === "number" ? p.bellTotal : 0,
-      avatarKey: p.avatarKey || "player_1",
-      specialCards: p.specialCards || {},
-      owned_characters: p.owned_characters || [],
-      current_character: p.current_character || p.avatarKey || "player_1",
-    });
+    // Fallback emit if try block failed - use defaults
+    try {
+      if (!io || !p || !p.id) return;
+      io.to(p.id).emit("myProfile", {
+        nickname: p.nickname,
+        level: Number(p.level) || 1,
+        coins: currentCoins,
+        experience: Number(p.experience) || 0,
+        items: currentItems,
+        avetime: p.avetime ?? 0,
+        ratio: typeof p.ratio === "number" ? p.ratio : 0,
+        bellCorrect: typeof p.bellCorrect === "number" ? p.bellCorrect : 0,
+        bellTotal: typeof p.bellTotal === "number" ? p.bellTotal : 0,
+        avatarKey: p.avatarKey || "player_1",
+        specialCards: p.specialCards || {},
+        owned_characters: p.owned_characters || [],
+        current_character: p.current_character || p.avatarKey || "player_1",
+      });
+    } catch (fallbackErr) {
+      console.warn("finalizeGame fallback emit failed", fallbackErr);
+    }
   });
 
   io.to(room.roomId).emit("gameEnded", {
