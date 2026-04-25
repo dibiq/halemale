@@ -17163,11 +17163,11 @@ class GameScene extends Phaser.Scene {
       localStorage.getItem("specialCards") || "{}",
     );
 
-    // 하단 중앙에 고정 배치
-    const cardSize = Math.min(width * 0.12, 100);
-    const gap = cardSize + Math.round(width * 0.03);
+    // 하단 중앙에 고정 배치 - 더 크고 눈에 띄게
+    const cardSize = Math.min(width * 0.20, 160);
+    const gap = cardSize + Math.round(width * 0.05);
     const centerX = width / 2;
-    const cardY = height - Math.round(height * 0.08);
+    const cardY = height - Math.round(height * 0.07);
     const startX = centerX - ((allSpecialCards.length - 1) / 2) * gap;
 
     allSpecialCards.forEach((card, index) => {
@@ -17179,51 +17179,106 @@ class GameScene extends Phaser.Scene {
       const usedFlag = (this.specialUsedThisTurn || {})[myIdForFlag] === true;
 
       if (count > 0) {
-        // 보유한 카드: 이미지 또는 대체 텍스트로 표시
-        const cardBg = this.add
-          .rectangle(
-            cardX,
-            cardY,
-            cardSize,
-            cardSize,
-            usedFlag ? 0x555555 : 0x1f2937,
-            usedFlag ? 0.5 : 0.85,
-          )
-          .setStrokeStyle(2, usedFlag ? 0xff4444 : 0xffff00, 1)
-          .setInteractive({ useHandCursor: !usedFlag });
+        // ✨ 게임 아이템 느낌 배경 (그라데이션 효과를 위해 그래픽스 사용)
+        const cardBgGraphics = this.make.graphics({ x: 0, y: 0, add: false });
+        
+        if (usedFlag) {
+          // 사용됨: 회색 톤
+          cardBgGraphics.fillStyle(0x4a4a4a, 0.7);
+          cardBgGraphics.fillRoundedRect(cardX - cardSize / 2, cardY - cardSize / 2, cardSize, cardSize, 12);
+          cardBgGraphics.lineStyle(3, 0x808080, 0.6);
+        } else {
+          // 사용 가능: 진하고 풍부한 색상
+          cardBgGraphics.fillStyle(0x0f172a, 1);
+          cardBgGraphics.fillRoundedRect(cardX - cardSize / 2, cardY - cardSize / 2, cardSize, cardSize, 12);
+          // 상단 라인 (라이팅 효과)
+          cardBgGraphics.lineStyle(3, 0x3b82f6, 1);
+          cardBgGraphics.lineBetween(
+            cardX - cardSize / 2 + 8,
+            cardY - cardSize / 2 + 4,
+            cardX + cardSize / 2 - 8,
+            cardY - cardSize / 2 + 4
+          );
+          // 테두리 (골드/다이아)
+          cardBgGraphics.lineStyle(3, 0xfbbf24, 0.9);
+        }
+        cardBgGraphics.strokeRoundedRect(cardX - cardSize / 2, cardY - cardSize / 2, cardSize, cardSize, 12);
+        
+        const cardBg = this.add.existing(cardBgGraphics);
+        cardBg.setDepth(100).setScrollFactor(0);
+        cardBg.setInteractive(
+          new Phaser.Geom.Rectangle(cardX - cardSize / 2, cardY - cardSize / 2, cardSize, cardSize),
+          Phaser.Geom.Rectangle.Contains
+        );
+
+        if (!usedFlag) {
+          cardBg.setInteractive({ useHandCursor: true });
+        }
 
         let cardImg = null;
         if (this.textures.exists(card.key)) {
           cardImg = this.add
-            .image(cardX, cardY - Math.round(cardSize * 0.08), card.key)
-            .setDisplaySize(cardSize * 0.8, cardSize * 0.8)
+            .image(cardX, cardY - Math.round(cardSize * 0.06), card.key)
+            .setDisplaySize(cardSize * 0.75, cardSize * 0.75)
             .setOrigin(0.5)
-            .setAlpha(usedFlag ? 0.4 : 1);
+            .setDepth(101)
+            .setScrollFactor(0)
+            .setAlpha(usedFlag ? 0.35 : 1);
         } else {
           cardImg = this.add
             .text(cardX, cardY - Math.round(cardSize * 0.08), card.name, {
               fontFamily: GAME_FONTS.main,
-              fontSize: `${cardSize * 0.35}px`,
-              color: "#ffffff",
+              fontSize: `${cardSize * 0.32}px`,
+              color: usedFlag ? "#808080" : "#ffffff",
+              fontWeight: "bold",
             })
             .setOrigin(0.5)
-            .setAlpha(usedFlag ? 0.4 : 1);
+            .setDepth(101)
+            .setScrollFactor(0)
+            .setAlpha(usedFlag ? 0.35 : 1);
+        }
+
+        // 💎 카운트 배지 (원형 배지)
+        const badgeBg = this.add
+          .circle(
+            cardX + Math.round(cardSize * 0.35),
+            cardY - Math.round(cardSize * 0.35),
+            Math.round(cardSize * 0.3),
+            usedFlag ? 0x666666 : 0xff6b6b,
+            usedFlag ? 0.6 : 0.95
+          )
+          .setDepth(102)
+          .setScrollFactor(0);
+
+        // 배지 테두리 (골드)
+        if (!usedFlag) {
+          const badgeBorder = this.add
+            .circle(
+              cardX + Math.round(cardSize * 0.35),
+              cardY - Math.round(cardSize * 0.35),
+              Math.round(cardSize * 0.3)
+            )
+            .setStrokeStyle(2, 0xfbbf24, 1)
+            .setFillStyle(0, 0)
+            .setDepth(103)
+            .setScrollFactor(0);
         }
 
         const countTxt = this.add
           .text(
-            cardX + Math.round(cardSize * 0.32),
-            cardY + Math.round(cardSize * 0.32),
+            cardX + Math.round(cardSize * 0.35),
+            cardY - Math.round(cardSize * 0.35),
             `x${count}`,
             {
               fontFamily: GAME_FONTS.main,
-              fontSize: `${cardSize * 0.28}px`,
-              color: "#ffffff",
+              fontSize: `${cardSize * 0.26}px`,
+              color: usedFlag ? "#cccccc" : "#ffffff",
               fontWeight: "bold",
-            },
+            }
           )
           .setOrigin(0.5)
-          .setAlpha(usedFlag ? 0.4 : 1);
+          .setDepth(104)
+          .setScrollFactor(0);
 
         if (usedFlag) {
           cardBg.disableInteractive();
@@ -17246,26 +17301,72 @@ class GameScene extends Phaser.Scene {
             } catch (e) {}
 
             this.sound.play("btn", { volume: 0.4 });
+            // 버튼 눌림 효과 - 반짝임
             this.tweens.add({
-              targets: [cardBg, cardImg, countTxt],
-              scale: "*=0.95",
-              duration: 100,
+              targets: [cardImg, countTxt],
+              scale: "*=0.92",
+              duration: 80,
               yoyo: true,
               ease: "Quad.easeInOut",
-              onComplete: () => {
-                this.useSpecialCard(card.id, card.name, card.cooldown || 12000);
-              },
             });
+            
+            this.time.delayedCall(100, () => {
+              this.useSpecialCard(card.id, card.name, card.cooldown || 12000);
+            });
+          });
+
+          // 호버 효과
+          cardBg.on("pointerover", () => {
+            if (!cardBg._clicked) {
+              this.tweens.add({
+                targets: [cardImg],
+                scale: 1.08,
+                duration: 150,
+                ease: "Quad.easeOut",
+              });
+            }
+          });
+
+          cardBg.on("pointerout", () => {
+            if (!cardBg._clicked) {
+              this.tweens.add({
+                targets: [cardImg],
+                scale: 1,
+                duration: 150,
+                ease: "Quad.easeOut",
+              });
+            }
           });
         }
 
         this.playerTableGroup.add([cardBg, cardImg, countTxt]);
       } else {
-        // 미보유 카드: 빈 슬롯으로 표시
-        const emptyBg = this.add
-          .rectangle(cardX, cardY, cardSize, cardSize, 0x444444, 0.25)
-          .setStrokeStyle(1, 0x999999, 0.5);
-        this.playerTableGroup.add(emptyBg);
+        // 미보유 카드: 아이템 슬롯 느낌 (잠금 상태)
+        const emptyGraphics = this.make.graphics({ x: 0, y: 0, add: false });
+        
+        // 어두운 배경
+        emptyGraphics.fillStyle(0x1a1a1a, 0.4);
+        emptyGraphics.fillRoundedRect(cardX - cardSize / 2, cardY - cardSize / 2, cardSize, cardSize, 12);
+        
+        // 점선 테두리
+        emptyGraphics.lineStyle(2, 0x444444, 0.6);
+        emptyGraphics.strokeRoundedRect(cardX - cardSize / 2, cardY - cardSize / 2, cardSize, cardSize, 12);
+        
+        const emptyBg = this.add.existing(emptyGraphics);
+        emptyBg.setDepth(100).setScrollFactor(0);
+        
+        // 잠금 아이콘 텍스트
+        const lockIcon = this.add
+          .text(cardX, cardY, "🔒", {
+            fontFamily: GAME_FONTS.main,
+            fontSize: `${cardSize * 0.5}px`,
+          })
+          .setOrigin(0.5)
+          .setDepth(101)
+          .setScrollFactor(0)
+          .setAlpha(0.4);
+        
+        this.playerTableGroup.add([emptyBg, lockIcon]);
       }
     });
   }
@@ -23066,26 +23167,6 @@ class GameScene extends Phaser.Scene {
       .setAlpha(1);
     numberTexts.push(numText);
     
-    // 안내 텍스트
-    const instructionText = this.add
-      .text(centerX, centerY + height * 0.18, "모두 집중하세요!", {
-        fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.050}px`,
-        color: "#ffffff",
-        fontWeight: "bold",
-        stroke: "#000000",
-        strokeThickness: 3,
-      })
-      .setOrigin(0.5)
-      .setDepth(11001)
-      .setAlpha(0);
-    
-    this.tweens.add({
-      targets: instructionText,
-      alpha: 1,
-      duration: 200,
-    });
-    
     // 3초 동안 슬롯 애니메이션 (점점 느려지다가 멈춤)
     let lastChangeTime = Date.now();
     const animationDuration = 3000; // 3초 애니메이션
@@ -23157,10 +23238,6 @@ class GameScene extends Phaser.Scene {
           },
         });
         
-        // 안내 텍스트 변경
-        instructionText.setText(`🎉 ${finalMultiplier}배 판입니다! 🎉`);
-        instructionText.setColor("#FFD700");
-        
         // 2초 후 사라짐
         this.time.delayedCall(2000, () => {
           // 🔴 [서버 전송] 배수 정보를 서버로 전송 - 서버에서 보상 계산에 사용
@@ -23198,7 +23275,7 @@ class GameScene extends Phaser.Scene {
           }
 
           this.tweens.add({
-            targets: [box, boxShadow, ...numberTexts, instructionText],
+            targets: [box, boxShadow, ...numberTexts],
             alpha: 0,
             duration: 500,
             ease: "Power2.easeIn",
@@ -23206,7 +23283,6 @@ class GameScene extends Phaser.Scene {
               try { box.destroy(); } catch (e) {}
               try { boxShadow.destroy(); } catch (e) {}
               numberTexts.forEach(t => { try { t.destroy(); } catch (e) {} });
-              try { instructionText.destroy(); } catch (e) {}
             },
           });
         });
