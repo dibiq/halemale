@@ -14614,11 +14614,26 @@ class GameScene extends Phaser.Scene {
         }
       }
 
+      // 🔴 [중요] 게임 진행 중에는 로컬 경험치가 더 높으면 유지 (누적 보호)
+      let finalExperience = safeExperience;
+      if (this.isGameStarted && !this.isGameEnded && !this.isResultOverlayActive) {
+        const localExperience = Number(this.myProfile?.experience) || 0;
+        if (localExperience > safeExperience) {
+          finalExperience = localExperience;
+          console.debug('[socket.myProfile] 게임 중 경험치 보호', {
+            local: localExperience,
+            server: safeExperience,
+            finalExp: finalExperience,
+            message: '로컬 경험치가 더 높음 - 유지'
+          });
+        }
+      }
+
       // 🔴 [일관성] myProfile에 새 값 할당
       this.myProfile = this.myProfile || {};
       this.myProfile.level = newLevel;
       this.myProfile.coins = finalCoins;
-      this.myProfile.experience = safeExperience;
+      this.myProfile.experience = finalExperience;
       
       // 이전 profileStats도 최신 상태로 유지 (레거시 코드용)
       this.profileStats = {

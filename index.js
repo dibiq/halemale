@@ -4230,11 +4230,44 @@ io.on("connection", (socket) => {
             newExpTotal -= XP_PER_LEVEL;
             newLevel += 1;
           }
+
+          // 🔴 [중요] 경험치 누적 상세 로그
+          console.log(`📊 [handleSyncPlayerInventory] 경험치 누적`, {
+            nickname: socket.nickname,
+            reason,
+            before: {
+              level: prevLevel,
+              remainder: prevRemainder,
+            },
+            gain: incomingExp,
+            after: {
+              level: newLevel,
+              remainder: newExpTotal,
+              totalExp: newLevel * XP_PER_LEVEL + newExpTotal,
+            },
+            message: `Lv.${prevLevel}(exp:${prevRemainder}) + ${incomingExp} → Lv.${newLevel}(exp:${newExpTotal})`,
+            timestamp: new Date().toISOString(),
+          });
+
           socket.experience = newExpTotal;
           socket.level = newLevel;
         } else {
           // Treat the provided experience as the remainder (0..XP_PER_LEVEL-1)
+          const prevRemainder = Number(socket.experience) || 0;
           socket.experience = Number(incomingExp);
+
+          // 🔴 [중요] 경험치 직접 설정 로그 (초기화 또는 리셋)
+          console.log(
+            `📊 [handleSyncPlayerInventory] 경험치 직접 설정 (sync)`,
+            {
+              nickname: socket.nickname,
+              reason,
+              before: prevRemainder,
+              after: incomingExp,
+              message: `경험치 ${prevRemainder} → ${incomingExp} (직접 설정)`,
+              timestamp: new Date().toISOString(),
+            },
+          );
         }
       }
     }
@@ -4246,7 +4279,7 @@ io.on("connection", (socket) => {
         socket.level = incomingLevel;
       }
     }
-    // Debug log for experience sync
+    // Debug log for experience sync (이전 로그는 유지)
     try {
       if (
         typeof payload.reason === "string" &&
