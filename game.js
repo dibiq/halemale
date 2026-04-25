@@ -2997,15 +2997,26 @@ class LobbyScene extends Phaser.Scene {
     );
 
     // 🔴 [보안] 코인은 반드시 서버에서만 로드 (로컬 저장소 사용 금지)
+    // 멀티플레이 게임 종료 후 socket.finalProfile에 저장된 최종 프로필 사용
+    const finalProfileFromGame = socket && socket.finalProfile;
+    
     this.myProfile = {
       nickname: this.myNickname || savedNickname || "요리사",
-      level: 1,
-      coins: 0,  // 서버로부터 받을 때까지 기본값
-      experience: 0,
+      level: finalProfileFromGame?.level || 1,
+      coins: finalProfileFromGame?.coins || 0,  // 서버로부터 받을 때까지 기본값 또는 게임 최종값
+      experience: finalProfileFromGame?.experience || 0,
       owned_characters: initialOwnedCharacters,
       current_character: initialAvatarKey || "player_1",
       avatarKey: initialAvatarKey || "player_1",
     };
+
+    if (finalProfileFromGame) {
+      console.log('[LobbyScene] 게임 최종 프로필 복원', {
+        level: finalProfileFromGame.level,
+        coins: finalProfileFromGame.coins,
+        experience: finalProfileFromGame.experience,
+      });
+    }
 
     this.hasServerProfileSnapshot = false;
     this.hasReceivedProfileStats = false;
@@ -14510,6 +14521,28 @@ class GameScene extends Phaser.Scene {
       try {
         console.log('[socket.myProfile] received', profile);
       } catch (e) {}
+      
+      // 🔴 [중요] 게임 종료 후 서버 프로필 수신: 즉시 this.myProfile 업데이트
+      // (로비 또는 다음 게임 시작 시 정확한 데이터 필요)
+      if (this.isGameEnded && !this.isSingle) {
+        console.log('[socket.myProfile] 게임 종료 후 서버 프로필 수신 - 즉시 적용', {
+          level: profile?.level,
+          coins: profile?.coins,
+          experience: profile?.experience,
+        });
+        
+        // myProfile 즉시 업데이트 (로비로 전달될 값)
+        this.myProfile = this.myProfile || {};
+        this.myProfile.level = Number(profile?.level) || Number(this.myProfile?.level) || 1;
+        this.myProfile.coins = Number(profile?.coins) || Number(this.myProfile?.coins) || 0;
+        this.myProfile.experience = Number(profile?.experience) || Number(this.myProfile?.experience) || 0;
+        if (profile?.nickname) this.myProfile.nickname = profile.nickname;
+        if (profile?.avatarKey) this.myProfile.avatarKey = profile.avatarKey;
+        if (profile?.owned_characters) this.myProfile.owned_characters = profile.owned_characters;
+        if (profile?.current_character) this.myProfile.current_character = profile.current_character;
+        if (profile?.specialCards) this.myProfile.specialCards = profile.specialCards;
+      }
+      
       // cache again in case stats update separately
       try { socket.profile = profile; } catch (e) {}
       
@@ -25629,6 +25662,7 @@ class GameScene extends Phaser.Scene {
         const postGameFinalCoins = this._postGameFinalCoins;
         
         if (this._deferredMyProfile) {
+          console.log('[goToLobby] 지연된 프로필 적용 시작', { deferred: this._deferredMyProfile });
           this.applyDeferredProfileUpdates();
         }
         this.applyDeferredCoins();
@@ -25646,18 +25680,29 @@ class GameScene extends Phaser.Scene {
             });
             
             this.myProfile.coins = finalCoins;
-            
-            // UI 업데이트
-            if (typeof this.updateMyProfileUI === 'function') {
-              try {
-                this.updateMyProfileUI({ coins: finalCoins });
-              } catch (e) {}
-            }
-          } else {
-            console.log('[goToLobby] 멀티플레이 최종 코인 일치', {
-              coins: finalCoins
-            });
           }
+        }
+
+        // 🔴 [중요] GameScene stop 전에 최종 프로필을 socket에 저장
+        console.log('[goToLobby] 최종 프로필 저장', {
+          level: this.myProfile?.level,
+          coins: this.myProfile?.coins,
+          experience: this.myProfile?.experience,
+          nickname: this.myProfile?.nickname
+        });
+        
+        if (socket && typeof socket === 'object') {
+          socket.finalProfile = {
+            level: Number(this.myProfile?.level) || 1,
+            coins: Number(this.myProfile?.coins) || 0,
+            experience: Number(this.myProfile?.experience) || 0,
+            nickname: this.myProfile?.nickname || 'unknown',
+            avatarKey: this.myProfile?.avatarKey,
+            owned_characters: this.myProfile?.owned_characters,
+            current_character: this.myProfile?.current_character,
+            specialCards: this.myProfile?.specialCards,
+          };
+          console.log('[goToLobby] socket.finalProfile 저장 완료', socket.finalProfile);
         }
       } catch (e) {
         console.warn("goToLobby: failed to apply deferred profile/coins", e);
