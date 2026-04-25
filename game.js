@@ -19243,6 +19243,13 @@ class GameScene extends Phaser.Scene {
         : !this.isSingle;
     const shouldLeaveRoom = options.leaveRoom === true;
 
+    console.log("[returnToLobby] 시작", {
+      rejoinRoom,
+      shouldLeaveRoom,
+      socketConnected: socket?.connected,
+      roomId: this.roundData?.roomId
+    });
+
     const preventAutoStart = () => {
       try {
         const lobbyScene = this.scene.get("LobbyScene");
@@ -19283,6 +19290,7 @@ class GameScene extends Phaser.Scene {
       !socket ||
       !socket.connected
     ) {
+      console.log("[returnToLobby] 재입장 불가능, 간단히 로비 시작");
       preventAutoStart();
       try {
         if (this.scene.isActive("GameScene")) {
@@ -19325,6 +19333,7 @@ class GameScene extends Phaser.Scene {
     const storedNickname = localStorage.getItem("nickname") || "요리사";
 
     // Immediately switch to LobbyScene to avoid blank transition lag.
+    console.log("[returnToLobby] LobbyScene 시작 - 재입장 모드");
     this.scene.start("LobbyScene", {
       fromGame: true,
       roomId: this.roundData.roomId,
@@ -19336,14 +19345,43 @@ class GameScene extends Phaser.Scene {
     });
 
     // Rejoin the room in background; lobby UI will be updated by LobbyScene listeners.
-    if (socket && socket.connected && this.roundData?.roomId) {
+    // 🔴 [중요] socket 재연결 확인 후 joinRoom emit
+    if (this.roundData?.roomId) {
       try {
-        socket.emit("joinRoom", {
-          roomId: this.roundData.roomId,
-          nickname: storedNickname,
-          avatarKey: this.avatarKey || "player_1",
-        });
+        if (socket && socket.connected) {
+          console.log("[returnToLobby] socket 연결됨, joinRoom 발송");
+          socket.emit("joinRoom", {
+            roomId: this.roundData.roomId,
+            nickname: storedNickname,
+            avatarKey: this.avatarKey || "player_1",
+          });
+        } else if (socket) {
+          // socket이 존재하지만 연결되지 않은 경우
+          console.log("[returnToLobby] socket 미연결, 연결 대기 후 joinRoom 발송");
+          const maxWaitTime = 3000; // 3초
+          const checkInterval = 100;
+          let elapsed = 0;
+          
+          const waitAndJoin = setInterval(() => {
+            if (socket.connected) {
+              clearInterval(waitAndJoin);
+              console.log("[returnToLobby] socket 재연결됨, joinRoom 발송");
+              socket.emit("joinRoom", {
+                roomId: this.roundData.roomId,
+                nickname: storedNickname,
+                avatarKey: this.avatarKey || "player_1",
+              });
+            } else if (elapsed >= maxWaitTime) {
+              clearInterval(waitAndJoin);
+              console.warn("[returnToLobby] socket 재연결 타임아웃");
+            }
+            elapsed += checkInterval;
+          }, checkInterval);
+        } else {
+          console.warn("[returnToLobby] socket 없음");
+        }
       } catch (e) {
+        console.warn("[returnToLobby] joinRoom 발송 실패:", e);
       }
     }
 
@@ -25643,11 +25681,22 @@ class GameScene extends Phaser.Scene {
         console.warn("goToLobby: stop GameScene failed", e);
       }
 
+      // 🔴 [중요] 멀티플레이: 소켓 연결 상태 확인 후 안전하게 로비 전환
+      const shouldRejoinRoom = !this.isSingle && socket && socket.connected;
+      
       try {
-        this.returnToLobby({ rejoinRoom: !this.isSingle, leaveRoom: false });
+        console.log(`[goToLobby] 로비 전환 시도:`, { 
+          isSingle: this.isSingle, 
+          socketConnected: socket?.connected,
+          rejoinRoom: shouldRejoinRoom,
+          roomId: this.roundData?.roomId
+        });
+        
+        this.returnToLobby({ rejoinRoom: shouldRejoinRoom, leaveRoom: false });
       } catch (e) {
         console.warn("goToLobby: returnToLobby failed", e);
         try {
+          console.log("[goToLobby] fallback: LobbyScene 직접 시작");
           this.scene.start("LobbyScene", { preventAutoStartSingleAfterTutorial: true });
         } catch (err) {
           console.warn("goToLobby: fallback start LobbyScene failed", err);
