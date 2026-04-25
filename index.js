@@ -1302,7 +1302,11 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
         console.warn("finalizeGame myProfile emit failed", emitErr);
       }
     } catch (e) {
-      console.warn("finalizeGame player processing error for", p?.nickname || p?.id, e);
+      console.warn(
+        "finalizeGame player processing error for",
+        p?.nickname || p?.id,
+        e,
+      );
     }
   });
 
