@@ -2934,7 +2934,45 @@ class LobbyScene extends Phaser.Scene {
         nickname: savedNickname,
         avatarKey: this.getSelectedAvatarKey(),
       });
-      emitInventory();
+      
+      // 🔴 [중요] LobbyScene에서 myProfile을 받을 때 처리
+      // setNickname 응답으로 온 myProfile을 받고, _pendingInitialInventoryEmit 플래그를 확인해서 emit
+      if (!this._lobbyProfileListener) {
+        this._lobbyProfileListener = true;
+        socket.off("myProfile").on("myProfile", (profile) => {
+          try {
+            if (this !== scene) return; // 다른 씬이면 무시
+            
+            console.log('[LobbyScene] socket.on(myProfile) 수신', {
+              level: profile?.level,
+              coins: profile?.coins,
+              experience: profile?.experience,
+              pendingEmit: this._pendingInitialInventoryEmit
+            });
+            
+            // myProfile 업데이트
+            this.myProfile = this.myProfile || {};
+            this.myProfile.level = Number(profile?.level) || this.myProfile.level || 1;
+            this.myProfile.coins = Number(profile?.coins) || this.myProfile.coins || 0;
+            this.myProfile.experience = Number(profile?.experience) || this.myProfile.experience || 0;
+            if (profile?.nickname) this.myProfile.nickname = profile.nickname;
+            if (profile?.avatarKey) this.myProfile.avatarKey = profile.avatarKey;
+            if (profile?.owned_characters) this.myProfile.owned_characters = profile.owned_characters;
+            if (profile?.current_character) this.myProfile.current_character = profile.current_character;
+            if (profile?.specialCards) this.myProfile.specialCards = profile.specialCards;
+            
+            // 🔴 [중요] _pendingInitialInventoryEmit이 true면 이제 emitInventory 호출
+            if (this._pendingInitialInventoryEmit) {
+              this._pendingInitialInventoryEmit = false;
+              console.log('[LobbyScene] myProfile 수신 후 emitInventory(initial) 호출');
+              this.emitInventory('initial');
+            }
+          } catch (e) {
+            console.warn('[LobbyScene] socket.myProfile 처리 실패', e);
+          }
+        });
+      }
+      
       // (선택 사항) 로딩 중이라면 바로 메인 화면으로 진입하는 로직 실행
       console.log(`반가워요, ${savedNickname} 요리사님!`);
 
