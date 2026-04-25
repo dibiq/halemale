@@ -11756,6 +11756,19 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         if (el) el.destroy();
       });
 
+      // 스탠프와 코인 버스트 이펙트 정리 (depth 4000~4010 범위의 모든 객체)
+      this.children.list.forEach((child) => {
+        if (child && child.depth >= 4000 && child.depth <= 4010) {
+          if (child.destroy && typeof child.destroy === 'function') {
+            try {
+              child.destroy();
+            } catch (e) {
+              // 이미 파괴된 객체일 수 있으므로 무시
+            }
+          }
+        }
+      });
+
       this.isWeeklyRewardPopupOpen = false;
       this.isJoinPopupOpen = false;
       this.disableDailyRewardBtnUntil = Date.now() + 300;
