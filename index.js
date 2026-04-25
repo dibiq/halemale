@@ -1263,6 +1263,7 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
         ratio: ratioToSave,
       });
 
+      // 🔴 DB 저장 (비동기이지만 대기하지 않음)
       savePlayer(
         dbId,
         levelToSave,
@@ -1278,47 +1279,30 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
         bellTotalToSave,
       ).catch((e) => console.warn("savePlayer game end failed", e));
 
-      // 🔴 Emit final level/experience after game ends to ensure persistence.
-      // This is safe because we've already synchronized with client via requestProfileSync.
-      io.to(p.id).emit("myProfile", {
-        nickname: p.nickname,
-        level: levelToSave,
-        coins: currentCoins,
-        experience: expToSave,
-        items: currentItems,
-        avetime: p.avetime ?? 0,
-        ratio: typeof p.ratio === "number" ? p.ratio : 0,
-        bellCorrect: typeof p.bellCorrect === "number" ? p.bellCorrect : 0,
-        bellTotal: typeof p.bellTotal === "number" ? p.bellTotal : 0,
-        avatarKey: p.avatarKey || "player_1",
-        specialCards: p.specialCards || {},
-        owned_characters: p.owned_characters || [],
-        current_character: p.current_character || p.avatarKey || "player_1",
-      });
+      // 🔴 클라이언트에 최종 프로필 전송 (savePlayer 결과와 무관하게 수행)
+      try {
+        if (io && p && p.id) {
+          io.to(p.id).emit("myProfile", {
+            nickname: p.nickname,
+            level: levelToSave,
+            coins: currentCoins,
+            experience: expToSave,
+            items: currentItems,
+            avetime: p.avetime ?? 0,
+            ratio: typeof p.ratio === "number" ? p.ratio : 0,
+            bellCorrect: typeof p.bellCorrect === "number" ? p.bellCorrect : 0,
+            bellTotal: typeof p.bellTotal === "number" ? p.bellTotal : 0,
+            avatarKey: p.avatarKey || "player_1",
+            specialCards: p.specialCards || {},
+            owned_characters: p.owned_characters || [],
+            current_character: p.current_character || p.avatarKey || "player_1",
+          });
+        }
+      } catch (emitErr) {
+        console.warn("finalizeGame myProfile emit failed", emitErr);
+      }
     } catch (e) {
-      console.warn("finalizeGame savePlayer wrapper error", e);
-    }
-
-    // Fallback emit if try block failed - use defaults
-    try {
-      if (!io || !p || !p.id) return;
-      io.to(p.id).emit("myProfile", {
-        nickname: p.nickname,
-        level: Number(p.level) || 1,
-        coins: currentCoins,
-        experience: Number(p.experience) || 0,
-        items: currentItems,
-        avetime: p.avetime ?? 0,
-        ratio: typeof p.ratio === "number" ? p.ratio : 0,
-        bellCorrect: typeof p.bellCorrect === "number" ? p.bellCorrect : 0,
-        bellTotal: typeof p.bellTotal === "number" ? p.bellTotal : 0,
-        avatarKey: p.avatarKey || "player_1",
-        specialCards: p.specialCards || {},
-        owned_characters: p.owned_characters || [],
-        current_character: p.current_character || p.avatarKey || "player_1",
-      });
-    } catch (fallbackErr) {
-      console.warn("finalizeGame fallback emit failed", fallbackErr);
+      console.warn("finalizeGame player processing error for", p?.nickname || p?.id, e);
     }
   });
 
