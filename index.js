@@ -1281,11 +1281,13 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
       console.warn("finalizeGame savePlayer wrapper error", e);
     }
 
-    // Do not emit level/experience at game end to avoid overwriting
-    // gameplay-updated values on clients. Emit only non-XP profile fields.
+    // 🔴 Emit final level/experience after game ends to ensure persistence.
+    // This is safe because we've already synchronized with client via requestProfileSync.
     io.to(p.id).emit("myProfile", {
       nickname: p.nickname,
+      level: levelToSave,
       coins: currentCoins,
+      experience: expToSave,
       items: currentItems,
       avetime: p.avetime ?? 0,
       ratio: typeof p.ratio === "number" ? p.ratio : 0,
