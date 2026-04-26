@@ -17446,7 +17446,7 @@ class GameScene extends Phaser.Scene {
           cardBgGraphics.lineStyle(3, 0x808080, 0.6);
         } else {
           // 사용 가능: 진하고 풍부한 색상
-          cardBgGraphics.fillStyle(0x0f172a, 1);
+          cardBgGraphics.fillStyle(0x334155, 1);
           cardBgGraphics.fillRoundedRect(cardX - cardSize / 2, cardY - cardSize / 2, cardSize, cardSize, 12);
           // 상단 라인 (라이팅 효과)
           cardBgGraphics.lineStyle(3, 0x3b82f6, 1);
@@ -17482,7 +17482,7 @@ class GameScene extends Phaser.Scene {
         const imageKey = card.icon || card.key;
         if (this.textures.exists(imageKey)) {
           cardImg = this.add
-            .image(cardX, cardY - Math.round(cardSize * 0.06), imageKey)
+            .image(cardX, cardY + Math.round(cardSize * 0.04), imageKey)
             .setDisplaySize(cardSize * 0.875, cardSize * 0.875)  // 크기 30% 감소: 1.25 → 0.875
             .setOrigin(0.5)
             .setDepth(101)
@@ -17491,9 +17491,9 @@ class GameScene extends Phaser.Scene {
             .setMask(geometryMask);  // 마스크 적용
         } else {
           cardImg = this.add
-            .text(cardX, cardY - Math.round(cardSize * 0.08), card.name, {
+            .text(cardX, cardY + Math.round(cardSize * 0.04), card.name, {
               fontFamily: GAME_FONTS.main,
-              fontSize: `${cardSize * 0.32}px`,
+              fontSize: `${cardSize * 0.35}px`,
               color: usedFlag ? "#808080" : "#ffffff",
               fontWeight: "bold",
             })
@@ -17507,14 +17507,16 @@ class GameScene extends Phaser.Scene {
         // 수량 텍스트만 표시 (배지 배경 제거)
         const countTxt = this.add
           .text(
-            cardX + Math.round(cardSize * 0.35),
-            cardY - Math.round(cardSize * 0.35),
+            cardX + Math.round(cardSize * 0.25),
+            cardY - Math.round(cardSize * 0.35) + Math.round(cardSize * 0.04),
             `x${count}`,
             {
               fontFamily: GAME_FONTS.main,
-              fontSize: `${cardSize * 0.26}px`,
+              fontSize: `${cardSize * 0.32}px`,
               color: usedFlag ? "#cccccc" : "#ffffff",
               fontWeight: "bold",
+              stroke: "#000000",
+              strokeThickness: 6,
             }
           )
           .setOrigin(0.5)
@@ -24483,7 +24485,7 @@ class GameScene extends Phaser.Scene {
               this.updateEliminationStatus();
               this.renderTable(this.roundData.players);
               this.safeSyncInventory("useKing", { usedCardId: 8 });
-              this.showToast("왕 카드 사용: 덱을 교환했습니다!", "#2ecc71");
+              this.showToast("전세역전!: 덱을 교환했습니다!", "#2ecc71");
             } catch (e) {
               console.warn("useSpecialCard king single error", e);
             }
