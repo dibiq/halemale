@@ -30,7 +30,7 @@ const TUTORIAL_STATE_KEY = "tutorialCompleted";
 const TUTORIAL_PROGRESS_KEY = "tutorialProgress";
 
 // ✅ 【전역 상수】플레이어 캐릭터 관리 - 6, 7, 8 추가 시 여기만 수정
-const VALID_PLAYER_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8]; // 8, 9... 추가하면 자동 적용
+const VALID_PLAYER_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]; // 9, 10... 추가하면 자동 적용
 const VALID_PLAYERS = VALID_PLAYER_NUMBERS.map((n) => `player_${n}`);
 const VALID_PLAYER_KEYS_PATTERN = new RegExp(`^player_(${VALID_PLAYER_NUMBERS.join("|")})$`);
 const VALID_CHARACTER_KEYS = [...VALID_PLAYERS, "premium_bear"];
@@ -1726,6 +1726,18 @@ class LobbyScene extends Phaser.Scene {
     if (baseKey === "player_8") {
       if (this.textures.exists("player_8_frame_1")) return "player_8_frame_1";
     }
+    if (baseKey === "player_9") {
+      if (this.textures.exists("player_9_frame_1")) return "player_9_frame_1";
+    }
+    if (baseKey === "player_10") {
+      if (this.textures.exists("player_10_frame_1")) return "player_10_frame_1";
+    }
+    if (baseKey === "player_11") {
+      if (this.textures.exists("player_11_frame_1")) return "player_11_frame_1";
+    }
+    if (baseKey === "player_12") {
+      if (this.textures.exists("player_12_frame_1")) return "player_12_frame_1";
+    }
     const sheetKey = `${baseKey}_sprite_a`;
     if (this.textures.exists(sheetKey)) return sheetKey;
     return null;
@@ -2341,6 +2353,42 @@ class LobbyScene extends Phaser.Scene {
       `assets/images/player_8_sprite/1.png${PLAYER8_SPRITE_VERSION}`,
     );
 
+    const PLAYER9_SPRITE_VERSION = VERSION
+      ? `${VERSION}&p9=20260426_1`
+      : "?p9=20260426_1";
+
+    this.load.image(
+      "player_9_frame_1",
+      `assets/images/player_9_sprite/1.png${PLAYER9_SPRITE_VERSION}`,
+    );
+
+    const PLAYER10_SPRITE_VERSION = VERSION
+      ? `${VERSION}&p10=20260426_1`
+      : "?p10=20260426_1";
+
+    this.load.image(
+      "player_10_frame_1",
+      `assets/images/player_10_sprite/1.png${PLAYER10_SPRITE_VERSION}`,
+    );
+
+    const PLAYER11_SPRITE_VERSION = VERSION
+      ? `${VERSION}&p11=20260426_1`
+      : "?p11=20260426_1";
+
+    this.load.image(
+      "player_11_frame_1",
+      `assets/images/player_11_sprite/1.png${PLAYER11_SPRITE_VERSION}`,
+    );
+
+    const PLAYER12_SPRITE_VERSION = VERSION
+      ? `${VERSION}&p12=20260426_1`
+      : "?p12=20260426_1";
+
+    this.load.image(
+      "player_12_frame_1",
+      `assets/images/player_12_sprite/1.png${PLAYER12_SPRITE_VERSION}`,
+    );
+
     // ✅ 모든 플레이어 캐릭터 첫 프레임 일괄 로드 (player_7 이상 자동 추가)
     // VALID_PLAYER_NUMBERS에 7, 8... 추가하면 자동으로 로드됨
     const playerSpriteVersions = {
@@ -2622,7 +2670,10 @@ class LobbyScene extends Phaser.Scene {
       6: VERSION ? `${VERSION}&p6=20260326_1` : "?p6=20260326_1",
       7: VERSION ? `${VERSION}&p7=20260426_1` : "?p7=20260426_1",
       8: VERSION ? `${VERSION}&p8=20260426_1` : "?p8=20260426_1",
-      // player_9 추가 시: 9: VERSION ? `${VERSION}&p9=...` : "?p9=..."
+      9: VERSION ? `${VERSION}&p9=20260426_1` : "?p9=20260426_1",
+      10: VERSION ? `${VERSION}&p10=20260426_1` : "?p10=20260426_1",
+      11: VERSION ? `${VERSION}&p11=20260426_1` : "?p11=20260426_1",
+      12: VERSION ? `${VERSION}&p12=20260426_1` : "?p12=20260426_1",
     };
     
     for (const playerNum of VALID_PLAYER_NUMBERS) {
@@ -2932,7 +2983,7 @@ class LobbyScene extends Phaser.Scene {
       }
     }
 
-    this.profileAvatarKeys = ["player_1", "player_2", "player_3", "player_4", "player_5", "player_6", "player_7", "player_8", PREMIUM_BEAR_KEY].filter(
+    this.profileAvatarKeys = ["player_1", "player_2", "player_3", "player_4", "player_5", "player_6", "player_7", "player_8", "player_9", "player_10", "player_11", "player_12", PREMIUM_BEAR_KEY].filter(
       (key, idx, arr) => arr.indexOf(key) === idx,
     );
     const savedAvatarKey = localStorage.getItem("profileAvatarKey");
@@ -3414,19 +3465,13 @@ class LobbyScene extends Phaser.Scene {
 
         if (Array.isArray(rawValue)) {
           rawValue.forEach((key) => {
-            if (
-              typeof key === "string" &&
-              /^(player_[1-5]|premium_bear)$/.test(key)
-            ) {
+            if (isValidCharacterKey(key)) {
               normalized[key] = true;
             }
           });
         } else if (rawValue && typeof rawValue === "object") {
           Object.entries(rawValue).forEach(([key, value]) => {
-            if (
-              typeof key === "string" &&
-              /^(player_[1-5]|premium_bear)$/.test(key)
-            ) {
+            if (isValidCharacterKey(key)) {
               normalized[key] = !!value;
             }
           });
@@ -3445,10 +3490,7 @@ class LobbyScene extends Phaser.Scene {
         if (Array.isArray(stored) && stored.length > 0) {
           const localOwned = {};
           stored.forEach((key) => {
-            if (
-              typeof key === "string" &&
-              /^(player_[1-4]|player_2)$/.test(key)
-            ) {
+            if (isValidPlayerKey(key)) {
               localOwned[key] = true;
             }
           });
@@ -3464,10 +3506,7 @@ class LobbyScene extends Phaser.Scene {
       if (profile && Array.isArray(profile.owned_characters)) {
         const ownedCharactersFromServer = {};
         profile.owned_characters.forEach((key) => {
-          if (
-            typeof key === "string" &&
-            /^(player_[1-4]|player_2)$/.test(key)
-          ) {
+          if (isValidPlayerKey(key)) {
             ownedCharactersFromServer[key] = true;
           }
         });
@@ -4994,8 +5033,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       new Set(
         ["player_1"].concat(
           incomingOwnedCharacters.filter(
-            (key) =>
-              typeof key === "string" && /^(player_[1-5]|premium_bear)$/.test(key),
+            (key) => isValidCharacterKey(key),
           ),
         ),
       ),
@@ -5978,8 +6016,8 @@ if (this.isGameEnded || this.isResultOverlayActive) {
   }
 
   getAvatarAnimMaxFrame(baseKey) {
-    // player_1/player_2/player_3/player_4 모두 91 프레임까지 허용
-    return /^player_[1-4]$/.test(baseKey) ? 40 : 2;
+    // 모든 플레이어 캐릭터는 동일한 프레임 수 사용
+    return isValidPlayerKey(baseKey) ? PLAYER_ANIMATION_FRAMES : 2;
   }
 
   getMybgAnimKey() {
@@ -6178,6 +6216,18 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     }
     if (baseKey === "player_8") {
       if (this.textures.exists("player_8_frame_1")) return "player_8_frame_1";
+    }
+    if (baseKey === "player_9") {
+      if (this.textures.exists("player_9_frame_1")) return "player_9_frame_1";
+    }
+    if (baseKey === "player_10") {
+      if (this.textures.exists("player_10_frame_1")) return "player_10_frame_1";
+    }
+    if (baseKey === "player_11") {
+      if (this.textures.exists("player_11_frame_1")) return "player_11_frame_1";
+    }
+    if (baseKey === "player_12") {
+      if (this.textures.exists("player_12_frame_1")) return "player_12_frame_1";
     }
     // use first sheet if available
     const sheetKey = `${baseKey}_sprite_a`;
@@ -7352,6 +7402,30 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         description: "귀여운 또르 곰돌이 캐릭터",
         price: 2000,
       },
+      {
+        key: "player_9",
+        name: "쪼로 곰돌이",
+        description: "깜찍한 쪼로 곰돌이 캐릭터",
+        price: 3000,
+      },
+      {
+        key: "player_10",
+        name: "검사 곰돌이",
+        description: "정의로운 검사 곰돌이 캐릭터",
+        price: 3000,
+      },
+      {
+        key: "player_11",
+        name: "타노 곰돌이",
+        description: "신기한 타노 곰돌이 캐릭터",
+        price: 5000,
+      },
+      {
+        key: "player_12",
+        name: "슈퍼 곰돌이",
+        description: "슈퍼한 슈퍼 곰돌이 캐릭터",
+        price: 5000,
+      },
     ];
 
     const coinProducts = [
@@ -7365,13 +7439,13 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
       if (Array.isArray(rawValue)) {
         rawValue.forEach((key) => {
-          if (typeof key === "string" && /^(player_[1-5]|premium_bear)$/.test(key)) {
+          if (isValidCharacterKey(key)) {
             normalized[key] = true;
           }
         });
       } else if (rawValue && typeof rawValue === "object") {
         Object.entries(rawValue).forEach(([key, value]) => {
-          if (typeof key === "string" && /^(player_[1-5]|premium_bear)$/.test(key)) {
+          if (isValidCharacterKey(key)) {
             normalized[key] = !!value;
           }
         });
@@ -7387,7 +7461,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       // 1) 서버 프로필에서 소유 캐릭터 가져오기
       if (this.myProfile && Array.isArray(this.myProfile.owned_characters)) {
         this.myProfile.owned_characters.forEach((key) => {
-          if (typeof key === "string" && /^(player_[1-5])$/.test(key)) {
+          if (isValidPlayerKey(key)) {
             owned[key] = true;
           }
         });
@@ -7398,7 +7472,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         const stored = JSON.parse(localStorage.getItem("ownedCharacters") || "[]");
         if (Array.isArray(stored)) {
           stored.forEach((key) => {
-            if (typeof key === "string" && /^(player_[1-5])$/.test(key)) {
+            if (isValidPlayerKey(key)) {
               owned[key] = true;
             }
           });
@@ -13005,6 +13079,18 @@ class GameScene extends Phaser.Scene {
     if (baseKey === "player_8") {
       if (this.textures.exists("player_8_frame_1")) return "player_8_frame_1";
     }
+    if (baseKey === "player_9") {
+      if (this.textures.exists("player_9_frame_1")) return "player_9_frame_1";
+    }
+    if (baseKey === "player_10") {
+      if (this.textures.exists("player_10_frame_1")) return "player_10_frame_1";
+    }
+    if (baseKey === "player_11") {
+      if (this.textures.exists("player_11_frame_1")) return "player_11_frame_1";
+    }
+    if (baseKey === "player_12") {
+      if (this.textures.exists("player_12_frame_1")) return "player_12_frame_1";
+    }
     const sheetKey = `${baseKey}_sprite_a`;
     if (this.textures.exists(sheetKey)) return sheetKey;
     return null;
@@ -13087,54 +13173,7 @@ class GameScene extends Phaser.Scene {
     const animKey = scene.getAvatarAnimKey(baseKey);
 
     try {
-      if (baseKey === "player_3" || baseKey === "player_4" || baseKey === "player_5" || baseKey === "player_6") {
-        const maxFrame = this.getAvatarAnimMaxFrame(baseKey);
-        if (this.textures.exists(`${baseKey}_frame_1`)) {
-          const frames = [];
-          for (let idx = 1; idx <= maxFrame; idx += 1) {
-            const textureKey = `${baseKey}_frame_${idx}`;
-            if (this.textures.exists(textureKey)) {
-              frames.push({ key: textureKey });
-            }
-          }
-          if (frames.length > 0) {
-            const existingAnim = scene.anims.get(animKey);
-            if (existingAnim) {
-              scene.anims.remove(animKey);
-            }
-            this.anims.create({
-              key: animKey,
-              frames,
-              frameRate: this.getAvatarAnimFrameRate(baseKey),
-              repeat: -1,
-            });
-            return animKey;
-          }
-        }
-
-        // fallback to legacy two-frame assets if any
-        const fallbackFrames = [];
-        for (let idx = 1; idx <= maxFrame; idx += 1) {
-          const textureKey = `${baseKey}_${idx}`;
-          if (this.textures.exists(textureKey)) {
-            fallbackFrames.push({ key: textureKey });
-          }
-        }
-        if (fallbackFrames.length > 0) {
-          const existingAnim = scene.anims.get(animKey);
-          if (existingAnim) {
-            scene.anims.remove(animKey);
-          }
-          this.anims.create({
-            key: animKey,
-            frames: fallbackFrames,
-            frameRate: this.getAvatarAnimFrameRate(baseKey),
-            repeat: -1,
-          });
-          return animKey;
-        }
-      }
-
+      // Handle player_1 and player_2 separately (legacy special cases)
       if (baseKey === "player_1") {
         if (this.textures.exists("player_1_frame_1")) {
           const frames = [];
@@ -13239,7 +13278,7 @@ class GameScene extends Phaser.Scene {
         }
       }
       
-      // ✅ 플레이어 7 이상: 통합 처리 (player_n_frame_# 패턴)
+      // ✅ 플레이어 3~9: 통합 처리 (player_n_frame_# 또는 player_n_# 패턴)
       if (isValidPlayerKey(baseKey) && !["player_1", "player_2"].includes(baseKey)) {
         const maxFrame = this.getAvatarAnimMaxFrame(baseKey);
 

@@ -25,7 +25,7 @@ const DAILY_LOGIN_REWARD_COINS = 20;
 const DAILY_LOGIN_TIMEZONE = "Asia/Seoul";
 
 // ✅ 【전역 상수】플레이어 캐릭터 관리 - 6, 7, 8 추가 시 여기만 수정
-const VALID_PLAYER_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8]; // 8, 9... 추가하면 자동 적용
+const VALID_PLAYER_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]; // 9, 10... 추가하면 자동 적용
 const VALID_PLAYERS = VALID_PLAYER_NUMBERS.map((n) => `player_${n}`);
 const VALID_PLAYER_KEYS_PATTERN = new RegExp(
   `^player_(${VALID_PLAYER_NUMBERS.join("|")})$`,
@@ -49,6 +49,10 @@ const CHARACTER_PRICES = {
   player_6: 750, // 번개 곰돌이
   player_7: 1000, // 데드 곰돌이
   player_8: 2000, // 또르 곰돌이
+  player_9: 3000, // 쪼로 곰돌이
+  player_10: 3000, // 검사 곰돌이
+  player_11: 5000, // 타노 곰돌이
+  player_12: 5000, // 슈퍼 곰돌이
   premium_bear: 0, // 튜토리얼 보상 (무료)
 };
 
