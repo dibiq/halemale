@@ -1990,14 +1990,14 @@ class LobbyScene extends Phaser.Scene {
         target.setTexture(firstFrameKey);
       }
       if (animKey) {
-        target.play(animKey, true);
+        target.play({ key: animKey, repeat: -1 });
         if (avatarDisplayWidth > 0 && avatarDisplayHeight > 0) {
           target.setDisplaySize(avatarDisplayWidth, avatarDisplayHeight);
         }
       }
     } else {
       if (animKey) {
-        target.play(animKey, true);
+        target.play({ key: animKey, repeat: -1 });
       } else if (
         avatarDisplayWidth > 0 &&
         avatarDisplayHeight > 0 &&
@@ -7827,7 +7827,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           }
           if (avatarSprite && animKey && avatarSprite.anims) {
             try {
-              avatarSprite.play(animKey, true);
+              avatarSprite.play({ key: animKey, repeat: -1 });
             } catch (err) {
             }
           } else {
@@ -13314,7 +13314,7 @@ class GameScene extends Phaser.Scene {
         // intermittent freezes reported by players.
         const playAnim = () => {
           if (target && target.anims && animKey) {
-            target.play(animKey, true);
+            target.play({ key: animKey, repeat: -1 });
           }
         };
         playAnim();
@@ -13364,7 +13364,7 @@ class GameScene extends Phaser.Scene {
     }
 
     if (animKey) {
-      target.play(animKey, true);
+      target.play({ key: animKey, repeat: -1 });
       if (avatarDisplayWidth > 0 && avatarDisplayHeight > 0) {
         target.setDisplaySize(avatarDisplayWidth, avatarDisplayHeight);
       }
