@@ -2497,23 +2497,8 @@ class LobbyScene extends Phaser.Scene {
     );
 
     this.load.image(
-      "pen",
-      `${ASSET_SERVER}/images/cards/special/ongame_pen.png${VERSION}`,
-    );
-
-    this.load.image(
       "plus1",
       `${ASSET_SERVER}/images/cards/special/ongame_plus1.png${VERSION}`,
-    );
-
-    this.load.image(
-      "plus2",
-      `${ASSET_SERVER}/images/cards/special/ongame_plus2.png${VERSION}`,
-    );
-
-    this.load.image(
-      "not5",
-      `${ASSET_SERVER}/images/cards/special/ongame_not5.png${VERSION}`,
     );
 
     this.load.image(
@@ -17423,11 +17408,11 @@ class GameScene extends Phaser.Scene {
 
     // 새 특수카드 목록 (shop에 등록된 5종)
     const allSpecialCards = [
-      { id: 4, key: "lock", name: "자물쇠", cooldown: 12000 },
-      { id: 5, key: "shield", name: "방패", cooldown: 12000 },
-      { id: 6, key: "ink", name: "먹물", cooldown: 12000 },
-      { id: 7, key: "thief", name: "도둑", cooldown: 12000 },
-      { id: 8, key: "king", name: "왕", cooldown: 12000 },
+      { id: 4, key: "lock", icon: "lock", name: "자물쇠", cooldown: 12000 },
+      { id: 5, key: "shield", icon: "shield", name: "방패", cooldown: 12000 },
+      { id: 6, key: "ink", icon: "block", name: "먹물", cooldown: 12000 },
+      { id: 7, key: "thief", icon: "thief", name: "도둑", cooldown: 12000 },
+      { id: 8, key: "king", icon: "king", name: "왕", cooldown: 12000 },
     ];
 
     // localStorage에서 보유한 특수카드 로드
@@ -17494,10 +17479,11 @@ class GameScene extends Phaser.Scene {
         const geometryMask = this.make.graphics().createGeometryMask(maskGraphics);
 
         let cardImg = null;
-        if (this.textures.exists(card.key)) {
+        const imageKey = card.icon || card.key;
+        if (this.textures.exists(imageKey)) {
           cardImg = this.add
-            .image(cardX, cardY - Math.round(cardSize * 0.06), card.key)
-            .setDisplaySize(cardSize * 1.25, cardSize * 1.25)  // 크기 증가: 0.95 → 1.15
+            .image(cardX, cardY - Math.round(cardSize * 0.06), imageKey)
+            .setDisplaySize(cardSize * 0.875, cardSize * 0.875)  // 크기 30% 감소: 1.25 → 0.875
             .setOrigin(0.5)
             .setDepth(101)
             .setScrollFactor(0)
