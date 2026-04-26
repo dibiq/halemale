@@ -816,9 +816,23 @@ class LobbyScene extends Phaser.Scene {
       this.pendingOriginalCoins = Number(this.myProfile.coins) || 0;
       const predicted = Math.max(0, this.pendingOriginalCoins - this.pendingCoinDeduction);
       this.myProfile.coins = predicted;
+      
+      // 🔴 [중요] shopCoinText 업데이트 상세 로깅
       if (this.shopCoinText && typeof this.shopCoinText.setText === "function") {
         this.shopCoinText.setText(`💰 ${predicted}`);
+        console.log('[startPendingCoinDeduction] shopCoinText 업데이트 성공', {
+          originalCoins: this.pendingOriginalCoins,
+          price,
+          predicted,
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        console.warn('[startPendingCoinDeduction] shopCoinText 없음', {
+          hasShopCoinText: !!this.shopCoinText,
+          hasSetText: this.shopCoinText && typeof this.shopCoinText.setText
+        });
       }
+      
       if (
         this.coinShopCurrentCoinText &&
         typeof this.coinShopCurrentCoinText.setText === "function"
@@ -2963,8 +2977,18 @@ class LobbyScene extends Phaser.Scene {
             
             // 🔴 [중요] 상점이 열려있으면 코인 텍스트 업데이트
             if (this.shopCoinText && typeof this.shopCoinText.setText === "function") {
-              this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
-              console.log('[LobbyScene] shopCoinText 업데이트', this.myProfile.coins);
+              const coinsToDisplay = Number(this.myProfile.coins);
+              this.shopCoinText.setText(`💰 ${coinsToDisplay}`);
+              console.log('[LobbyScene.socket.myProfile] shopCoinText 업데이트', {
+                profileCoins: this.myProfile.coins,
+                displayCoins: coinsToDisplay,
+                hasShopText: !!this.shopCoinText,
+                timestamp: new Date().toISOString()
+              });
+            } else {
+              console.debug('[LobbyScene.socket.myProfile] shopCoinText 없음', {
+                hasShopCoinText: !!this.shopCoinText
+              });
             }
             
             // 🔴 [중요] _pendingInitialInventoryEmit이 true면 이제 emitInventory 호출
@@ -7775,7 +7799,18 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
       // 🔴 [중요] 상점 콘텐츠 새로고침할 때마다 코인 텍스트 최신화
       if (this.shopCoinText && typeof this.shopCoinText.setText === "function") {
-        this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
+        const displayCoins = Number(this.myProfile?.coins) || 0;
+        this.shopCoinText.setText(`💰 ${displayCoins}`);
+        console.log('[renderShopContent] 코인 텍스트 업데이트', {
+          displayCoins,
+          currentTab,
+          myProfileCoins: this.myProfile?.coins
+        });
+      } else {
+        console.warn('[renderShopContent] shopCoinText 없음', {
+          hasShopCoinText: !!this.shopCoinText,
+          hasSetText: this.shopCoinText && typeof this.shopCoinText.setText === "function"
+        });
       }
 
       const index = tabIndexes[currentTab];
@@ -8195,7 +8230,32 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           }
 
           this.showToast(`${card.name} 구매 완료!`, "#2ecc71");
-          renderShopContent();
+          
+          // 🔴 [중요] 멀티플레이: 서버 응답 대기 후 UI 업데이트
+          if (!this.isSingle && socket.connected) {
+            // 서버 응답을 기다렸다가 렌더링
+            const updateUIOnProfileReceived = (profile) => {
+              console.log('[buySpecialCard] 서버 프로필 수신 후 UI 업데이트', {
+                coins: profile?.coins,
+                cardId: card.id
+              });
+              renderShopContent();
+              socket.off("myProfile", updateUIOnProfileReceived);
+            };
+            
+            // myProfile 신호를 받을 때 한 번만 실행
+            socket.once("myProfile", updateUIOnProfileReceived);
+            
+            // 혹시 서버 응답이 없을 경우를 대비해 timeout 설정 (1초)
+            this.time.delayedCall(1000, () => {
+              socket.off("myProfile", updateUIOnProfileReceived);
+              console.log('[buySpecialCard] 서버 응답 timeout - UI 업데이트');
+              renderShopContent();
+            });
+          } else {
+            // 싱글플레이: 즉시 렌더링
+            renderShopContent();
+          }
         } else {
           this.showToast("코인이 부족합니다!", "#e74c3c");
         }
@@ -17036,7 +17096,7 @@ class GameScene extends Phaser.Scene {
     const profileX = this.myDeckSprite.x;
     
     // 패널 크기 및 위치 (더 작은 높이)
-    const panelWidth = width * 0.45;
+    const panelWidth = width * 0.5;
     const panelHeight = height * 0.032; // 높이 축소 (5.5% → 3.2%)
     const panelX = profileX - panelWidth / 2;
     const panelY = profileBaseY - panelHeight / 2;
@@ -17056,11 +17116,11 @@ class GameScene extends Phaser.Scene {
     this.profilePanelBg.strokeRoundedRect(panelX, panelY, panelWidth, panelHeight, 6);
     
     // 폰트 크기
-    const levelFontSize = width * 0.024;
-    const expFontSize = width * 0.024;
-    const coinFontSize = width * 0.024;
+    const levelFontSize = width * 0.03;
+    const expFontSize = width * 0.03;
+    const coinFontSize = width * 0.03;
     
-    const padding = panelWidth * 0.05;
+    const padding = panelWidth * 0.03;
     const contentY = panelY + panelHeight / 2; // 패널 중앙에 배치
 
     // 1️⃣ 레벨 텍스트 (왼쪽)
@@ -17072,7 +17132,7 @@ class GameScene extends Phaser.Scene {
     }
 
     // 2️⃣ 경험치 바 배치 (중간)
-    const expBarStartX = panelX + panelWidth * 0.16;
+    const expBarStartX = panelX + panelWidth * 0.2;
     const expBarWidth = panelWidth * 0.40;
     const expBarHeight = height * 0.012;
 
@@ -20078,7 +20138,7 @@ class GameScene extends Phaser.Scene {
       timestamp: new Date().toISOString()
     });
 
-    this.showToast(`보상 ${amount}💰 (${reason})`, "#22c55e");
+    this.showToast(`${amount}💰 (${reason})`, "#22c55e");
 
     try {
       this.safeSyncInventory("tutorialStageReward", {
@@ -24748,7 +24808,7 @@ class GameScene extends Phaser.Scene {
     });
 
     const countdownText = this.add
-      .text(width / 2, height * 0.78, "20초뒤 대기실로 이동합니다.. (20)", {
+      .text(width / 2, height * 0.81, "20초뒤 대기실로 이동합니다.. (20)", {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.035}px`,
         color: "#ffffff",
@@ -24757,14 +24817,14 @@ class GameScene extends Phaser.Scene {
 
     // 광고보상 버튼 (확인 버튼 위에 배치) - 싱글플레이에서만 표시
     const adRewardBtn = this.add
-      .image(width / 2, height * 0.82, "uibtn")
+      .image(width / 2, height * 0.79, "uibtn")
       .setDisplaySize(width * 0.45, height * 0.075)
       .setTint(0xFFA500)
       .setInteractive({ useHandCursor: true }) // 주황색 틴트
       .setVisible(this.isSingle); // 🔴 [수정] 싱글플레이에서만 보이기
     
     const adRewardTxt = this.add
-      .text(width / 2, height * 0.82, "광고보면 5배 보상받기", {
+      .text(width / 2, height * 0.79, "광고보면 5배 보상받기", {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.045}px`,
         color: "#ffffff",
@@ -24793,10 +24853,10 @@ class GameScene extends Phaser.Scene {
     };
 
     const confirmBtn = this.add
-      .image(width / 2, height * 0.90, "uibtn")
+      .image(width / 2, height * 0.87, "uibtn")
       .setDisplaySize(width * 0.45, height * 0.075);
     const confirmTxt = this.add
-      .text(width / 2, height * 0.90, "코인 획득중..", {
+      .text(width / 2, height * 0.87, "코인 획득중..", {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.055}px`,
         color: "#ffffff",
@@ -25786,6 +25846,13 @@ class GameScene extends Phaser.Scene {
       
       console.log('[result] 확인 버튼 클릭 - 로비로 이동', {
         finalCoins: Number(this.myProfile?.coins),
+        timestamp: new Date().toISOString()
+      });
+      
+      // 🔴 [중요] 확인 버튼 클릭 시 최종 코인값을 다시 저장 (보상 적용 후)
+      this._postGameFinalCoins = Number(this.myProfile?.coins) || 0;
+      console.log('[result] 확인 버튼 클릭 시 최종 코인 업데이트', {
+        finalCoins: this._postGameFinalCoins,
         timestamp: new Date().toISOString()
       });
       
