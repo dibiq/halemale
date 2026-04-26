@@ -35,6 +35,25 @@ const VALID_CHARACTER_KEYS_PATTERN = new RegExp(
   `^(player_(${VALID_PLAYER_NUMBERS.join("|")})|premium_bear)$`,
 );
 
+// ✅ 【애니메이션 상수】모든 플레이어 캐릭터 애니메이션 설정 (일괄 적용)
+const PLAYER_ANIMATION_FRAMES = 40; // 모든 플레이어 캐릭터의 프레임 수
+const PLAYER_ANIMATION_SPEED = 18; // 모든 플레이어 캐릭터의 재생 속도 (fps)
+
+// ✅ 【캐릭터 가격】game.js의 캐릭터 정보와 동기화
+const CHARACTER_PRICES = {
+  player_1: 0, // 기본 케릭터 (무료)
+  player_2: 260, // 명품 곰돌이
+  player_3: 420, // 댄서 곰돌이
+  player_4: 560, // 관리 곰돌이
+  player_5: 680, // 또르 곰돌이
+  player_6: 750, // 번개 곰돌이
+  premium_bear: 0, // 튜토리얼 보상 (무료)
+};
+
+function getCharacterPrice(characterKey) {
+  return CHARACTER_PRICES[characterKey] ?? null;
+}
+
 // ✅ 【검증 함수】모든 곳에서 사용 - VALID_PLAYER_NUMBERS 변경만으로 자동 반영
 function isValidPlayerKey(value) {
   return typeof value === "string" && VALID_PLAYER_KEYS_PATTERN.test(value);
@@ -2979,12 +2998,10 @@ io.on("connection", (socket) => {
       normalizeCharacterKey(payload.characterKey) ||
       normalizeCharacterKey(payload.currentCharacter) ||
       normalizeCharacterKey(payload.current_character);
-    const characterPrice = Number(payload.characterPrice ?? payload.price ?? 0);
 
     console.log("🛒 [DEBUG] buyCharacter characterKey validation:", {
       payloadCharacterKey: payload.characterKey,
       normalizedValue: characterKey,
-      characterPrice,
     });
 
     if (!characterKey) {
@@ -2992,8 +3009,10 @@ io.on("connection", (socket) => {
       return;
     }
 
-    if (!Number.isFinite(characterPrice) || characterPrice < 0) {
-      socket.emit("buyCharacterError", "유효하지 않은 가격입니다.");
+    // ✅ 서버에서 캐릭터 가격 검증 (클라이언트 가격 무시)
+    const characterPrice = getCharacterPrice(characterKey);
+    if (characterPrice === null) {
+      socket.emit("buyCharacterError", "유효하지 않은 캐릭터입니다.");
       return;
     }
 
