@@ -81,6 +81,7 @@ function canUseIntegratedAd() {
 
     return loadFullScreenAd.isSupported() && showFullScreenAd.isSupported();
   } catch (error) {
+    console.warn("IntegratedAd 지원 여부 확인 실패", error);
     return false;
   }
 }
@@ -101,6 +102,7 @@ function loadTutorialProgress() {
     );
     return parsed;
   } catch (e) {
+    console.warn("loadTutorialProgress failed", e);
     return null;
   }
 }
@@ -116,6 +118,7 @@ function saveTutorialProgress(progress) {
     };
     localStorage.setItem(TUTORIAL_PROGRESS_KEY, JSON.stringify(payload));
   } catch (e) {
+    console.warn("saveTutorialProgress failed", e);
   }
 }
 
@@ -123,6 +126,7 @@ function clearTutorialProgress() {
   try {
     localStorage.removeItem(TUTORIAL_PROGRESS_KEY);
   } catch (e) {
+    console.warn("clearTutorialProgress failed", e);
   }
 }
 
@@ -332,6 +336,9 @@ function handleGetUserKey() {
   }
 
   // 브라우저 환경일 경우 임시 키 발급 또는 에러 방지 처리
+  console.warn(
+    "ReactNativeWebView를 찾을 수 없습니다. 브라우저 모드로 동작합니다.",
+  );
   return "GUEST_USER";
 }
 
@@ -686,6 +693,7 @@ function showCoinBurstEffect(scene, targetX, targetY, amount = 0) {
       });
     }
   } catch (e) {
+    console.warn("showCoinBurstEffect error", e);
   }
 }
 
@@ -734,6 +742,7 @@ class LobbyScene extends Phaser.Scene {
     this.maxConcurrentAnims = isLowEndDevice ? 5 : (isMobileDevice ? 8 : 20);
     this.currentAnimCount = 0;
     
+    console.log(`[Optimization] Mobile: ${isMobileDevice}, LowEnd: ${isLowEndDevice}, ParticleMultiplier: ${this.particleCountMultiplier}`);
   }
 
   // avatar helper methods (copied from GameScene) so lobby can use same logic
@@ -793,10 +802,12 @@ class LobbyScene extends Phaser.Scene {
             sync: true,
           });
         } catch (e) {
+          console.warn("LobbyScene.setCoinsAbsolute safeSyncInventory failed", e);
         }
       }
       return next;
     } catch (e) {
+      console.warn("LobbyScene.setCoinsAbsolute failed", e);
       return null;
     }
   }
@@ -827,7 +838,19 @@ class LobbyScene extends Phaser.Scene {
         else if (coinsStr.length >= 7) fontSizeMultiplier = 0.68;
         this.shopCoinText.setFontSize(Math.round(36 * fontSizeMultiplier));
         
+        console.log('[startPendingCoinDeduction] shopCoinText 업데이트 성공', {
+          originalCoins: this.pendingOriginalCoins,
+          price,
+          predicted,
+          coinsStrLength: coinsStr.length,
+          fontSizeMultiplier,
+          timestamp: new Date().toISOString()
+        });
       } else {
+        console.warn('[startPendingCoinDeduction] shopCoinText 없음', {
+          hasShopCoinText: !!this.shopCoinText,
+          hasSetText: this.shopCoinText && typeof this.shopCoinText.setText
+        });
       }
       
       if (
@@ -841,6 +864,7 @@ class LobbyScene extends Phaser.Scene {
       }
       return true;
     } catch (e) {
+      console.warn("startPendingCoinDeduction failed", e);
       return false;
     }
   }
@@ -856,6 +880,7 @@ class LobbyScene extends Phaser.Scene {
       this.setCoinsAbsolute(orig, { sync: false });
       return true;
     } catch (e) {
+      console.warn("cancelPendingCoinDeduction failed", e);
       return false;
     }
   }
@@ -897,6 +922,7 @@ class LobbyScene extends Phaser.Scene {
       // try {
       //   localStorage.setItem('profileCoins', String(next));
       // } catch (e) {
+      //   console.warn('[modifyCoins] localStorage persist failed', e);
       // }
 
       if (options.sync) {
@@ -920,11 +946,13 @@ class LobbyScene extends Phaser.Scene {
               questMode: true,
             });
           } catch (e) {
+            console.warn("LobbyScene.modifyCoins safeSyncInventory failed", e);
           }
         }
       }
       return next;
     } catch (e) {
+      console.warn("LobbyScene.modifyCoins failed", e);
       return null;
     }
   }
@@ -933,10 +961,25 @@ class LobbyScene extends Phaser.Scene {
     if (!Number.isFinite(amount) || amount <= 0) return;
 
     const beforeCoins = Number(this.myProfile?.coins) || 0;
+    console.log(`🎯 [rewardQuestCoins] 싱글퀘스트 보상 시작`, {
+      questKey,
+      reason,
+      amount: Number(amount),
+      beforeCoins,
+      isSingle: this.isSingle,
+      timestamp: new Date().toISOString()
+    });
 
     this.modifyCoins(Number(amount), { sync: true, reason: 'questReward', questKey });
     
     const afterCoins = Number(this.myProfile?.coins) || 0;
+    console.log(`✅ [rewardQuestCoins] 퀘스트 보상 적용됨`, {
+      questKey,
+      amount: Number(amount),
+      beforeCoins,
+      afterCoins,
+      delta: afterCoins - beforeCoins
+    });
     
     if (!this.isSingle) {
       this.showToast(`퀘스트 보상 ${amount}💰 (${reason})`, "#22c55e");
@@ -951,8 +994,10 @@ class LobbyScene extends Phaser.Scene {
           reason,
           requireServerProfile: false 
         });
+        console.log(`🛰️ [rewardQuestCoins] 서버로 동기화됨`, { amount, questKey });
       }
     } catch (e) {
+      console.warn("LobbyScene.rewardQuestCoins emitInventory failed", e);
     }
   }
 
@@ -1137,6 +1182,7 @@ class LobbyScene extends Phaser.Scene {
         return;
       }
     } catch (err) {
+      console.warn("[ad-reward] 광고 API 확인 실패:", err.message);
       this.showToast("📱 모바일 디바이스에서만 광고를 볼 수 있습니다.", "#f1c40f");
       return;
     }
@@ -1153,13 +1199,16 @@ class LobbyScene extends Phaser.Scene {
           "ait-ad-test-interstitial-id",
       },
       onEvent: (event) => {
+        console.log("[ad-reward] 광고 로드 이벤트:", event.type);
 
         if (event.type === "loaded") {
           // 🟢 4️⃣ 광고 로드 완료 → 즉시 재생
+          console.log("[ad-reward] ✅ 광고 로드 완료");
           scene.showToast("광고 준비 완료! 자동 재생 시작합니다.", "#FFD700");
 
           // 500ms 후 재생
           scene.time.delayedCall(500, () => {
+            console.log("[ad-reward] 광고 자동 재생 시작");
 
             if (
               typeof showFullScreenAd === "function" &&
@@ -1175,6 +1224,7 @@ class LobbyScene extends Phaser.Scene {
                     "ait-ad-test-interstitial-id",
                 },
                 onEvent: (evt) => {
+                  console.log("[ad-reward] 광고 재생 이벤트:", evt.type);
                   const eventType = String(evt.type).toLowerCase();
 
                   if (
@@ -1186,6 +1236,7 @@ class LobbyScene extends Phaser.Scene {
                     // 🔴 5️⃣ 광고 종료 → 보상 처리
                     scene.isAdRewardShowing = false;
                     scene.time.delayedCall(300, () => {
+                      console.log("[ad-reward] 보상 처리 시작");
 
                       // 💰 코인 100개 로컬 업데이트
                       if (scene.myProfile) {
@@ -1199,6 +1250,10 @@ class LobbyScene extends Phaser.Scene {
                           typeof scene.updateMyProfileUI === "function"
                         ) {
                           scene.updateMyProfileUI(scene.myProfile);
+                          console.log(
+                            "[ad-reward] ✅ 코인 업데이트:",
+                            newCoins,
+                          );
                         }
 
                         // 🎆 코인 폭발 이펙트
@@ -1211,7 +1266,12 @@ class LobbyScene extends Phaser.Scene {
                             centerY,
                             REWARD_AMOUNT,
                           );
+                          console.log("[ad-reward] ✅ 코인 폭발 이펙트 표시");
                         } catch (e) {
+                          console.warn(
+                            "[ad-reward] ⚠️ 코인 폭발 이펙트 실패:",
+                            e.message,
+                          );
                         }
                       }
 
@@ -1237,10 +1297,12 @@ class LobbyScene extends Phaser.Scene {
                         "#2ecc71",
                       );
 
+                      console.log("[ad-reward] ✅ 보상 처리 완료");
                     });
                   }
                 },
                 onError: (err) => {
+                  console.warn("[ad-reward] 광고 재생 오류:", err);
                   scene.isAdRewardShowing = false;
                   scene.showToast("광고 재생 중 오류가 발생했습니다.", "#e74c3c");
                 },
@@ -1250,6 +1312,7 @@ class LobbyScene extends Phaser.Scene {
         }
       },
       onError: (error) => {
+        console.warn("[ad-reward] 광고 로드 실패:", error);
         scene.showToast("광고 준비 실패. 다시 시도해주세요.", "#e74c3c");
       },
     });
@@ -1296,6 +1359,7 @@ class LobbyScene extends Phaser.Scene {
 
             return true;
           } catch (error) {
+            console.error("상품 지급 처리 실패", error);
             this.showToast("상품 지급 처리에 실패했어요.", "#e74c3c");
             return false;
           }
@@ -1401,6 +1465,7 @@ class LobbyScene extends Phaser.Scene {
 
               return true;
             } catch (error) {
+              console.error("상품 지급 처리 실패", error);
               this.showToast("상품 지급 처리에 실패했어요.", "#e74c3c");
               return false;
             }
@@ -1435,6 +1500,7 @@ class LobbyScene extends Phaser.Scene {
       this.iapPurchaseCleanup = cleanup;
     } catch (error) {
       this.isIapPurchasing = false;
+      console.error("인앱결제 시작 실패:", error);
       
       // PC 환경 또는 IAP 미지원 환경에서의 친화적 메시지
       if (error?.message?.includes("getOperationalEnvironment")) {
@@ -1448,6 +1514,7 @@ class LobbyScene extends Phaser.Scene {
   // 미결 주문 복원 (결제 완료되었으나 상품 지급이 실패한 경우)
   async restorePendingOrders() {
     if (!IAP || typeof IAP.getPendingOrders !== "function") {
+      console.warn("getPendingOrders를 지원하지 않는 환경입니다.");
       return;
     }
 
@@ -1455,8 +1522,11 @@ class LobbyScene extends Phaser.Scene {
       const pendingOrders = await IAP.getPendingOrders();
 
       if (!pendingOrders || pendingOrders.length === 0) {
+        console.log("복원할 미결 주문이 없습니다.");
         return;
       }
+
+      console.log(`🔄 미결 주문 ${pendingOrders.length}개 발견, 복원 중...`, pendingOrders);
 
       for (const order of pendingOrders) {
         const { orderId, sku } = order;
@@ -1475,6 +1545,7 @@ class LobbyScene extends Phaser.Scene {
           }
 
           if (coinAmount === 0) {
+            console.warn(`알 수 없는 SKU 형식: ${sku}`);
             continue;
           }
 
@@ -1518,11 +1589,14 @@ class LobbyScene extends Phaser.Scene {
           // 지급 완료 처리
           if (IAP && typeof IAP.completeProductGrant === "function") {
             await IAP.completeProductGrant({ params: { orderId } });
+            console.log(`✅ 미결 주문 복원 완료: ${orderId}`);
           }
         } catch (error) {
+          console.error(`❌ 미결 주문 복원 실패 (${orderId}):`, error);
         }
       }
     } catch (error) {
+      console.error("미결 주문 조회 실패:", error);
     }
   }
 
@@ -1642,6 +1716,7 @@ class LobbyScene extends Phaser.Scene {
         this.isLobbyIntegratedAdLoading = false;
         this.isLobbyIntegratedAdLoaded = false;
         this.updateLobbyAdButtonState();
+        console.warn("Lobby IntegratedAd load 실패", error);
         this.showLobbyAdDiagnosticToast(
           `광고 로드 실패: ${this.parseIntegratedAdErrorMessage(error)}`,
           "#e74c3c",
@@ -1687,6 +1762,7 @@ class LobbyScene extends Phaser.Scene {
         }
       },
       onError: (error) => {
+        console.warn("Lobby IntegratedAd show 실패", error);
         this.showLobbyAdDiagnosticToast(
           `광고 표시 실패: ${this.parseIntegratedAdErrorMessage(error)}`,
           "#e74c3c",
@@ -2019,6 +2095,7 @@ class LobbyScene extends Phaser.Scene {
       try {
         return GameScene.prototype.showCoinBurst.call(this, targetX, targetY, amount);
       } catch (e) {
+        console.warn("LobbyScene showCoinBurst via GameScene failed", e);
       }
     }
 
@@ -2049,6 +2126,7 @@ class LobbyScene extends Phaser.Scene {
         },
       });
     } catch (e) {
+      console.warn("LobbyScene fallback showCoinBurst error", e);
     }
   }
 
@@ -2064,6 +2142,7 @@ class LobbyScene extends Phaser.Scene {
 
         showCoinBurstEffect(this, x, y, amount);
       } catch (e) {
+        console.warn("LobbyScene playQuestCoinBurst fallback failed", e);
         try {
           showCoinBurstEffect(this, x, y, amount);
         } catch (err) {
@@ -2119,6 +2198,7 @@ class LobbyScene extends Phaser.Scene {
     // even if the prototype method is missing due to build ordering.
     this.createInlinePremiumBearPopup = () => {
       try {
+        console.debug('[premium] createInlinePremiumBearPopup invoked');
         const w = this.cameras.main.width;
         const h = this.cameras.main.height;
         const ov = this.add.rectangle(w / 2, h / 2, w, h, 0x000000, 0.92).setInteractive();
@@ -2153,9 +2233,10 @@ class LobbyScene extends Phaser.Scene {
             b.on('pointerdown', () => {
               try { this.sound.play('btn', { volume: 0.4 }); } catch (e) {}
               closeInline();
-              try { this.unlockPremiumBear(); } catch (e) {}
+              try { this.unlockPremiumBear(); } catch (e) { console.warn('[premium] inline unlock failed', e); }
             });
           } catch (e) {
+            console.warn('[premium] inline enable failed', e);
             try { this.unlockPremiumBear(); closeInline(); } catch (err) {}
           }
         };
@@ -2166,6 +2247,7 @@ class LobbyScene extends Phaser.Scene {
           setTimeout(enableInline, 150);
         }
       } catch (e) {
+        console.warn('[premium] createInlinePremiumBearPopup error', e);
       }
     };
     // If the proper method is missing for any reason, point it to the inline helper
@@ -2183,10 +2265,10 @@ class LobbyScene extends Phaser.Scene {
           const gs = (typeof window !== 'undefined' && window.game && window.game.scene && window.game.scene.keys && window.game.scene.keys['GameScene']) || window.__HalemaleLastGameScene || null;
           if (gs) {
             if (typeof gs.showPremiumBearAcquiredPopup === 'function') {
-              try { gs.showPremiumBearAcquiredPopup(); return; } catch (e) {}
+              try { gs.showPremiumBearAcquiredPopup(); return; } catch (e) { console.warn('[premium] global helper -> instance fn failed', e); }
             }
             if (typeof gs.createInlinePremiumBearPopup === 'function') {
-              try { gs.createInlinePremiumBearPopup(); return; } catch (e) {}
+              try { gs.createInlinePremiumBearPopup(); return; } catch (e) { console.warn('[premium] global helper -> inline fn failed', e); }
             }
           }
 
@@ -2218,9 +2300,11 @@ class LobbyScene extends Phaser.Scene {
             wrapper.appendChild(inner);
             document.body.appendChild(wrapper);
           } catch (e) {
+            console.warn('[premium] DOM fallback failed', e);
           }
 
         } catch (e) {
+          console.warn('[premium] __halemale_showPremiumBearAcquiredPopup failed', e);
         }
       };
     } catch (e) {}
@@ -2666,6 +2750,7 @@ class LobbyScene extends Phaser.Scene {
           this._queuedNicknamePopup = null;
         }
       } catch (e) {
+        console.warn('queued nickname popup failed', e);
       }
 
       // Ensure the shop UI reflects newly available player_3 frames, if already open.
@@ -2674,6 +2759,7 @@ class LobbyScene extends Phaser.Scene {
           renderShopContent();
         }
       } catch (e) {
+        console.warn("loadDeferredAssets: renderShopContent refresh failed", e);
       }
 
       // Refresh any animations that depend on the newly loaded frames.
@@ -2682,6 +2768,7 @@ class LobbyScene extends Phaser.Scene {
           this._applyDeferredAnimations();
         }
       } catch (e) {
+        console.warn("Deferred animation refresh failed", e);
       }
     });
 
@@ -2743,6 +2830,9 @@ class LobbyScene extends Phaser.Scene {
         // If we are syncing experience gains, allow it even if we haven't yet
         // received a full server profile snapshot (prevents lost XP during early game).
         if (requireServerProfile && !this.hasServerProfileSnapshot && !isExperienceSync) {
+          console.log(
+            `[inventory-sync] skipped ${reason}: awaiting server profile`,
+          );
           return;
         }
 
@@ -2831,7 +2921,9 @@ class LobbyScene extends Phaser.Scene {
         socket.emit("updatePlayerInventory", payload);
         socket.emit("updateProfile", payload);
         socket.emit("savePlayerProfile", payload);
+        console.log(`🛰️ inventory synced (${reason})`, payload.specialCards);
       } catch (e) {
+        console.warn("inventory emit failed", e);
       }
     };
 
@@ -2878,6 +2970,13 @@ class LobbyScene extends Phaser.Scene {
           try {
             if (this !== scene) return; // 다른 씬이면 무시
             
+            console.log('[LobbyScene] socket.on(myProfile) 수신', {
+              level: profile?.level,
+              coins: profile?.coins,
+              experience: profile?.experience,
+              pendingEmit: this._pendingInitialInventoryEmit
+            });
+            
             // myProfile 업데이트
             this.myProfile = this.myProfile || {};
             this.myProfile.level = Number(profile?.level) || this.myProfile.level || 1;
@@ -2893,20 +2992,32 @@ class LobbyScene extends Phaser.Scene {
             if (this.shopCoinText && typeof this.shopCoinText.setText === "function") {
               const coinsToDisplay = Number(this.myProfile.coins);
               this.shopCoinText.setText(`💰 ${coinsToDisplay}`);
+              console.log('[LobbyScene.socket.myProfile] shopCoinText 업데이트', {
+                profileCoins: this.myProfile.coins,
+                displayCoins: coinsToDisplay,
+                hasShopText: !!this.shopCoinText,
+                timestamp: new Date().toISOString()
+              });
             } else {
+              console.debug('[LobbyScene.socket.myProfile] shopCoinText 없음', {
+                hasShopCoinText: !!this.shopCoinText
+              });
             }
             
             // 🔴 [중요] _pendingInitialInventoryEmit이 true면 이제 emitInventory 호출
             if (this._pendingInitialInventoryEmit) {
               this._pendingInitialInventoryEmit = false;
+              console.log('[LobbyScene] myProfile 수신 후 emitInventory(initial) 호출');
               this.emitInventory('initial');
             }
           } catch (e) {
+            console.warn('[LobbyScene] socket.myProfile 처리 실패', e);
           }
         });
       }
       
       // (선택 사항) 로딩 중이라면 바로 메인 화면으로 진입하는 로직 실행
+      console.log(`반가워요, ${savedNickname} 요리사님!`);
 
       // If we arrived from a completed tutorial, automatically start the
       // easy single-player game.
@@ -2981,6 +3092,11 @@ class LobbyScene extends Phaser.Scene {
     };
 
     if (finalProfileFromGame) {
+      console.log('[LobbyScene] 게임 최종 프로필 복원', {
+        level: finalProfileFromGame.level,
+        coins: finalProfileFromGame.coins,
+        experience: finalProfileFromGame.experience,
+      });
     }
 
     this.hasServerProfileSnapshot = false;
@@ -3188,6 +3304,7 @@ class LobbyScene extends Phaser.Scene {
         ensurePlayer2Frames(this);
         this.ensureAvatarAnimation(k);
       } catch (e) {
+        console.warn("avatar preload failed for", k, e);
       }
     });
 
@@ -3315,6 +3432,11 @@ class LobbyScene extends Phaser.Scene {
     socket.off("myProfile").on("myProfile", (profilePayload) => {
       const profile = profilePayload || {};
       // DEBUG: 확인용
+      console.debug("[DEBUG] myProfile received", {
+        ratio: profile.ratio,
+        bellCorrect: profile.bellCorrect,
+        bellTotal: profile.bellTotal,
+      });
       // cache on socket so new scenes can initialize from existing data
       try {
         socket.profile = profile;
@@ -3539,6 +3661,7 @@ class LobbyScene extends Phaser.Scene {
           collectSpecialCardsFromPayload(profile.specialCards, profile.items);
 
         if (sourceHadData && parsedCount === 0) {
+          console.warn("특수카드 데이터 파싱 실패: 서버 데이터를 무시합니다.");
         }
         // 특수카드는 서버 전용으로 관리, 로컬스토리지 저장하지 않음
       }
@@ -3547,6 +3670,9 @@ class LobbyScene extends Phaser.Scene {
       // 종료 시점에 서버가 프로필을 푸시하면, 결과 연출이 끝난 후 반영해야 어색함을 줄임.
 if (this.isGameEnded || this.isResultOverlayActive) {
         this._deferredMyProfile = profile;
+        console.debug("myProfile update deferred until post-result", {
+          profile,
+        });
       } else {
         this.updateMyProfileUI(profile);
       }
@@ -3555,6 +3681,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       try {
         emitInventory("postProfileSync");
       } catch (e) {
+        console.warn("postProfileSync emit failed", e);
       }
 
       // 상점이 열려있다면 새로고침하여 최신 소유 정보 반영
@@ -3566,9 +3693,11 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       try {
         if (typeof this.restorePendingOrders === "function") {
           this.restorePendingOrders().catch((err) => {
+            console.warn("미결 주문 복원 중 오류:", err);
           });
         }
       } catch (err) {
+        console.warn("미결 주문 복원 호출 실패:", err);
       }
     });
 
@@ -3661,6 +3790,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           this.cancelPendingCoinDeduction();
         }
       } catch (e) {
+        console.warn("failed to revert pending coin deduction", e);
       }
     });
 
@@ -3672,6 +3802,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           this.cancelPendingCoinDeduction();
         }
       } catch (e) {
+        console.warn("failed to revert pending coin deduction for special card", e);
       }
     });
 
@@ -3681,6 +3812,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     });
 
     socket.off("characterPurchased").on("characterPurchased", (data) => {
+      console.log("🎭 케릭터 구매 성공:", data);
 
       // 서버 응답 기반으로 UI만 업데이트 (로컬스토리지 저장 없음)
       const isMyPurchase =
@@ -3707,6 +3839,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             }
           }
         } catch (e) {
+          console.warn("characterPurchased reconciliation failed", e);
         }
       }
 
@@ -3740,6 +3873,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             });
           }
         } catch (e) {
+          console.warn("buyCharacter sync failed", e);
         }
       }
 
@@ -3771,7 +3905,9 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
     // 💡 결제 내역 저장 성공
     socket.off("purchaseHistorySaved").on("purchaseHistorySaved", (data) => {
+      console.log("✅ 결제 내역 저장 완료:", data);
       if (data && data.isDuplicate) {
+        console.warn("⚠️ 중복 orderId 감지 - 멱등 처리됨");
       }
     });
 
@@ -3779,6 +3915,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     socket.off("purchaseHistorySaveError").on(
       "purchaseHistorySaveError",
       (error) => {
+        console.error("❌ 결제 내역 저장 실패:", error);
         if (typeof error === "object" && error.message) {
           this.showToast(
             `결제 내역 저장 실패: ${error.message}`,
@@ -4018,6 +4155,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       this.myProfile.coins += 1000;
       this.setCoinsAbsolute(this.myProfile.coins, { sync: true });
       this.updateMyProfileUI();
+      console.log("[DEBUG] 코인 +1000 추가됨", { currentCoins: this.myProfile.coins });
     });
 
     debugAddCoinBtn.on("pointerover", () => {
@@ -4641,6 +4779,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       }
 
       // 3. (옵션) 입력창 초기화
+      console.log("입장 실패 원인:", message);
     });
 
     socket.off("playerJoined").on("playerJoined", (data) => {
@@ -4685,7 +4824,12 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
           // 내가 방금 들어온 게 아닐 때만 알림
           if (lastPlayer && lastPlayer.id !== socket.id && candidateNickname) {
+            console.log("새 유저 입장 토스트 실행!");
             this.showToast(`${candidateNickname}님이 입장했습니다!`, "#2ecc71");
+            console.log(
+              `${lastPlayer.id}님의 레벨: ${lastPlayer.level}, 코인: ${lastPlayer.coins}`,
+            );
+            console.log("전체 플레이어 객체:", lastPlayer);
           }
         }
       });
@@ -4727,6 +4871,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     });
 
     socket.on("startBlocked", (msg) => {
+      console.log("startblock");
 
       this.showToast(
         msg || "아직 준비되지 않은 플레이어가 있습니다!",
@@ -4763,6 +4908,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     // ======================================
     document.addEventListener("visibilitychange", () => {
       if (!socket.connected) {
+        console.log("연결이 끊겨있음 -> 초기 화면으로 이동");
         this.scene.start("LobbyScene", { fromGame: true });
       }
 
@@ -4849,15 +4995,18 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       // (시작 시 카운트하면 재접속/재시작 시 중복 집계가 됩니다.)
       // this.incrementMultiQuestCounter("multi_play", 1);
 
+      console.log("LobbyScene: received gameStart, starting GameScene", {playersLen: Array.isArray(data.players)?data.players.length:0});
       // Ensure stale GameScene state is fully reset before new match.
       try {
         if (this.scene.isActive("GameScene")) {
           this.scene.stop("GameScene");
         }
       } catch (e) {
+        console.warn("LobbyScene: stop GameScene failed", e);
       }
       this.scene.start("GameScene", data);
     });
+
 
     if (this.pendingRoomData) {
       const data = this.pendingRoomData;
@@ -4895,6 +5044,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     try {
       this.updateMyProfileUI(this._deferredMyProfile);
     } catch (e) {
+      console.warn("applyDeferredProfileUpdates failed", e);
     }
     this._isApplyingDeferredProfile = false;
     this._deferredMyProfile = null;
@@ -4902,6 +5052,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     try {
       this.applyDeferredCoins();
     } catch (e) {
+      console.warn('applyDeferredProfileUpdates -> applyDeferredCoins failed', e);
     }
   }
 
@@ -4909,12 +5060,14 @@ if (this.isGameEnded || this.isResultOverlayActive) {
   setProfileCoinLabel(text) {
     try {
       if (this.isGameEnded && !this.isSingle) {
+        console.debug('setProfileCoinLabel skipped due to game end', { text });
         return;
       }
       if (this.profileCoinTxt && this.profileCoinTxt.active && typeof this.profileCoinTxt.setText === 'function') {
         this.profileCoinTxt.setText(text);
       }
     } catch (e) {
+      console.warn('setProfileCoinLabel failed', e);
     }
   }
 
@@ -4922,15 +5075,18 @@ if (this.isGameEnded || this.isResultOverlayActive) {
   setProfileCoinShort(text) {
     try {
       if (this.isGameEnded && !this.isSingle) {
+        console.debug('setProfileCoinShort skipped due to game end', { text });
         return;
       }
       if (this.profileCoinText && this.profileCoinText.active && typeof this.profileCoinText.setText === 'function') {
         this.profileCoinText.setText(text);
       }
     } catch (e) {
+      console.warn('setProfileCoinShort failed', e);
     }
   }
  
+
   updateMyProfileUI(profile = {}) {
     // 🔴 [추가] 동적 폰트 크기 조정 헬퍼 함수
     const calculateCoinFontSize = (coins, baseSize) => {
@@ -4947,6 +5103,9 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     
     // 게임 종료 후에는 즉시 프로필을 갱신하지 않고, 결과 시상 연출 중에만 최종 갱신을 적용하도록 합니다.
     if (this.isGameEnded && !this._isApplyingDeferredProfile) {
+      console.debug("updateMyProfileUI skipped because game ended", {
+        profile,
+      });
       return;
     }
 
@@ -5079,6 +5238,9 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       this.hasReceivedProfileStats &&
       this.myProfile.level > prevLevel
     ) {
+      console.debug(
+        `레벨 업 감지(서버): Lv.${prevLevel} → Lv.${this.myProfile.level}`,
+      );
     }
     if (hasIncomingStats) {
       this.hasReceivedProfileStats = true;
@@ -5099,6 +5261,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           txtObj.setText(value);
         }
       } catch (e) {
+        console.warn('[safeSetText] text update failed', e);
       }
     };
 
@@ -5137,11 +5300,17 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       const baseFontSize = this.scale?.width * 0.033 || 33;
       const adjustedFontSize = calculateCoinFontSize(this.myProfile.coins, baseFontSize);
       this.profileCoinText.setFontSize(adjustedFontSize);
+      console.debug('[updateMyProfileUI] 코인 폰트 크기 조정', {
+        coins: this.myProfile.coins,
+        baseFontSize,
+        adjustedFontSize
+      });
     }
     
     // also update game-screen card if present
     // 멀티플레이에서 게임 종료 후 하단 우측 UI(반응속도/정답률/보유코인)는 업데이트하지 않음
     if (this.isGameEnded && !this.isSingle && !this._isApplyingDeferredProfile) {
+      console.debug('skip bottom-right UI update (updateMyProfileUI early)', { profile });
       return;
     }
 
@@ -5246,8 +5415,10 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       }
 
       const result = profileHas || storedHas;
+      console.debug("[premium] isPremiumBearUnlocked ->", { profileHas, storedHas, result });
       return result;
     } catch (e) {
+      console.warn("[premium] isPremiumBearUnlocked failed", e);
       return false;
     }
   }
@@ -5299,6 +5470,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         });
       }
     } catch (e) {
+      console.warn("[premium] server unlock attempt failed", e);
     }
 
     if (typeof this.emitInventory === "function") {
@@ -5536,6 +5708,8 @@ if (this.isGameEnded || this.isResultOverlayActive) {
   showPremiumBearAcquiredPopup(onConfirm, alreadyOwned = false) {
     if (this._premiumBearAcquiredPopup) return;
 
+    console.debug("[premium] showPremiumBearAcquiredPopup called", { alreadyOwned });
+
     try {
       const { width, height } = this.cameras.main;
       const overlay = this.add
@@ -5554,6 +5728,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         ? "이미 보유 중입니다. 계속 진행하세요."
         : "1등 보상으로 획득할 수 있습니다!";*/
 
+   
       const title = this.add
         .text(width / 2, height * 0.27, titleText, {
           fontFamily: GAME_FONTS.main,
@@ -5602,6 +5777,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             this.applyAvatarAnimation(sprite, PREMIUM_BEAR_KEY);
           }
         } catch (e) {
+          console.warn("[premium] applyAvatarAnimation failed", e);
           if (textureKey && this.textures.exists(textureKey)) {
             sprite.setTexture(textureKey);
           }
@@ -5698,12 +5874,14 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             try {
               this.unlockPremiumBear();
             } catch (e) {
+              console.warn("unlockPremiumBear failed", e);
             }
             if (typeof onConfirm === 'function') {
               onConfirm();
             }
           });
         } catch (e) {
+          console.warn("[premium] enableBtn failed", e);
           try {
             this.unlockPremiumBear();
             close();
@@ -5720,6 +5898,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         setTimeout(enableBtn, 150);
       }
     } catch (e) {
+      console.warn("[premium] showPremiumBearAcquiredPopup failed", e);
       // fallback minimal popup so at least it's visible.
       this.add
         .text(this.cameras.main.width / 2, this.cameras.main.height / 2, "새로운 캐릭터 획득!", {
@@ -5771,6 +5950,12 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
   scheduleTutorialOverlay() {
     // 튜토리얼은 닉네임 입력 직후 바로 시작
+    console.debug("[DEBUG] scheduleTutorialOverlay called", {
+      hasCompletedTutorial: this.hasCompletedTutorial,
+      isRoomOpen: this.isRoomOpen,
+      currentRoomId: this.currentRoomId,
+      sceneActive: this.scene ? this.scene.isActive("LobbyScene") : false,
+    });
 
     if (this.hasCompletedTutorial) return;
     if (this.isRoomOpen || this.currentRoomId) return;
@@ -5778,6 +5963,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
     // 방금 닉네임 입력 후 초기 진입 시 호출되는 경우에만 실행.
     // (이미 튜토리얼이 진행 중이거나 완료된 상태라면 스킵)
+    console.debug("[DEBUG] scheduleTutorialOverlay -> starting tutorial");
     this.startTutorialGame();
   }
 
@@ -5930,6 +6116,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       try {
         localStorage.setItem("nickname", nickname);
       } catch (e) {
+        console.warn("failed to persist nickname", e);
       }
       this.myNickname = nickname;
 
@@ -5974,6 +6161,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     try {
       localStorage.setItem(TUTORIAL_STATE_KEY, "true");
     } catch (e) {
+      console.warn("failed to persist tutorial state", e);
     }
 
     // Restore lobby exit button once tutorial finishes
@@ -6116,6 +6304,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
               sprite.setDisplaySize(this._lobbyBgSize.width, this._lobbyBgSize.height);
             }
           } catch (e) {
+            console.warn("_applyDeferredAnimations: background sprite play failed", e);
           }
         });
       }
@@ -6139,6 +6328,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         try {
           this.profileImage.play(newAnimKey, true);
         } catch (e) {
+          console.warn("failed to play avatar animation", e);
         }
 
       }
@@ -7000,9 +7190,11 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         try {
           localStorage.removeItem("pendingPremiumBearReward");
         } catch (e) {
+          console.warn("remove pendingPremiumBearReward failed", e);
         }
       }
     } catch (e) {
+      console.warn("startSingleGame tutorial reward init failed", e);
     }
 
     this.scene.start("GameScene", singleGameData);
@@ -7702,7 +7894,18 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         
         this.shopCoinText.setFontSize(Math.round(adjustedFontSize));
         
+        console.log('[renderShopContent] 코인 텍스트 업데이트', {
+          displayCoins,
+          currentTab,
+          baseFontSize,
+          adjustedFontSize,
+          coinsStrLength: coinsStr.length
+        });
       } else {
+        console.warn('[renderShopContent] shopCoinText 없음', {
+          hasShopCoinText: !!this.shopCoinText,
+          hasSetText: this.shopCoinText && typeof this.shopCoinText.setText === "function"
+        });
       }
 
       const index = tabIndexes[currentTab];
@@ -7824,16 +8027,23 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
           const animKey = this.ensureAvatarAnimation(character.key);
           if (!animKey && (character.key === "player_3" || character.key === "player_4" || character.key === "player_5")) {
+            console.debug(`${character.key} animation key not found`, {
+              frame1: this.textures.exists(`${character.key}_frame_1`),
+              frame2: this.textures.exists(`${character.key}_frame_2`),
+              sprite: this.textures.exists(`${character.key}_sprite`),
+            });
           }
           if (avatarSprite && animKey && avatarSprite.anims) {
             try {
               avatarSprite.play(animKey, true);
             } catch (err) {
+              console.warn("shop avatar animation play failed", err);
             }
           } else {
             this.applyAvatarAnimation(avatarSprite, character.key);
           }
         } catch (e) {
+          console.warn("shop avatar sprite error", e);
         }
 
         const nameText = this.add
@@ -8072,6 +8282,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
               this.incrementMultiQuestCounter("shop_buy", 1);
             }
           } catch (e) {
+            console.warn("incrementMultiQuestCounter failed", e);
           }
 
           if (!specialCardsOwned[card.id]) {
@@ -8084,6 +8295,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
               JSON.stringify(specialCardsOwned),
             );
           } catch (e) {
+            console.warn("localStorage specialCards write failed", e);
           }
 
           // UI updated by modifyCoins
@@ -8109,8 +8321,12 @@ if (this.isGameEnded || this.isResultOverlayActive) {
                 boughtItemId: card.id,
               });
             } else {
+              console.warn(
+                "safeSyncInventory not available for buySpecialCard",
+              );
             }
           } catch (e) {
+            console.warn("buySpecialCard sync failed", e);
           }
 
           this.showToast(`${card.name} 구매 완료!`, "#2ecc71");
@@ -8119,6 +8335,10 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           if (!this.isSingle && socket.connected) {
             // 서버 응답을 기다렸다가 렌더링
             const updateUIOnProfileReceived = (profile) => {
+              console.log('[buySpecialCard] 서버 프로필 수신 후 UI 업데이트', {
+                coins: profile?.coins,
+                cardId: card.id
+              });
               renderShopContent();
               socket.off("myProfile", updateUIOnProfileReceived);
             };
@@ -8129,6 +8349,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             // 혹시 서버 응답이 없을 경우를 대비해 timeout 설정 (1초)
             this.time.delayedCall(1000, () => {
               socket.off("myProfile", updateUIOnProfileReceived);
+              console.log('[buySpecialCard] 서버 응답 timeout - UI 업데이트');
               renderShopContent();
             });
           } else {
@@ -8353,6 +8574,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
       }
     } catch (e) {
+      console.warn("failed to save multi quest progress", e);
     }
   }
 
@@ -8388,6 +8610,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       const newCount = Math.min(runtime.target, (entry.count || 0) + (Number(amount) || 0));
       entry.count = newCount;
 
+
       if (newCount >= runtime.target) {
         entry.ready = true;
       }
@@ -8416,6 +8639,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         this.showToast(`${runtime.title} 완료! 보상을 받으세요.`, "#22c55e");
       }
     } catch (e) {
+      console.warn("incrementMultiQuestCounter failed", e);
     }
   }
 
@@ -8450,6 +8674,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         this.updateAdRewardBadgeState();
       }
     } catch (e) {
+      console.warn("incrementMultiQuestCounterFallback failed", e);
     }
   }
 
@@ -8615,8 +8840,10 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         .setOrigin(0.5);
 
       if (entry.ready) {
+        console.log("ready");
 
         const handleClaim = () => {
+          console.debug("[claimBtn] clicked", { questKey: quest.key, ready: entry.ready, rewardCoins: quest.rewardCoins });
           this.sound.play("btn", { volume: 0.4 });
           if (!entry.ready) {
             this.showToast("아직 수령할 보상이 없어요!", "#f97316");
@@ -8661,6 +8888,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
                       });
                     }
                   } catch (e) {
+                    console.warn("quest reward sync failed (fallback)", e);
                   }
                 }
                 if (!this.isSingle) {
@@ -8696,6 +8924,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           this.showQuestPopup();
         };
         const claimAction = () => {
+          console.debug("[claimButton] pressed", { questKey: quest.key, ready: entry.ready });
           if (entry.ready) {
             handleClaim();
           } else {
@@ -8731,6 +8960,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       try {
         this.prepareRemoveAdsProduct();
       } catch (e) {
+        console.warn("[LobbyScene.create] prepareRemoveAdsProduct failed", e);
       }
     }
 
@@ -8738,6 +8968,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       try {
         this.updateIapButtonState();
       } catch (e) {
+        console.warn("[LobbyScene.create] updateIapButtonState failed", e);
       }
     }
 
@@ -8745,6 +8976,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       try {
         this.prepareLobbyIntegratedAd();
       } catch (e) {
+        console.warn("[LobbyScene.create] prepareLobbyIntegratedAd failed", e);
       }
     }
   }
@@ -9755,6 +9987,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           fetch(`${SERVER_URL}/api/rooms`, { cache: "no-store" })
             .then((res) => res.json())
             .then((freshRooms) => {
+              console.log("[RoomList] refreshed rooms", freshRooms?.length);
               if (!this.joinPopupContainer) return;
               rooms = freshRooms;
               if (currentTab === "browse") {
@@ -9840,6 +10073,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         this.joinPopupContainer.add([closeBtn]);
       })
       .catch((err) => {
+        console.error("공개 방 목록 요청 실패:", err);
         this.hideLoading();
         this.showToast("방 목록을 불러올 수 없습니다!");
         this.isJoinPopupOpen = false;
@@ -10094,6 +10328,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         } else if (typeof this.showToast === "function") {
           this.showToast(errorMessage, "#e74c3c");
         } else {
+          console.log(errorMessage);
         }
 
         el.focus(); // 포커스 다시 주기
@@ -10127,6 +10362,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             } else if (typeof this.showToast === "function") {
               this.showToast(errorMessage, "#e74c3c");
             } else {
+              console.log(errorMessage);
             }
 
             // 버튼 상태 복원하여 다시 입력할 수 있도록 함
@@ -10147,16 +10383,19 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         try {
           localStorage.setItem("nickname", finalNickname);
         } catch (e) {
+          console.warn("localStorage 저장 실패:", e);
         }
 
         closeNicknamePopup();
 
         if (callback) callback(finalNickname);
       } catch (error) {
+        console.error("닉네임 체크 실패:", error);
         // 에러 발생 시 원본 닉네임 사용하고 localStorage에 저장
         try {
           localStorage.setItem("nickname", inputNickname);
         } catch (e) {
+          console.warn("localStorage 저장 실패:", e);
         }
 
         const errorMessage =
@@ -10168,6 +10407,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         } else if (typeof this.showToast === "function") {
           this.showToast(errorMessage, "#e74c3c");
         } else {
+          console.log(errorMessage);
         }
 
         closeNicknamePopup();
@@ -10664,9 +10904,19 @@ if (this.isGameEnded || this.isResultOverlayActive) {
                 );
                 return;
               }
+              console.log("🚀 startGameRequest emit", {
+                roomId: this.currentRoomNumber,
+                myId: socket.id,
+                players: (this.currentPlayers || []).map((p) => ({
+                  id: p.id,
+                  nickname: p.nickname,
+                  isReady: !!p.isReady,
+                })),
+              });
               let ackArrived = false;
               socket.emit("startGameRequest", (ackPayload) => {
                 ackArrived = true;
+                console.log("🛰️ startGameRequest ack", ackPayload);
                 try {
                   // If server accepted start but never emits `gameStart` back
                   // within a short window, fallback to starting the GameScene
@@ -10676,6 +10926,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
                   setTimeout(() => {
                     const received = !!self._gameStartReceived;
                     if (!received) {
+                      console.warn("startGameRequest ack received but no gameStart event; falling back to local start", { ackPayload });
                       const fallbackPlayers = (self.currentPlayers || []).map((p) => ({
                         id: p.id,
                         nickname: p.nickname || p.name || p.playerName || p.id,
@@ -10692,14 +10943,23 @@ if (this.isGameEnded || this.isResultOverlayActive) {
                       try {
                         self.scene.start("GameScene", data);
                       } catch (e) {
+                        console.warn("fallback scene.start failed", e);
                       }
                     }
                   }, 1200);
                 } catch (e) {
+                  console.warn("startGameRequest ack handler fallback failed", e);
                 }
               });
               setTimeout(() => {
                 if (!ackArrived) {
+                  console.warn(
+                    "⚠️ startGameRequest ack 미수신 (서버 미도달/구버전 서버 가능)",
+                    {
+                      serverUrl: SERVER_URL,
+                      myId: socket.id,
+                    },
+                  );
                 }
               }, 1200);
             }
@@ -10742,6 +11002,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           ease: "Quad.easeInOut",
           onComplete: () => {
             readyBtnImg.disableInteractive();
+            console.log("emit: toggleReady", { myId: socket.id });
             socket.emit("toggleReady");
             this.time.delayedCall(300, () => {
               if (readyBtnImg && readyBtnImg.active) {
@@ -10999,6 +11260,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     }
     
     // 🔴 [추가] 출석체크 팝업 열릴 때 광고 미리 로드
+    console.log("[daily-ad] showWeeklyRewardPopup - 광고 미리 로드 시작");
     if (!this.isGameAdLoaded && !this.isGameAdLoading) {
       this.isGameAdLoading = true;
       this.registry.set("gameAdLoading", true);
@@ -11014,6 +11276,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           options: { adGroupId },
           onEvent: (event) => {
             if (event.type === "loaded") {
+              console.log("[daily-ad] ✅ 팝업 열림 시 광고 로드 완료");
               this.isGameAdLoaded = true;
               this.isGameAdLoading = false;
               this.registry.set("gameAdLoaded", true);
@@ -11021,6 +11284,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             }
           },
           onError: (error) => {
+            console.warn("[daily-ad] 팝업 로드 실패:", error);
             this.isGameAdLoading = false;
             this.registry.set("gameAdLoading", false);
           }
@@ -11279,6 +11543,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
                 }
                 return loadFullScreenAd.isSupported() && showFullScreenAd.isSupported();
               } catch (error) {
+                console.warn("[daily-ad] 광고 지원 확인 실패", error);
                 return false;
               }
             };
@@ -11286,29 +11551,38 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             const adGroupId = getAdGroupId();
             if (!adGroupId || !canUseAd()) {
               scene.showToast("광고를 사용할 수 없습니다.", "#e74c3c");
+              console.warn("[daily-ad] 광고 지원 불가", {
+                hasAdGroupId: !!adGroupId,
+                canUse: canUseAd(),
+              });
               return;
             }
 
             // � 출석 광고 보상 지급
             const applyDailyAdReward = () => {
               try {
+                console.log('[daily-ad] ========== 보상 시작 ==========');
                 scene.showToast("🎁 보상 처리 시작...", "#3498db");
                 
                 if (!scene) {
+                  console.error('[daily-ad] ❌ scene이 없음');
                   return;
                 }
 
                 // 광고 보상을 서버에 요청
                 // 일반 코인 보상과 동일한 방식으로 처리
+                console.log('[daily-ad] 서버에 광고 보상 요청 - claimDailyReward 이미트');
                 scene.showToast("💳 서버 요청 시작...", "#9b59b6");
                 
                 if (typeof socket === "undefined") {
+                  console.error('[daily-ad] ❌ socket이 없음');
                   scene.showToast("❌ Socket 없음", "#e74c3c");
                   return;
                 }
 
                 // 일반 코인 보상과 동일하게 socket.emit을 사용 (광고용 별도 이벤트)
                 socket.emit("claimAdReward");
+                console.log('[daily-ad] ✅ socket.emit("claimAdReward") 호출');
                 
                 // 🔴 [중요] 로컬에서 즉시 코인 업데이트 (서버 응답 대기 없이)
                 // 결과 화면과 동일한 방식 - 사용자 경험 개선
@@ -11320,17 +11594,20 @@ if (this.isGameEnded || this.isResultOverlayActive) {
                   // 메인 화면 코인 텍스트 즉시 업데이트
                   if (typeof scene.updateMyProfileUI === "function") {
                     scene.updateMyProfileUI(scene.myProfile);
+                    console.log('[daily-ad] ✅ 로컬 코인 즉시 업데이트:', newCoins);
                   }
                 }
                 
                 // 타임아웃: 3초 내에 응답 없으면 상태 초기화
                 const responseTimeout = scene.time.delayedCall(3000, () => {
+                  console.warn('[daily-ad] ⚠️ 서버 응답 타임아웃 (3초)');
                   scene.isDailyRewardClaimPending = false;
                 });
                 
                 // 서버 에러 응답 처리
                 const handleAdRewardError = (message) => {
                   if (responseTimeout) responseTimeout.remove();
+                  console.error('[daily-ad] ❌ dailyRewardError 이벤트 수신:', message);
                   scene.showToast(message || "광고 보상 처리 중 오류가 발생했습니다.", "#e74c3c");
                   scene.isDailyRewardClaimPending = false;
                 };
@@ -11341,7 +11618,9 @@ if (this.isGameEnded || this.isResultOverlayActive) {
                 // 1. 코인 폭발 이펙트 표시 (일반 보상과 동일)
                 try {
                   showCoinBurstEffect(scene, rowX, rowY, 100);
+                  console.log('[daily-ad] ✅ showCoinBurstEffect 호출');
                 } catch (e) {
+                  console.warn('[daily-ad] ⚠️ showCoinBurstEffect 실패:', e.message);
                 }
 
                 // 2. "획득" 스탠프 표시 (일반 보상과 동일)
@@ -11350,7 +11629,9 @@ if (this.isGameEnded || this.isResultOverlayActive) {
                     scene.claimedDailyDates.add(rowDateStr);
                     try {
                       scene.markDailyRewardClaimed(rowDateStr);
+                      console.log('[daily-ad] ✅ markDailyRewardClaimed 호출');
                     } catch (e) {
+                      console.warn('[daily-ad] ⚠️ markDailyRewardClaimed 실패:', e.message);
                     }
                     
                     // 스탠프 생성
@@ -11374,21 +11655,26 @@ if (this.isGameEnded || this.isResultOverlayActive) {
                       duration: 450,
                       ease: "Back.out",
                     });
+                    console.log('[daily-ad] ✅ 스탠프 생성 및 애니메이션 호출');
                   }
                 } catch (e) {
+                  console.warn('[daily-ad] ⚠️ 스탠프 생성 실패:', e.message);
                 }
 
                 // 3. 토스트 표시
                 if (typeof scene.showToast === 'function') {
+                  console.log('[daily-ad] ✅ 토스트 표시');
                   scene.showToast(`🎉 광고보상 100 코인 획득!`, "#FFD700");
                 }
 
                 // 광고 상태 초기화
                 if (typeof scene.unregisterAttendanceAd === "function") {
+                  console.log('[daily-ad] ✅ unregisterAttendanceAd 호출');
                   scene.unregisterAttendanceAd();
                   scene.unregisterAttendanceAd = null;
                 }
                 if (typeof scene.unregisterShowAd === "function") {
+                  console.log('[daily-ad] ✅ unregisterShowAd 호출');
                   scene.unregisterShowAd();
                   scene.unregisterShowAd = null;
                 }
@@ -11405,9 +11691,13 @@ if (this.isGameEnded || this.isResultOverlayActive) {
                 // gameAd를 사용하므로 gameAd 상태는 계속 유지됨
                 // 다음 광고 자동 미리 로드는 광고 종료 후 실행됨
                 
+                console.log('[daily-ad] ========== ✅ 서버 요청 완료 ==========');
               } catch (e) {
+                console.error('[daily-ad] ❌ 보상 오류:', e.message);
+                console.error('[daily-ad] 스택:', e.stack);
                 
                 // 에러 발생해도 반드시 상태 초기화
+                console.log('[daily-ad] 에러 발생 - 상태 초기화 시작');
                 try {
                   if (scene && typeof scene.unregisterGameAd === "function") {
                     scene.unregisterGameAd();
@@ -11423,7 +11713,9 @@ if (this.isGameEnded || this.isResultOverlayActive) {
                     scene.registry.set("gameAdShowing", false);
                     scene.registry.set("gameAdLoading", false);
                   }
+                  console.log('[daily-ad] ✅ 에러 후 상태 초기화 완료');
                 } catch (cleanupError) {
+                  console.error('[daily-ad] ❌ 상태 초기화 중 에러:', cleanupError.message);
                 }
               }
             };
@@ -11431,6 +11723,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             // 광고 재생 중 상태 확인 (중복 클릭 방지)
             const isGameAdShowing = scene.registry.get("gameAdShowing") || scene.isGameAdShowing;
             if (isGameAdShowing) {
+              console.log("[daily-ad] 이미 광고 재생 중");
               scene.showToast("광고 재생 중입니다. 잠시만 기다려주세요.", "#f1c40f");
               return;
             }
@@ -11438,21 +11731,29 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             // 광고 로드 상태 확인 (결과 화면과 동일한 gameAd 사용)
             const isGameAdLoaded = scene.registry.get("gameAdLoaded") || scene.isGameAdLoaded;
             const isGameAdLoading = scene.registry.get("gameAdLoading") || scene.isGameAdLoading;
+            console.log("[daily-ad] 광고 상태:", { isGameAdLoaded, isGameAdLoading });
 
             // 광고가 이미 로드됨 - 바로 재생
             if (isGameAdLoaded) {
+              console.log("[daily-ad] 광고 이미 로드됨 - 재생");
               scene.isDailyRewardClaimPending = true;
               scene.registry.set("gameAdShowing", true);
               // 토스트는 띄우지 않음
               
               // 만약 30초 후에도 이벤트가 감지되지 않으면 상태 초기화 (타임아웃)
               const adTimeout = scene.time.delayedCall(30000, () => {
+                console.warn("[daily-ad] 광고 이벤트 타임아웃 - 상태 초기화");
                 scene.registry.set("attendanceAdShowing", false);
               });
               
               scene.unregisterShowAd = showFullScreenAd({
                 options: { adGroupId },
                 onEvent: (event) => {
+                  console.log("[daily-ad] showFullScreenAd 이벤트 상세:", {
+                    type: event.type,
+                    eventKeys: Object.keys(event),
+                    fullEvent: event
+                  });
                   
                   // 타임아웃 취소
                   if (adTimeout) {
@@ -11461,23 +11762,30 @@ if (this.isGameEnded || this.isResultOverlayActive) {
                   
                   // 모든 이벤트 타입 확인
                   const eventType = String(event.type).toLowerCase();
+                  console.log("[daily-ad] 정규화된 이벤트 타입:", eventType);
                   
                   if (eventType === "closed" || eventType === "completed" || eventType === "dismissed" || eventType === "success") {
+                    console.log("[daily-ad] ✅ 광고 종료 이벤트 감지:", eventType);
                     scene.registry.set("gameAdShowing", false);
                     scene.showToast("📺 광고 종료됨! 보상 처리 중...", "#38bdf8");
+                    console.log("[daily-ad] 광고 종료 - 500ms 후 보상");
                     scene.time.delayedCall(500, () => {
+                      console.log("[daily-ad] applyDailyAdReward 호출");
                       applyDailyAdReward();
                       
                       // 광고 종료 후 gameAd 상태 초기화 (다음 클릭 시 다시 로드 가능하게)
+                      console.log("[daily-ad] gameAd 상태 초기화");
                       scene.registry.set("gameAdLoaded", false);
                       scene.registry.set("gameAdLoading", false);
                       scene.registry.set("gameAdShowing", false);
                     });
                   } else {
+                    console.log("[daily-ad] ⚠️ 예상치 못한 이벤트 타입:", eventType);
                     scene.showToast("⚠️ 예상치 못한 이벤트: " + eventType, "#f1c40f");
                   }
                 },
                 onError: (error) => {
+                  console.warn("[daily-ad] 광고 오류:", error);
                   if (adTimeout) {
                     adTimeout.remove();
                   }
@@ -11492,12 +11800,14 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
             // 광고 로드 중이면 자동 재생 플래그 설정
             if (isGameAdLoading) {
+              console.log("[daily-ad] 광고 로드 중 - 자동 재생 플래그 설정");
               scene.autoPlayDailyAd = true;  // 로드 완료 후 자동 재생
               scene.showToast("광고를 로딩 중입니다...", "#f1c40f");
               return;
             }
 
             // 광고가 없으면 미리 로드 요청 + 자동 재생 플래그
+            console.log("[daily-ad] 광고 없음 - 로드 시작 + 자동 재생 설정");
             scene.autoPlayDailyAd = true;  // 로드 완료 후 자동 재생
             scene.showToast("광고를 로딩 중입니다...", "#38bdf8");
             
@@ -11515,7 +11825,9 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             scene.unregisterGameAd = loadFullScreenAd({
               options: { adGroupId: adGroupId_attendance },
               onEvent: (event) => {
+                console.log("[daily-ad] loadFullScreenAd 이벤트:", event.type);
                 if (event.type === "loaded") {
+                  console.log("[daily-ad] ✅ 광고 로드 완료");
                   scene.isGameAdLoaded = true;
                   scene.isGameAdLoading = false;
                   scene.registry.set("gameAdLoaded", true);
@@ -11523,11 +11835,13 @@ if (this.isGameEnded || this.isResultOverlayActive) {
                   
                   // 🔴 [추가] autoPlayDailyAd 플래그 확인 후 자동 재생
                   if (scene.autoPlayDailyAd) {
+                    console.log("[daily-ad] ✅ 광고 로드 완료 - 자동 재생 시작");
                     scene.autoPlayDailyAd = false;
                     scene.showToast("광고 준비 완료! 자동 재생합니다.", "#FFD700");
                     
                     // 500ms 후 자동 재생
                     scene.time.delayedCall(500, () => {
+                      console.log("[daily-ad] 자동 재생 시작");
                       // showFullScreenAd 직접 호출
                       if (typeof showFullScreenAd === "function" && !scene.isGameAdShowing) {
                         scene.isGameAdShowing = true;
@@ -11536,6 +11850,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
                         scene.unregisterShowAd = showFullScreenAd({
                           options: { adGroupId: adGroupId_attendance },
                           onEvent: (evt) => {
+                            console.log("[daily-ad] 자동 재생 광고 이벤트:", evt.type);
                             const eventType = String(evt.type).toLowerCase();
                             if (eventType === "closed" || eventType === "completed" || eventType === "dismissed" || eventType === "success") {
                               scene.registry.set("gameAdShowing", false);
@@ -11546,6 +11861,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
                             }
                           },
                           onError: (err) => {
+                            console.warn("[daily-ad] 자동 재생 광고 오류:", err);
                             scene.registry.set("gameAdShowing", false);
                           }
                         });
@@ -11557,6 +11873,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
                 }
               },
               onError: (error) => {
+                console.warn("[daily-ad] 광고 로드 실패:", error);
                 scene.showToast("광고 준비 실패", "#e74c3c");
                 scene.isGameAdLoading = false;
                 scene.registry.set("gameAdLoading", false);
@@ -11567,11 +11884,13 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           
           // 🟢 일반 보상 처리 (다른 요일 클릭, canClaim=true인 경우)
           if (canClaim) {
+            console.log("[daily-reward] 일반 보상 처리 시작");
             scene.sound.play("btn", { volume: 0.4 });
             scene.isDailyRewardClaimPending = true;
             
             // 일반 보상 서버 요청
             if (typeof socket !== "undefined") {
+              console.log("[daily-reward] socket.emit('claimDailyReward') 호출");
               socket.emit("claimDailyReward");
             }
             
@@ -11586,13 +11905,16 @@ if (this.isGameEnded || this.isResultOverlayActive) {
               // 메인 화면 코인 텍스트 즉시 업데이트
               if (typeof scene.updateMyProfileUI === "function") {
                 scene.updateMyProfileUI(scene.myProfile);
+                console.log('[daily-reward] ✅ 로컬 코인 즉시 업데이트:', newCoins);
               }
             }
             
             // 코인 폭발 이펙트 표시
             try {
               showCoinBurstEffect(scene, rowX, rowY, 50);
+              console.log('[daily-reward] ✅ showCoinBurstEffect 호출');
             } catch (e) {
+              console.warn('[daily-reward] ⚠️ showCoinBurstEffect 실패:', e.message);
             }
             
             // 스탠프 생성
@@ -11621,7 +11943,9 @@ if (this.isGameEnded || this.isResultOverlayActive) {
                   duration: 450,
                   ease: "Back.out",
                 });
+                console.log('[daily-reward] ✅ 스탠프 생성');
               } catch (e) {
+                console.warn('[daily-reward] ⚠️ 스탠프 생성 실패:', e.message);
               }
             }
           }
@@ -11836,6 +12160,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     const { width, height, centerX, centerY } = this.cameras.main;
 
     // Debug: show what users list looks like (helps find missing nickname problems)
+    console.log("[Invite] showInvitePopup users:", users);
 
     this.setLobbyChatInputHidden(true);
 
@@ -11974,6 +12299,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         .setDepth(30003);
 
       // 유저명 + 레벨 (한 줄)
+      console.log("[Invite] rendering user", safeUser);
       const userInfo = this.add
         .text(userTextX, btnY, `Lv.${safeUser.level} ${safeUser.nickname}`, {
           fontFamily: GAME_FONTS.main,
@@ -12408,6 +12734,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
             return true;
           } catch (error) {
+            console.error("상품 지급 처리 실패", error);
             this.showToast("상품 지급 처리에 실패했어요.", "#e74c3c");
             return false;
           }
@@ -12480,6 +12807,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
   }
 }
 
+
 class GameScene extends Phaser.Scene {
   constructor() {
     super("GameScene");
@@ -12534,8 +12862,14 @@ class GameScene extends Phaser.Scene {
       // 🔴 [보안] 서버에서 받은 프로필을 절대적으로 신뢰
       const incoming = { ...this._deferredMyProfile };
       
+      console.log('[result] applyDeferredProfileUpdates called', {
+        serverCoins: incoming.coins,
+        applyingServerCoins: true
+      });
+      
       this.updateMyProfileUI(incoming);
     } catch (e) {
+      console.warn("applyDeferredProfileUpdates failed", e);
     }
     this._isApplyingDeferredProfile = false;
     this._deferredMyProfile = null;
@@ -12544,6 +12878,7 @@ class GameScene extends Phaser.Scene {
   // Centralized coin update helper: apply delta immediately or defer during result overlay
   modifyCoins(delta, options = {}) {
     try {
+      console.log('[modifyCoins] called', { delta, options });
       const sync = !!options.sync;
       const force = !!options.force;
       const coinCardUpdate = !!options.coinCardUpdate;
@@ -12551,6 +12886,7 @@ class GameScene extends Phaser.Scene {
       // If result overlay active or game has ended, defer applying coins unless forced.
       if ((this.isResultOverlayActive || this.isGameEnded) && !force) {
         this._deferredCoinsDelta = (this._deferredCoinsDelta || 0) + Number(delta || 0);
+        console.debug('modifyCoins deferred', { delta, deferred: this._deferredCoinsDelta });
         return;
       }
 
@@ -12560,11 +12896,30 @@ class GameScene extends Phaser.Scene {
       
       // 🔴 [DEBUG] 코인 30 리셋 추적
       if (next === 30 && prev > 30) {
+        console.error('🚨 [코인 리셋 감지] coinsが30으로 리셋됨!', {
+          prev,
+          delta,
+          next,
+          sync: options?.sync,
+          stack: new Error().stack
+        });
       } else if (delta === 30 && prev === 0) {
+        console.warn('⚠️ [주의] 코인이 0에서 30으로 (첫 보상?)', {
+          prev,
+          delta,
+          next,
+          sync: options?.sync
+        });
       } else if (next === 30) {
+        console.log('💰 [modifyCoins] next = 30', {
+          prev,
+          delta,
+          next
+        });
       }
       
       this.myProfile.coins = next;
+      console.log('[modifyCoins] applied', { prev, delta: Number(delta || 0), next });
       
       // 🔴 [보안] 코인은 로컬 저장소에 저장하지 않음 (서버에서만 관리)
       // 싱글플레이도 서버와 동기화되어야 함
@@ -12578,7 +12933,9 @@ class GameScene extends Phaser.Scene {
       if (isLiveMultiplayer && !allowLiveUI) {
         // During live multiplayer session, avoid showing coin update in top profile
         // until actual coin-card event triggers. Keep underlying value updated.
+        console.debug('modifyCoins skipped live multiplayer coin UI update', { delta, iAmCoinCardUpdate: coinCardUpdate });
       } else if (!skipUI) {
+        console.debug('modifyCoins updating profile UI', { delta, coinCardUpdate, isLiveMultiplayer, skipUI, force, thisCoin: this.myProfile?.coins });
         try {
           this._isApplyingDeferredProfile = true;
           if (typeof this.updateMyProfileUI === 'function') {
@@ -12587,6 +12944,7 @@ class GameScene extends Phaser.Scene {
             this._allowCoinTextUpdateForNextUI = false;
           }
         } catch (e) {
+          console.warn('modifyCoins updateMyProfileUI failed', e);
         } finally {
           this._isApplyingDeferredProfile = false;
         }
@@ -12598,6 +12956,7 @@ class GameScene extends Phaser.Scene {
           try { this.coinShopCurrentCoinText.setText(`현재 보유: 💰 ${this.myProfile.coins}`); } catch (e) {}
         }
       } else {
+        console.debug('modifyCoins skipped UI update because game ended (multiplayer)', { delta });
       }
 
       if (sync) {
@@ -12608,19 +12967,23 @@ class GameScene extends Phaser.Scene {
             socket.emit('updatePlayerCoins', { coins: this.myProfile.coins });
           }
         } catch (e) {
+          console.warn('modifyCoins sync failed', e);
         }
       }
       
       // 🔴 [싱글플레이] sync 옵션이 없어도 싱글플레이일 때는 항상 저장
       if (this.isSingle && !sync) {
         try {
+          console.log('[modifyCoins] 싱글플레이 자동 저장', { coins: this.myProfile.coins, delta });
           if (typeof this.emitInventory === 'function') {
             this.emitInventory('coinsChanged', { requireServerProfile: false });
           }
         } catch (e) {
+          console.warn('[modifyCoins] 싱글플레이 저장 실패', e);
         }
       }
     } catch (e) {
+      console.warn('modifyCoins error', e);
     }
   }
 
@@ -12633,7 +12996,20 @@ class GameScene extends Phaser.Scene {
     if (delta !== 0 || next === 30) {
       // 🔴 [DEBUG] 코인 30 리셋 추적 - 스택 트레이스 출력
       if (next === 30 && prev > 30) {
+        console.error('🚨 [코인 리셋 감지] 코인이 갑자기 30으로 리셋됨!', {
+          prev,
+          next,
+          delta,
+          sync: options?.sync,
+          stack: new Error().stack
+        });
       } else {
+        console.log('💰 [setCoinsAbsolute] 절대값으로 코인 설정', {
+          prev,
+          next,
+          delta,
+          sync: options?.sync
+        });
       }
     }
     
@@ -12650,6 +13026,7 @@ class GameScene extends Phaser.Scene {
       // force apply even if overlay state somehow still true
       this.modifyCoins(delta, { sync: true, force: true });
     } catch (e) {
+      console.warn('applyDeferredCoins failed', e);
     }
     this._isApplyingDeferredCoins = false;
   }
@@ -12739,6 +13116,7 @@ class GameScene extends Phaser.Scene {
       //   const stored = Number(localStorage.getItem("profileCoins")) || 0;
       //   incomingCoins = Math.max(incomingCoins, stored, Number(prev.coins) || 0);
       // } catch (e) {
+      //   console.warn("[updateMyProfileUI] failed to read profileCoins from localStorage", e);
       // }
 
       // 🔴 [중요] 멀티플레이 결과 화면 중 코인 업데이트
@@ -12748,11 +13126,20 @@ class GameScene extends Phaser.Scene {
       if (shouldHoldCoinUi && !this._isApplyingDeferredProfile) {
         // applyDeferredProfileUpdates에서 처리 중 아니면 현재 값 유지
         incomingCoins = Number(prev.coins) || 0;
+        console.debug('[ui] 결과 화면 중 코인 UI 유지 (applyDeferredProfileUpdates 대기)', { incomingCoins });
       } else if (this._isApplyingDeferredProfile) {
         // applyDeferredProfileUpdates에서 호출 중이면 로컬 값 우선
         const localCurrentCoins = Number(this.myProfile?.coins) || 0;
         incomingCoins = Math.max(incomingCoins, localCurrentCoins);
+        console.log('[ui] applyDeferredProfileUpdates 처리 중 - 로컬 코인 우선', { incomingCoins, localCurrentCoins });
       }
+
+      console.log('[result] updateMyProfileUI coin merge', {
+        profileCoins: Number(profile.coins),
+        prevCoins: Number(prev.coins),
+        incomingCoins,
+        isApplyingDeferred: this._isApplyingDeferredProfile,
+      });
 
       this.myProfile = {
         ...prev,
@@ -12777,6 +13164,9 @@ class GameScene extends Phaser.Scene {
         this.myProfile.level > prevLevel
       ) {
         // 서버 동기화 레벨 증가는 로컬 경험치 반영 후에만 알림
+        console.debug(
+          `[level sync] Lv.${prevLevel} → Lv.${this.myProfile.level} (toast suppressed)`,
+        );
       }
       if (hasIncomingStats) {
         this.hasReceivedProfileStats = true;
@@ -12829,8 +13219,24 @@ class GameScene extends Phaser.Scene {
       const shouldShowLiveCoinText = isLiveMultiplayer && this._allowCoinTextUpdateForNextUI;
 
       if (shouldShowProfileCoinText || shouldShowLiveCoinText) {
+        console.log('[profile UI] 업데이트 보유코인 텍스트', {
+          isSingle: this.isSingle,
+          isLiveMultiplayer,
+          isResultOverlayActive: this.isResultOverlayActive,
+          isGameEnded: this.isGameEnded,
+          allowCoinText: this._allowCoinTextUpdateForNextUI,
+          coins: this.myProfile.coins,
+        });
         safeSetText(this.profileCoinsTxt, `Coins: ${this.myProfile.coins}`);
       } else {
+        console.log('[profile UI] 보유코인 텍스트 갱신 생략', {
+          isSingle: this.isSingle,
+          isLiveMultiplayer,
+          isResultOverlayActive: this.isResultOverlayActive,
+          isGameEnded: this.isGameEnded,
+          allowCoinText: this._allowCoinTextUpdateForNextUI,
+          coins: this.myProfile.coins,
+        });
       }
 
       this.setProfileCoinLabel(`보유코인: ${this.myProfile.coins}`);
@@ -12839,6 +13245,7 @@ class GameScene extends Phaser.Scene {
 
       // combine with lobby-style text if present (rare inside GameScene but safe)
     } catch (e) {
+      console.warn("[updateMyProfileUI] exception swallowed", e);
     }
     if (this.profileIdText) {
       this.profileIdText.setText(`LV.${this.myProfile.level} ${this.myProfile.nickname}`);
@@ -12896,6 +13303,7 @@ class GameScene extends Phaser.Scene {
       const sum = valid.reduce((a, b) => a + b, 0);
       return sum / valid.length;
     } catch (e) {
+      console.warn("computeAvgReaction failed", e);
       return 0;
     } finally {
       // 인텐셔널: 현재 이 함수는 로컬 인메모리 계산이므로 꼭 cleanup이 필요하지 않습니다.
@@ -13025,6 +13433,7 @@ class GameScene extends Phaser.Scene {
       try {
         return getHumanReactionBaseline(room);
       } catch (e) {
+        console.warn("baseline helper error", e);
         return 0;
       }
     }
@@ -13052,7 +13461,13 @@ class GameScene extends Phaser.Scene {
           return;
         } catch (e) {}
       }
+      console.warn(
+        "safeSyncInventory: no syncInventoryToServer available",
+        reason,
+        extra,
+      );
     } catch (e) {
+      console.warn("safeSyncInventory error", e);
     }
   }
 
@@ -13378,6 +13793,11 @@ class GameScene extends Phaser.Scene {
     const existingPlayers = Array.isArray(this.roundData?.players) ? this.roundData.players : lobbyPlayers;
     const incomingPlayers = Array.isArray(data.players) && data.players.length ? data.players : existingPlayers;
     if (!Array.isArray(incomingPlayers) || incomingPlayers.length === 0) {
+      console.warn("GameScene.init: players missing or empty; falling back to existing/lobby players", {
+        existingPlayersLen: Array.isArray(existingPlayers) ? existingPlayers.length : 0,
+        lobbyPlayersLen: Array.isArray(lobbyPlayers) ? lobbyPlayers.length : 0,
+        dataPlayersLen: Array.isArray(data.players) ? data.players.length : null,
+      });
     }
 
     this.roundData = {
@@ -13477,28 +13897,38 @@ class GameScene extends Phaser.Scene {
           socket.emit('updatePlayerInventory', payload);
           socket.emit('updateProfile', payload);
           socket.emit('savePlayerProfile', payload);
+          console.log(`🛰️ [GameScene] inventory synced (${reason})`, { coins: payload.coins });
         } catch (e) {
+          console.warn('[GameScene] emitInventory failed', reason, e);
         }
       };
     }
 
     // 광고 보상 이벤트 - 실시간 코인 업데이트
     socket.off("adReward").on("adReward", (data) => {
+      console.log("[adReward] 광고 보상 이벤트 수신:", data);
       if (typeof gameScene.setCoinsAbsolute === "function") {
         gameScene.setCoinsAbsolute(data.totalCoins);
+        console.log("[adReward] 코인 업데이트:", data.totalCoins);
       }
     });
 
     // 일반 보상 이벤트 - 실시간 코인 업데이트
     socket.off("dailyReward").on("dailyReward", (data) => {
+      console.log("[dailyReward] 일반 보상 이벤트 수신:", data);
       if (typeof gameScene.setCoinsAbsolute === "function") {
         gameScene.setCoinsAbsolute(data.totalCoins);
+        console.log("[dailyReward] 코인 업데이트:", data.totalCoins);
       }
     });
 
     // 🔴 [추가] Registry에서 광고 상태 복원 (씬 간에 유지)
     this.isGameAdLoaded = this.registry.get("gameAdLoaded") || false;
     this.isGameAdLoading = this.registry.get("gameAdLoading") || false;
+    console.log("[GameScene create] 광고 상태 복원", {
+      isGameAdLoaded: this.isGameAdLoaded,
+      isGameAdLoading: this.isGameAdLoading,
+    });
 
     // 🔴 [삭제] 게임 화면 광고 상태 디버그 텍스트 제거
 
@@ -13525,12 +13955,14 @@ class GameScene extends Phaser.Scene {
           }
           return loadFullScreenAd.isSupported() && showFullScreenAd.isSupported();
         } catch (error) {
+          console.warn("[game-ad] 광고 지원 여부 확인 실패", error);
           return false;
         }
       };
 
       const adGroupId = getAdGroupId();
       if (!adGroupId || !canUseAd()) {
+        console.warn("[game-ad] 광고 미리 로드 불가 (지원 여부 확인 또는 adGroupId 부재)");
         return;
       }
 
@@ -13541,6 +13973,7 @@ class GameScene extends Phaser.Scene {
       this.isGameAdLoading = true;
       // 🔴 [수정] registry에 저장하여 씬 간에 유지
       this.registry.set("gameAdLoading", true);
+      console.log("[game-ad] 게임 시작 후 광고 미리 로드 시작");
 
       if (typeof this.unregisterGameAd === "function") {
         this.unregisterGameAd();
@@ -13550,15 +13983,18 @@ class GameScene extends Phaser.Scene {
       this.unregisterGameAd = loadFullScreenAd({
         options: { adGroupId },
         onEvent: (event) => {
+          console.log("[game-ad] 광고 이벤트:", event.type);
           if (event.type === "loaded") {
             this.isGameAdLoading = false;
             this.isGameAdLoaded = true;
             // 🔴 [수정] registry에 저장하여 씬 간에 유지
             this.registry.set("gameAdLoading", false);
             this.registry.set("gameAdLoaded", true);
+            console.log("[game-ad] ✅ 광고 사전 로드 완료");
           }
         },
         onError: (error) => {
+          console.warn("[game-ad] 광고 로드 실패", error);
           this.isGameAdLoading = false;
           this.isGameAdLoaded = false;
           // 🔴 [수정] registry에 저장하여 씬 간에 유지
@@ -13572,6 +14008,7 @@ class GameScene extends Phaser.Scene {
           }
 
           this.gameAdRetryTimer = this.time.delayedCall(5000, () => {
+            console.log("[game-ad] 광고 로드 재시도 중...");
             // 🔴 [추가] 재시도 시작 상태 업데이트
             this.isGameAdLoading = true;
             this.registry.set("gameAdLoading", true);
@@ -13630,6 +14067,7 @@ class GameScene extends Phaser.Scene {
         this.unlockPremiumBear = LobbyScene.prototype.unlockPremiumBear.bind(this);
       }
     } catch (e) {
+      console.warn('[premium] GameScene premium helper bind failed', e);
     }
 
     if (this.resultContainer) {
@@ -13982,6 +14420,7 @@ class GameScene extends Phaser.Scene {
         this.resultContainer = null;
       }
     } catch (e) {
+      console.warn("GameScene.create: clearing old resultContainer failed", e);
     }
 
     // 이전 게임의 로그 또한 남아있지 않도록 초기화
@@ -13994,6 +14433,7 @@ class GameScene extends Phaser.Scene {
         this.gameLogs = [];
       }
     } catch (e) {
+      console.warn("GameScene.create: clearing old game logs failed", e);
     }
 
     try {
@@ -14001,6 +14441,7 @@ class GameScene extends Phaser.Scene {
         this.playerTableGroup.destroy();
       }
     } catch (e) {
+      console.warn("GameScene.create: destroying old playerTableGroup failed", e);
     }
 
     // 플레이어/카드들을 담을 그룹
@@ -14009,7 +14450,12 @@ class GameScene extends Phaser.Scene {
       this.playerTableGroup.setVisible(true).setAlpha(1);
       this.playerTableGroup.setScrollFactor(0, 0);  // UI는 화면 고정 (0, 0)
       this.children.bringToTop(this.playerTableGroup);
+      console.log('[GameScene.create] playerTableGroup 생성:', {
+        depth: 1000,
+        scrollFactor: `${this.playerTableGroup.scrollFactorX}, ${this.playerTableGroup.scrollFactorY}`,
+      });
     } catch (e) {
+      console.warn("GameScene.create: restoring playerTableGroup visibility/depth failed", e);
     }
 
     // renderTable scheduling reset as extra safety
@@ -14020,10 +14466,12 @@ class GameScene extends Phaser.Scene {
     // render immediately so the UI is not blank.
     try {
       const playersAtStart = Array.isArray(this.roundData?.players) ? this.roundData.players : [];
+      console.log("GameScene.create: starting with players", { len: playersAtStart.length, ids: playersAtStart.map(p => p && p.id) });
       if (playersAtStart.length) {
         this.renderTable(playersAtStart);
       }
     } catch (e) {
+      console.warn("GameScene.create: renderTable fallback failed", e);
     }
 
     // If LobbyScene transitioned directly with a gameStart payload, apply it.
@@ -14062,6 +14510,7 @@ class GameScene extends Phaser.Scene {
         this._debugForceWinTxt = forceTxt;
         forceBtn.on("pointerdown", () => {
           this.sound.play("btn", { volume: 0.4 });
+          console.debug("[debug] tutorial force-win pressed");
           try {
             if (typeof this.endSingleGame === "function") {
               this.endSingleGame("WIN");
@@ -14070,9 +14519,11 @@ class GameScene extends Phaser.Scene {
               if (typeof proto === "function") proto.call(this, "WIN");
             }
           } catch (e) {
+            console.warn("[debug] force-win failed", e);
           }
         });
       } catch (e) {
+        console.warn("[debug] failed to create force-win button", e);
       }
     }
 
@@ -14109,6 +14560,7 @@ class GameScene extends Phaser.Scene {
 
         completeBtn.on("pointerdown", () => {
           this.sound.play("btn", { volume: 0.4 });
+          console.debug("[debug] complete tutorial pressed");
           try {
             if (typeof this.showTutorialCompletionOverlay === "function") {
               this.showTutorialCompletionOverlay();
@@ -14119,9 +14571,11 @@ class GameScene extends Phaser.Scene {
               } catch (err) {}
             }
           } catch (e) {
+            console.warn("[debug] complete tutorial failed", e);
           }
         });
       } catch (e) {
+        console.warn("[debug] failed to create complete-tutorial button", e);
       }
     }
 
@@ -14140,8 +14594,10 @@ class GameScene extends Phaser.Scene {
                   this.debugUI.setDepth(999999999);
                   this.debugUI.setVisible(true);
                   this.children.bringToTop(this.debugUI);
+                  console.debug(`[debug] brought debugUI to top after ${d}ms`);
                 }
               } catch (e) {
+                console.warn('[debug] bringToTop debugUI failed', e);
               }
             });
           } catch (e) {}
@@ -14195,6 +14651,7 @@ class GameScene extends Phaser.Scene {
                 if (typeof proto === "function") proto.call(s, "WIN");
               }
             } catch (e) {
+              console.warn("DOM force-win failed", e);
             }
           });
 
@@ -14206,6 +14663,7 @@ class GameScene extends Phaser.Scene {
                 try { localStorage.setItem(TUTORIAL_STATE_KEY, "true"); } catch (e) {}
               }
             } catch (e) {
+              console.warn("DOM complete-tutorial failed", e);
             }
           });
 
@@ -14217,6 +14675,7 @@ class GameScene extends Phaser.Scene {
         }
       })(this);
     } catch (e) {
+      console.warn("failed to create persistent DOM debug overlay", e);
     }
 
     // ============================================
@@ -14269,11 +14728,17 @@ class GameScene extends Phaser.Scene {
 
     socket.off("myProfile").on("myProfile", (profile) => {
       try {
+        console.log('[socket.myProfile] received', profile);
       } catch (e) {}
       
       // 🔴 [중요] 게임 종료 후 서버 프로필 수신: 즉시 this.myProfile 업데이트
       // (로비 또는 다음 게임 시작 시 정확한 데이터 필요)
       if (this.isGameEnded && !this.isSingle) {
+        console.log('[socket.myProfile] 게임 종료 후 서버 프로필 수신 - 즉시 적용', {
+          level: profile?.level,
+          coins: profile?.coins,
+          experience: profile?.experience,
+        });
         
         // myProfile 즉시 업데이트 (로비로 전달될 값)
         this.myProfile = this.myProfile || {};
@@ -14326,6 +14791,12 @@ class GameScene extends Phaser.Scene {
         const localExperience = Number(this.myProfile?.experience) || 0;
         if (localExperience > safeExperience) {
           finalExperience = localExperience;
+          console.debug('[socket.myProfile] 게임 중 경험치 보호', {
+            local: localExperience,
+            server: safeExperience,
+            finalExp: finalExperience,
+            message: '로컬 경험치가 더 높음 - 유지'
+          });
         }
       }
 
@@ -14357,11 +14828,13 @@ class GameScene extends Phaser.Scene {
           if (this.isGameEnded || this.isResultOverlayActive) {
             // defer coin delta until after result overlay (keeps underlying UI stable)
             this._deferredCoinsDelta = (this._deferredCoinsDelta || 0) + coinDelta;
+            console.debug('socket.myProfile: deferred coin delta (single)', { coinDelta, deferred: this._deferredCoinsDelta });
           } else {
             // apply immediately as a delta (do not emit back to server)
             try {
               this.modifyCoins(coinDelta, { sync: false, coinCardUpdate: true });
             } catch (e) {
+              console.warn('socket.myProfile: modifyCoins failed', e);
             }
           }
           // mark that we have at least a server snapshot for other stats
@@ -14372,9 +14845,16 @@ class GameScene extends Phaser.Scene {
           if (this.isGameEnded || this.isResultOverlayActive) {
             const localCoins = Number(this.myProfile?.coins) || 0;
             const incomingCoins = Number(profile?.coins) || 0;
+            console.log('[socket.myProfile] 결과 화면 중 프로필 업데이트 지연', { 
+              localCoins,
+              incomingCoins,
+              willPreferLocal: localCoins > incomingCoins
+            });
             this._deferredMyProfile = profile;
+            console.debug("myProfile update deferred until post-result (socket.myProfile)", { profile });
           } else if (!this.isSingle) {
             // Live multiplayer: avoid profile UI show during match; coin display only from coincard updates.
+            console.debug("myProfile update held during live multiplayer (socket.myProfile)", { profile });
             this._deferredMyProfile = profile;
           } else {
             this.updateMyProfileUI(profile);
@@ -14384,6 +14864,7 @@ class GameScene extends Phaser.Scene {
       }
 
       if (newLevel > prevLevel) {
+        console.debug(`level up suppressed (profile sync): Lv.${prevLevel} → Lv.${newLevel}`);
       }
       // 서버가 보낸 특수카드 정보가 있으면 로컬에 반영하고 UI 갱신
       try {
@@ -14401,6 +14882,7 @@ class GameScene extends Phaser.Scene {
           }
         }
       } catch (e) {
+        console.warn("failed to apply specialCards from myProfile", e);
       }
     });
 
@@ -14435,6 +14917,7 @@ class GameScene extends Phaser.Scene {
               try {
                 socket.emit("requestAiMove", { playerId: aiPlayerId, hasOpenStack: hasOpen });
               } catch (e) {
+                console.warn("emit requestAiMove failed", e);
               }
               this.showToast("AI 응답 지연, 서버에 요청을 보냈습니다.", "#f39c12");
               this._aiTurnWatchRetries += 1;
@@ -14462,6 +14945,7 @@ class GameScene extends Phaser.Scene {
                 playerId: aiPlayerId,
               });
             } catch (e) {
+              console.warn("emit forceSkipTurn failed", e);
             }
           };
 
@@ -14497,6 +14981,7 @@ class GameScene extends Phaser.Scene {
                 try {
                   socket.emit("requestAiMove", { playerId: aiPlayerId, reason: "auto_timeout" });
                 } catch (e) {
+                  console.warn("emit requestAiMove(auto_timeout) failed", e);
                 }
               }
             });
@@ -14505,6 +14990,7 @@ class GameScene extends Phaser.Scene {
           }
         }
       } catch (e) {
+        console.warn("ai watchdog error", e);
       }
     };
 
@@ -14514,8 +15000,14 @@ class GameScene extends Phaser.Scene {
 
     this.applyGameStartPayload = (data) => {
       try {
+        console.log('[applyGameStartPayload] 호출됨', {
+          isSingle: this.isSingle,
+          _multiplierAnimationShown: this._multiplierAnimationShown,
+          playersLength: Array.isArray(data?.players) ? data.players.length : 0,
+        });
 
         if (!data || !Array.isArray(data.players) || data.players.length === 0) {
+          console.log('[applyGameStartPayload] 데이터 유효성 검사 실패');
           return;
         }
 
@@ -14554,6 +15046,7 @@ class GameScene extends Phaser.Scene {
           try {
             this.resultContainer.destroy();
           } catch (e) {
+            console.warn("applyGameStartPayload: resultContainer destroy failed", e);
           }
           this.resultContainer = null;
         }
@@ -14567,6 +15060,7 @@ class GameScene extends Phaser.Scene {
         // 🔴 [중요] roomId 설정 - 배수 애니메이션에서 서버로 전송할 때 필요
         if (data?.roomId) {
           this.currentRoomId = data.roomId;
+          console.log('[applyGameStartPayload] roomId 설정', { roomId: this.currentRoomId });
         }
         
         // 🔴 [배수 초기화] 새 게임은 배수 미정 (애니메이션에서 설정됨)
@@ -14574,6 +15068,12 @@ class GameScene extends Phaser.Scene {
         // 🔴 [중요] 플래그도 반드시 초기화! 다음 게임에서 애니메이션이 실행되도록
         this._multiplierAnimationShown = false;
         this._multiplierAnimationPlaying = false;
+        
+        console.log('[applyGameStartPayload] 배수 초기화', { 
+          gameMultiplier: this.roundData.gameMultiplier,
+          _multiplierAnimationShown: this._multiplierAnimationShown,
+          isSingle: this.isSingle
+        });
         
         this.isGameEnded = false; // 새 게임 시작 시 종료 플래그 리셋
         this.isResultOverlayActive = false;
@@ -14618,11 +15118,21 @@ class GameScene extends Phaser.Scene {
               
               // 🔴 [보안] 코인이 음수나 이상한 값이면 로그 및 경고
               if (serverCoins < 0) {
+                console.error('❌ [applyGameStartPayload] 음수 코인 감지!', {
+                  serverCoins,
+                  willReset: true
+                });
                 this.myProfile.coins = 0;
               } else if (serverCoins === 0) {
                 // 🔴 [중요 수정] socket.profile이 아직 업데이트 안 됨 - 기존 코인 유지
                 // 서버에서 0이 오는 것은 socket 연결 초기화 상태일 가능성 높음
                 const existingCoins = Number(this.myProfile?.coins) || 0;
+                console.warn('⚠️ [applyGameStartPayload] socket.profile.coins=0 감지 (미갱신?)', {
+                  serverCoins: 0,
+                  existingCoins: existingCoins,
+                  willRetainExisting: true,
+                  timestamp: new Date().toISOString()
+                });
                 // 기존 코인이 있으면 유지, 없으면 0 (신규 유저 or 진짜 0)
                 if (existingCoins > 0) {
                   this.myProfile.coins = existingCoins;
@@ -14631,11 +15141,20 @@ class GameScene extends Phaser.Scene {
                 }
               } else if (serverCoins === 30 && this._startOfMatchCoins === undefined) {
                 // 게임 시작 후 처음 코인이 30인 경우 의심 - 정상 여부 판단
+                console.warn('⚠️ [applyGameStartPayload] 신규 유저 또는 초기화 상태? 코인=30', {
+                  serverCoins,
+                  startOfMatchCoins: this._startOfMatchCoins,
+                  timestamp: new Date().toISOString()
+                });
                 this.myProfile.coins = serverCoins;
               } else {
                 this.myProfile.coins = serverCoins;  // 정상값 사용
               }
               
+              console.log('[applyGameStartPayload] 코인 동기화 (서버 신뢰)', {
+                serverCoins,
+                appliedCoins: this.myProfile.coins
+              });
             }
             if (typeof socket.profile.level !== 'undefined') {
               this.myProfile.level = Number(socket.profile.level) || this.myProfile.level || 1;
@@ -14652,6 +15171,7 @@ class GameScene extends Phaser.Scene {
             this.updateMyProfileUI(this.myProfile);
           }
         } catch (e) {
+          console.warn('applyGameStartPayload initial profile/coins sync failed', e);
         }
 
         const initialTurnIndex = data.players.findIndex((p) => p.id === data.nextTurnId);
@@ -14686,6 +15206,7 @@ class GameScene extends Phaser.Scene {
           this._multiplierAnimationPlaying = true; // 배수 애니메이션 진행 중 플래그
           
           this.time.delayedCall(1200, () => {
+            console.log('[applyGameStartPayload] 커튼 열림 → 배수 애니메이션 시작');
             this.playMultiplierSelectionAnimation(); // 5초 (3초 회전 + 2초 표시)
 
             this.time.delayedCall(5000, () => {
@@ -14697,6 +15218,12 @@ class GameScene extends Phaser.Scene {
                 
                 // ✅ 배수 애니메이션 완료
                 this._multiplierAnimationPlaying = false;
+                console.log("🎮 배수 애니메이션 완료, 게임 시작 준비 완료", {
+                  myId,
+                  currentTurnId,
+                  nextTurnId: data.nextTurnId,
+                  canClick: this.canClick,
+                });
                 
                 try {
                   this.updateTurnEffect && typeof this.updateTurnEffect === 'function' && this.updateTurnEffect();
@@ -14724,6 +15251,7 @@ class GameScene extends Phaser.Scene {
               const myId = this.isSingle ? this.myId : socket.id;
               const currentTurnId = this.roundData?.players?.[this.turnIndex]?.id;
               this.canClick = currentTurnId === myId || data.nextTurnId === myId;
+              console.log("🎮 game ready", { myId, currentTurnId, nextTurnId: data.nextTurnId, turnIndex: this.turnIndex, canClick: this.canClick });
               try {
                 // Ensure visual turn effects are applied once UI is visible
                 this.updateTurnEffect && typeof this.updateTurnEffect === 'function' && this.updateTurnEffect();
@@ -14737,16 +15265,20 @@ class GameScene extends Phaser.Scene {
 
         this.renderTable(this.roundData.players);
       } catch (e) {
+        console.warn("applyGameStartPayload failed", e);
       }
     };
 
     socket.off("gameStart").on("gameStart", (data) => {
+      console.log("🎮 [gameStart 이벤트] 수신됨");
+      console.log("Gamestart");
       this.showToast("gameStart event received", "#ff0");
       this.applyGameStartPayload(data);
     });
 
     // Handle pending gameStart data from LobbyScene transition
     if (this.pendingGameStartData) {
+      console.log("📋 [GameScene] pendingGameStartData 발견, applyGameStartPayload 호출");
       this.applyGameStartPayload(this.pendingGameStartData);
       this.pendingGameStartData = null;
     }
@@ -14886,6 +15418,14 @@ class GameScene extends Phaser.Scene {
             const prevCoins = Number(this.myProfile?.coins) || 0;
             const delta = serverCoinTotal - prevCoins;
             
+            console.log('💰 [cardReward] 코인카드 보상 수신 및 적용', {
+              reward: Number(data.coinReward) || COIN_CARD_REWARD,
+              prevCoins,
+              serverCoinTotal,
+              delta,
+              isSingle: this.isSingle
+            });
+            
             // 🔴 [일관성] setCoinsAbsolute는 myProfile도 업데이트하므로, sync=true로 설정
             this.setCoinsAbsolute(serverCoinTotal, { sync: true, coinCardUpdate: true });
           }
@@ -14965,6 +15505,12 @@ class GameScene extends Phaser.Scene {
       if (!this.isSingle) {
         // 게임 종료 / 종료 직후의 결과는 반영하지 않기
         if (this.isGameEnded || this.isResultTextVisible || this.isResultOverlayActive) {
+          console.debug("bellResult skipped on end stage", {
+            isGameEnded: this.isGameEnded,
+            isResultTextVisible: this.isResultTextVisible,
+            isResultOverlayActive: this.isResultOverlayActive,
+            data,
+          });
           return;
         }
           try {
@@ -15055,6 +15601,7 @@ class GameScene extends Phaser.Scene {
         this.roundData.players = updatedPlayers;
 
         // 멀티플레이: 로컬 플레이어가 카드를 획득했으면 즉시 경험치 지급
+        console.log('[bellResult] winnerId=', data.winnerId, 'collectedCount=', data.collectedCount, 'socket.id=', socket && socket.id, 'isSingle=', this.isSingle);
         try {
           if (
             !this.isSingle &&
@@ -15067,10 +15614,12 @@ class GameScene extends Phaser.Scene {
             const multiplier = this.roundData?.gameMultiplier || 1;
             const gained = baseGained * multiplier; // 배수 적용
             if (typeof this.awardExperience === "function") {
+              console.log('[bellResult] invoking awardExperience', gained, '(base:', baseGained, 'x', multiplier, ')');
               this.awardExperience(gained);
             }
           }
         } catch (e) {
+          console.warn("awardExperience failed", e);
         }
         /*this.time.delayedCall(500, () => {
           this.renderTable(this.roundData.players);
@@ -15112,6 +15661,7 @@ class GameScene extends Phaser.Scene {
                 this.renderTable(this.roundData.players);
               }
             } catch (e) {
+              console.warn("autoLock handling error", e);
             }
             return;
           }
@@ -15226,6 +15776,7 @@ class GameScene extends Phaser.Scene {
               return;
             }
           } catch (e) {
+            console.warn("auto-lock parse error", e);
           }
         }
 
@@ -15237,6 +15788,7 @@ class GameScene extends Phaser.Scene {
             players: updatedPlayers, // 👈 중요!
           });
         } else {
+          console.warn("playPenaltyAnimation called with invalid updatedPlayers", updatedPlayers);
         }
 
         // 💡 [수정] roundData 업데이트는 playPenaltyAnimation 내부에서 처리됨
@@ -15352,6 +15904,7 @@ class GameScene extends Phaser.Scene {
                   data.shielded.forEach((id) => this.showShieldEffect(id));
                 }
               } catch (e) {
+                console.warn("specialUsed merge error", e);
               }
             },
           });
@@ -15396,6 +15949,7 @@ class GameScene extends Phaser.Scene {
                   // message toast omitted for special card.
 
                 } catch (e) {
+                  console.warn("specialUsed merge error", e);
                 }
               },
             });
@@ -15445,6 +15999,10 @@ class GameScene extends Phaser.Scene {
 
               this.renderTable(this.roundData.players);
               if (Array.isArray(data.shielded) && data.shielded.length > 0) {
+                console.log(
+                  "[debug] specialUsed (block) shielded ids:",
+                  data.shielded,
+                );
                 data.shielded.forEach((id) => this.showShieldEffect(id));
               }
             } else {
@@ -15454,6 +16012,7 @@ class GameScene extends Phaser.Scene {
             // message toast omitted for special card.
 
           } catch (e) {
+            console.warn("specialUsed block merge error", e);
           }
           return;
         }
@@ -15485,6 +16044,7 @@ class GameScene extends Phaser.Scene {
           }
         }
       } catch (e) {
+        console.warn("specialUsed handler error", e);
       }
     });
 
@@ -15511,6 +16071,7 @@ class GameScene extends Phaser.Scene {
           onComplete: () => {},
         });
       } catch (e) {
+        console.warn("specialPlay handler error", e);
       }
     });
 
@@ -15530,6 +16091,7 @@ class GameScene extends Phaser.Scene {
 
       // mark game ended to avoid terminal bell events affecting ratio
       this.isGameEnded = true;
+      console.debug('gameEnded flag set', { time: Date.now(), isGameEnded: this.isGameEnded });
 
       if (isMultiplayerWin) {
 
@@ -15549,7 +16111,7 @@ class GameScene extends Phaser.Scene {
         // debug: report why win wasn't counted
       }
       if (data && data.serverDebug) {
-        data.serverDebug.forEach((ln) => {});
+        data.serverDebug.forEach((ln) => console.log("  ", ln));
       }
       if (data && data.avetimeById) {
       }
@@ -15559,6 +16121,7 @@ class GameScene extends Phaser.Scene {
 
       // allow next match to recompute ratio properly
       this.isGameEnded = true;
+      console.debug('gameEnded flag reaffirmed', { time: Date.now(), isGameEnded: this.isGameEnded });
       // Avoid pushing bell stats to server; accuracy data is local-only.
       // (Local storage updates are handled in updateBellAccuracy.)
       // Ensure any AI timers/actions are stopped when match ends so
@@ -15586,8 +16149,13 @@ class GameScene extends Phaser.Scene {
         this.playFinishAnimation(() => {
           // 🔴 [중요] 결과창 진입 직전 모든 지연된 코인 적용
           try {
+            console.log('🎮 [gameEnd] 결과창 진입 전 지연된 코인 적용', {
+              deferredCoins: this._deferredCoinsDelta,
+              isSingle: this.isSingle
+            });
             this.applyDeferredCoins();
           } catch (e) {
+            console.warn('[gameEnd] applyDeferredCoins 실패', e);
           }
 
           if (this.isSingle) {
@@ -15625,8 +16193,10 @@ class GameScene extends Phaser.Scene {
             emitInventory('final', { includeExperience: true, requireServerProfile: false });
           }
         } catch (e) {
+          console.warn('requestProfileSync emitInventory skipped', e);
         }
       } catch (e) {
+        console.warn("requestProfileSync handler failed", e);
       }
     });
 
@@ -15644,6 +16214,10 @@ class GameScene extends Phaser.Scene {
             typeof serverPlayer.isEliminated === "boolean" &&
             serverPlayer.isEliminated
           ) {
+            console.log("[updatePlayerStatus] eliminated", {
+              playerId: serverPlayer.id,
+              cards: serverPlayer.cards,
+            });
           }
           localPlayer.isEliminated = serverPlayer.isEliminated;
           localPlayer.cards = serverPlayer.cards;
@@ -15662,6 +16236,12 @@ class GameScene extends Phaser.Scene {
     this.createHaliGaliButtons(height);
 
     const moveToLobby = () => {
+      console.debug("[moveToLobby] 호출", {
+        isSingle: this.isSingle,
+        isRoomOpen: this.isRoomOpen,
+        roundRoomId: this.roundData?.roomId,
+        currentRoomId: this.currentRoomId,
+      });
 
       if (typeof this.currentGamePopupCloseHandler === "function") {
         this.currentGamePopupCloseHandler();
@@ -15673,6 +16253,7 @@ class GameScene extends Phaser.Scene {
         try {
           this.scene.start("LobbyScene", { preventAutoStartSingleAfterTutorial: true });
         } catch (e) {
+          console.warn("moveToLobby: immediate LobbyScene start failed", e);
           this.scene.start("LobbyScene");
         }
 
@@ -15680,6 +16261,7 @@ class GameScene extends Phaser.Scene {
           try {
             socket.emit("leaveRoom", { roomId: this.roundData.roomId });
           } catch (e) {
+            console.warn("moveToLobby: background leaveRoom emit failed", e);
           }
         }
       });
@@ -15707,6 +16289,7 @@ class GameScene extends Phaser.Scene {
         moveToLobby();
       });
     } catch (error) {
+      console.warn("게임 씬 백버튼 리스너 등록 실패", error);
     }
 
     // 초기 테이블 렌더링
@@ -15859,6 +16442,14 @@ class GameScene extends Phaser.Scene {
       !this.scene
     ) {
       try {
+        console.warn("_renderTableImmediate: skipping render due to missing context", {
+          playersPresent: !!players,
+          playerTableGroup: !!this.playerTableGroup,
+          cameras: !!this.cameras,
+          camerasMain: !!this.cameras?.main,
+          scene: !!this.scene,
+          sceneActive: !!(this.scene && typeof this.scene.isActive === 'function' ? this.scene.isActive() : false),
+        });
       } catch (e) {}
       return;
     }
@@ -15866,7 +16457,9 @@ class GameScene extends Phaser.Scene {
   
     } catch (e) {}
     
+    
     this.playerTableGroup.removeAll(true);
+    
     
     if (this.playerTableGroup) {
       this.playerTableGroup.setVisible(true).setAlpha(1).setDepth(1000);
@@ -15947,6 +16540,7 @@ class GameScene extends Phaser.Scene {
       return sum + (p.openStack ? p.openStack.length : 0);
     }, 0);
     
+
     // 매 프레임 렌더 이후 턴 효과 업데이트 (현재 턴 강조)
     if (typeof this.updateTurnEffect === "function") {
       this.updateTurnEffect();
@@ -15972,6 +16566,7 @@ class GameScene extends Phaser.Scene {
     // 배수 텍스트 참조 저장 (애니메이션 완료 후 업데이트용)
     this.multiplierDisplayTxt = multiplierTxt;
     
+
     // 카드 합계는 0보다 클 때만 표시
     if (totalStackCount > 0) {
       // 긴장감 단계: 10장 이상 → 주황, 20장 이상 → 빨강
@@ -15993,6 +16588,8 @@ class GameScene extends Phaser.Scene {
         .setDepth(2000);  // 뎁스를 훨씬 높게
       this.playerTableGroup.add(stackTxt);
       
+  
+
       // 💥 10장 이상일 때 숫자와 라벨에 역동적인 효과 추가
       if (tension >= 1) {
         const bounceScale = tension === 2 ? 1.15 : 1.08; // 20장 이상이면 더 큰 바운스
@@ -16342,6 +16939,7 @@ class GameScene extends Phaser.Scene {
 
     // ✅ 배수 애니메이션이 진행 중이면 타이머를 시작하지 않음
     if (this._multiplierAnimationPlaying) {
+      console.log("⏸️ 배수 애니메이션 진행 중 - 카드 제출 타이머 시작 차단");
       return;
     }
 
@@ -17310,6 +17908,7 @@ class GameScene extends Phaser.Scene {
           players[winIdx]?.avatarKey ||
           players[winIdx]?.current_character ||
           "player_1";
+        console.log("[playWinAnimation] avatarKey:", avatarKey, "winnerId:", winnerId);
 
         // use a reusable sprite instance to avoid allocation overhead
         const needsNewSprite =
@@ -17348,27 +17947,35 @@ class GameScene extends Phaser.Scene {
           (this.textures.exists(avatarKey) ? avatarKey : null);
 
         if (baseTexture && this.textures.exists(baseTexture)) {
+          console.log("[playWinAnimation] baseTexture:", baseTexture, "exists:true");
           try {
             tempSprite.setTexture(baseTexture);
+            console.log("[playWinAnimation] before applyAvatarAnimation for:", avatarKey);
             
             // Ensure player_5 and player_6 frames are loaded
             if (avatarKey === "player_5") {
               ensurePlayer5Frames(this);
+              console.log("[playWinAnimation] ensured player_5 frames");
             } else if (avatarKey === "player_6") {
               ensurePlayer6Frames(this);
+              console.log("[playWinAnimation] ensured player_6 frames");
             }
             
             this.applyAvatarAnimation(tempSprite, avatarKey);
+            console.log("[playWinAnimation] after applyAvatarAnimation, anims:", tempSprite.anims ? { isPlaying: tempSprite.anims.isPlaying, currentAnim: tempSprite.anims.currentAnim?.key } : "none");
             try {
+              console.log('[playWinAnimation] postApply animState', tempSprite.anims && { isPlaying: tempSprite.anims.isPlaying, currentAnim: tempSprite.anims.currentAnim && tempSprite.anims.currentAnim.key, currentFrame: tempSprite.anims.currentFrame && tempSprite.anims.currentFrame.textureKey });
             } catch (e) {}
             try {
               if (tempSprite.anims) {
                 if (!tempSprite.anims.currentAnim) {
                     const fallbackAnim = this.ensureAvatarAnimation(avatarKey);
+                    console.log('[playWinAnimation] fallbackAnim:', fallbackAnim);
                     if (fallbackAnim) {
                       try {
                         tempSprite.play(fallbackAnim, true);
                       } catch (e) {
+                        console.warn("fallback play failed", e);
                       }
                     }
                   }
@@ -17378,6 +17985,7 @@ class GameScene extends Phaser.Scene {
                 }
               }
             } catch (e) {
+              console.warn("win avatar anim start failed", e);
             }
             const clearFlag = () => {
               this.avatarAnimInProgress = false;
@@ -17387,6 +17995,7 @@ class GameScene extends Phaser.Scene {
             };
             tempSprite.off("animationcomplete");
             tempSprite.once("animationcomplete", () => {
+              console.log('[playWinAnimation] animationcomplete fired for', avatarKey);
               clearFlag();
             });
             // safety timeout
@@ -17898,9 +18507,10 @@ class GameScene extends Phaser.Scene {
       }
       const specialY = baseY;
 
+  
       const hasTexture =
         this.textures && this.textures.exists && this.textures.exists("shield");
-      if (!hasTexture) {}
+      if (!hasTexture) console.warn("[debug] shield texture not available");
 
       const shieldSprite = this.add
         .image(baseX, specialY, "shield")
@@ -17922,10 +18532,12 @@ class GameScene extends Phaser.Scene {
           try {
             shieldSprite.destroy();
           } catch (e) {
+            console.warn("[debug] error destroying shield sprite", e);
           }
         },
       });
     } catch (e) {
+      console.warn("showShieldEffect error", e);
     }
   }
 
@@ -17988,7 +18600,7 @@ class GameScene extends Phaser.Scene {
 
       const hasTextureLock =
         this.textures && this.textures.exists && this.textures.exists("lock");
-      if (!hasTextureLock) {}
+      if (!hasTextureLock) console.warn("[debug] lock texture not available");
 
       const lockSprite = this.add
         .image(baseX, lockY, "lock")
@@ -18009,10 +18621,12 @@ class GameScene extends Phaser.Scene {
           try {
             lockSprite.destroy();
           } catch (e) {
+            console.warn("[debug] error destroying lock sprite", e);
           }
         },
       });
     } catch (e) {
+      console.warn("showLockEffect error", e);
     }
   }
 
@@ -18061,6 +18675,7 @@ class GameScene extends Phaser.Scene {
                 try {
                   if (onComplete) onComplete();
                 } catch (e) {
+                  console.warn("playSpecialAnimation onComplete error", e);
                 }
               },
             });
@@ -18068,12 +18683,14 @@ class GameScene extends Phaser.Scene {
         },
       });
     } catch (e) {
+      console.warn("playSpecialAnimation error", e);
       if (onComplete) onComplete();
     }
   }
 
   showLevelUpEffect(prevLevel, newLevel) {
     try {
+      console.debug("showLevelUpEffect", prevLevel, "->", newLevel);
       const camera = this.cameras.main;
       const centerX = camera ? camera.midPoint.x : this.scale.width * 0.5;
       const centerY = camera ? camera.midPoint.y : this.scale.height * 0.4;
@@ -18174,6 +18791,7 @@ class GameScene extends Phaser.Scene {
         });
       }
     } catch (e) {
+      console.warn("showLevelUpEffect error", e);
     }
   }
 
@@ -18269,6 +18887,7 @@ class GameScene extends Phaser.Scene {
         });
       }
     } catch (e) {
+      console.warn("showCoinBurst error", e);
     }
   }
 
@@ -18317,6 +18936,7 @@ class GameScene extends Phaser.Scene {
               createdAt: Date.now(),
             };
           } catch (snapshotErr) {
+            console.warn("store thief snapshot failed", snapshotErr);
             this.pendingThiefSnapshot = null;
           }
         }
@@ -18328,6 +18948,7 @@ class GameScene extends Phaser.Scene {
         localStorage.setItem("specialCards", JSON.stringify(specialCardsOwned));
         this.renderTable(this.roundData.players);
       } catch (e) {
+        console.warn("optimistic update failed", e);
       }
 
       socket.emit("requestUseSpecial", { cardId }, (res) => {
@@ -18356,6 +18977,7 @@ class GameScene extends Phaser.Scene {
               this.renderTable(this.roundData.players);
             }
           } catch (e) {
+            console.warn("merge res.players failed", e);
           }
 
           const syncKey =
@@ -18390,6 +19012,7 @@ class GameScene extends Phaser.Scene {
               localStorage.setItem("specialCards", JSON.stringify(prev));
             }
           } catch (e) {
+            console.warn("rollback failed", e);
           }
           try {
             if (this.pendingSpecialUse) delete this.pendingSpecialUse[myId];
@@ -18402,6 +19025,7 @@ class GameScene extends Phaser.Scene {
         }
       });
     } catch (e) {
+      console.warn("requestUseSpecialWithOptimistic failed", e);
     }
   }
 
@@ -18606,8 +19230,16 @@ class GameScene extends Phaser.Scene {
     this.playFinishAnimation(() => {
       // 🔴 [중요] 결과창 진입 직전 모든 지연된 코인 적용
       try {
+        console.log('🎮 [singleplayGameEnd] 결과창 진입 전 지연된 코인 적용 시작', {
+          deferredCoins: this._deferredCoinsDelta,
+          currentCoins: Number(this.myProfile?.coins) || 0
+        });
         this.applyDeferredCoins();
+        console.log('✅ [singleplayGameEnd] 모든 지연 코인 적용 완료', {
+          finalCoins: Number(this.myProfile?.coins) || 0
+        });
       } catch (e) {
+        console.warn('[singleplayGameEnd] applyDeferredCoins 실패', e);
       }
 
       // 멀티플레이 결과창과 동일한 podium/캐릭터 연출을 재활용
@@ -18672,6 +19304,7 @@ class GameScene extends Phaser.Scene {
                 // ignore
               }
             } catch (e) {
+              console.warn("[premium] auto-unlock failed (fallback)", e);
             }
           };
 
@@ -18738,6 +19371,7 @@ class GameScene extends Phaser.Scene {
                 }
                 return true;
               } catch (e) {
+                console.warn('[premium] DOM fallback failed', e);
               }
             }
             return false;
@@ -18745,6 +19379,7 @@ class GameScene extends Phaser.Scene {
 
           const didFallback = fallbackToInline();
           if (!didFallback) {
+            console.warn('[premium] no reward popup function available after fallback');
           }
         };
         // Wait for avatar texture to be available to avoid showing missing-texture box.
@@ -18795,12 +19430,14 @@ class GameScene extends Phaser.Scene {
           this.fromTutorial = false;
           localStorage.removeItem("pendingPremiumBearReward");
         } catch (e) {
+          console.warn("clear premium bear reward flag failed", e);
         }
       }
 
       // Force-show for tutorial-origin single games as a fallback if popup didn't appear.
       try {
         if ((this.isTutorialMode || this.fromTutorial) && isWin && iAmWinner && !this._premiumBearPopupForcedShown) {
+          console.debug('[premium] forcing acquired popup for tutorial game');
           this._premiumBearPopupForcedShown = true;
           try {
             if (typeof this.showPremiumBearAcquiredPopup === "function") {
@@ -18812,6 +19449,7 @@ class GameScene extends Phaser.Scene {
               }
             }
           } catch (e) {
+            console.warn('[premium] force show failed', e);
           }
         }
       } catch (e) {}
@@ -18824,6 +19462,13 @@ class GameScene extends Phaser.Scene {
         ? options.rejoinRoom
         : !this.isSingle;
     const shouldLeaveRoom = options.leaveRoom === true;
+
+    console.log("[returnToLobby] 시작", {
+      rejoinRoom,
+      shouldLeaveRoom,
+      socketConnected: socket?.connected,
+      roomId: this.roundData?.roomId
+    });
 
     const preventAutoStart = () => {
       try {
@@ -18865,6 +19510,7 @@ class GameScene extends Phaser.Scene {
       !socket ||
       !socket.connected
     ) {
+      console.log("[returnToLobby] 재입장 불가능, 간단히 로비 시작");
       preventAutoStart();
       try {
         if (this.scene.isActive("GameScene")) {
@@ -18907,6 +19553,7 @@ class GameScene extends Phaser.Scene {
     const storedNickname = localStorage.getItem("nickname") || "요리사";
 
     // Immediately switch to LobbyScene to avoid blank transition lag.
+    console.log("[returnToLobby] LobbyScene 시작 - 재입장 모드");
     this.scene.start("LobbyScene", {
       fromGame: true,
       roomId: this.roundData.roomId,
@@ -18922,6 +19569,7 @@ class GameScene extends Phaser.Scene {
     if (this.roundData?.roomId) {
       try {
         if (socket && socket.connected) {
+          console.log("[returnToLobby] socket 연결됨, joinRoom 발송");
           socket.emit("joinRoom", {
             roomId: this.roundData.roomId,
             nickname: storedNickname,
@@ -18929,6 +19577,7 @@ class GameScene extends Phaser.Scene {
           });
         } else if (socket) {
           // socket이 존재하지만 연결되지 않은 경우
+          console.log("[returnToLobby] socket 미연결, 연결 대기 후 joinRoom 발송");
           const maxWaitTime = 3000; // 3초
           const checkInterval = 100;
           let elapsed = 0;
@@ -18936,6 +19585,7 @@ class GameScene extends Phaser.Scene {
           const waitAndJoin = setInterval(() => {
             if (socket.connected) {
               clearInterval(waitAndJoin);
+              console.log("[returnToLobby] socket 재연결됨, joinRoom 발송");
               socket.emit("joinRoom", {
                 roomId: this.roundData.roomId,
                 nickname: storedNickname,
@@ -18943,12 +19593,15 @@ class GameScene extends Phaser.Scene {
               });
             } else if (elapsed >= maxWaitTime) {
               clearInterval(waitAndJoin);
+              console.warn("[returnToLobby] socket 재연결 타임아웃");
             }
             elapsed += checkInterval;
           }, checkInterval);
         } else {
+          console.warn("[returnToLobby] socket 없음");
         }
       } catch (e) {
+        console.warn("[returnToLobby] joinRoom 발송 실패:", e);
       }
     }
 
@@ -19123,6 +19776,7 @@ class GameScene extends Phaser.Scene {
           preventAutoStartSingleAfterTutorial: true,
         });
       } catch (e) {
+        console.warn("showSingleResultOverlay exit to lobby failed", e);
         this.returnToLobby({ rejoinRoom: false, leaveRoom: true });
       }
     });
@@ -19154,6 +19808,12 @@ class GameScene extends Phaser.Scene {
 
     // 💡 1. 게임 시작 연출 중이면 무시
     if (this.canClick === false) {
+      console.log("⏳ 아직 시작 연출 중입니다.", {
+        canClick: this.canClick,
+        turnIndex: this.turnIndex,
+        mySocketId: socket.id,
+        players: this.roundData?.players?.map((p) => p.id),
+      });
       return;
     }
 
@@ -19172,10 +19832,17 @@ class GameScene extends Phaser.Scene {
     const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
 
     if (!currentPlayer || currentPlayer.id !== myId) {
+      console.warn("flipBlock: turn mismatch", {
+        myId,
+        currentPlayerId: currentPlayer && currentPlayer.id,
+        turnIndex: this.turnIndex,
+        players: this.roundData?.players?.map((p) => p.id),
+      });
       this.showToast("당신의 차례가 아닙니다!", "#e74c3c");
       this.canClick = true;
       return;
     }
+
 
     // 내 차례 검증이 끝난 뒤에만 입력 잠금
     this.canClick = false;
@@ -19278,6 +19945,7 @@ class GameScene extends Phaser.Scene {
               },
             });
           } catch (e) {
+            console.warn("optimistic flip failed", e);
           }
         },
       });
@@ -19414,6 +20082,7 @@ class GameScene extends Phaser.Scene {
           //this.playFeedback(false, "틀렸습니다.");
         }
       } catch (e) {
+        console.warn("handleRingBell optimistic feedback failed", e);
       }
 
       socket.emit("ringBell");
@@ -19562,6 +20231,16 @@ class GameScene extends Phaser.Scene {
     this.modifyCoins(Number(amount), { sync: true });
     const afterCoins = Number(this.myProfile?.coins) || 0;
 
+    console.log(`💰 [rewardTutorialCoins] ${reason}`, {
+      amount,
+      beforeCoins,
+      afterCoins,
+      totalRewardsThisStage: this.tutorialState.stageRewardsTotal,
+      socketCoins: socket?.coins,
+      socketProfileCoins: socket?.profile?.coins,
+      timestamp: new Date().toISOString()
+    });
+
     this.showToast(`${amount}💰 (${reason})`, "#22c55e");
 
     try {
@@ -19570,6 +20249,7 @@ class GameScene extends Phaser.Scene {
         reason,
       });
     } catch (e) {
+      console.warn("tutorial stage reward sync failed", e);
     }
   }
 
@@ -19863,6 +20543,7 @@ class GameScene extends Phaser.Scene {
       });
       localStorage.setItem(QUEST_PROGRESS_STORAGE_KEY, JSON.stringify(payload));
     } catch (e) {
+      console.warn("failed to save quest progress", e);
     }
   }
 
@@ -20154,18 +20835,22 @@ class GameScene extends Phaser.Scene {
         // 메인(출석보상+퀘스트)에서 사용하는 showCoinBurstEffect 스타일로 통일
         showCoinBurstEffect(this, x, y, amount);
       } catch (e) {
+        console.warn("ensureQuestCoinBurst fallback failed", e);
         try {
           showCoinBurstEffect(this, x, y, amount);
         } catch (inner) {
+          console.warn("ensureQuestCoinBurst final fallback failed", inner);
         }
       }
     };
   }
 
   handleQuestClaim(key) {
+    console.debug("[handleQuestClaim] called", { key, questState: !!this.questState });
     this.ensureQuestCoinBurst();
     if (!this.questState) return;
     const state = this.getQuestRuntimeState(key);
+    console.debug("[handleQuestClaim] state", { state });
     if (!state || !state.entry.ready) {
       if (!this.isSingle) {
         this.showToast("아직 수령할 보상이 없어요!", "#f97316");
@@ -20262,13 +20947,16 @@ class GameScene extends Phaser.Scene {
         questKey,
       });
     } catch (e) {
+      console.warn("quest reward sync failed", e);
     }
   }
 
   // 즉시 경험치 부여: 멀티플레이에서 카드 획득 시 호출
   awardExperience(amount) {
     try {
+      console.log('[awardExperience] called with', amount, 'profile=', this.myProfile && { level: this.myProfile.level, experience: this.myProfile.experience });
       if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) {
+        console.log('[awardExperience] invalid amount', amount);
         return;
       }
       if (!this.myProfile) this.myProfile = {};
@@ -20287,6 +20975,7 @@ class GameScene extends Phaser.Scene {
       this.myProfile.experience = newTotal;
 
       // 로그: 갱신된 값
+      console.log('[awardExperience] xpGain=', xpGain, 'newExp=', this.myProfile.experience, 'newLevel=', this.myProfile.level);
 
       // UI 즉시 갱신
       if (typeof this.updateMyProfileUI === "function") {
@@ -20311,15 +21000,18 @@ class GameScene extends Phaser.Scene {
           level: Number(this.myProfile.level) || prevLevel,
         });
       } catch (e) {
+        console.warn("experience sync failed", e);
       }
 
       // 레벨업 효과 애니메이션
       if (leveled) {
         const newLv = Number(this.myProfile.level) || prevLevel;
         this.showLevelUpEffect(prevLevel, newLv);
+        console.debug(`level up effect triggered: Lv.${prevLevel} → Lv.${newLv}`);
       }
       this._hasAwardExperienceRun = true;
     } catch (e) {
+      console.warn("awardExperience error", e);
     }
   }
 
@@ -20327,6 +21019,12 @@ class GameScene extends Phaser.Scene {
     // 게임 종료 후 이벤트는 정확도에 반영하지 않는다.
     // isGameStarted 플래그는 멀티에서 event race로 때때로 false일 수 있으므로 생략.
     if (this.isGameEnded) {
+      console.debug("updateBellAccuracy skipped because game ended", {
+        correct,
+        total,
+        isGameEnded: this.isGameEnded,
+        isGameStarted: this.isGameStarted,
+      });
       return;
     }
 
@@ -20351,6 +21049,11 @@ class GameScene extends Phaser.Scene {
       }
 
       // DEBUG: log bell stats right before applying the new correct/total update
+      console.debug("[DEBUG] updateBellAccuracy - before", {
+        incoming: { correct, total },
+        bellStats: { ...this.bellStats },
+        socketProfile: socket?.profile,
+      });
 
       this.bellStats.correct += Number(correct) || 0;
       this.bellStats.total += Number(total) || 0;
@@ -20367,11 +21070,13 @@ class GameScene extends Phaser.Scene {
         localStorage.setItem("bellTotal", String(this.bellStats.total));
         localStorage.setItem("bellRatio", String(ratio));
       } catch (e) {
+        console.warn("updateBellAccuracy localStorage save failed", e);
       }
       if (typeof window !== "undefined") {
         window.bellStats = { ...this.bellStats };
       }
     } catch (e) {
+      console.warn("updateBellAccuracy failed", e);
     }
   }
 
@@ -20422,6 +21127,7 @@ class GameScene extends Phaser.Scene {
         expBounds.top <= height;
       const baseX = hasVisibleBounds ? expBounds.centerX : width * 0.5;
       const baseY = hasVisibleBounds ? expBounds.top - 10 : height * 0.15;
+      console.log("[EXP ANIM] playing at", { baseX, baseY, xpGain, hasBar });
       const txt = this.add
         .text(baseX, baseY, `+${xpGain} XP`, {
           fontFamily: GAME_FONTS.main,
@@ -20454,6 +21160,7 @@ class GameScene extends Phaser.Scene {
 
     // If EXP bar isn't available, no toast is shown by design (level-up effect handled visually).
     if (!hasBar) {
+      console.log('[EXP GAIN] no bar available, skip toast fallback', xpGain);
     }
   }
 
@@ -20481,11 +21188,13 @@ class GameScene extends Phaser.Scene {
       try {
         this.playExpGainAnimation(xpGain);
       } catch (e) {
+        console.warn("flushPendingExpGainAnimations failed", e);
       }
     });
   }
 
   updateTutorialPointer(pointerKey) {
+
 
     if (!this.tutorialState) return;
 
@@ -21025,11 +21734,13 @@ class GameScene extends Phaser.Scene {
       try {
         localStorage.setItem(TUTORIAL_STATE_KEY, "true");
       } catch (e) {
+        console.warn("failed to persist tutorial completion", e);
       }
       try {
         // 튜토리얼 후 첫 싱글 승리 시 명품곰돌이 지급 보장 플래그
         localStorage.setItem("pendingPremiumBearReward", "true");
       } catch (e) {
+        console.warn("failed to set pendingPremiumBearReward", e);
       }
 
       try {
@@ -21048,8 +21759,10 @@ class GameScene extends Phaser.Scene {
           });
           localStorage.setItem("specialCards", JSON.stringify(localSpecial));
         } catch (e) {
+          console.warn("failed to persist tutorial special cards", e);
         }
       } catch (e) {
+        console.warn("tutorial reward sync failed", e);
       }
 
       // 화면 중앙에서 코인 폭발 애니메이션 실행 (토스트 제거)
@@ -21061,6 +21774,7 @@ class GameScene extends Phaser.Scene {
           this.playQuestCoinBurst(centerX, centerY, burstAmount);
         }
       } catch (e) {
+        console.warn("tutorial coin burst failed", e);
       }
 
       this.isGameStarted = false;
@@ -21177,6 +21891,7 @@ class GameScene extends Phaser.Scene {
           });
         } catch (e) {
           // 만약 팝업 생성조차 실패하면 최후의 수단으로 바로 시작
+          console.warn("premium intro fallback failed", e);
           beginSingleEasy();
         }
       }
@@ -21518,6 +22233,7 @@ class GameScene extends Phaser.Scene {
 
     const specialPauseMs = this.showSpecialCardToast(randomCard, playerId);
 
+
     if (randomCard?.type === COIN_CARD_TYPE) {
       const reward = COIN_CARD_REWARD;
       const beforeCoins = Number(this.myProfile?.coins) || 0;
@@ -21527,9 +22243,18 @@ class GameScene extends Phaser.Scene {
       
       if (playerId === myId) {
         // 🔴 [일관성] modifyCoins 사용 - 다른 보상과 동일한 방식
+        console.log('💰 [coinCard] 코인카드 보상 시작', {
+          reward,
+          beforeCoins,
+          newTotal,
+          isSingle: this.isSingle
+        });
         
         this.modifyCoins(reward, { sync: true, reason: 'coinCard' });
         
+        console.log('💰 [coinCard] 코인카드 보상 적용 완료', {
+          coins: this.myProfile.coins
+        });
       }
     }
 
@@ -22139,10 +22864,18 @@ class GameScene extends Phaser.Scene {
         ? this.scene.isActive()
         : true;
     if (!sceneActive) {
+      console.log("[elimination] aborted (scene inactive)", {
+        playerId,
+        sceneKey: this.scene && this.scene.key,
+      });
       return;
     }
 
     if (!this.cameras || !this.cameras.main) {
+      console.log("[elimination] aborted (no camera)", {
+        playerId,
+        sceneKey: this.scene && this.scene.key,
+      });
       return;
     }
 
@@ -22259,9 +22992,14 @@ class GameScene extends Phaser.Scene {
       this.lastEliminationEffectAtByPlayer = {};
     }
     if (this.lastEliminationEffectAtByPlayer[playerId]) {
+      console.log("[elimination] skip duplicate", {
+        playerId,
+        lastAt: this.lastEliminationEffectAtByPlayer[playerId],
+      });
       return;
     }
     this.lastEliminationEffectAtByPlayer[playerId] = Date.now();
+    console.log("[elimination] play", { playerId });
     this.playEliminationEffect(playerId);
   }
 
@@ -22367,8 +23105,31 @@ class GameScene extends Phaser.Scene {
     loser.remainingCards = loser.cards;
     // 💡 [수정] 페널티 후 상태 갱신 및 렌더링
     this.updateEliminationStatus();
+    console.log("[penalty] after updateEliminationStatus", {
+      failedPlayerId,
+      cards: loser.cards,
+      isEliminated: loser.isEliminated,
+      hasBellSuccessWindow: (() => {
+        try {
+          const totals = this.calculateTotalFruits();
+          const isFiveExists = Object.values(totals).some((c) => c === 5);
+          const hasThunder = this.hasThunderOnTable();
+          const hasNot5 = this.hasNot5OnTable ? this.hasNot5OnTable() : false;
+          const hasBomb = this.hasBombOnTable();
+          return (
+            hasThunder || (hasNot5 ? !isFiveExists : isFiveExists) || hasBomb
+          );
+        } catch (e) {
+          return "error";
+        }
+      })(),
+    });
     if ((Number(loser.cards) || 0) <= 0 && !loser.isEliminated) {
       loser.isEliminated = true;
+      console.log("[penalty] force elimination", {
+        failedPlayerId,
+        cards: loser.cards,
+      });
       this.maybePlayEliminationEffect(loser.id);
     }
     this.renderTable(players);
@@ -22556,6 +23317,11 @@ class GameScene extends Phaser.Scene {
             state.entry.count = newCount;
             // 진행도 바 실시간 업데이트
             this.refreshQuestRow("combo_duo");
+            console.log('[콤보 퀘스트] 진행도 업데이트', {
+              currentCombo: comboCount,
+              questCount: newCount,
+              target: state.target
+            });
           }
         }
       }
@@ -22627,12 +23393,19 @@ class GameScene extends Phaser.Scene {
 
   playMultiplierSelectionAnimation() {
     // 배수 선택 애니메이션: 1배, 2배, 3배, 5배, 10배 중 하나를 3초에 걸쳐 선택
+    console.log('[playMultiplierSelectionAnimation] 시작', {
+      isSingle: this.isSingle,
+      hasCamera: !!this.cameras?.main,
+      hasAdd: !!this.add,
+    });
     
     if (this.isSingle) {
+      console.log('[playMultiplierSelectionAnimation] 싱글플레이이므로 리턴');
       return; // 멀티플레이만 실행
     }
     
     const { width, height } = this.cameras.main;
+    console.log('[playMultiplierSelectionAnimation] 카메라 정보:', { width, height });
     const centerX = width / 2;
     const centerY = height / 2;
     
@@ -22640,6 +23413,8 @@ class GameScene extends Phaser.Scene {
     let currentValue = multipliers[0];
     let finalMultiplier = 1;
     let animationCompleted = false;
+    
+    console.log('[playMultiplierSelectionAnimation] 배수 선택 애니메이션 시작');
     
     // 배수 디스플레이 - 세련된 원형 박스
     const boxSize = Math.min(width * 0.35, height * 0.22);
@@ -22675,12 +23450,15 @@ class GameScene extends Phaser.Scene {
     const animationDuration = 3000; // 3초 애니메이션
     const animationStartTime = Date.now();
     
+    console.log('[playMultiplierSelectionAnimation] 슬롯 애니메이션 시작');
+    
     const updateMultiplier = () => {
       const now = Date.now();
       const elapsed = now - animationStartTime;
       const progress = Math.min(elapsed / animationDuration, 1); // 0 ~ 1
       
       if (progress >= 1 && !animationCompleted) {
+        console.log('[playMultiplierSelectionAnimation] 3초 완료 - 최종 배수 결정');
         animationCompleted = true;
         
         // 최종 배수를 가중치 있게 선택
@@ -22695,6 +23473,12 @@ class GameScene extends Phaser.Scene {
         this.roundData.gameMultiplier = finalMultiplier;
         
         // 🔴 [로그] 배수 저장 확인
+        console.log('[playMultiplierSelectionAnimation] ✅ 배수 저장 완료', { 
+          finalMultiplier,
+          storedValue: this.roundData.gameMultiplier,
+          roomId: this.roomId,
+          isSingle: this.isSingle
+        });
         
         // 숫자 텍스트 최종 업데이트
         numberTexts.forEach(numText => {
@@ -22743,16 +23527,29 @@ class GameScene extends Phaser.Scene {
                 timestamp: Date.now(),
               };
               
+              console.log('[playMultiplierSelectionAnimation] 배수 서버 전송 시작', multiplierPayload);
+              
               socket.emit('setGameMultiplier', multiplierPayload, (ack) => {
+                console.log('[playMultiplierSelectionAnimation] 서버 배수 설정 확인됨', { 
+                  finalMultiplier, 
+                  ack,
+                  received: ack?.received,
+                  saved: ack?.saved 
+                });
               });
               
               // 재확인: 약간 뒤에 다시 전송 (서버 수신 확인용)
               this.time.delayedCall(500, () => {
                 socket.emit('getGameMultiplier', { roomId: this.currentRoomId }, (current) => {  // ← 수정
+                  console.log('[playMultiplierSelectionAnimation] 서버 배수 재확인', { 
+                    sent: finalMultiplier, 
+                    serverCurrent: current?.gameMultiplier 
+                  });
                 });
               });
             }
           } catch (e) {
+            console.warn('[playMultiplierSelectionAnimation] 서버 배수 전송 실패', e);
           }
 
           this.tweens.add({
@@ -22820,6 +23617,7 @@ class GameScene extends Phaser.Scene {
       }
     };
     
+    console.log('[playMultiplierSelectionAnimation] 슬롯 애니메이션 함수 시작');
     updateMultiplier();
   }
 
@@ -23129,6 +23927,11 @@ class GameScene extends Phaser.Scene {
     if (current <= expected) return;
 
     const surplus = current - expected;
+    console.warn("[card] total exceeds expected", {
+      expected,
+      current,
+      surplus,
+    });
 
     // surplus를 가장 카드가 많은 플레이어에서 차감
     let maxPlayer = null;
@@ -23150,6 +23953,11 @@ class GameScene extends Phaser.Scene {
       }
     }
 
+    console.warn("[card] adjusted surplus", {
+      playerId: maxPlayer.id,
+      reduce,
+      newCards: maxPlayer.cards,
+    });
   }
 
   // 닉네임 가져오기 보조 함수
@@ -23611,9 +24419,11 @@ class GameScene extends Phaser.Scene {
               },
             });
           } catch (e) {
+            console.warn("thief optimistic apply error", e);
           }
         }
       } catch (e) {
+        console.warn("useSpecialCard thief single error", e);
       }
 
       return;
@@ -23697,10 +24507,12 @@ class GameScene extends Phaser.Scene {
               this.safeSyncInventory("useKing", { usedCardId: 8 });
               this.showToast("전세역전!: 덱을 교환했습니다!", "#2ecc71");
             } catch (e) {
+              console.warn("useSpecialCard king single error", e);
             }
           },
         });
       } catch (e) {
+        console.warn("useSpecialCard king single error", e);
       }
 
       return;
@@ -23757,8 +24569,10 @@ class GameScene extends Phaser.Scene {
             "#f39c12",
           );
         } catch (e) {
+          console.warn("useSpecialCard block single error", e);
         }
       } catch (e) {
+        console.warn("useSpecialCard block single error", e);
       }
 
       return;
@@ -23832,6 +24646,12 @@ class GameScene extends Phaser.Scene {
         const mySocketId = this.isSingle ? (this.myId || "PLAYER_ME") : (socket && socket.id);
         const myData = resultData.ranking.find(p => String(p.id) === String(mySocketId));
         if (myData && typeof myData.finalCoins === 'number' && myData.finalCoins >= 0) {
+          console.log('[result] 서버 최종값 적용', {
+            isSingle: this.isSingle,
+            serverFinalCoins: myData.finalCoins,
+            clientBeforeCoins: currentCoins,
+            earnedCoins: myData.earnedCoins,
+          });
           this.myProfile.coins = myData.finalCoins;
         }
       }
@@ -23849,10 +24669,21 @@ class GameScene extends Phaser.Scene {
             
             if (rankReward > 0) {
               const beforeCoins = Number(this.myProfile?.coins) || 0;
+              console.log('[result] 싱글플레이 순위 보상 추가', {
+                myRankIndex: myRankIndex + 1,
+                baseReward,
+                multiplier,
+                rankReward,
+                beforeCoins: beforeCoins,
+              });
               
               // 🔴 [일관성] modifyCoins 사용
               this.modifyCoins(rankReward, { sync: false, reason: 'rankReward' });
               
+              console.log('[result] 순위 보상 적용 완료', {
+                afterCoins: this.myProfile.coins,
+                delta: this.myProfile.coins - beforeCoins
+              });
             }
           }
         }
@@ -23860,15 +24691,26 @@ class GameScene extends Phaser.Scene {
       
       // 현재 코인값을 즉시 저장
       const finalCoins = Number(this.myProfile?.coins) || 0;
+      console.log('[result] 게임 종료 → 코인 저장', {
+        isSingle: this.isSingle,
+        finalCoins: finalCoins,
+        timestamp: new Date().toISOString()
+      });
       
       // 🔴 [일관성] 싱글/멀티 모두 게임 결과 최종 코인값을 보존 (로비 복귀 시 복원용)
       this._postGameFinalCoins = finalCoins;
+      console.log('[result] 게임 결과 최종 코인 보존', {
+        finalCoins,
+        isSingle: this.isSingle,
+        timestamp: new Date().toISOString()
+      });
       
       try {
         if (typeof this.emitInventory === 'function') {
           this.emitInventory('gameEnded', { requireServerProfile: false });
         }
       } catch (e) {
+        console.warn('[result] 저장 실패', e);
       }
     }
 
@@ -23922,10 +24764,12 @@ class GameScene extends Phaser.Scene {
         } catch (e) {}
 
         // debug logging for intermittent failures
+        console.log("[sound] playing gameover", gameoverSound);
         // Phaser Audio.play does not return a promise, just call directly
         try {
           gameoverSound.play();
         } catch (err) {
+          console.warn("gameover sound play failed", err);
         }
 
         this.tweens.add({
@@ -23966,6 +24810,10 @@ class GameScene extends Phaser.Scene {
         });
       } else {
         // already played earlier in this result display
+        console.log("[sound] gameover skipped because already played", {
+          players,
+          isUpdate,
+        });
       }
     }
 
@@ -24039,6 +24887,13 @@ class GameScene extends Phaser.Scene {
 
     const resultOverlayBaselineCoins =
       Number(this.myProfile?.coins) || Number(this._startOfMatchCoins) || 0;
+    console.log('[result] overlay baseline coins 설정 (모든 보상 누적됨)', { 
+      resultOverlayBaselineCoins,
+      currentProfileCoins: Number(this.myProfile?.coins),
+      startOfMatchCoins: Number(this._startOfMatchCoins),
+      deferredCoins: this._deferredCoinsDelta,
+      note: '🔴 이 값이 게임 중 모든 보상(퀘스트, 카드, 순위)을 포함해야 함'
+    });
 
     rankedPlayers.forEach((player, index) => {
       const pos = podiumPositions[index];
@@ -24117,6 +24972,7 @@ class GameScene extends Phaser.Scene {
       if (resultAdDebugText) {
         resultAdDebugText.setText(`[광고 디버그] ${message}`);
       }
+      console.log(`[result-ad-debug] ${message}`);
     };
 
     const confirmBtn = this.add
@@ -24189,10 +25045,17 @@ class GameScene extends Phaser.Scene {
       // 🔴 [수정] 디버그: 결과 화면에서 광고 상태 확인
       const gameAdLoadedFromRegistry = this.registry.get("gameAdLoaded");
       const gameAdLoadingFromRegistry = this.registry.get("gameAdLoading");
+      console.log("[result-ad] 광고 상태 확인", {
+        thisIsGameAdLoaded: this.isGameAdLoaded,
+        thisIsGameAdLoading: this.isGameAdLoading,
+        registryGameAdLoaded: gameAdLoadedFromRegistry,
+        registryGameAdLoading: gameAdLoadingFromRegistry,
+      });
 
       // 🎬 게임 시작때 미리 로드한 광고가 있으면 사용
       // 🔴 [수정] this.isGameAdLoaded와 registry 값 모두 확인
       if (this.isGameAdLoaded || gameAdLoadedFromRegistry) {
+        console.log("[result-ad] ✅ 사전 로드된 광고 사용");
         isResultAdLoading = false;
         isResultAdLoaded = true;
         updateResultAdButtonState();
@@ -24222,6 +25085,7 @@ class GameScene extends Phaser.Scene {
           }
           return loadFullScreenAd.isSupported() && showFullScreenAd.isSupported();
         } catch (error) {
+          console.warn("[result-ad] 광고 지원 여부 확인 실패", error);
           return false;
         }
       };
@@ -24253,6 +25117,7 @@ class GameScene extends Phaser.Scene {
       unregisterResultAd = loadFullScreenAd({
         options: { adGroupId },
         onEvent: (event) => {
+          console.log("[result-ad] 광고 이벤트:", event.type);
           if (event.type === "loaded") {
             isResultAdLoading = false;
             isResultAdLoaded = true;
@@ -24260,6 +25125,7 @@ class GameScene extends Phaser.Scene {
           }
         },
         onError: (error) => {
+          console.warn("[result-ad] 광고 로드 실패", error);
           setResultAdDebug(`광고 로드 실패: ${error?.message || String(error)}`);
           isResultAdLoading = false;
           isResultAdLoaded = false;
@@ -24298,6 +25164,7 @@ class GameScene extends Phaser.Scene {
     disableConfirmButton();
 
     // 🔴 [추가] 코인 업데이트와 무관하게 광고 미리 준비 시작
+    console.log("[result-ad] 광고 준비 시작 (코인 업데이트와 무관)");
     prepareResultAd();
 
     // 광고보상 버튼 클릭 이벤트
@@ -24327,6 +25194,7 @@ class GameScene extends Phaser.Scene {
       }
 
       this.sound.play("btn", { volume: 0.4 });
+      console.log('[result] 광고보상 버튼 클릭 - 보상 광고 시청');
 
       // game_ad.js의 getIntegratedAdGroupId() 함수 참고
       const getAdGroupId = () => {
@@ -24352,6 +25220,7 @@ class GameScene extends Phaser.Scene {
       showFullScreenAd({
         options: { adGroupId },
         onEvent: (event) => {
+          console.log('[ad] 광고 이벤트:', event.type);
           setResultAdDebug(`광고 이벤트: ${event.type}`);
           
           // 광고 완료 시 보상 지급
@@ -24366,6 +25235,7 @@ class GameScene extends Phaser.Scene {
           }
         },
         onError: (error) => {
+          console.warn('[ad] 광고 오류:', error);
           setResultAdDebug(`광고 오류: ${error?.message || String(error)}`);
           if (typeof this.showToast === "function") {
             this.showToast("광고 재생 중 오류가 발생했습니다.", "#e74c3c");
@@ -24393,6 +25263,12 @@ class GameScene extends Phaser.Scene {
         const adReward = Math.floor(totalRankReward * 5);
         const newCoins = currentCoins + adReward;
 
+        console.log('[result] 광고보상 적용', {
+          currentCoins,
+          totalRankReward,
+          adReward,
+          newCoins,
+        });
         setResultAdDebug(`광고 보상 적용: ${adReward} 코인 (총 ${newCoins})`);
 
         // 코인 업데이트
@@ -24418,9 +25294,11 @@ class GameScene extends Phaser.Scene {
             });
           }
         } catch (e) {
+          console.warn('[result] 광고보상 동기화 실패', e);
         }
 
         // 🎬 광고 시청 후 자동 재로드
+        console.log('[result-ad] 광고 시청 완료 - 다음 라운드 광고 사전 로드 시작');
         this.isGameAdLoaded = false;
         this.isGameAdLoading = false;
         // 🔴 [수정] registry 업데이트
@@ -24454,12 +25332,14 @@ class GameScene extends Phaser.Scene {
               }
               return loadFullScreenAd.isSupported() && showFullScreenAd.isSupported();
             } catch (error) {
+              console.warn("[game-ad-reload] 광고 지원 여부 확인 실패", error);
               return false;
             }
           };
 
           const adGroupId = getAdGroupId();
           if (!adGroupId || !canUseAd()) {
+            console.warn("[game-ad-reload] 광고 재로드 불가");
             return;
           }
 
@@ -24470,19 +25350,23 @@ class GameScene extends Phaser.Scene {
           this.isGameAdLoading = true;
           // 🔴 [수정] registry 업데이트
           this.registry.set("gameAdLoading", true);
+          console.log("[game-ad-reload] 다음 라운드 광고 로드 시작");
 
           this.unregisterGameAd = loadFullScreenAd({
             options: { adGroupId },
             onEvent: (event) => {
+              console.log("[game-ad-reload] 광고 이벤트:", event.type);
               if (event.type === "loaded") {
                 this.isGameAdLoading = false;
                 this.isGameAdLoaded = true;
                 // 🔴 [수정] registry 업데이트
                 this.registry.set("gameAdLoading", false);
                 this.registry.set("gameAdLoaded", true);
+                console.log("[game-ad-reload] ✅ 다음 라운드 광고 사전 로드 완료");
               }
             },
             onError: (error) => {
+              console.warn("[game-ad-reload] 광고 로드 실패", error);
               this.isGameAdLoading = false;
               this.isGameAdLoaded = false;
               // 🔴 [수정] registry 업데이트
@@ -24496,6 +25380,7 @@ class GameScene extends Phaser.Scene {
               }
 
               this.gameAdRetryTimer = this.time.delayedCall(5000, () => {
+                console.log("[game-ad-reload] 광고 로드 재시도 중...");
                 const getAdGroupId = () => {
                   if (typeof window === "undefined") return null;
                   return (
@@ -24517,12 +25402,14 @@ class GameScene extends Phaser.Scene {
                     }
                     return loadFullScreenAd.isSupported() && showFullScreenAd.isSupported();
                   } catch (error) {
+                    console.warn("[game-ad-reload-retry] 광고 지원 여부 확인 실패", error);
                     return false;
                   }
                 };
 
                 const adGroupId = getAdGroupId();
                 if (!adGroupId || !canUseAd()) {
+                  console.warn("[game-ad-reload-retry] 광고 재로드 불가");
                   return;
                 }
 
@@ -24533,19 +25420,23 @@ class GameScene extends Phaser.Scene {
                 this.isGameAdLoading = true;
                 // 🔴 [수정] registry 업데이트
                 this.registry.set("gameAdLoading", true);
+                console.log("[game-ad-reload-retry] 다음 라운드 광고 로드 재시도");
 
                 this.unregisterGameAd = loadFullScreenAd({
                   options: { adGroupId },
                   onEvent: (event) => {
+                    console.log("[game-ad-reload-retry] 광고 이벤트:", event.type);
                     if (event.type === "loaded") {
                       this.isGameAdLoading = false;
                       this.isGameAdLoaded = true;
                       // 🔴 [수정] registry 업데이트
                       this.registry.set("gameAdLoading", false);
                       this.registry.set("gameAdLoaded", true);
+                      console.log("[game-ad-reload-retry] ✅ 다음 라운드 광고 사전 로드 완료");
                     }
                   },
                   onError: (error) => {
+                    console.warn("[game-ad-reload-retry] 광고 로드 실패", error);
                     this.isGameAdLoading = false;
                     this.isGameAdLoaded = false;
                     // 🔴 [수정] registry 업데이트
@@ -24559,6 +25450,7 @@ class GameScene extends Phaser.Scene {
                     }
 
                     this.gameAdRetryTimer = this.time.delayedCall(5000, () => {
+                      console.log("[game-ad-reload-retry] 광고 로드 재시도 중...");
                       
                       const getAdGroupId = () => {
                         if (typeof window === "undefined") return null;
@@ -24597,9 +25489,11 @@ class GameScene extends Phaser.Scene {
                           if (event.type === "loaded") {
                             this.isGameAdLoading = false;
                             this.isGameAdLoaded = true;
+                            console.log("[game-ad-reload-retry] ✅ 광고 사전 로드 완료");
                           }
                         },
                         onError: (error) => {
+                          console.warn("[game-ad-reload-retry] 광고 로드 실패", error);
                           this.isGameAdLoading = false;
                           this.isGameAdLoaded = false;
                           
@@ -24609,6 +25503,7 @@ class GameScene extends Phaser.Scene {
                             this.gameAdRetryTimer = null;
                           }
                           this.gameAdRetryTimer = this.time.delayedCall(5000, () => {
+                            console.log("[game-ad-reload-retry] 광고 로드 다시 재시도 중...");
                             // 이 부분에서도 동일한 로직이 반복되도록 설계됨
                           });
                         },
@@ -24648,6 +25543,11 @@ class GameScene extends Phaser.Scene {
         (sum, _, idx) => sum + (baseRankRewardCoins[idx] || 0),
         0,
       );
+      console.log('[result] 코인 애니메이션 시작', { 
+        totalRankCoins,
+        rankedPlayersCount: rankedPlayers.length,
+        multiplier,
+      });
       
       // 코인 애니메이션에 필요한 변수들
       const floorYMin = height * 0.72;
@@ -24659,6 +25559,10 @@ class GameScene extends Phaser.Scene {
 
       const applyDeferredRewards = () => {
         // 🔴 [심플화] 서버에서 이미 코인을 계산했으므로, 단순히 2초 대기 후 확인 버튼 활성화
+        console.log('[result] 애니메이션 완료 - 확인 버튼 활성화 대기', {
+          currentCoins: Number(this.myProfile?.coins),
+          timestamp: new Date().toISOString()
+        });
 
         // 🔴 2초 추가 딜레이: 서버 반영 안정성을 위해
         this.time.delayedCall(2000, enableConfirmButton);
@@ -24823,6 +25727,7 @@ class GameScene extends Phaser.Scene {
             this.playerTableGroup.setVisible(true).setAlpha(1).setDepth(100);
           }
         } catch (e) {
+          console.warn("goToLobby(single): cleanup failed", e);
         }
 
         // Ensure any deferred profile update and coins are applied before leaving.
@@ -24841,6 +25746,10 @@ class GameScene extends Phaser.Scene {
             const currentCoins = Number(this.myProfile?.coins) || 0;
             
             if (currentCoins !== finalCoins) {
+              console.log('[goToLobby/single] 싱글플레이 최종 코인 복원', {
+                beforeRestore: currentCoins,
+                restored: finalCoins
+              });
               
               this.myProfile.coins = finalCoins;
               if (typeof this.updateMyProfileUI === 'function') {
@@ -24851,11 +25760,16 @@ class GameScene extends Phaser.Scene {
             }
           }
         } catch (e) {
+          console.warn("goToLobby(single): applyDeferred profile/coins failed", e);
         }
 
         // 서버로 최종 코인 저장 후 서버에서 최신 프로필 다시 로드
         try {
           const finalCoins = Number(this.myProfile?.coins) || 0;
+          console.log(`🌟 [goToLobby/single] 코인 동기화`, {
+            finalCoins,
+            timestamp: new Date().toISOString()
+          });
 
           // 서버로 코인 저장
           if (typeof this.emitInventory === "function") {
@@ -24866,14 +25780,17 @@ class GameScene extends Phaser.Scene {
           this.time.delayedCall(250, () => {
             if (socket && socket.emit) {
               socket.emit("requestProfile", { id: this.myProfile.nickname });
+              console.log(`🛰️ [goToLobby/single] 서버에서 최신 프로필 요청`);
             }
           });
         } catch (e) {
+          console.warn("goToLobby(single): sync failed", e);
         }
 
         try {
           if (this.scene.isActive("GameScene")) this.scene.stop("GameScene");
         } catch (e) {
+          console.warn("goToLobby(single): stop GameScene failed", e);
         }
         try {
           this.scene.start("LobbyScene", {
@@ -24881,6 +25798,7 @@ class GameScene extends Phaser.Scene {
             fromSingle: true,
           });
         } catch (e) {
+          console.warn("goToLobby(single): start LobbyScene failed", e);
         }
         return;
       }
@@ -24892,6 +25810,7 @@ class GameScene extends Phaser.Scene {
           this.children.bringToTop(this.playerTableGroup);
         }
       } catch (e) {
+        console.warn("goToLobby: failed to restore playerTableGroup visibility", e);
       }
       try {
         if (this.resultContainer) {
@@ -24899,6 +25818,7 @@ class GameScene extends Phaser.Scene {
           this.resultContainer = null;
         }
       } catch (e) {
+        console.warn("goToLobby: failed to destroy old resultContainer", e);
       }
 
       // stop any playing gameover sound immediately when user leaves result
@@ -24940,6 +25860,7 @@ class GameScene extends Phaser.Scene {
         }
         this.cameras.main.setVisible(false);
       } catch (e) {
+        console.warn("goToLobby: hide visuals failed", e);
       }
 
       // 종료/시상대 후 지연된 프로필 업데이트가 있으면 반영
@@ -24948,6 +25869,7 @@ class GameScene extends Phaser.Scene {
         const postGameFinalCoins = this._postGameFinalCoins;
         
         if (this._deferredMyProfile) {
+          console.log('[goToLobby] 지연된 프로필 적용 시작', { deferred: this._deferredMyProfile });
           this.applyDeferredProfileUpdates();
         }
         this.applyDeferredCoins();
@@ -24958,12 +25880,23 @@ class GameScene extends Phaser.Scene {
           const currentCoins = Number(this.myProfile?.coins) || 0;
           
           if (currentCoins !== finalCoins) {
+            console.log('[goToLobby] 멀티플레이 최종 코인 복원', {
+              beforeRestore: currentCoins,
+              restored: finalCoins,
+              timestamp: new Date().toISOString()
+            });
             
             this.myProfile.coins = finalCoins;
           }
         }
 
         // 🔴 [중요] GameScene stop 전에 최종 프로필을 socket에 저장
+        console.log('[goToLobby] 최종 프로필 저장', {
+          level: this.myProfile?.level,
+          coins: this.myProfile?.coins,
+          experience: this.myProfile?.experience,
+          nickname: this.myProfile?.nickname
+        });
         
         if (socket && typeof socket === 'object') {
           socket.finalProfile = {
@@ -24976,8 +25909,10 @@ class GameScene extends Phaser.Scene {
             current_character: this.myProfile?.current_character,
             specialCards: this.myProfile?.specialCards,
           };
+          console.log('[goToLobby] socket.finalProfile 저장 완료', socket.finalProfile);
         }
       } catch (e) {
+        console.warn("goToLobby: failed to apply deferred profile/coins", e);
       }
 
       // ensure singleplayer coins are synced/kept to server (or local fallback)
@@ -24986,6 +25921,7 @@ class GameScene extends Phaser.Scene {
           this.emitInventory("postProfileSync", { requireServerProfile: false });
         }
       } catch (e) {
+        console.warn("goToLobby: postProfileSync emit failed", e);
       }
 
       // Stop GameScene and return to lobby while keeping multiplayer room context.
@@ -24994,18 +25930,28 @@ class GameScene extends Phaser.Scene {
           this.scene.stop("GameScene");
         }
       } catch (e) {
+        console.warn("goToLobby: stop GameScene failed", e);
       }
 
       // 🔴 [중요] 멀티플레이: 소켓 연결 상태 확인 후 안전하게 로비 전환
       const shouldRejoinRoom = !this.isSingle && socket && socket.connected;
       
       try {
+        console.log(`[goToLobby] 로비 전환 시도:`, { 
+          isSingle: this.isSingle, 
+          socketConnected: socket?.connected,
+          rejoinRoom: shouldRejoinRoom,
+          roomId: this.roundData?.roomId
+        });
         
         this.returnToLobby({ rejoinRoom: shouldRejoinRoom, leaveRoom: false });
       } catch (e) {
+        console.warn("goToLobby: returnToLobby failed", e);
         try {
+          console.log("[goToLobby] fallback: LobbyScene 직접 시작");
           this.scene.start("LobbyScene", { preventAutoStartSingleAfterTutorial: true });
         } catch (err) {
+          console.warn("goToLobby: fallback start LobbyScene failed", err);
         }
       }
     };
@@ -25021,8 +25967,17 @@ class GameScene extends Phaser.Scene {
 
       this.sound.play("btn", { volume: 0.4 });
       
+      console.log('[result] 확인 버튼 클릭 - 로비로 이동', {
+        finalCoins: Number(this.myProfile?.coins),
+        timestamp: new Date().toISOString()
+      });
+      
       // 🔴 [중요] 확인 버튼 클릭 시 최종 코인값을 다시 저장 (보상 적용 후)
       this._postGameFinalCoins = Number(this.myProfile?.coins) || 0;
+      console.log('[result] 확인 버튼 클릭 시 최종 코인 업데이트', {
+        finalCoins: this._postGameFinalCoins,
+        timestamp: new Date().toISOString()
+      });
       
       // 🔴 [추가] 게임 종료 전에 다음 라운드 광고 미리 로드
       const prepareNextGameAd = () => {
@@ -25047,21 +26002,25 @@ class GameScene extends Phaser.Scene {
             }
             return loadFullScreenAd.isSupported() && showFullScreenAd.isSupported();
           } catch (error) {
+            console.warn("[result-ad-preload] 광고 지원 여부 확인 실패", error);
             return false;
           }
         };
 
         const adGroupId = getAdGroupId();
         if (!adGroupId || !canUseAd()) {
+          console.warn("[result-ad-preload] 광고 미리 로드 불가");
           return;
         }
 
         if (this.isGameAdLoaded || this.isGameAdLoading) {
+          console.log("[result-ad-preload] 이미 광고가 로드되어 있습니다");
           return;
         }
 
         this.isGameAdLoading = true;
         this.registry.set("gameAdLoading", true);
+        console.log("[result-ad-preload] 🎬 다음 라운드 광고 미리 로드 시작");
 
         if (typeof this.unregisterGameAd === "function") {
           this.unregisterGameAd();
@@ -25071,14 +26030,17 @@ class GameScene extends Phaser.Scene {
         this.unregisterGameAd = loadFullScreenAd({
           options: { adGroupId },
           onEvent: (event) => {
+            console.log("[result-ad-preload] 광고 이벤트:", event.type);
             if (event.type === "loaded") {
               this.isGameAdLoading = false;
               this.isGameAdLoaded = true;
               this.registry.set("gameAdLoading", false);
               this.registry.set("gameAdLoaded", true);
+              console.log("[result-ad-preload] ✅ 다음 라운드 광고 미리 로드 완료");
             }
           },
           onError: (error) => {
+            console.warn("[result-ad-preload] 광고 로드 실패", error);
             this.isGameAdLoading = false;
             this.isGameAdLoaded = false;
             this.registry.set("gameAdLoading", false);
@@ -25645,6 +26607,7 @@ class GameScene extends Phaser.Scene {
     const { width, height, centerX, centerY } = this.cameras.main;
 
     // 로그로 전달받은 유저 목록 확인
+    console.log("[Invite] showInvitePopup users:", users);
 
     // 기본값 보장 (undefined / null 대응)
     const safeUsers = Array.isArray(users) ? users : [];
@@ -26121,7 +27084,9 @@ try {
             return;
           }
 
+          console.warn('LobbyScene.safeSyncInventory: no syncInventoryToServer available and no socket', reason, extra);
         } catch (e) {
+          console.warn('LobbyScene.safeSyncInventory error', e);
         }
       };
     }
@@ -26147,6 +27112,7 @@ try {
 
           return next;
         } catch (e) {
+          console.warn('LobbyScene.modifyCoins failed', e);
           return null;
         }
       };
@@ -26162,6 +27128,7 @@ try {
         try {
           this.safeSyncInventory('questReward', { coins: Number(amount), questKey, reason });
         } catch (e) {
+          console.warn('LobbyScene.rewardQuestCoins sync failed', e);
         }
       };
     }
@@ -26177,6 +27144,7 @@ try {
     GameScene.prototype.updateMyProfileUI = function (profile) {
       try {
         if (this.isGameEnded && !this._isApplyingDeferredProfile) {
+          console.debug('updateMyProfileUI skipped by wrapper due to isGameEnded', { profile });
           return;
         }
       } catch (e) {
