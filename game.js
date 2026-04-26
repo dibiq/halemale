@@ -17445,19 +17445,13 @@ class GameScene extends Phaser.Scene {
           cardBgGraphics.fillRoundedRect(cardX - cardSize / 2, cardY - cardSize / 2, cardSize, cardSize, 12);
           cardBgGraphics.lineStyle(3, 0x808080, 0.6);
         } else {
-          // 사용 가능: 진하고 풍부한 색상
-          cardBgGraphics.fillStyle(0x334155, 1);
+          // 사용 가능: 아이보리 색상
+          cardBgGraphics.fillStyle(0xFFFFF0, 1);
           cardBgGraphics.fillRoundedRect(cardX - cardSize / 2, cardY - cardSize / 2, cardSize, cardSize, 12);
-          // 상단 라인 (라이팅 효과)
-          cardBgGraphics.lineStyle(3, 0x3b82f6, 1);
-          cardBgGraphics.lineBetween(
-            cardX - cardSize / 2 + 8,
-            cardY - cardSize / 2 + 4,
-            cardX + cardSize / 2 - 8,
-            cardY - cardSize / 2 + 4
-          );
-          // 테두리 (골드/다이아)
-          cardBgGraphics.lineStyle(3, 0xfbbf24, 0.9);
+          // 상단 라인 제거 - 깔끔한 디자인
+          
+          // 테두리 (아이보리와 어울리는 밝은 골드)
+          cardBgGraphics.lineStyle(5, 0xDAA520, 1);
         }
         cardBgGraphics.strokeRoundedRect(cardX - cardSize / 2, cardY - cardSize / 2, cardSize, cardSize, 12);
         
