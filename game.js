@@ -17526,18 +17526,23 @@ class GameScene extends Phaser.Scene {
         if (usedFlag) {
           cardBg.disableInteractive();
         } else {
-          cardBg.on("pointerdown", () => {
-            // Prevent double-clicks: mark as clicked and disable interaction immediately
-            if (cardBg._clicked) return;
-            cardBg._clicked = true;
+          // 🔴 [중요] 자물쇠(4)와 방패(5)는 패시브 자동 방어이므로 클릭 불가
+          const isPassiveCard = card.id === 4 || card.id === 5; // lock, shield
+          if (isPassiveCard) {
             cardBg.disableInteractive();
+          } else {
+            cardBg.on("pointerdown", () => {
+              // Prevent double-clicks: mark as clicked and disable interaction immediately
+              if (cardBg._clicked) return;
+              cardBg._clicked = true;
+              cardBg.disableInteractive();
 
-            if ((this.specialUsedThisTurn || {})[myIdForFlag]) {
-              // 이미 특수카드를 사용한 경우 별도 토스트 없이 차단
-              return;
-            }
+              if ((this.specialUsedThisTurn || {})[myIdForFlag]) {
+                // 이미 특수카드를 사용한 경우 별도 토스트 없이 차단
+                return;
+              }
 
-            // Optimistic guard so rapid clicks (during tween) won't trigger again
+              // Optimistic guard so rapid clicks (during tween) won't trigger again
             try {
               this.specialUsedThisTurn = this.specialUsedThisTurn || {};
               this.specialUsedThisTurn[myIdForFlag] = true;
@@ -17556,7 +17561,8 @@ class GameScene extends Phaser.Scene {
             this.time.delayedCall(100, () => {
               this.useSpecialCard(card.id, card.name, card.cooldown || 12000);
             });
-          });
+            });
+          }
         }
 
         this.playerTableGroup.add([cardBg, cardImg, countTxt]);
