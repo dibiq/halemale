@@ -23311,6 +23311,26 @@ class GameScene extends Phaser.Scene {
 
     if (!this.isTutorialMode && winner.id === (this.myId || "PLAYER_ME")) {
       this.handleQuestEvent("bellSuccess", { cardsWon: totalCollected });
+      
+      // 🔴 [추가] 싱글플레이에서 콤보 진행도 업데이트
+      if (this.isSingle && this.comboState) {
+        const comboCount = Math.max(0, Number(this.comboState.count) || 0);
+        if (comboCount > 0) {
+          // 콤보 카운터를 현재 콤보값으로 업데이트
+          const state = this.getQuestRuntimeState("combo_duo");
+          if (state && !state.entry.ready) {
+            const newCount = Math.min(comboCount, state.target);
+            state.entry.count = newCount;
+            // 진행도 바 실시간 업데이트
+            this.refreshQuestRow("combo_duo");
+            console.log('[콤보 퀘스트] 진행도 업데이트', {
+              currentCombo: comboCount,
+              questCount: newCount,
+              target: state.target
+            });
+          }
+        }
+      }
     }
 
     // 3. 턴 인덱스를 승자로 고정
