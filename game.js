@@ -7938,7 +7938,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           if (this.textures.exists(iconKey)) {
             iconImg = this.add
               .image(0, 0, iconKey)
-              .setDisplaySize(width * 0.5, width * 0.55)
+              .setDisplaySize(width * 0.25, width * 0.275)
               .setOrigin(0.5);
           }
         } catch (e) {
