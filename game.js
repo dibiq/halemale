@@ -3528,7 +3528,7 @@ class LobbyScene extends Phaser.Scene {
       if (
         profile &&
         typeof profile.current_character === "string" &&
-        /^player_[1-5]$/.test(profile.current_character)
+        isValidPlayerKey(profile.current_character)
       ) {
         const canApplyServerCharacter =
           profile.current_character === "player_1" ||
@@ -3546,7 +3546,7 @@ class LobbyScene extends Phaser.Scene {
       if (
         profile &&
         typeof profile.avatarKey === "string" &&
-        /^player_[1-5]$/.test(profile.avatarKey)
+        isValidPlayerKey(profile.avatarKey)
       ) {
         const canApplyAvatarKey =
           profile.avatarKey === "player_1" ||
@@ -6243,7 +6243,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     let baseKey = null;
     if (
       typeof forcedKey === "string" &&
-      /^player_[1-5]$/.test(forcedKey.trim())
+      isValidPlayerKey(forcedKey.trim())
     ) {
       baseKey = forcedKey.trim();
     } else {
@@ -7583,7 +7583,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         const currentCharacter = this.getSelectedAvatarKey();
         if (
           typeof currentCharacter === "string" &&
-          /^player_[1-5]$/.test(currentCharacter)
+          isValidPlayerKey(currentCharacter)
         ) {
           payload.currentCharacter = currentCharacter;
           payload.current_character = currentCharacter;
@@ -10462,7 +10462,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       this.lobbyUIContainer.add(cardBg);
 
       // 프로필 이미지 - 애니메이션 적용
-      const baseAvatarKey = /^player_[1-5]$/.test(p.avatarKey)
+      const baseAvatarKey = isValidPlayerKey(p.avatarKey)
         ? p.avatarKey
         : `player_${i + 1}`;
       const avatarTextureKey = this.textures.exists(`${baseAvatarKey}_1`)
@@ -12041,7 +12041,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         .setInteractive({ useHandCursor: true });
 
       // 유저 아이콘
-      const baseUserAvatar = /^player_[1-5]$/.test(safeUser.avatarKey)
+      const baseUserAvatar = isValidPlayerKey(safeUser.avatarKey)
         ? safeUser.avatarKey
         : "player_1";
 
@@ -12791,7 +12791,7 @@ class GameScene extends Phaser.Scene {
         new Set(
           ["player_1"].concat(
             incomingOwnedCharacters.filter(
-              (key) => typeof key === "string" && /^player_[1-5]$/.test(key),
+              (key) => typeof key === "string" && isValidPlayerKey(key),
             ),
           ),
         ),
@@ -24108,7 +24108,7 @@ class GameScene extends Phaser.Scene {
     const resolveAvatarKey = (player) => {
       const directKey =
         player?.avatarKey || player?.characterKey || player?.current_character;
-      if (typeof directKey === "string" && /^player_[1-5]$/.test(directKey)) {
+      if (typeof directKey === "string" && isValidPlayerKey(directKey)) {
         return directKey;
       }
 
@@ -24119,7 +24119,7 @@ class GameScene extends Phaser.Scene {
         roundPlayer?.avatarKey ||
         roundPlayer?.characterKey ||
         roundPlayer?.current_character;
-      if (typeof roundKey === "string" && /^player_[1-5]$/.test(roundKey)) {
+      if (typeof roundKey === "string" && isValidPlayerKey(roundKey)) {
         return roundKey;
       }
 
@@ -25828,7 +25828,7 @@ class GameScene extends Phaser.Scene {
         .setInteractive({ useHandCursor: true });
 
       // 유저 아이콘
-      const baseUserAvatar = /^player_[1-5]$/.test(safeUser.avatarKey)
+      const baseUserAvatar = isValidPlayerKey(safeUser.avatarKey)
         ? safeUser.avatarKey
         : "player_1";
 
