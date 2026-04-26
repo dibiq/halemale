@@ -7499,8 +7499,8 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         id: 8,
         key: "king",
         icon: "king",
-        name: "왕",
-        description: "특수한 보너스 효과를 부여합니다",
+        name: "전세역전",
+        description: "나와 1등 카드덱을 교환해요",
         price: 320,
       },
     ];
@@ -7936,9 +7936,14 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         try {
           const iconKey = card.icon || card.key || "itembg";
           if (this.textures.exists(iconKey)) {
+            // 왕 카드는 크기를 30% 더 크게 표시
+            const isKingCard = card.key === "king" || card.name === "왕";
+            const imgWidth = isKingCard ? width * 0.35 : width * 0.25;
+            const imgHeight = isKingCard ? width * 0.37 : width * 0.275;
+            
             iconImg = this.add
               .image(0, 0, iconKey)
-              .setDisplaySize(width * 0.25, width * 0.275)
+              .setDisplaySize(imgWidth, imgHeight)
               .setOrigin(0.5);
           }
         } catch (e) {
@@ -26244,14 +26249,14 @@ class GameScene extends Phaser.Scene {
     const leftCurtain = this.add
       .image(0, 0, "slide")
       .setOrigin(0, 0)
-      .setDisplaySize(width / 2, height) // 화면 절반 너비로 설정
+      .setDisplaySize(width / 2, height * 1.055) // 화면 절반 너비로 설정, 높이 1.055배
       .setDepth(2000);
 
     // 2. 오른쪽 천막 생성 및 배치
     const rightCurtain = this.add
       .image(width / 2, 0, "slide")
       .setOrigin(0, 0)
-      .setDisplaySize(width / 2, height) // 화면 절반 너비로 설정
+      .setDisplaySize(width / 2, height * 1.055) // 화면 절반 너비로 설정, 높이 1.055배
       .setDepth(2000)
       .setFlipX(true); // 오른쪽은 대칭(반전)시켜서 자연스럽게 표현 (선택사항)
 
