@@ -3925,7 +3925,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     // create sprite at container origin (0,0)
     this.profileImage = this.add
       .sprite(0, 0, currentAvatarTexture)
-      .setDisplaySize(profileSize * 1.6, profileSize * 1.6);
+      .setScale(1); // 원본 크기로 표시
     this.applyAvatarAnimation(this.profileImage, currentKey);
 
     const avatarLeftBtn = this.add
@@ -7820,7 +7820,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
           avatarSprite = this.add
             .sprite(0, height * 0.0, avatarTexture)
-            .setDisplaySize(width * 0.3, width * 0.3);
+            .setScale(1); // 원본 크기로 표시
 
           const animKey = this.ensureAvatarAnimation(character.key);
           if (!animKey && (character.key === "player_3" || character.key === "player_4" || character.key === "player_5")) {
@@ -10389,7 +10389,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
       const profileImg = this.add
         .sprite(profileX, pos.y - cardH * 0.0, avatarTextureKey)
-        .setDisplaySize(profileSize * 2, profileSize * 2);
+        .setScale(1); // 원본 크기로 표시
       this.lobbyUIContainer.add(profileImg);
       this.applyAvatarAnimation(profileImg, baseAvatarKey);
 
@@ -17324,7 +17324,7 @@ class GameScene extends Phaser.Scene {
             .sprite(centerX, centerY, avatarKey)
             .setDepth(11100)
             .setVisible(false)
-            .setDisplaySize(width * 0.05, height * 0.045); // 캐릭터 크기 조정 (70% of screen)
+            .setScale(1); // 원본 크기로 표시
         }
         const tempSprite = this._winAvatarSprite;
         tempSprite.x = centerX;
@@ -23213,9 +23213,8 @@ class GameScene extends Phaser.Scene {
       .setBlendMode(Phaser.BlendModes.ADD);
     const img = this.add
       .image(0, 0, imageKey)
-      .setDisplaySize(width * 0.3, width * 0.3)
-      .setAlpha(0)
-      .setScale(0.6);
+      .setScale(1)
+      .setAlpha(0);
 
     container.add([glow, img]);
     this.specialCardCenterContainer = container;
