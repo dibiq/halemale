@@ -30,7 +30,7 @@ const TUTORIAL_STATE_KEY = "tutorialCompleted";
 const TUTORIAL_PROGRESS_KEY = "tutorialProgress";
 
 // ✅ 【전역 상수】플레이어 캐릭터 관리 - 6, 7, 8 추가 시 여기만 수정
-const VALID_PLAYER_NUMBERS = [1, 2, 3, 4, 5, 6]; // 6, 7, 8... 추가하면 자동 적용
+const VALID_PLAYER_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8]; // 8, 9... 추가하면 자동 적용
 const VALID_PLAYERS = VALID_PLAYER_NUMBERS.map((n) => `player_${n}`);
 const VALID_PLAYER_KEYS_PATTERN = new RegExp(`^player_(${VALID_PLAYER_NUMBERS.join("|")})$`);
 const VALID_CHARACTER_KEYS = [...VALID_PLAYERS, "premium_bear"];
@@ -1717,6 +1717,15 @@ class LobbyScene extends Phaser.Scene {
     if (baseKey === "player_5") {
       if (this.textures.exists("player_5_frame_1")) return "player_5_frame_1";
     }
+    if (baseKey === "player_6") {
+      if (this.textures.exists("player_6_frame_1")) return "player_6_frame_1";
+    }
+    if (baseKey === "player_7") {
+      if (this.textures.exists("player_7_frame_1")) return "player_7_frame_1";
+    }
+    if (baseKey === "player_8") {
+      if (this.textures.exists("player_8_frame_1")) return "player_8_frame_1";
+    }
     const sheetKey = `${baseKey}_sprite_a`;
     if (this.textures.exists(sheetKey)) return sheetKey;
     return null;
@@ -2314,6 +2323,24 @@ class LobbyScene extends Phaser.Scene {
       `assets/images/player_6_sprite/1.png${PLAYER6_SPRITE_VERSION}`,
     );
 
+    const PLAYER7_SPRITE_VERSION = VERSION
+      ? `${VERSION}&p7=20260426_1`
+      : "?p7=20260426_1";
+
+    this.load.image(
+      "player_7_frame_1",
+      `assets/images/player_7_sprite/1.png${PLAYER7_SPRITE_VERSION}`,
+    );
+
+    const PLAYER8_SPRITE_VERSION = VERSION
+      ? `${VERSION}&p8=20260426_1`
+      : "?p8=20260426_1";
+
+    this.load.image(
+      "player_8_frame_1",
+      `assets/images/player_8_sprite/1.png${PLAYER8_SPRITE_VERSION}`,
+    );
+
     // ✅ 모든 플레이어 캐릭터 첫 프레임 일괄 로드 (player_7 이상 자동 추가)
     // VALID_PLAYER_NUMBERS에 7, 8... 추가하면 자동으로 로드됨
     const playerSpriteVersions = {
@@ -2593,7 +2620,9 @@ class LobbyScene extends Phaser.Scene {
       4: PLAYER4_SPRITE_VERSION,
       5: PLAYER5_SPRITE_VERSION,
       6: VERSION ? `${VERSION}&p6=20260326_1` : "?p6=20260326_1",
-      // player_7 추가 시: 7: VERSION ? `${VERSION}&p7=...` : "?p7=..."
+      7: VERSION ? `${VERSION}&p7=20260426_1` : "?p7=20260426_1",
+      8: VERSION ? `${VERSION}&p8=20260426_1` : "?p8=20260426_1",
+      // player_9 추가 시: 9: VERSION ? `${VERSION}&p9=...` : "?p9=..."
     };
     
     for (const playerNum of VALID_PLAYER_NUMBERS) {
@@ -2903,7 +2932,7 @@ class LobbyScene extends Phaser.Scene {
       }
     }
 
-    this.profileAvatarKeys = ["player_1", "player_2", "player_3", "player_4", "player_5", "player_6", PREMIUM_BEAR_KEY].filter(
+    this.profileAvatarKeys = ["player_1", "player_2", "player_3", "player_4", "player_5", "player_6", "player_7", "player_8", PREMIUM_BEAR_KEY].filter(
       (key, idx, arr) => arr.indexOf(key) === idx,
     );
     const savedAvatarKey = localStorage.getItem("profileAvatarKey");
@@ -6114,13 +6143,13 @@ if (this.isGameEnded || this.isResultOverlayActive) {
   }
 
   getAvatarAnimFrameRate(baseKey) {
-    // player_1/player_2/player_3/player_4/player_5 모두 빠른 프레임으로 재생
-    return baseKey === "player_1" || baseKey === "player_2" || baseKey === "player_3" || baseKey === "player_4" || baseKey === "player_5" ? 18 : 2;
+    // 모든 플레이어 캐릭터는 동일한 속도로 재생
+    return isValidPlayerKey(baseKey) ? PLAYER_ANIMATION_SPEED : 2;
   }
 
   getAvatarAnimMaxFrame(baseKey) {
-    // player_1/player_2/player_3/player_4/player_5은 최대 40 프레임을 사용하여 자연스럽게 재생
-    return /^player_[1-5]$/.test(baseKey) ? 40 : 2;
+    // 모든 플레이어 캐릭터는 동일한 프레임 수 사용
+    return isValidPlayerKey(baseKey) ? PLAYER_ANIMATION_FRAMES : 2;
   }
 
   // choose a texture key to display for a given avatar base key
@@ -6137,6 +6166,18 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     }
     if (baseKey === "player_4") {
       if (this.textures.exists("player_4_frame_1")) return "player_4_frame_1";
+    }
+    if (baseKey === "player_5") {
+      if (this.textures.exists("player_5_frame_1")) return "player_5_frame_1";
+    }
+    if (baseKey === "player_6") {
+      if (this.textures.exists("player_6_frame_1")) return "player_6_frame_1";
+    }
+    if (baseKey === "player_7") {
+      if (this.textures.exists("player_7_frame_1")) return "player_7_frame_1";
+    }
+    if (baseKey === "player_8") {
+      if (this.textures.exists("player_8_frame_1")) return "player_8_frame_1";
     }
     // use first sheet if available
     const sheetKey = `${baseKey}_sprite_a`;
@@ -7299,6 +7340,18 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         description: "빠르게 움직이는 번개 곰돌이 캐릭터",
         price: 750,
       },
+      {
+        key: "player_7",
+        name: "데드 곰돌이",
+        description: "신비로운 데드 곰돌이 캐릭터",
+        price: 1000,
+      },
+      {
+        key: "player_8",
+        name: "또르 곰돌이",
+        description: "귀여운 또르 곰돌이 캐릭터",
+        price: 2000,
+      },
     ];
 
     const coinProducts = [
@@ -7779,7 +7832,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             .setScale(1); // 원본 크기로 표시
 
           const animKey = this.ensureAvatarAnimation(character.key);
-          if (!animKey && (character.key === "player_3" || character.key === "player_4" || character.key === "player_5")) {
+          if (!animKey && (character.key === "player_3" || character.key === "player_4" || character.key === "player_5" || character.key === "player_6")) {
           }
           if (avatarSprite && animKey && avatarSprite.anims) {
             try {
@@ -12939,6 +12992,18 @@ class GameScene extends Phaser.Scene {
     }
     if (baseKey === "player_4") {
       if (this.textures.exists("player_4_frame_1")) return "player_4_frame_1";
+    }
+    if (baseKey === "player_5") {
+      if (this.textures.exists("player_5_frame_1")) return "player_5_frame_1";
+    }
+    if (baseKey === "player_6") {
+      if (this.textures.exists("player_6_frame_1")) return "player_6_frame_1";
+    }
+    if (baseKey === "player_7") {
+      if (this.textures.exists("player_7_frame_1")) return "player_7_frame_1";
+    }
+    if (baseKey === "player_8") {
+      if (this.textures.exists("player_8_frame_1")) return "player_8_frame_1";
     }
     const sheetKey = `${baseKey}_sprite_a`;
     if (this.textures.exists(sheetKey)) return sheetKey;
