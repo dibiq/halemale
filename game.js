@@ -776,6 +776,14 @@ class LobbyScene extends Phaser.Scene {
       } else {
         if (this.shopCoinText && typeof this.shopCoinText.setText === "function") {
           this.shopCoinText.setText(`💰 ${next}`);
+          // 🔴 [추가] 동적 폰트 크기 조정
+          const coinsStr = String(next);
+          let fontSizeMultiplier = 1;
+          if (coinsStr.length === 4) fontSizeMultiplier = 0.92;
+          else if (coinsStr.length === 5) fontSizeMultiplier = 0.84;
+          else if (coinsStr.length === 6) fontSizeMultiplier = 0.76;
+          else if (coinsStr.length >= 7) fontSizeMultiplier = 0.68;
+          this.shopCoinText.setFontSize(Math.round(45 * fontSizeMultiplier));
         }
         if (
           this.coinShopCurrentCoinText &&
@@ -820,10 +828,22 @@ class LobbyScene extends Phaser.Scene {
       // 🔴 [중요] shopCoinText 업데이트 상세 로깅
       if (this.shopCoinText && typeof this.shopCoinText.setText === "function") {
         this.shopCoinText.setText(`💰 ${predicted}`);
+        
+        // 🔴 [추가] 동적 폰트 크기 조정
+        const coinsStr = String(predicted);
+        let fontSizeMultiplier = 1;
+        if (coinsStr.length === 4) fontSizeMultiplier = 0.92;
+        else if (coinsStr.length === 5) fontSizeMultiplier = 0.84;
+        else if (coinsStr.length === 6) fontSizeMultiplier = 0.76;
+        else if (coinsStr.length >= 7) fontSizeMultiplier = 0.68;
+        this.shopCoinText.setFontSize(Math.round(36 * fontSizeMultiplier));
+        
         console.log('[startPendingCoinDeduction] shopCoinText 업데이트 성공', {
           originalCoins: this.pendingOriginalCoins,
           price,
           predicted,
+          coinsStrLength: coinsStr.length,
+          fontSizeMultiplier,
           timestamp: new Date().toISOString()
         });
       } else {
@@ -880,6 +900,14 @@ class LobbyScene extends Phaser.Scene {
       } else {
         if (this.shopCoinText && typeof this.shopCoinText.setText === "function") {
           this.shopCoinText.setText(`💰 ${next}`);
+          // 🔴 [추가] 동적 폰트 크기 조정
+          const coinsStr = String(next);
+          let fontSizeMultiplier = 1;
+          if (coinsStr.length === 4) fontSizeMultiplier = 0.92;
+          else if (coinsStr.length === 5) fontSizeMultiplier = 0.84;
+          else if (coinsStr.length === 6) fontSizeMultiplier = 0.76;
+          else if (coinsStr.length >= 7) fontSizeMultiplier = 0.68;
+          this.shopCoinText.setFontSize(Math.round(45 * fontSizeMultiplier));
         }
         if (
           this.coinShopCurrentCoinText &&
@@ -4113,7 +4141,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     this.profileCoinText = this.add
       .text(coinBgX * 1.03, statY, `X ${this.myProfile.coins}`, {
         fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.033}px`,
+        fontSize: `${width * 0.022}px`,
         color: "#ffffff",
         fontWeight: "bold",
         stroke: "#000000",
@@ -4121,6 +4149,37 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       })
       .setOrigin(0.5)
       .setDepth(11);
+
+    // 🔴 [디버그] 코인 추가 버튼 (+1000 코인)
+    const debugAddCoinBtn = this.add
+      .rectangle(coinBgX * 1.03 + profileSize * 0.28, statY, profileSize * 0.12, width * 0.05, 0xff6b6b)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(12);
+    
+    const debugAddCoinBtnText = this.add
+      .text(coinBgX * 1.03 + profileSize * 0.28, statY, "+1000", {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.018}px`,
+        color: "#ffffff",
+        fontWeight: "bold",
+      })
+      .setOrigin(0.5)
+      .setDepth(13);
+
+    debugAddCoinBtn.on("pointerdown", () => {
+      this.myProfile.coins += 1000;
+      this.setCoinsAbsolute(this.myProfile.coins, { sync: true });
+      this.updateMyProfileUI();
+      console.log("[DEBUG] 코인 +1000 추가됨", { currentCoins: this.myProfile.coins });
+    });
+
+    debugAddCoinBtn.on("pointerover", () => {
+      debugAddCoinBtn.setFillStyle(0xff8787);
+    });
+
+    debugAddCoinBtn.on("pointerout", () => {
+      debugAddCoinBtn.setFillStyle(0xff6b6b);
+    });
 
     // 경험치 배경 막대 (회색, 둥근 모서리)
     const expBarGraphicsBg = this.add.graphics();
@@ -4172,6 +4231,8 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       this.profileIdText,
       this.profileStatusBg,
       this.profileCoinText,
+      debugAddCoinBtn,
+      debugAddCoinBtnText,
       this.profileExpBarBg,
       this.profileExpBarFill,
       this.profileExpText,
@@ -5042,6 +5103,19 @@ if (this.isGameEnded || this.isResultOverlayActive) {
  
 
   updateMyProfileUI(profile = {}) {
+    // 🔴 [추가] 동적 폰트 크기 조정 헬퍼 함수
+    const calculateCoinFontSize = (coins, baseSize) => {
+      const coinsStr = String(coins);
+      const length = coinsStr.length;
+      
+      // 글자 길이에 따라 동적 크기 조정
+      if (length <= 3) return baseSize; // 0~999
+      if (length === 4) return baseSize * 0.92; // 1,000~9,999
+      if (length === 5) return baseSize * 0.84; // 10,000~99,999
+      if (length === 6) return baseSize * 0.76; // 100,000~999,999
+      return baseSize * 0.68; // 1,000,000+
+    };
+    
     // 게임 종료 후에는 즉시 프로필을 갱신하지 않고, 결과 시상 연출 중에만 최종 갱신을 적용하도록 합니다.
     if (this.isGameEnded && !this._isApplyingDeferredProfile) {
       console.debug("updateMyProfileUI skipped because game ended", {
@@ -5216,6 +5290,14 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       safeSetText(this.profileNameTxt, this.myProfile.nickname || '');
       safeSetText(this.profileLevelTxt, `Lv ${this.myProfile.level}`);
       safeSetText(this.profileCoinsTxt, `Coins: ${this.myProfile.coins}`);
+      
+      // 🔴 [추가] 게임 화면 코인 텍스트 폰트 크기 동적 조정
+      if (this.profileCoinsTxt && this.profileCoinsTxt.style) {
+        const baseFontSize = this.scale?.width * 0.027 || 27;
+        const adjustedFontSize = calculateCoinFontSize(this.myProfile.coins, baseFontSize);
+        this.profileCoinsTxt.setFontSize(adjustedFontSize);
+      }
+      
       // also update detailed profile label (guarded inside helper)
       this.setProfileCoinLabel(`보유코인: ${this.myProfile.coins}`);
       return;
@@ -5227,6 +5309,19 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       `LV.${this.myProfile.level} ${this.myProfile.nickname}`,
     );
     safeSetText(this.profileCoinText, `X ${this.myProfile.coins}`);
+    
+    // 🔴 [추가] 로비/멀티플레이 하단 패널 코인 텍스트 폰트 크기 동적 조정
+    if (this.profileCoinText && this.profileCoinText.style) {
+      const baseFontSize = this.scale?.width * 0.033 || 33;
+      const adjustedFontSize = calculateCoinFontSize(this.myProfile.coins, baseFontSize);
+      this.profileCoinText.setFontSize(adjustedFontSize);
+      console.debug('[updateMyProfileUI] 코인 폰트 크기 조정', {
+        coins: this.myProfile.coins,
+        baseFontSize,
+        adjustedFontSize
+      });
+    }
+    
     // also update game-screen card if present
     // 멀티플레이에서 게임 종료 후 하단 우측 UI(반응속도/정답률/보유코인)는 업데이트하지 않음
     if (this.isGameEnded && !this.isSingle && !this._isApplyingDeferredProfile) {
@@ -7801,10 +7896,25 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       if (this.shopCoinText && typeof this.shopCoinText.setText === "function") {
         const displayCoins = Number(this.myProfile?.coins) || 0;
         this.shopCoinText.setText(`💰 ${displayCoins}`);
+        
+        // 🔴 [추가] 상점 코인 텍스트 크기 동적 조정
+        const baseFontSize = width * 0.03;
+        const coinsStr = String(displayCoins);
+        let adjustedFontSize = baseFontSize;
+        
+        if (coinsStr.length === 4) adjustedFontSize = baseFontSize * 0.92;
+        else if (coinsStr.length === 5) adjustedFontSize = baseFontSize * 0.84;
+        else if (coinsStr.length === 6) adjustedFontSize = baseFontSize * 0.76;
+        else if (coinsStr.length >= 7) adjustedFontSize = baseFontSize * 0.68;
+        
+        this.shopCoinText.setFontSize(Math.round(adjustedFontSize));
+        
         console.log('[renderShopContent] 코인 텍스트 업데이트', {
           displayCoins,
           currentTab,
-          myProfileCoins: this.myProfile?.coins
+          baseFontSize,
+          adjustedFontSize,
+          coinsStrLength: coinsStr.length
         });
       } else {
         console.warn('[renderShopContent] shopCoinText 없음', {
