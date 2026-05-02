@@ -16068,7 +16068,7 @@ class GameScene extends Phaser.Scene {
     // ✅ 배수 정보는 항상 표시 (카드 제출 여부 상관없이)
     const multiplier = this.roundData?.gameMultiplier || 1;
     const multiplierTxt = this.add
-      .text(cx, cy - width * 0.11, `${multiplier}배`, {
+      .text(cx, cy + width * 0.065, `${multiplier}배`, {
         fontFamily: "Jua",
         fontSize: `${width * 0.050}px`,
         color: "#FF4444",
@@ -16078,9 +16078,23 @@ class GameScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setDepth(2001);
+    
+    // ✅ 배수 텍스트 배경 박스 추가
+    const boxPadding = width * 0.015;
+    const textBounds = multiplierTxt.getBounds();
+    const boxWidth = textBounds.width + boxPadding * 2;
+    const boxHeight = textBounds.height + boxPadding * 2;
+    
+    const multiplierBox = this.add
+      .rectangle(cx, cy + width * 0.065, boxWidth, boxHeight, 0x000000, 0.6)
+      .setStrokeStyle(3, 0xFF4444, 1)
+      .setDepth(2000); // 텍스트 뒤에 표시
+    
+    this.playerTableGroup.add(multiplierBox);
     this.playerTableGroup.add(multiplierTxt);
     // 배수 텍스트 참조 저장 (애니메이션 완료 후 업데이트용)
     this.multiplierDisplayTxt = multiplierTxt;
+    this.multiplierDisplayBox = multiplierBox;
     
     // 카드 합계는 0보다 클 때만 표시
     if (totalStackCount > 0) {
@@ -22831,9 +22845,18 @@ class GameScene extends Phaser.Scene {
           numText.setScale(1.3);
         });
         
-        // 배수 UI 즉시 업데이트 (배수 결정되는 순간)
+        // ✅ 배수 UI 즉시 업데이트 (배수 결정되는 순간)
         if (this.multiplierDisplayTxt && typeof this.multiplierDisplayTxt.setText === 'function') {
           this.multiplierDisplayTxt.setText(`${finalMultiplier}배`);
+          
+          // ✅ 배수 텍스트 박스 크기도 함께 업데이트
+          if (this.multiplierDisplayBox) {
+            const textBounds = this.multiplierDisplayTxt.getBounds();
+            const boxPadding = this.cameras.main.width * 0.015;
+            const newBoxWidth = textBounds.width + boxPadding * 2;
+            const newBoxHeight = textBounds.height + boxPadding * 2;
+            this.multiplierDisplayBox.setDisplaySize(newBoxWidth, newBoxHeight);
+          }
         }
         
         // 박스와 숫자 텍스트 강조
