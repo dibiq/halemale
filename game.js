@@ -7776,6 +7776,12 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     const renderShopContent = () => {
       cardDisplayContainer.removeAll(true);
 
+      // ✅ 이전 애니메이션 타이머 정리 (캐릭터 넘길 때 중복 실행 방지)
+      if (this.shopAvatarAnimationTimer) {
+        this.time.removeEvent(this.shopAvatarAnimationTimer);
+        this.shopAvatarAnimationTimer = null;
+      }
+
       // 🔴 [중요] 상점 콘텐츠 새로고침할 때마다 코인 텍스트 최신화
       if (this.shopCoinText && typeof this.shopCoinText.setText === "function") {
         const displayCoins = Number(this.myProfile?.coins) || 0;
@@ -7908,13 +7914,24 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           const animKey = this.ensureAvatarAnimation(character.key);
           if (!animKey && (character.key === "player_3" || character.key === "player_4" || character.key === "player_5" || character.key === "player_6")) {
           }
+          
+          // ✅ 1초 후 애니메이션 시작 (메모리 부하 감소, 정적 이미지 먼저 표시)
           if (avatarSprite && animKey && avatarSprite.anims) {
-            try {
-              avatarSprite.play({ key: animKey, repeat: -1 });
-            } catch (err) {
-            }
-          } else {
-            this.applyAvatarAnimation(avatarSprite, character.key);
+            this.shopAvatarAnimationTimer = this.time.delayedCall(1000, () => {
+              try {
+                if (avatarSprite && avatarSprite.anims && avatarSprite.scene) {
+                  avatarSprite.play({ key: animKey, repeat: -1 });
+                }
+              } catch (err) {}
+              this.shopAvatarAnimationTimer = null;
+            });
+          } else if (avatarSprite) {
+            this.shopAvatarAnimationTimer = this.time.delayedCall(1000, () => {
+              if (avatarSprite && avatarSprite.scene) {
+                this.applyAvatarAnimation(avatarSprite, character.key);
+              }
+              this.shopAvatarAnimationTimer = null;
+            });
           }
         } catch (e) {
         }
