@@ -10472,7 +10472,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
       const profileImg = this.add
         .sprite(profileX, pos.y - cardH * 0.0, avatarTextureKey)
-        .setScale(1); // 원본 크기로 표시
+        .setScale(0.8); // ✅ 20% 축소 (80% 크기)
       this.lobbyUIContainer.add(profileImg);
       this.applyAvatarAnimation(profileImg, baseAvatarKey);
 
@@ -15144,20 +15144,26 @@ class GameScene extends Phaser.Scene {
         this.addGameLog(`${message}`, "#f1c40f");
 
         // 💡 [수정] 승리 애니메이션 호출 (renderTable은 애니메이션 끝난 후 함수 내부에서 실행됨)
-        if (!skipAnimation) {
-          this.playWinAnimation({
-            winnerId: data.winnerId, // 서버에서 승자 ID를 보내준다고 가정
-            players: updatedPlayers,
-            prevPlayers: prevPlayers, // 바닥 카드가 남아있는 이전 상태 전달
-            winnerNickname: data.winnerNickname,
-            collectedCount: data.collectedCount,
-          }, () => {
-            // ✅ 애니메이션 완료 후 다음 턴 시작 준비
-            // winner case - just update players immediately
-            this.roundData.players = updatedPlayers;
+        // ✅ skipAnimation 여부와 상관없이 항상 playWinAnimation 호출 (한 번의 콜백으로 통합)
+        const winEventKey = `${data.winnerId}_${Date.now()}`; // 중복 호출 방지 키
+        this.playWinAnimation({
+          winnerId: data.winnerId, // 서버에서 승자 ID를 보내준다고 가정
+          players: updatedPlayers,
+          prevPlayers: prevPlayers, // 바닥 카드가 남아있는 이전 상태 전달
+          winnerNickname: data.winnerNickname,
+          collectedCount: data.collectedCount,
+          skipAvatar: skipAnimation, // skipAnimation 옵션 전달
+        }, () => {
+          // ✅ 애니메이션 완료 후 다음 턴 시작 준비 (한 곳에서만 처리)
+          // winner case - just update players immediately
+          this.roundData.players = updatedPlayers;
 
-            // 멀티플레이: 로컬 플레이어가 카드를 획득했으면 즉시 경험치 지급
-            try {
+          // 멀티플레이: 로컬 플레이어가 카드를 획득했으면 즉시 경험치 지급 (중복 호출 방지)
+          try {
+            // ✅ 플래그로 중복 호출 방지
+            if (!this._lastWinExpEvent || this._lastWinExpEvent !== winEventKey) {
+              this._lastWinExpEvent = winEventKey;
+              
               if (
                 !this.isSingle &&
                 data.success &&
@@ -15172,33 +15178,10 @@ class GameScene extends Phaser.Scene {
                   this.awardExperience(gained);
                 }
               }
-            } catch (e) {
-            }
-          });
-        } else {
-          // skipAnimation인 경우 바로 처리
-          // winner case - just update players immediately
-          this.roundData.players = updatedPlayers;
-
-          // 멀티플레이: 로컬 플레이어가 카드를 획득했으면 즉시 경험치 지급
-          try {
-            if (
-              !this.isSingle &&
-              data.success &&
-              data.winnerId === socket.id &&
-              Number.isFinite(Number(data.collectedCount)) &&
-              Number(data.collectedCount) > 0
-            ) {
-              const baseGained = Number(data.collectedCount) || 0;
-              const multiplier = this.roundData?.gameMultiplier || 1;
-              const gained = baseGained * multiplier; // 배수 적용
-              if (typeof this.awardExperience === "function") {
-                this.awardExperience(gained);
-              }
             }
           } catch (e) {
           }
-        }
+        });
         /*this.time.delayedCall(500, () => {
           this.renderTable(this.roundData.players);
         });*/
@@ -20514,6 +20497,13 @@ class GameScene extends Phaser.Scene {
   }
 
   playExpGainAnimation(xpGain) {
+    // ✅ 중복 호출 방지: 300ms 내에는 같은 애니메이션이 중복 재생되지 않도록 함
+    const now = Date.now();
+    if (this._lastExpAnimTime && now - this._lastExpAnimTime < 300) {
+      return; // 중복 호출 방지
+    }
+    this._lastExpAnimTime = now;
+    
     // highlight and pulse the exp bar
     const hasBar = this.profileExpBarFill && this.profileExpText;
     if (hasBar) {
