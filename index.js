@@ -36,7 +36,7 @@ const VALID_CHARACTER_KEYS_PATTERN = new RegExp(
 );
 
 // ✅ 【애니메이션 상수】모든 플레이어 캐릭터 애니메이션 설정 (일괄 적용)
-const PLAYER_ANIMATION_FRAMES = 40; // 모든 플레이어 캐릭터의 프레임 수
+const PLAYER_ANIMATION_FRAMES = 60; // 모든 플레이어 캐릭터의 프레임 수
 const PLAYER_ANIMATION_SPEED = 18; // 모든 플레이어 캐릭터의 재생 속도 (fps)
 
 // ✅ 【캐릭터 가격】game.js의 캐릭터 정보와 동기화

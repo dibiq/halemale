@@ -39,7 +39,7 @@ const VALID_CHARACTER_KEYS_PATTERN = new RegExp(
 );
 
 // ✅ 【애니메이션 상수】모든 플레이어 캐릭터 애니메이션 설정 (일괄 적용)
-const PLAYER_ANIMATION_FRAMES = 40;  // 모든 플레이어 캐릭터의 프레임 수
+const PLAYER_ANIMATION_FRAMES = 60;  // 모든 플레이어 캐릭터의 프레임 수
 const PLAYER_ANIMATION_SPEED = 18;   // 모든 플레이어 캐릭터의 재생 속도 (fps)
 
 // ✅ 【검증 함수】모든 곳에서 사용 - VALID_PLAYER_NUMBERS 변경만으로 자동 반영
@@ -15151,29 +15151,53 @@ class GameScene extends Phaser.Scene {
             prevPlayers: prevPlayers, // 바닥 카드가 남아있는 이전 상태 전달
             winnerNickname: data.winnerNickname,
             collectedCount: data.collectedCount,
-          });
-        }
+          }, () => {
+            // ✅ 애니메이션 완료 후 다음 턴 시작 준비
+            // winner case - just update players immediately
+            this.roundData.players = updatedPlayers;
 
-        // winner case - just update players immediately
-        this.roundData.players = updatedPlayers;
-
-        // 멀티플레이: 로컬 플레이어가 카드를 획득했으면 즉시 경험치 지급
-        try {
-          if (
-            !this.isSingle &&
-            data.success &&
-            data.winnerId === socket.id &&
-            Number.isFinite(Number(data.collectedCount)) &&
-            Number(data.collectedCount) > 0
-          ) {
-            const baseGained = Number(data.collectedCount) || 0;
-            const multiplier = this.roundData?.gameMultiplier || 1;
-            const gained = baseGained * multiplier; // 배수 적용
-            if (typeof this.awardExperience === "function") {
-              this.awardExperience(gained);
+            // 멀티플레이: 로컬 플레이어가 카드를 획득했으면 즉시 경험치 지급
+            try {
+              if (
+                !this.isSingle &&
+                data.success &&
+                data.winnerId === socket.id &&
+                Number.isFinite(Number(data.collectedCount)) &&
+                Number(data.collectedCount) > 0
+              ) {
+                const baseGained = Number(data.collectedCount) || 0;
+                const multiplier = this.roundData?.gameMultiplier || 1;
+                const gained = baseGained * multiplier; // 배수 적용
+                if (typeof this.awardExperience === "function") {
+                  this.awardExperience(gained);
+                }
+              }
+            } catch (e) {
             }
+          });
+        } else {
+          // skipAnimation인 경우 바로 처리
+          // winner case - just update players immediately
+          this.roundData.players = updatedPlayers;
+
+          // 멀티플레이: 로컬 플레이어가 카드를 획득했으면 즉시 경험치 지급
+          try {
+            if (
+              !this.isSingle &&
+              data.success &&
+              data.winnerId === socket.id &&
+              Number.isFinite(Number(data.collectedCount)) &&
+              Number(data.collectedCount) > 0
+            ) {
+              const baseGained = Number(data.collectedCount) || 0;
+              const multiplier = this.roundData?.gameMultiplier || 1;
+              const gained = baseGained * multiplier; // 배수 적용
+              if (typeof this.awardExperience === "function") {
+                this.awardExperience(gained);
+              }
+            }
+          } catch (e) {
           }
-        } catch (e) {
         }
         /*this.time.delayedCall(500, () => {
           this.renderTable(this.roundData.players);
@@ -17279,7 +17303,7 @@ class GameScene extends Phaser.Scene {
     });
   }
 
-  playWinAnimation(data = {}) {
+  playWinAnimation(data = {}, onComplete = null) {
     // block further inputs by placing a transparent fullscreen overlay
     const { width, height } = this.cameras.main;
     const overlay = this.add
@@ -17308,6 +17332,10 @@ class GameScene extends Phaser.Scene {
       if (characterAnimationDone && cardAnimationDone) {
         this.renderTable(data.players);
         if (overlay) overlay.destroy();
+        // ✅ 애니메이션 완료 후 콜백 실행 - 다음 턴 시작 로직이 여기서 실행됨
+        if (typeof onComplete === "function") {
+          onComplete();
+        }
       }
     };
 
@@ -17427,11 +17455,14 @@ class GameScene extends Phaser.Scene {
             .sprite(centerX, centerY, avatarKey)
             .setDepth(11100)
             .setVisible(false)
+            .setOrigin(0.5, 0.5)
             .setScale(1); // 원본 크기로 표시
         }
         const tempSprite = this._winAvatarSprite;
         tempSprite.x = centerX;
         tempSprite.y = centerY;
+        tempSprite.setOrigin(0.5, 0.5); // ✅ 정중앙 기준점
+        tempSprite.setScale(1); // ✅ 원본 크기 유지
         tempSprite.setVisible(true);
 
         const hideWinAvatar = () => {
@@ -17456,6 +17487,12 @@ class GameScene extends Phaser.Scene {
             
             // ✅ ensurePlayer5/6Frames 제거: preload/loadDeferredAssets에서 이미 개별 프레임이 로드됨
             this.applyAvatarAnimation(tempSprite, avatarKey);
+            
+            // ✅ applyAvatarAnimation 호출 후 크기 및 위치 재설정 (크기 조절하지 않음)
+            tempSprite.setOrigin(0.5, 0.5);
+            tempSprite.setScale(1);
+            tempSprite.setPosition(centerX, centerY);
+            
             try {
             } catch (e) {}
             try {
@@ -17464,14 +17501,18 @@ class GameScene extends Phaser.Scene {
                     const fallbackAnim = this.ensureAvatarAnimation(avatarKey);
                     if (fallbackAnim) {
                       try {
-                        tempSprite.play(fallbackAnim, true);
+                        // ✅ 정답 애니메이션은 한 번만 재생 (repeat: 0)
+                        tempSprite.play({ key: fallbackAnim, repeat: 0 });
                       } catch (e) {
                       }
                     }
                   }
-                const anim = tempSprite.anims.currentAnim;
-                if (anim) {
-                  anim.repeat = 0;
+                // ✅ 이미 재생 중인 애니메이션을 한 번만 재생되도록 변경
+                // repeat 속성을 직접 변경하는 대신, 애니메이션을 중지하고 repeat: 0으로 재시작
+                if (tempSprite.anims.currentAnim) {
+                  const currentAnimKey = tempSprite.anims.currentAnim.key;
+                  tempSprite.anims.stop();
+                  tempSprite.play({ key: currentAnimKey, repeat: 0 });
                 }
               }
             } catch (e) {
@@ -17486,8 +17527,8 @@ class GameScene extends Phaser.Scene {
             tempSprite.once("animationcomplete", () => {
               clearFlag();
             });
-            // safety timeout
-            this.time.delayedCall(2000, () => {
+            // safety timeout: 60 frames at 18fps = ~3.3s, so allow at least 4s for safety
+            this.time.delayedCall(4000, () => {
               if (tempSprite && tempSprite.active) {
                 tempSprite.setVisible(false);
               }
@@ -22695,31 +22736,32 @@ class GameScene extends Phaser.Scene {
       skipAvatar: this.isSingle,
       winnerNickname: winner.nickname || winner.name || "플레이어",
       collectedCount: totalCollected,
+    }, () => {
+      // ✅ 애니메이션 완료 후 다음 턴 시작 준비
+      // 즉시 로컬 상태 업데이트 (애니메이션이 끝나면 openStack은 playWinAnimation에서 비워집니다)
+      this.roundData.players = updatedPlayers;
+
+      // 상태 갱신
+      this.updateEliminationStatus();
+      this.updateTurnEffect();
+      this.ensureSingleTotalCards();
+
+      // 승자 다음 동작 예약 (AI는 뒤집기, 플레이어는 다시 입력 허용)
+      if (winner && this.isPlayerAi(winner.id)) {
+        this.time.delayedCall(1500, () => {
+          if (this.isGameStarted) {
+            this.processSingleFlip(winner.id);
+          }
+        });
+      } else {
+        this.canClick = true;
+        this.isFlipping = false;
+      }
+
+      if (this.isTutorialMode) {
+        this.handleTutorialBellResolved(winnerId);
+      }
     });
-
-    // 즉시 로컬 상태 업데이트 (애니메이션이 끝나면 openStack은 playWinAnimation에서 비워집니다)
-    this.roundData.players = updatedPlayers;
-
-    // 상태 갱신
-    this.updateEliminationStatus();
-    this.updateTurnEffect();
-    this.ensureSingleTotalCards();
-
-    // 승자 다음 동작 예약 (AI는 뒤집기, 플레이어는 다시 입력 허용)
-    if (winner && this.isPlayerAi(winner.id)) {
-      this.time.delayedCall(1500, () => {
-        if (this.isGameStarted) {
-          this.processSingleFlip(winner.id);
-        }
-      });
-    } else {
-      this.canClick = true;
-      this.isFlipping = false;
-    }
-
-    if (this.isTutorialMode) {
-      this.handleTutorialBellResolved(winnerId);
-    }
   }
 
   playMultiplierSelectionAnimation() {
