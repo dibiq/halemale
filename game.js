@@ -16085,7 +16085,7 @@ class GameScene extends Phaser.Scene {
     // ✅ 배수 정보는 항상 표시 (카드 제출 여부 상관없이)
     const multiplier = this.roundData?.gameMultiplier || 1;
     const multiplierTxt = this.add
-      .text(cx, cy + width * 0.065, `${multiplier}배`, {
+      .text(cx, cy - width * 0.12, `${multiplier}배`, {
         fontFamily: "Jua",
         fontSize: `${width * 0.050}px`,
         color: "#FF4444",
@@ -16097,13 +16097,13 @@ class GameScene extends Phaser.Scene {
       .setDepth(2001);
     
     // ✅ 배수 텍스트 배경 박스 추가
-    const boxPadding = width * 0.015;
+    const boxPadding = width * 0.013;
     const textBounds = multiplierTxt.getBounds();
     const boxWidth = textBounds.width + boxPadding * 2;
     const boxHeight = textBounds.height + boxPadding * 2;
     
     const multiplierBox = this.add
-      .rectangle(cx, cy + width * 0.065, boxWidth, boxHeight, 0x000000, 0.6)
+      .rectangle(cx, cy - width * 0.12, boxWidth, boxHeight, 0x000000, 0.6)
       .setStrokeStyle(3, 0xFF4444, 1)
       .setDepth(2000); // 텍스트 뒤에 표시
     
@@ -22791,7 +22791,7 @@ class GameScene extends Phaser.Scene {
     const { width, height } = this.cameras.main;
     const centerX = width / 2;
     const centerY = height / 2;
-    const multipliers = [1, 2, 3, 5, 10];
+    const multipliers = [2, 3, 5, 7, 10];
     const colors = [0xff6b6b, 0x4ecdc4, 0xffd700, 0xf7b731, 0x5f27cd];
     
     const wheelRadius = Math.min(width * 0.2, height * 0.18);
@@ -22899,166 +22899,185 @@ class GameScene extends Phaser.Scene {
       .setDepth(10001);
     
     // 🎡 회전 애니메이션
+    
+    // ✅ 애니메이션 시작 전 배수와 회전수 결정
+    let finalMultiplier;
+    const rand = Math.random() * 100;
+    if (rand < 5) finalMultiplier = 10;      // 5%
+    else if (rand < 15) finalMultiplier = 7;   // 10%
+    else if (rand < 40) finalMultiplier = 5;   // 25%
+    else if (rand < 70) finalMultiplier = 3;   // 30%
+    else finalMultiplier = 2;          // 30%
+    
+    // 배수 인덱스와 목표 각도 계산
+    const multiplierIndex = multipliers.indexOf(finalMultiplier);
+    
+    // 휠에서 각 배수의 실제 각도
+    const wheelActualAngle = multiplierIndex * sectionAngle - Math.PI / 2 + sectionAngle / 2;
+    // 정규화
+    const wheelActualNormalized = ((wheelActualAngle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+    
+    // 12시 위치: -π/2 (arrow가 가리키는 절대 위치)
+    // 필요한 회전 = 12시 위치 - 현재 위치
+    const target12OClockPos = -Math.PI / 2;
+    const targetAngle = target12OClockPos - wheelActualAngle;
+    
+    // 3~6바퀴 + 정확한 각도로 회전 (정수!)
+    const randomRotations = Math.floor(3 + Math.random() * 4); // 3, 4, 5, 6
+    let targetRotation = randomRotations * 2 * Math.PI + targetAngle;
+    
+    // ✅ 애니메이션 시간 동적 계산 (targetRotation 도달 확보)
+    // 최대 속도: 8π, 평균: 8π/3 → 안전하게 1.5배 여유
+    const animationDuration = Math.max(3000, (targetRotation / (8 * Math.PI)) * 5000);
+    
+    this.roundData.gameMultiplier = finalMultiplier;
+    const targetAngleNorm = ((targetAngle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+    console.log(`[룰렛 시작] 배수: ${finalMultiplier}배 (i=${multiplierIndex})`);
+    console.log(`  휠 실제 각도: ${(wheelActualAngle / Math.PI).toFixed(2)}π (정규화: ${(wheelActualNormalized / Math.PI).toFixed(2)}π)`);
+    console.log(`  목표각도: ${(targetAngle / Math.PI).toFixed(2)}π (정규화: ${(targetAngleNorm / Math.PI).toFixed(2)}π)`);
+    console.log(`  각 배수의 12시 정규화 각도:`);
+    for (let i = 0; i < multipliers.length; i++) {
+      const angle = i * sectionAngle - Math.PI / 2 + sectionAngle / 2;
+      const normalized = (((-angle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI));
+      console.log(`    ${multipliers[i]}배: ${(normalized / Math.PI).toFixed(2)}π`);
+    }
+    console.log(`  회전수: ${randomRotations.toFixed(2)}, targetRotation: ${(targetRotation / Math.PI).toFixed(2)}π, 시간: ${animationDuration.toFixed(0)}ms`);
+    
     const startTime = Date.now();
     let currentRotation = 0;
-    let finalMultiplier = 1;
     let animationCompleted = false;
-    let targetRotation = 0;  // 최종 목표 회전값 (애니메이션 중반에 결정)
+    let resultShown = false;
+    
+    // ✅ 배수 표시 함수
+    const showResult = () => {
+      if (resultShown) return;
+      resultShown = true;
+      
+      console.log(`[배수 선택 완료] ${finalMultiplier}배`);
+      
+      // 배수 텍스트 표시 - 짜잔하고 강조된 애니메이션
+      const resultTxt = this.add.text(centerX, centerY, `${finalMultiplier}배!`, {
+        fontFamily: GAME_FONTS.main,
+        fontSize: `${width * 0.15}px`,
+        color: "#ffd700",
+        fontWeight: "bold",
+        stroke: "#000000",
+        strokeThickness: 8,
+      }).setOrigin(0.5).setDepth(10002).setScale(0).setAlpha(0);
+      
+      // 강조된 팝업 애니메이션
+      this.tweens.add({
+        targets: resultTxt,
+        scale: 1.2,
+        alpha: 1,
+        duration: 400,
+        ease: "Back.easeOut",
+      });
+      
+      // 배수 UI 업데이트
+      if (this.multiplierDisplayTxt?.setText) {
+        this.multiplierDisplayTxt.setText(`${finalMultiplier}배`);
+        if (this.multiplierDisplayBox) {
+          const bounds = this.multiplierDisplayTxt.getBounds();
+          const pad = width * 0.015;
+          this.multiplierDisplayBox.setDisplaySize(bounds.width + pad * 2, bounds.height + pad * 2);
+        }
+      }
+      
+      // 10배인 경우 꽃가루 파티클 효과 - 극도로 과한 연출
+      if (finalMultiplier === 10) {
+        const particleCount = 150;
+        const colors = [0xffd700, 0xff6b9d, 0xc44569, 0x00ff88, 0x00ccff, 0xff00ff, 0xffaa00];
+        
+        for (let i = 0; i < particleCount; i++) {
+          const angle = (Math.PI * 2 * i) / particleCount + (Math.random() - 0.5) * 0.5;
+          const distance = 150 + Math.random() * 400;
+          const endX = centerX + Math.cos(angle) * distance;
+          const endY = centerY + Math.sin(angle) * distance;
+          
+          const size = 15 + Math.random() * 35;
+          const particle = this.add.circle(centerX, centerY, size, 
+            colors[Math.floor(Math.random() * colors.length)], 0.95)
+            .setDepth(10001)
+            .setScale(Math.random() * 0.5 + 0.5);
+          
+          this.tweens.add({
+            targets: particle,
+            x: endX,
+            y: endY,
+            alpha: 0,
+            scale: 0,
+            rotation: Math.random() * Math.PI * 2,
+            duration: 1400 + Math.random() * 400,
+            ease: "Power2.easeOut",
+            onComplete: () => particle.destroy(),
+          });
+        }
+        
+        // 화면 전체를 밝게 플래시
+        const flashOverlay = this.add.rectangle(centerX, centerY, width * 2, height * 2, 0xffd700, 0.3)
+          .setDepth(10000);
+        this.tweens.add({
+          targets: flashOverlay,
+          alpha: 0,
+          duration: 600,
+          ease: "Power2.easeOut",
+          onComplete: () => flashOverlay.destroy(),
+        });
+      }
+      
+      // 2초 후 사라짐
+      this.time.delayedCall(2000, () => {
+        this.tweens.add({
+          targets: [wheelContainer, resultTxt, arrow],
+          alpha: 0,
+          duration: 400,
+          ease: "Power2.easeIn",
+          onComplete: () => {
+            wheelContainer.destroy();
+            resultTxt.destroy();
+            arrow.destroy();
+            try { if (this.textures.exists("wheel_canvas")) this.textures.remove("wheel_canvas"); } catch (e) {}
+            try { if (this.textures.exists("arrow_canvas")) this.textures.remove("arrow_canvas"); } catch (e) {}
+          },
+        });
+        
+        // 서버 전송
+        try {
+          if (socket?.connected) {
+            socket.emit('setGameMultiplier', {
+              roomId: this.currentRoomId,
+              gameMultiplier: finalMultiplier,
+              timestamp: Date.now(),
+            });
+          }
+        } catch (e) {}
+      });
+    };
     
     const animate = () => {
       const elapsed = Date.now() - startTime;
-      const progress = Math.min(elapsed / 3000, 1);
-      
-      if (progress >= 1 && !animationCompleted) {
-        animationCompleted = true;
-        
-        // 12시 방향에 있는 배수 계산
-        const normalizedRotation = ((currentRotation % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
-        
-        // 배수별 각도
-        const multipliers = [1, 2, 3, 5, 10];
-        const angleByMultiplier = {
-          1: (9 - 0) * Math.PI / 5,    // 1.8π
-          2: (9 - 2) * Math.PI / 5,    // 1.4π
-          3: (9 - 4) * Math.PI / 5,    // 1.0π
-          5: (9 - 6) * Math.PI / 5,    // 0.6π
-          10: (9 - 8) * Math.PI / 5,   // 0.2π
-        };
-        
-        // 12시(0.0π)와 가장 가까운 배수 찾기
-        let closestMultiplier = 1;
-        let minDiff = Math.PI; // 가능한 최대 차이
-        
-        for (const mult of multipliers) {
-          let angle = angleByMultiplier[mult];
-          // 0과의 거리 계산 (또는 2π와의 거리)
-          let diff = Math.abs(normalizedRotation - angle);
-          if (diff > Math.PI) diff = 2 * Math.PI - diff; // 반대 방향이 더 가까울 수 있음
-          
-          console.log(`  배수 ${mult}배: 각도 ${(angle / Math.PI).toFixed(2)}π, 12시까지 거리: ${(diff / Math.PI).toFixed(2)}π`);
-          
-          if (diff < minDiff) {
-            minDiff = diff;
-            closestMultiplier = mult;
-          }
-        }
-        
-        finalMultiplier = closestMultiplier;
-        this.roundData.gameMultiplier = finalMultiplier;
-        
-        console.log(`[애니메이션 완료]`);
-        console.log(`  원본 currentRotation: ${(currentRotation / Math.PI).toFixed(2)}π`);
-        console.log(`  정규화된 각도: ${(normalizedRotation / Math.PI).toFixed(2)}π`);
-        console.log(`  선택된 배수: ${finalMultiplier}배`);
-        
-        // 배수 텍스트 표시 - 짜잔하고 강조된 애니메이션
-        const resultTxt = this.add.text(centerX, centerY, `${finalMultiplier}배!`, {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.15}px`,
-          color: "#ffd700",
-          fontWeight: "bold",
-          stroke: "#000000",
-          strokeThickness: 8,
-        }).setOrigin(0.5).setDepth(10002).setScale(0).setAlpha(0);
-        
-        // 강조된 팝업 애니메이션
-        this.tweens.add({
-          targets: resultTxt,
-          scale: 1.2,
-          alpha: 1,
-          duration: 400,
-          ease: "Back.easeOut",
-        });
-        
-        // 배수 UI 업데이트
-        if (this.multiplierDisplayTxt?.setText) {
-          this.multiplierDisplayTxt.setText(`${finalMultiplier}배`);
-          if (this.multiplierDisplayBox) {
-            const bounds = this.multiplierDisplayTxt.getBounds();
-            const pad = width * 0.015;
-            this.multiplierDisplayBox.setDisplaySize(bounds.width + pad * 2, bounds.height + pad * 2);
-          }
-        }
-        
-        // 10배인 경우 꽃가루 파티클 효과 - 극도로 과한 연출
-        if (finalMultiplier === 10) {
-          const particleCount = 150;  // 엄청 많은 파티클
-          const colors = [0xffd700, 0xff6b9d, 0xc44569, 0x00ff88, 0x00ccff, 0xff00ff, 0xffaa00];
-          
-          for (let i = 0; i < particleCount; i++) {
-            const angle = (Math.PI * 2 * i) / particleCount + (Math.random() - 0.5) * 0.5;
-            const distance = 150 + Math.random() * 400;  // 엄청 먼 거리
-            const endX = centerX + Math.cos(angle) * distance;
-            const endY = centerY + Math.sin(angle) * distance;
-            
-            const size = 15 + Math.random() * 35;  // 훨씬 큰 파티클
-            const particle = this.add.circle(centerX, centerY, size, 
-              colors[Math.floor(Math.random() * colors.length)], 0.95)
-              .setDepth(10001)
-              .setScale(Math.random() * 0.5 + 0.5);
-            
-            this.tweens.add({
-              targets: particle,
-              x: endX,
-              y: endY,
-              alpha: 0,
-              scale: 0,
-              rotation: Math.random() * Math.PI * 2,
-              duration: 1400 + Math.random() * 400,  // 더 길고 랜덤한 지속시간
-              ease: "Power2.easeOut",
-              onComplete: () => particle.destroy(),
-            });
-          }
-          
-          // 추가: 화면 전체를 밝게 플래시
-          const flashOverlay = this.add.rectangle(centerX, centerY, width * 2, height * 2, 0xffd700, 0.3)
-            .setDepth(10000);
-          this.tweens.add({
-            targets: flashOverlay,
-            alpha: 0,
-            duration: 600,
-            ease: "Power2.easeOut",
-            onComplete: () => flashOverlay.destroy(),
-          });
-        }
-        
-        // 2초 후 사라짐
-        this.time.delayedCall(2000, () => {
-          this.tweens.add({
-            targets: [wheelContainer, resultTxt, arrow],
-            alpha: 0,
-            duration: 400,
-            ease: "Power2.easeIn",
-            onComplete: () => {
-              wheelContainer.destroy();
-              resultTxt.destroy();
-              arrow.destroy();
-              try { if (this.textures.exists("wheel_canvas")) this.textures.remove("wheel_canvas"); } catch (e) {}
-              try { if (this.textures.exists("arrow_canvas")) this.textures.remove("arrow_canvas"); } catch (e) {}
-            },
-          });
-          
-          // 서버 전송
-          try {
-            if (socket?.connected) {
-              socket.emit('setGameMultiplier', {
-                roomId: this.currentRoomId,
-                gameMultiplier: finalMultiplier,
-                timestamp: Date.now(),
-              });
-            }
-          } catch (e) {}
-        });
-        return;
-      }
+      const progress = Math.min(elapsed / animationDuration, 1);
       
       if (!animationCompleted) {
         // 속도: 처음부터 끝까지 부드럽게 감속
-        // progress 0→1: 속도 8π → 0
-        const speed = Math.PI * 8 * Math.pow(1 - progress, 2);  // quadratic decay
+        const speed = Math.PI * 8 * Math.pow(1 - progress, 2);
         
         currentRotation += speed * 0.015;
         wheelContainer.setRotation(currentRotation);
+        
+        // ✅ 목표 도달 또는 시간 끝 확인
+        if (currentRotation >= targetRotation || progress >= 1) {
+          animationCompleted = true;
+          const normalizedRotation = ((currentRotation % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+          const normalizedTarget = ((targetAngle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+          console.log(`[룰렛 회전 완료] 배수: ${finalMultiplier}배`);
+          console.log(`  목표: ${(targetRotation / Math.PI).toFixed(2)}π (정규화: ${(normalizedTarget / Math.PI).toFixed(2)}π), 실제: ${(currentRotation / Math.PI).toFixed(2)}π (정규화: ${(normalizedRotation / Math.PI).toFixed(2)}π)`);
+          console.log(`  차이: ${((normalizedRotation - normalizedTarget) / Math.PI).toFixed(2)}π, progress: ${(progress * 100).toFixed(1)}%`);
+          showResult();
+          return;
+        }
+        
         this.time.delayedCall(15, animate);
       }
     };
