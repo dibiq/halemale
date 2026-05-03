@@ -7317,7 +7317,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         icon: "lock",
         name: "패널티 방어",
         description: "실수해도 카드를 잃지 않아요",
-        price: 220,
+        price: 500,
       },
       {
         id: 5,
@@ -7325,7 +7325,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         icon: "shield",
         name: "방패",
         description: "공격을 막아서 카드를 지켜요",
-        price: 210,
+        price: 700,
       },
       {
         id: 6,
@@ -7333,7 +7333,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         icon: "block",
         name: "먹물",
         description: "상대방 카드에 먹물을 뿌려요",
-        price: 200,
+        price: 1000,
       },
       {
         id: 7,
@@ -7341,7 +7341,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         icon: "thief",
         name: "도둑",
         description: "모두에게서 카드 3장씩 뺏어와요",
-        price: 260,
+        price: 1500,
       },
       {
         id: 8,
@@ -7349,7 +7349,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         icon: "king",
         name: "전세역전",
         description: "나와 1등 카드덱을 교환해요",
-        price: 320,
+        price: 2000,
       },
     ];
 
@@ -22921,11 +22921,11 @@ class GameScene extends Phaser.Scene {
     // ✅ 애니메이션 시작 전 배수와 회전수 결정
     let finalMultiplier;
     const rand = Math.random() * 100;
-    if (rand < 5) finalMultiplier = 10;      // 5%
-    else if (rand < 15) finalMultiplier = 7;   // 10%
-    else if (rand < 40) finalMultiplier = 5;   // 25%
-    else if (rand < 70) finalMultiplier = 3;   // 30%
-    else finalMultiplier = 2;          // 30%
+    if (rand < 1) finalMultiplier = 10;      // 1%
+    else if (rand < 4) finalMultiplier = 7;   // 3%
+    else if (rand < 10) finalMultiplier = 5;   // 6%
+    else if (rand < 50) finalMultiplier = 3;   // 40%
+    else finalMultiplier = 2;          // 50%
     
     // 배수 인덱스와 목표 각도 계산
     const multiplierIndex = multipliers.indexOf(finalMultiplier);
@@ -22950,16 +22950,11 @@ class GameScene extends Phaser.Scene {
     
     this.roundData.gameMultiplier = finalMultiplier;
     const targetAngleNorm = ((targetAngle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
-    console.log(`[룰렛 시작] 배수: ${finalMultiplier}배 (i=${multiplierIndex})`);
-    console.log(`  휠 실제 각도: ${(wheelActualAngle / Math.PI).toFixed(2)}π (정규화: ${(wheelActualNormalized / Math.PI).toFixed(2)}π)`);
-    console.log(`  목표각도: ${(targetAngle / Math.PI).toFixed(2)}π (정규화: ${(targetAngleNorm / Math.PI).toFixed(2)}π)`);
-    console.log(`  각 배수의 12시 정규화 각도:`);
+
     for (let i = 0; i < multipliers.length; i++) {
       const angle = i * sectionAngle - Math.PI / 2 + sectionAngle / 2;
       const normalized = (((-angle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI));
-      console.log(`    ${multipliers[i]}배: ${(normalized / Math.PI).toFixed(2)}π`);
     }
-    console.log(`  회전수: ${randomRotations.toFixed(2)}, targetRotation: ${(targetRotation / Math.PI).toFixed(2)}π, 시간: ${animationDuration.toFixed(0)}ms`);
     
     const startTime = Date.now();
     let currentRotation = 0;
@@ -23089,9 +23084,7 @@ class GameScene extends Phaser.Scene {
           animationCompleted = true;
           const normalizedRotation = ((currentRotation % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
           const normalizedTarget = ((targetAngle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
-          console.log(`[룰렛 회전 완료] 배수: ${finalMultiplier}배`);
-          console.log(`  목표: ${(targetRotation / Math.PI).toFixed(2)}π (정규화: ${(normalizedTarget / Math.PI).toFixed(2)}π), 실제: ${(currentRotation / Math.PI).toFixed(2)}π (정규화: ${(normalizedRotation / Math.PI).toFixed(2)}π)`);
-          console.log(`  차이: ${((normalizedRotation - normalizedTarget) / Math.PI).toFixed(2)}π, progress: ${(progress * 100).toFixed(1)}%`);
+
           showResult();
           return;
         }

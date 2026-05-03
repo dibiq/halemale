@@ -42,17 +42,17 @@ const PLAYER_ANIMATION_SPEED = 18; // 모든 플레이어 캐릭터의 재생 �
 // ✅ 【캐릭터 가격】game.js의 캐릭터 정보와 동기화
 const CHARACTER_PRICES = {
   player_1: 0, // 기본 케릭터 (무료)
-  player_2: 260, // 명품 곰돌이
-  player_3: 420, // 댄서 곰돌이
-  player_4: 560, // 관리 곰돌이
-  player_5: 680, // 또르 곰돌이
-  player_6: 750, // 번개 곰돌이
-  player_7: 1000, // 데드 곰돌이
-  player_8: 2000, // 또르 곰돌이
-  player_9: 3000, // 쪼로 곰돌이
-  player_10: 3000, // 검사 곰돌이
-  player_11: 5000, // 타노 곰돌이
-  player_12: 5000, // 슈퍼 곰돌이
+  player_2: 3000, // 명품 곰돌이
+  player_3: 3000, // 댄서 곰돌이
+  player_4: 3000, // 관리 곰돌이
+  player_5: 5000, // 또르 곰돌이
+  player_6: 5000, // 번개 곰돌이
+  player_7: 7000, // 데드 곰돌이
+  player_8: 10000, // 또르 곰돌이
+  player_9: 10000, // 쪼로 곰돌이
+  player_10: 10000, // 검사 곰돌이
+  player_11: 15000, // 타노 곰돌이
+  player_12: 20000, // 슈퍼 곰돌이
   premium_bear: 0, // 튜토리얼 보상 (무료)
 };
 
@@ -657,13 +657,20 @@ function hasNot5CardOnTable(players) {
 
 function applyCoinCardReward(room, player, io) {
   if (!room || !player) return null;
-  const reward = Math.max(0, Number(COIN_CARD_REWARD) || 0);
-  if (reward <= 0) return null;
+  const baseReward = Math.max(0, Number(COIN_CARD_REWARD) || 0);
+  if (baseReward <= 0) return null;
+
+  // ✅ 【캐릭터 보너스 배수 적용】 코인 카드 획득 시에도 캐릭터 보너스 적용
+  const characterKey =
+    player.currentCharacter || player.avatarKey || "player_1";
+  const characterBonus = getCharacterBonus(characterKey);
+  const characterMultiplier = characterBonus?.coinMultiplier || 1;
+  const finalReward = Math.floor(baseReward * characterMultiplier);
 
   // 🔴 [DEBUG] 코인 30 리셋 추적
   const prevPlayerCoins = Number(player.coins) || 0;
 
-  player.coins = (Number(player.coins) || 0) + reward;
+  player.coins = (Number(player.coins) || 0) + finalReward;
   let coinTotal = Number(player.coins) || 0;
 
   // 체크: 만약 prevPlayerCoins이 0이었다면 경고
@@ -673,9 +680,12 @@ function applyCoinCardReward(room, player, io) {
       {
         playerId: player.id,
         nickname: player.nickname,
-        prevPlayerCoinsRaw: player.coins - reward,
+        characterKey,
+        characterMultiplier,
+        baseReward,
+        finalReward,
+        prevPlayerCoinsRaw: player.coins - finalReward,
         afterReward: player.coins,
-        reward,
       },
     );
   }
@@ -687,7 +697,7 @@ function applyCoinCardReward(room, player, io) {
 
   if (targetSocket) {
     const prevSocketCoins = Number(targetSocket.coins) || 0;
-    targetSocket.coins = (Number(targetSocket.coins) || 0) + reward;
+    targetSocket.coins = (Number(targetSocket.coins) || 0) + finalReward;
     coinTotal = Number(targetSocket.coins) || coinTotal;
 
     // 체크: socket.coins이 0이었다면 경고
@@ -697,23 +707,32 @@ function applyCoinCardReward(room, player, io) {
         {
           playerId: player.id,
           nickname: targetSocket.nickname,
-          prevSocketCoinsRaw: targetSocket.coins - reward,
+          characterKey,
+          characterMultiplier,
+          baseReward,
+          finalReward,
+          prevSocketCoinsRaw: targetSocket.coins - finalReward,
           afterReward: targetSocket.coins,
-          reward,
         },
       );
     }
 
-    console.log("💰 [applyCoinCardReward] 코인 보상 처리", {
-      playerId: player.id,
-      nickname: targetSocket.nickname,
-      prevPlayerCoins,
-      prevSocketCoins,
-      reward,
-      newPlayerTotal: player.coins,
-      newSocketTotal: targetSocket.coins,
-      coinTotal,
-    });
+    console.log(
+      "💰 [applyCoinCardReward] 코인 보상 처리 ✅ 캐릭터 배수 적용됨",
+      {
+        playerId: player.id,
+        nickname: targetSocket.nickname,
+        characterKey,
+        characterMultiplier,
+        baseReward,
+        finalReward,
+        prevPlayerCoins,
+        prevSocketCoins,
+        newPlayerTotal: player.coins,
+        newSocketTotal: targetSocket.coins,
+        coinTotal,
+      },
+    );
 
     const mergedItems = {
       items: Array.isArray(targetSocket.items) ? targetSocket.items : [],
@@ -761,7 +780,7 @@ function applyCoinCardReward(room, player, io) {
     });
   }
 
-  return { reward, coinTotal };
+  return { reward: finalReward, coinTotal };
 }
 
 function injectThunderCardsToPlayers(players, thunderCount) {
@@ -2053,10 +2072,17 @@ function handleAiFlip(room, io, playerId) {
     coinReward = rewardInfo?.reward ?? COIN_CARD_REWARD;
     coinTotal = rewardInfo?.coinTotal ?? null;
 
-    console.log("💰 [server] 코인카드 보상 처리됨", {
+    const characterKey = p.currentCharacter || p.avatarKey || "player_1";
+    const characterBonus = getCharacterBonus(characterKey);
+    const characterMultiplier = characterBonus?.coinMultiplier || 1;
+
+    console.log("💰 [AI 코인카드] 보상 처리 ✅ 캐릭터 배수 적용됨", {
       playerId: p.id,
       playerName: p.nickname,
-      reward: coinReward,
+      characterKey,
+      characterMultiplier,
+      baseReward: COIN_CARD_REWARD,
+      finalReward: coinReward,
       newTotal: coinTotal,
       isBot: p.isBot,
     });
@@ -2205,7 +2231,11 @@ function handleAiBell(room, io, playerId) {
     bellTotal: winnerBellTotal,
   });
 
-  processSkipTurn(room, io);
+  // ✅ 【케릭터 애니메이션 대기】 playWinAnimation의 케릭터 애니메이션(4초)이 완료될 때까지 대기 후 다음 턴
+  setTimeout(() => {
+    if (!room || !room.isGameStarted) return;
+    processSkipTurn(room, io);
+  }, 4500); // playWinAnimation 케릭터 애니메이션 시간(4000ms) + 여유(500ms)
 }
 
 function emitServerDebug(room, event, payload = {}) {
@@ -6369,6 +6399,20 @@ io.on("connection", (socket) => {
       const rewardInfo = applyCoinCardReward(room, p, io);
       coinReward = rewardInfo?.reward ?? COIN_CARD_REWARD;
       coinTotal = rewardInfo?.coinTotal ?? null;
+
+      const characterKey = p.currentCharacter || p.avatarKey || "player_1";
+      const characterBonus = getCharacterBonus(characterKey);
+      const characterMultiplier = characterBonus?.coinMultiplier || 1;
+
+      console.log("💰 [플레이어 코인카드] 보상 처리 ✅ 캐릭터 배수 적용됨", {
+        playerId: p.id,
+        playerName: p.nickname,
+        characterKey,
+        characterMultiplier,
+        baseReward: COIN_CARD_REWARD,
+        finalReward: coinReward,
+        newTotal: coinTotal,
+      });
     }
 
     // 💡 5 완성 여부 확인
@@ -6627,10 +6671,14 @@ io.on("connection", (socket) => {
           bellTotal: Number(socket.bellTotal) || 0,
         });
 
+        // ✅ 【케릭터 애니메이션 대기】 playWinAnimation의 케릭터 애니메이션(4초)이 완료될 때까지 대기 후 다음 턴
         // leave bellLocked true until processSkipTurn clears it; that way
         // any AI flip arriving between result emission and turn advancement
         // will be ignored.
-        processSkipTurn(room, io);
+        setTimeout(() => {
+          if (!room || !room.isGameStarted) return;
+          processSkipTurn(room, io);
+        }, 4500); // playWinAnimation 케릭터 애니메이션 시간(4000ms) + 여유(500ms)
       } else {
         const p = room.players.find((pl) => pl.id === sock.id);
         const others = room.players.filter(
