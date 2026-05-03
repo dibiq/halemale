@@ -225,6 +225,34 @@ async function savePlayer(
     return;
   }
 
+  // ✅ 【값 범위 검증】 Integer 오버플로우 방지
+  const MAX_INT32 = 2147483647;
+  const MIN_INT32 = -2147483648;
+
+  const validateIntValue = (value, fieldName, defaultValue = 0) => {
+    const num = Number(value) || defaultValue;
+    if (num > MAX_INT32 || num < MIN_INT32) {
+      console.warn(
+        `⚠️ [savePlayer] ${fieldName} 값 범위 초과 (${num}) - MAX: ${MAX_INT32}`,
+        {
+          id,
+          fieldName,
+          value,
+          clamped: Math.min(MAX_INT32, Math.max(MIN_INT32, num)),
+        },
+      );
+      return Math.min(MAX_INT32, Math.max(MIN_INT32, num));
+    }
+    return num;
+  };
+
+  // 값 검증 및 범위 제한
+  coins = validateIntValue(coins, "coins", 0);
+  experience = validateIntValue(experience, "experience", 0);
+  level = validateIntValue(level, "level", 1);
+  bellCorrect = validateIntValue(bellCorrect, "bellCorrect", null);
+  bellTotal = validateIntValue(bellTotal, "bellTotal", null);
+
   // Normalize id: if a live socket exists for this id and it has a nickname,
   // prefer the nickname as the DB primary key. This prevents accidental
   // writes under socket ids which produce separate DB rows.
@@ -386,7 +414,41 @@ async function savePlayer(
       `✅ ${id} 데이터 저장 성공 (coins=${coins}, owned=${JSON.stringify(normalizedOwnedCharacters)}, current=${normalizedCurrentCharacter}, rowCount=${result.rowCount})`,
     );
   } catch (err) {
-    console.error("❌ 저장 에러:", err);
+    // ✅ 【에러 분석 및 로깅】 Integer out of range 원인 파악
+    console.error("❌ 저장 에러:", {
+      message: err?.message,
+      code: err?.code,
+      severity: err?.severity,
+      detail: err?.detail,
+      id,
+      dbId,
+      level,
+      coins: coins > MAX_INT32 ? `⚠️ 오버플로우: ${coins}` : coins,
+      experience:
+        experience > MAX_INT32 ? `⚠️ 오버플로우: ${experience}` : experience,
+      bellCorrect,
+      bellTotal,
+      fullError: err,
+    });
+
+    // Integer out of range 에러일 경우 원인 분석
+    if (
+      err?.code === "22003" ||
+      err?.message?.includes("integer out of range")
+    ) {
+      console.error(
+        "🔴 [INTEGER_OVERFLOW] 정수 범위 초과 - 다음 중 하나의 값이 범위를 초과했습니다:",
+        {
+          coinsOverflow: coins > MAX_INT32 || coins < MIN_INT32,
+          experienceOverflow: experience > MAX_INT32 || experience < MIN_INT32,
+          levelOverflow: level > MAX_INT32 || level < MIN_INT32,
+          bellCorrectOverflow:
+            bellCorrect && (bellCorrect > MAX_INT32 || bellCorrect < MIN_INT32),
+          bellTotalOverflow:
+            bellTotal && (bellTotal > MAX_INT32 || bellTotal < MIN_INT32),
+        },
+      );
+    }
   }
 }
 
@@ -672,7 +734,27 @@ function applyCoinCardReward(room, player, io) {
   // 🔴 [DEBUG] 코인 30 리셋 추적
   const prevPlayerCoins = Number(player.coins) || 0;
 
-  player.coins = (Number(player.coins) || 0) + finalReward;
+  // ✅ 【Integer 오버플로우 방지】 최대값 제한
+  const MAX_INT32 = 2147483647;
+  const newCoins = Math.min(
+    MAX_INT32,
+    (Number(player.coins) || 0) + finalReward,
+  );
+
+  if (newCoins > prevPlayerCoins + finalReward) {
+    console.warn(
+      "⚠️ [applyCoinCardReward] 코인 값이 최대값에 도달했습니다 (오버플로우 방지)",
+      {
+        playerId: player.id,
+        prevCoins: prevPlayerCoins,
+        finalReward,
+        attemptedTotal: prevPlayerCoins + finalReward,
+        clamped: newCoins,
+      },
+    );
+  }
+
+  player.coins = newCoins;
   let coinTotal = Number(player.coins) || 0;
 
   console.log("✅ [applyCoinCardReward] 코인 배수 계산 완료", {
@@ -1153,7 +1235,24 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
     const beforeCoins = Number(player.coins) || 0;
 
     if (coinReward > 0) {
-      player.coins = beforeCoins + coinReward;
+      // ✅ 【Integer 오버플로우 방지】 최대값 제한
+      const MAX_INT32 = 2147483647;
+      const newCoins = Math.min(MAX_INT32, beforeCoins + coinReward);
+
+      if (newCoins < beforeCoins + coinReward) {
+        console.warn(
+          "⚠️ [finalizeGame] 코인 값이 최대값에 도달했습니다 (오버플로우 방지)",
+          {
+            nickname: player.nickname,
+            beforeCoins,
+            coinReward,
+            attemptedTotal: beforeCoins + coinReward,
+            clamped: newCoins,
+          },
+        );
+      }
+
+      player.coins = newCoins;
       console.log("💰 [finalizeGame] 순위 보상 (배수 적용)", {
         nickname: player.nickname,
         character: characterKey,
@@ -4503,20 +4602,42 @@ io.on("connection", (socket) => {
       specialCards: socket.specialCards || {},
     };
 
-    await savePlayer(
-      targetPlayerId,
-      socket.level,
-      socket.coins,
-      mergedItems,
-      socket.experience,
-      socket.ownedCharacters,
-      socket.currentCharacter || "player_1",
-      null,
-      Number.isFinite(socket.avetime) ? socket.avetime : null,
-      Number.isFinite(socket.ratio) ? socket.ratio : null,
-      Number.isFinite(socket.bellCorrect) ? socket.bellCorrect : null,
-      Number.isFinite(socket.bellTotal) ? socket.bellTotal : null,
-    );
+    // ✅ 【에러 처리】 savePlayer 호출 시 에러 발생 시 클라이언트에 알림
+    try {
+      await savePlayer(
+        targetPlayerId,
+        socket.level,
+        socket.coins,
+        mergedItems,
+        socket.experience,
+        socket.ownedCharacters,
+        socket.currentCharacter || "player_1",
+        null,
+        Number.isFinite(socket.avetime) ? socket.avetime : null,
+        Number.isFinite(socket.ratio) ? socket.ratio : null,
+        Number.isFinite(socket.bellCorrect) ? socket.bellCorrect : null,
+        Number.isFinite(socket.bellTotal) ? socket.bellTotal : null,
+      );
+    } catch (saveError) {
+      // 🔴 【에러 발생 시 클라이언트에 알림】
+      console.error("❌ [handleSyncPlayerInventory] savePlayer 실패:", {
+        nickname: socket.nickname,
+        error: saveError?.message,
+        code: saveError?.code,
+        coins: socket.coins,
+      });
+
+      // 클라이언트에 에러 전송
+      socket.emit("syncInventoryError", {
+        ok: false,
+        error: "데이터 저장 중 오류가 발생했습니다",
+        errorCode: saveError?.code || "UNKNOWN_ERROR",
+        message: saveError?.message || "알 수 없는 오류",
+        timestamp: new Date().toISOString(),
+      });
+
+      return; // 이 이후 로직 실행 하지 않음
+    }
 
     // If this socket is in a room, update the room's player snapshot so
     // subsequent game-end logic (finalizeGame) sees the latest values.

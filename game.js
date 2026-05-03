@@ -14160,6 +14160,32 @@ class GameScene extends Phaser.Scene {
       const playersAtStart = Array.isArray(this.roundData?.players) ? this.roundData.players : [];
       if (playersAtStart.length) {
         this.renderTable(playersAtStart);
+        
+        // 📊 【클라이언트 코인 추적 로그】 멀티플레이 게임 시작 시 플레이어 정보 + 캐릭터 배수 출력
+        if (!this.isSingle) {
+          console.log("");
+          console.log("╔═══════════════════════════════════════════╗");
+          console.log("║ 💰 멀티플레이 게임 시작 - 코인 배수 정보   ║");
+          console.log("╚═══════════════════════════════════════════╝");
+          console.log("📌 플레이어 및 캐릭터 배수:");
+          
+          playersAtStart.forEach((player, idx) => {
+            if (!player) return;
+            const characterKey = player.currentCharacter || player.avatarKey || "player_1";
+            const characterBonus = CHARACTER_BONUSES[characterKey] || CHARACTER_BONUSES.player_1;
+            const characterMultiplier = characterBonus?.coinMultiplier || 1;
+            
+            console.log(`   [${idx + 1}] ${player.nickname || player.id}`, {
+              character: characterKey,
+              characterMultiplier: `${characterMultiplier}배`,
+              deckSize: player.myDeck?.length || 0,
+              isBot: player.isBot,
+              isMe: player.id === this.myId ? "✓" : "",
+            });
+          });
+          console.log("╔═══════════════════════════════════════════╗");
+          console.log("");
+        }
       }
     } catch (e) {
     }
@@ -14824,9 +14850,12 @@ class GameScene extends Phaser.Scene {
           this._multiplierAnimationPlaying = true; // 배수 애니메이션 진행 중 플래그
           
           this.time.delayedCall(1200, () => {
-            this.playMultiplierSelectionAnimation(); // 5초 (3초 회전 + 2초 표시)
-
-            this.time.delayedCall(5000, () => {
+            this.playMultiplierSelectionAnimation(); // 3~5초 회전 + 1.6초 결과 표시 및 fade-out
+            
+            // ✅ 더 정확한 timing: 애니메이션 + 결과 표시 + fade-out (~3.5초) 후 바로 Ready-Go 표시
+            // 이전: 5000ms (너무 길어서 텀이 발생)
+            // 개선: 3500ms (충분한 margin 포함)
+            this.time.delayedCall(3500, () => {
               this.showReadyGo();
               this.time.delayedCall(2000, () => {
                 const myId = this.isSingle ? this.myId : socket.id;
@@ -15013,6 +15042,27 @@ class GameScene extends Phaser.Scene {
           ? Number(data.coinTotal)
           : undefined;
 
+        // 📊 【클라이언트 코인카드 획득 로그】 게임 중 코인 카드 획득 추적
+        const playerInfo = this.roundData.players.find((p) => p.id === data.playerId);
+        const characterKey = playerInfo?.currentCharacter || playerInfo?.avatarKey || "player_1";
+        const characterBonus = CHARACTER_BONUSES[characterKey] || CHARACTER_BONUSES.player_1;
+        const characterMultiplier = characterBonus?.coinMultiplier || 1;
+        const gameMultiplier = this.roundData?.gameMultiplier || 1;
+        const totalMultiplier = gameMultiplier * characterMultiplier;
+        
+        console.log("💰 [클라이언트] 코인카드 획득됨 ✅ 배수 적용됨", {
+          playerId: data.playerId,
+          playerName: playerInfo?.nickname || "Unknown",
+          character: characterKey,
+          characterMultiplier: `${characterMultiplier}배`,
+          gameMultiplier: `${gameMultiplier}배`,
+          totalMultiplier: `${totalMultiplier}배`,
+          baseReward: COIN_CARD_REWARD,
+          actualReward: reward,
+          isMe: data.playerId === myId ? "✓" : "",
+          newTotal: newTotal !== undefined ? newTotal : "미동기",
+        });
+
         // Only play the coin reward animation for the local player.
         if (data.playerId === myId) {
           this.playCoinCardRewardAnimation(data.playerId, reward, newTotal);
@@ -15060,6 +15110,24 @@ class GameScene extends Phaser.Scene {
 
       // 3. 애니메이션 및 테이블 갱신
       this.playCardFlipAnimation(data);
+    });
+
+    // ✅ 【서버 동기화 오류 처리】 코인/경험치 저장 실패 시 클라이언트에 알림
+    socket.off("syncInventoryError").on("syncInventoryError", (data) => {
+      console.error("❌ [syncInventoryError] 서버 데이터 저장 실패:", data);
+      
+      // 사용자 정보 패널에 에러 표시
+      this.showToast(
+        `⚠️ 데이터 저장 실패: ${data.message || data.error || "알 수 없는 오류"}`,
+        "#e74c3c",
+        5000
+      );
+      
+      // 로그 표시
+      this.addGameLog(
+        `[오류] 데이터 저장 실패 (${data.errorCode || "UNKNOWN"})`,
+        "#e74c3c"
+      );
     });
 
     socket.off("bellResult").on("bellResult", (data) => {
@@ -15663,6 +15731,43 @@ class GameScene extends Phaser.Scene {
       this._renderTableScheduled = false; // 게임 종료 시 다음 게임 시작을 위해 스케줄 상태 초기화
       // 결과 텍스트/시상 연출과 같은 최종 단계가 시작됐음을 즉시 표시
       this.isResultTextVisible = true;
+      
+      // 📊 【클라이언트 게임 종료 로그】 순위별 코인 보상 + 캐릭터 배수 추적
+      console.log("");
+      console.log("╔═══════════════════════════════════════════╗");
+      console.log("║ 🏁 멀티플레이 게임 종료 - 순위별 보상 정보  ║");
+      console.log("╚═══════════════════════════════════════════╝");
+      console.log("📊 최종 순위 및 코인 보상:");
+      if (Array.isArray(data?.ranking)) {
+        data.ranking.forEach((player, rank) => {
+          if (!player) return;
+          const characterKey = player.currentCharacter || player.avatarKey || "player_1";
+          const characterBonus = CHARACTER_BONUSES[characterKey] || CHARACTER_BONUSES.player_1;
+          const characterMultiplier = characterBonus?.coinMultiplier || 1;
+          const gameMultiplier = data.gameMultiplier || 1;
+          const totalMultiplier = gameMultiplier * characterMultiplier;
+          
+          // 순위별 기본 보상
+          const rankRewards = { 0: 30, 1: 20, 2: 10 };
+          const baseReward = rankRewards[rank] || 0;
+          const finalReward = Math.floor(baseReward * totalMultiplier);
+          
+          console.log(`   [${rank + 1}등] ${player.nickname || player.id}`, {
+            character: characterKey,
+            characterMultiplier: `${characterMultiplier}배`,
+            gameMultiplier: `${gameMultiplier}배`,
+            totalMultiplier: `${totalMultiplier}배`,
+            baseReward,
+            finalReward,
+            coinBefore: player.coinBefore || 0,
+            coinAfter: player.coins || 0,
+            isMe: player.id === socket.id ? "✓" : "",
+          });
+        });
+      }
+      console.log("╔═══════════════════════════════════════════╗");
+      console.log("");
+      
       const isMultiplayerWin = !this.isSingle && data && data.winnerId === socket.id;
       // Count multiplayer participation once per match. It should only increase when
       // the match has fully ended (to prevent double-counting due to rejoining/restarting).
