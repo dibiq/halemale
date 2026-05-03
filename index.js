@@ -665,13 +665,27 @@ function applyCoinCardReward(room, player, io) {
     player.currentCharacter || player.avatarKey || "player_1";
   const characterBonus = getCharacterBonus(characterKey);
   const characterMultiplier = characterBonus?.coinMultiplier || 1;
-  const finalReward = Math.floor(baseReward * characterMultiplier);
+  const gameMultiplier = room.gameMultiplier || 1;
+  const totalMultiplier = gameMultiplier * characterMultiplier;
+  const finalReward = Math.floor(baseReward * totalMultiplier);
 
   // 🔴 [DEBUG] 코인 30 리셋 추적
   const prevPlayerCoins = Number(player.coins) || 0;
 
   player.coins = (Number(player.coins) || 0) + finalReward;
   let coinTotal = Number(player.coins) || 0;
+
+  console.log("✅ [applyCoinCardReward] 코인 배수 계산 완료", {
+    playerId: player.id,
+    characterKey,
+    characterMultiplier,
+    gameMultiplier,
+    totalMultiplier,
+    baseReward,
+    finalReward,
+    prevCoins: prevPlayerCoins,
+    newCoins: coinTotal,
+  });
 
   // 체크: 만약 prevPlayerCoins이 0이었다면 경고
   if (prevPlayerCoins === 0) {
@@ -682,6 +696,8 @@ function applyCoinCardReward(room, player, io) {
         nickname: player.nickname,
         characterKey,
         characterMultiplier,
+        gameMultiplier,
+        totalMultiplier,
         baseReward,
         finalReward,
         prevPlayerCoinsRaw: player.coins - finalReward,
@@ -700,6 +716,22 @@ function applyCoinCardReward(room, player, io) {
     targetSocket.coins = (Number(targetSocket.coins) || 0) + finalReward;
     coinTotal = Number(targetSocket.coins) || coinTotal;
 
+    console.log("💰 [applyCoinCardReward] 소켓 코인 업데이트 ✅ 배수 적용됨", {
+      playerId: player.id,
+      nickname: targetSocket.nickname,
+      characterKey,
+      characterMultiplier,
+      gameMultiplier,
+      totalMultiplier,
+      baseReward,
+      finalReward,
+      prevPlayerCoins,
+      prevSocketCoins,
+      newPlayerTotal: player.coins,
+      newSocketTotal: targetSocket.coins,
+      coinTotal,
+    });
+
     // 체크: socket.coins이 0이었다면 경고
     if (prevSocketCoins === 0) {
       console.warn(
@@ -709,6 +741,8 @@ function applyCoinCardReward(room, player, io) {
           nickname: targetSocket.nickname,
           characterKey,
           characterMultiplier,
+          gameMultiplier,
+          totalMultiplier,
           baseReward,
           finalReward,
           prevSocketCoinsRaw: targetSocket.coins - finalReward,
@@ -716,23 +750,6 @@ function applyCoinCardReward(room, player, io) {
         },
       );
     }
-
-    console.log(
-      "💰 [applyCoinCardReward] 코인 보상 처리 ✅ 캐릭터 배수 적용됨",
-      {
-        playerId: player.id,
-        nickname: targetSocket.nickname,
-        characterKey,
-        characterMultiplier,
-        baseReward,
-        finalReward,
-        prevPlayerCoins,
-        prevSocketCoins,
-        newPlayerTotal: player.coins,
-        newSocketTotal: targetSocket.coins,
-        coinTotal,
-      },
-    );
 
     const mergedItems = {
       items: Array.isArray(targetSocket.items) ? targetSocket.items : [],
@@ -2067,6 +2084,15 @@ function handleAiFlip(room, io, playerId) {
 
   let coinReward = null;
   let coinTotal = null;
+
+  console.log("[카드 종류 확인] AI 턴", {
+    playerId: p.id,
+    nickname: p.nickname,
+    card: card,
+    cardType: card?.type,
+    isCoin: isCoinCard(card),
+  });
+
   if (isCoinCard(card)) {
     const rewardInfo = applyCoinCardReward(room, p, io);
     coinReward = rewardInfo?.reward ?? COIN_CARD_REWARD;
@@ -2075,14 +2101,19 @@ function handleAiFlip(room, io, playerId) {
     const characterKey = p.currentCharacter || p.avatarKey || "player_1";
     const characterBonus = getCharacterBonus(characterKey);
     const characterMultiplier = characterBonus?.coinMultiplier || 1;
+    const gameMultiplier = room.gameMultiplier || 1;
+    const totalMultiplier = gameMultiplier * characterMultiplier;
 
-    console.log("💰 [AI 코인카드] 보상 처리 ✅ 캐릭터 배수 적용됨", {
+    console.log("💰 [AI 코인카드] 보상 처리 ✅ 배수 적용됨", {
       playerId: p.id,
       playerName: p.nickname,
       characterKey,
       characterMultiplier,
+      gameMultiplier,
+      totalMultiplier,
       baseReward: COIN_CARD_REWARD,
-      finalReward: coinReward,
+      expectedReward: Math.floor(COIN_CARD_REWARD * totalMultiplier),
+      actualReward: coinReward,
       newTotal: coinTotal,
       isBot: p.isBot,
     });
@@ -2098,6 +2129,22 @@ function handleAiFlip(room, io, playerId) {
       setPlayerElimination(p, true);
     }
   }
+
+  // 📊 최종 요약 로그
+  console.log("", "");
+  console.log("═══════════════════════════════════════════");
+  console.log("🎯 [AI 턴 최종 요약]", {
+    playerId: p.id,
+    nickname: p.nickname,
+    drawnCard: card?.type || "unknown",
+    isCoin: isCoinCard(card),
+    coinReward: coinReward || "없음",
+    coinTotal: coinTotal || "없음",
+    remainingDeck: p.myDeck.length,
+    isEliminated: p.isEliminated,
+  });
+  console.log("═══════════════════════════════════════════");
+  console.log("", "");
 
   io.to(room.roomId).emit("cardFlipped", {
     playerId: p.id,
@@ -6184,6 +6231,31 @@ io.on("connection", (socket) => {
     console.log(
       `[AI] scheduleAiTurn invoked at gameStart room=${room.roomId} turnIndex=${room.turnIndex}`,
     );
+
+    // 📊 게임 시작 최종 요약 로그
+    console.log("", "");
+    console.log("╔═══════════════════════════════════════════╗");
+    console.log("║ 🎮 멀티플레이 게임 시작 - 최종 설정 정보   ║");
+    console.log("╚═══════════════════════════════════════════╝");
+    console.log("📌 게임 배수:", room.gameMultiplier || 1);
+    console.log("📌 플레이어 정보:");
+    room.players.forEach((p, idx) => {
+      const characterKey = p.currentCharacter || p.avatarKey || "player_1";
+      const characterBonus = getCharacterBonus(characterKey);
+      const characterMultiplier = characterBonus?.coinMultiplier || 1;
+      const totalMultiplier = (room.gameMultiplier || 1) * characterMultiplier;
+
+      console.log(`   [${idx + 1}] ${p.nickname || p.id}`, {
+        character: characterKey,
+        characterMultiplier: `${characterMultiplier}배`,
+        coinMultiplier: `${totalMultiplier}배 (게임 ${room.gameMultiplier || 1} × 캐릭터 ${characterMultiplier})`,
+        deckSize: p.myDeck?.length || 0,
+        isBot: p.isBot,
+      });
+    });
+    console.log("╔═══════════════════════════════════════════╗");
+    console.log("", "");
+
     scheduleAiTurn(room, io);
     respond({
       ok: true,
@@ -6395,6 +6467,15 @@ io.on("connection", (socket) => {
 
     let coinReward = null;
     let coinTotal = null;
+
+    console.log("[카드 종류 확인] 플레이어 턴", {
+      playerId: p.id,
+      nickname: p.nickname,
+      card: card,
+      cardType: card?.type,
+      isCoin: isCoinCard(card),
+    });
+
     if (isCoinCard(card)) {
       const rewardInfo = applyCoinCardReward(room, p, io);
       coinReward = rewardInfo?.reward ?? COIN_CARD_REWARD;
@@ -6403,14 +6484,19 @@ io.on("connection", (socket) => {
       const characterKey = p.currentCharacter || p.avatarKey || "player_1";
       const characterBonus = getCharacterBonus(characterKey);
       const characterMultiplier = characterBonus?.coinMultiplier || 1;
+      const gameMultiplier = room.gameMultiplier || 1;
+      const totalMultiplier = gameMultiplier * characterMultiplier;
 
-      console.log("💰 [플레이어 코인카드] 보상 처리 ✅ 캐릭터 배수 적용됨", {
+      console.log("💰 [플레이어 코인카드] 보상 처리 ✅ 배수 적용됨", {
         playerId: p.id,
         playerName: p.nickname,
         characterKey,
         characterMultiplier,
+        gameMultiplier,
+        totalMultiplier,
         baseReward: COIN_CARD_REWARD,
-        finalReward: coinReward,
+        expectedReward: Math.floor(COIN_CARD_REWARD * totalMultiplier),
+        actualReward: coinReward,
         newTotal: coinTotal,
       });
     }
@@ -6432,6 +6518,22 @@ io.on("connection", (socket) => {
         );
       }
     }
+
+    // 📊 최종 요약 로그
+    console.log("", "");
+    console.log("═══════════════════════════════════════════");
+    console.log("🎯 [플레이어 턴 최종 요약]", {
+      playerId: socket.id,
+      nickname: p.nickname,
+      drawnCard: card?.type || "unknown",
+      isCoin: isCoinCard(card),
+      coinReward: coinReward || "없음",
+      coinTotal: coinTotal || "없음",
+      remainingDeck: p.myDeck.length,
+      isEliminated: p.isEliminated,
+    });
+    console.log("═══════════════════════════════════════════");
+    console.log("", "");
 
     // [변경점] 카드를 뒤집은 직후 클라이언트에 알림
     io.to(room.roomId).emit("cardFlipped", {

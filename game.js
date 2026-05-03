@@ -23039,8 +23039,22 @@ class GameScene extends Phaser.Scene {
         });
       }
       
-      // 2초 후 사라짐
-      this.time.delayedCall(2000, () => {
+      // ✅ 【배수 선택 즉시 서버 전송】 "ready go"가 빠르게 나타나도록 지연 시간 단축
+      // 배수 텍스트 표시 직후 즉시 서버 전송 (UI 사라짐은 나중에)
+      this.time.delayedCall(100, () => {
+        try {
+          if (socket?.connected) {
+            socket.emit('setGameMultiplier', {
+              roomId: this.currentRoomId,
+              gameMultiplier: finalMultiplier,
+              timestamp: Date.now(),
+            });
+          }
+        } catch (e) {}
+      });
+      
+      // wheel과 텍스트는 천천히 사라짐 (배경에서)
+      this.time.delayedCall(1200, () => {
         this.tweens.add({
           targets: [wheelContainer, resultTxt, arrow],
           alpha: 0,
@@ -23054,17 +23068,6 @@ class GameScene extends Phaser.Scene {
             try { if (this.textures.exists("arrow_canvas")) this.textures.remove("arrow_canvas"); } catch (e) {}
           },
         });
-        
-        // 서버 전송
-        try {
-          if (socket?.connected) {
-            socket.emit('setGameMultiplier', {
-              roomId: this.currentRoomId,
-              gameMultiplier: finalMultiplier,
-              timestamp: Date.now(),
-            });
-          }
-        } catch (e) {}
       });
     };
     
