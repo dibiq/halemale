@@ -60,6 +60,31 @@ function getCharacterPrice(characterKey) {
   return CHARACTER_PRICES[characterKey] ?? null;
 }
 
+// ✅ 【캐릭터 특성】각 캐릭터별 코인 배수 + 특수카드 보너스
+// 특수카드 ID: 4=자물쇠, 5=방패, 6=먹물, 7=도둑, 8=왕(전세역전)
+const CHARACTER_BONUSES = {
+  player_1: { coinMultiplier: 1, specialCards: {} },
+  player_2: { coinMultiplier: 2, specialCards: {} },
+  player_3: { coinMultiplier: 2, specialCards: {} },
+  player_4: { coinMultiplier: 2, specialCards: {} },
+  player_5: { coinMultiplier: 3, specialCards: {} },
+  player_6: { coinMultiplier: 3, specialCards: {} },
+  player_7: { coinMultiplier: 3, specialCards: { 4: 1 } }, // 패널티방어 1회
+  player_8: { coinMultiplier: 3, specialCards: { 5: 1 } }, // 방패 1회
+  player_9: { coinMultiplier: 4, specialCards: { 6: 1 } }, // 먹물 1회
+  player_10: { coinMultiplier: 4, specialCards: { 7: 1 } }, // 도둑 1회
+  player_11: { coinMultiplier: 4, specialCards: { 8: 1 } }, // 전세역전 1회
+  player_12: {
+    coinMultiplier: 5,
+    specialCards: { 4: 1, 5: 1, 6: 1, 7: 1, 8: 1 },
+  }, // 모든 카드 1회
+  premium_bear: { coinMultiplier: 1, specialCards: {} },
+};
+
+function getCharacterBonus(characterKey) {
+  return CHARACTER_BONUSES[characterKey] || CHARACTER_BONUSES.player_1;
+}
+
 // ✅ 【검증 함수】모든 곳에서 사용 - VALID_PLAYER_NUMBERS 변경만으로 자동 반영
 function isValidPlayerKey(value) {
   return typeof value === "string" && VALID_PLAYER_KEYS_PATTERN.test(value);
@@ -1078,8 +1103,16 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
     }
 
     const baseCoinReward = RANK_REWARD_COINS[rankIndex] || 0;
-    const multiplier = room.gameMultiplier || 1;
-    const coinReward = Math.floor(baseCoinReward * multiplier);
+    const gameMultiplier = room.gameMultiplier || 1;
+
+    // ✅ 【캐릭터 보너스 배수 적용】 게임 배수 × 캐릭터 보너스 배수
+    const characterKey =
+      player.currentCharacter || player.avatarKey || "player_1";
+    const characterBonus = getCharacterBonus(characterKey);
+    const characterMultiplier = characterBonus?.coinMultiplier || 1;
+    const totalMultiplier = gameMultiplier * characterMultiplier;
+
+    const coinReward = Math.floor(baseCoinReward * totalMultiplier);
 
     const beforeCoins = Number(player.coins) || 0;
 
@@ -1087,9 +1120,12 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
       player.coins = beforeCoins + coinReward;
       console.log("💰 [finalizeGame] 순위 보상 (배수 적용)", {
         nickname: player.nickname,
+        character: characterKey,
         rank: rankIndex + 1,
         baseReward: baseCoinReward,
-        multiplier: multiplier,
+        gameMultiplier: gameMultiplier,
+        characterMultiplier: characterMultiplier,
+        totalMultiplier: totalMultiplier,
         earnedReward: coinReward,
         beforeCoins,
         newTotalCoins: player.coins,
@@ -5572,6 +5608,31 @@ io.on("connection", (socket) => {
           // ensure objects exist
           p.specialCards = p.specialCards || {};
           if (s) s.specialCards = s.specialCards || {};
+
+          // ✅ 【캐릭터 보너스 특수카드 추가】게임 시작 시 캐릭터별 보너스 카드 배분
+          try {
+            const characterKey =
+              p.currentCharacter || p.avatarKey || "player_1";
+            const bonus = getCharacterBonus(characterKey);
+
+            // 캐릭터 보너스 특수카드 추가
+            if (bonus && bonus.specialCards) {
+              Object.entries(bonus.specialCards).forEach(([cardId, count]) => {
+                const id = Number(cardId);
+                p.specialCards[id] = (p.specialCards[id] || 0) + count;
+                if (s) s.specialCards[id] = (s.specialCards[id] || 0) + count;
+              });
+
+              if (Object.keys(bonus.specialCards).length > 0) {
+                console.log(
+                  `🎁 [캐릭터 보너스] ${p.nickname}(${characterKey}) - 특수카드 추가:`,
+                  JSON.stringify(bonus.specialCards),
+                );
+              }
+            }
+          } catch (e) {
+            console.warn(`캐릭터 보너스 카드 추가 실패: ${p.nickname}`, e);
+          }
 
           // debug: after ensuring objects
           console.log(

@@ -7427,6 +7427,24 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         price: 20000,
       },
     ];
+    
+    // ✅ 【캐릭터 특성】각 캐릭터별 코인 배수 + 특수카드 보너스
+    // 특수카드 ID: 4=자물쇠, 5=방패, 6=먹물, 7=도둑, 8=왕(전세역전)
+    const CHARACTER_BONUSES = {
+      player_1: { coinMultiplier: 1, specialCards: {} },
+      player_2: { coinMultiplier: 2, specialCards: {} },
+      player_3: { coinMultiplier: 2, specialCards: {} },
+      player_4: { coinMultiplier: 2, specialCards: {} },
+      player_5: { coinMultiplier: 3, specialCards: {} },
+      player_6: { coinMultiplier: 3, specialCards: {} },
+      player_7: { coinMultiplier: 3, specialCards: { 4: 1 } },     // 패널티방어 1회
+      player_8: { coinMultiplier: 3, specialCards: { 5: 1 } },     // 방패 1회
+      player_9: { coinMultiplier: 4, specialCards: { 6: 1 } },     // 먹물 1회
+      player_10: { coinMultiplier: 4, specialCards: { 7: 1 } },    // 도둑 1회
+      player_11: { coinMultiplier: 4, specialCards: { 8: 1 } },    // 전세역전 1회
+      player_12: { coinMultiplier: 5, specialCards: { 4: 1, 5: 1, 6: 1, 7: 1, 8: 1 } }, // 모든 카드 1회
+      premium_bear: { coinMultiplier: 1, specialCards: {} },
+    };
 
     const coinProducts = [
       { amount: 1000, display: "1100원", sku: COIN_PRODUCT_SKUS[1000] },
@@ -24104,12 +24122,30 @@ class GameScene extends Phaser.Scene {
           const myRankIndex = players.findIndex(p => String(p.id) === String(myId));
           if (myRankIndex >= 0) {
             const baseRewardCoins = [30, 20, 10];
-            const multiplier = this.roundData?.gameMultiplier || 1;
+            const gameMultiplier = this.roundData?.gameMultiplier || 1;
+            
+            // ✅ 【캐릭터 보너스 배수 적용】 게임 배수 × 캐릭터 보너스 배수
+            const currentCharacter = this.getSelectedAvatarKey() || "player_1";
+            const characterBonus = CHARACTER_BONUSES[currentCharacter] || CHARACTER_BONUSES.player_1;
+            const characterMultiplier = characterBonus?.coinMultiplier || 1;
+            const totalMultiplier = gameMultiplier * characterMultiplier;
+            
             const baseReward = baseRewardCoins[myRankIndex] || 0;
-            const rankReward = Math.floor(baseReward * multiplier);
+            const rankReward = Math.floor(baseReward * totalMultiplier);
             
             if (rankReward > 0) {
               const beforeCoins = Number(this.myProfile?.coins) || 0;
+              
+              console.log('💰 [게임 종료] 싱글플레이 순위 보상 (캐릭터 배수 적용)', {
+                character: currentCharacter,
+                rank: myRankIndex + 1,
+                baseReward,
+                gameMultiplier,
+                characterMultiplier,
+                totalMultiplier,
+                rankReward,
+                beforeCoins,
+              });
               
               // 🔴 [일관성] modifyCoins 사용
               this.modifyCoins(rankReward, { sync: false, reason: 'rankReward' });
