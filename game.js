@@ -7362,69 +7362,69 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       },
       {
         key: "player_2",
-        name: "명품 곰돌이",
-        description: "럭셔리한 명품 곰돌이에요",
-        price: 260,
+        name: "잠옷 곰돌이",
+        description: "멀티플레이에서 코인획득량 2배",
+        price: 3000,
       },
       {
         key: "player_3",
-        name: "댄서 곰돌이",
-        description: "경쾌한 댄스 무브를 가진 캐릭터",
-        price: 420,
+        name: "힙합 곰돌이",
+        description: "멀티플레이에서 코인획득량 2배",
+        price: 3000,
       },
       {
         key: "player_4",
-        name: "관리 곰돌이",
-        description: "전용 스프라이트 애니메이션으로 움직이는 캐릭터",
-        price: 560,
+        name: "클럽 곰돌이",
+        description: "멀티플레이에서 코인획득량 2배",
+        price: 3000,
       },
       {
         key: "player_5",
-        name: "또르 곰돌이",
-        description: "귀여운 또르 곰돌이 캐릭터에요",
-        price: 680,
+        name: "젠틀 곰돌이",
+        description: "멀티플레이에서 코인획득량 3배",
+        price: 5000,
       },
       {
         key: "player_6",
-        name: "번개 곰돌이",
-        description: "빠르게 움직이는 번개 곰돌이 캐릭터",
-        price: 750,
+        name: "교관 곰돌이",
+        description: "멀티플레이에서 코인획득량 3배",
+        price: 5000,
       },
       {
         key: "player_7",
-        name: "데드 곰돌이",
-        description: "신비로운 데드 곰돌이 캐릭터",
-        price: 1000,
+        name: "로빈 곰돌이",
+        description: "멀티에서 코인획득 3배\n패널티방어 1회 가능",
+        price: 7000,
       },
       {
         key: "player_8",
-        name: "또르 곰돌이",
-        description: "귀여운 또르 곰돌이 캐릭터",
-        price: 2000,
+        name: "바이커 곰돌이",
+        description: "멀티에서 코인획득 3배\n방패 1회 가능",
+        price: 10000,
       },
       {
         key: "player_9",
-        name: "쪼로 곰돌이",
-        description: "깜찍한 쪼로 곰돌이 캐릭터",
-        price: 3000,
+        name: "장군 곰돌이",
+        description: "멀티에서 코인획득 4배\n먹물 1회 가능",
+        price: 10000,
       },
       {
         key: "player_10",
-        name: "검사 곰돌이",
-        description: "정의로운 검사 곰돌이 캐릭터",
-        price: 3000,
+        name: "요원 곰돌이",
+        description: "멀티에서 코인획득 4배\n카드뺏기 1회 가능",
+        price: 10000,
       },
       {
         key: "player_11",
-        name: "타노 곰돌이",
-        description: "신기한 타노 곰돌이 캐릭터",
-        price: 5000,
+        name: "타잔 곰돌이",
+        description: "멀티에서 코인획득 4배\n전세역전 1회 가능",
+        price: 15000,
       },
       {
         key: "player_12",
         name: "슈퍼 곰돌이",
-        description: "슈퍼한 슈퍼 곰돌이 캐릭터",
-        price: 5000,
+        description: "멀티에서 코인획득 5배\n모든 특수카드 1회 가능",
+        price: 20000,
       },
     ];
 
@@ -17470,13 +17470,13 @@ class GameScene extends Phaser.Scene {
             .setDepth(11100)
             .setVisible(false)
             .setOrigin(0.5, 0.5)
-            .setScale(1); // 원본 크기로 표시
+            .setScale(0.8); // 20% 축소
         }
         const tempSprite = this._winAvatarSprite;
         tempSprite.x = centerX;
         tempSprite.y = centerY;
         tempSprite.setOrigin(0.5, 0.5); // ✅ 정중앙 기준점
-        tempSprite.setScale(1); // ✅ 원본 크기 유지
+        tempSprite.setScale(0.8); // ✅ 20% 축소
         tempSprite.setVisible(true);
 
         const hideWinAvatar = () => {
@@ -17502,9 +17502,9 @@ class GameScene extends Phaser.Scene {
             // ✅ ensurePlayer5/6Frames 제거: preload/loadDeferredAssets에서 이미 개별 프레임이 로드됨
             this.applyAvatarAnimation(tempSprite, avatarKey);
             
-            // ✅ applyAvatarAnimation 호출 후 크기 및 위치 재설정 (크기 조절하지 않음)
+            // ✅ applyAvatarAnimation 호출 후 크기 및 위치 재설정 (20% 축소)
             tempSprite.setOrigin(0.5, 0.5);
-            tempSprite.setScale(1);
+            tempSprite.setScale(0.8);
             tempSprite.setPosition(centerX, centerY);
             
             try {
