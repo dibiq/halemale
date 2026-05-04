@@ -78,7 +78,7 @@ const CHARACTER_BONUSES = {
     coinMultiplier: 5,
     specialCards: { 4: 1, 5: 1, 6: 1, 7: 1, 8: 1 },
   }, // 모든 카드 1회
-  premium_bear: { coinMultiplier: 1, specialCards: {} },
+  premium_bear: { coinMultiplier: 1, specialCards: { 8: 1 } }, // 전세역전 1회
 };
 
 function getCharacterBonus(characterKey) {
@@ -3512,6 +3512,24 @@ io.on("connection", (socket) => {
     }
   });
 
+  // ✅ 【소유 캐릭터 동기화】 클라이언트에서 보상 캐릭터 받은 후 서버 sync
+  socket.on("syncOwnedCharacters", async (data) => {
+    try {
+      const incomingOwnedCharacters = data?.owned_characters;
+      if (Array.isArray(incomingOwnedCharacters)) {
+        socket.ownedCharacters = normalizeOwnedCharacters(
+          incomingOwnedCharacters,
+        );
+        console.log(
+          `✅ [syncOwnedCharacters] ${socket.nickname} 소유 캐릭터 업데이트:`,
+          socket.ownedCharacters,
+        );
+      }
+    } catch (e) {
+      console.error(`❌ [syncOwnedCharacters] 오류:`, e);
+    }
+  });
+
   // 특수카드 동기화 요청
   socket.on("syncSpecialCards", async (clientSpecialCards, cb) => {
     try {
@@ -5891,6 +5909,7 @@ io.on("connection", (socket) => {
           if (s) s.specialCards = s.specialCards || {};
 
           // ✅ 【캐릭터 보너스 특수카드 추가】게임 시작 시 캐릭터별 보너스 카드 배분
+          // 【중요】아이템이 0개일 때만 1개 지급 (기존 보유 시 추가 지급 안 함)
           try {
             const characterKey =
               p.currentCharacter || p.avatarKey || "player_1";
@@ -5898,15 +5917,27 @@ io.on("connection", (socket) => {
 
             // 캐릭터 보너스 특수카드 추가
             if (bonus && bonus.specialCards) {
+              const cardsAdded = {};
               Object.entries(bonus.specialCards).forEach(([cardId, count]) => {
                 const id = Number(cardId);
-                p.specialCards[id] = (p.specialCards[id] || 0) + count;
-                if (s) s.specialCards[id] = (s.specialCards[id] || 0) + count;
+                const currentCount = p.specialCards[id] || 0;
+
+                // ✅ 【개선】아이템이 0개일 때만 지급 (게임마다 계속 추가 안 함)
+                if (currentCount === 0) {
+                  p.specialCards[id] = count;
+                  if (s) s.specialCards[id] = count;
+                  cardsAdded[id] = count;
+                }
               });
 
-              if (Object.keys(bonus.specialCards).length > 0) {
+              if (Object.keys(cardsAdded).length > 0) {
                 console.log(
-                  `🎁 [캐릭터 보너스] ${p.nickname}(${characterKey}) - 특수카드 추가:`,
+                  `🎁 [캐릭터 보너스] ${p.nickname}(${characterKey}) - 특수카드 지급 (0개일 때만):`,
+                  JSON.stringify(cardsAdded),
+                );
+              } else if (Object.keys(bonus.specialCards).length > 0) {
+                console.log(
+                  `⏭️ [캐릭터 보너스] ${p.nickname}(${characterKey}) - 이미 보유중 (추가 지급 안 함):`,
                   JSON.stringify(bonus.specialCards),
                 );
               }
