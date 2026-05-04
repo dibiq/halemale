@@ -2406,11 +2406,19 @@ function handleAiBell(room, io, playerId) {
     bellTotal: winnerBellTotal,
   });
 
-  // ✅ 【케릭터 애니메이션 대기】 playWinAnimation의 케릭터 애니메이션(4초)이 완료될 때까지 대기 후 다음 턴
+  // ✅ 【다음 턴 타이밍 조정】 획득 카드 수에 따라 애니메이션 시간 달리함
+  // 10장 미만: 즉시 (100ms)
+  // 10장 이상: 케릭터 애니메이션 시간 (4000ms) + 여유 (500ms)
+  const animationDelay = collected.length < 10 ? 100 : 4500;
+  console.log(
+    `⏱️ [서버] bellResult 전송 후 ${animationDelay}ms 대기 → processSkipTurn (수집: ${collected.length}장)`,
+  );
+
   setTimeout(() => {
     if (!room || !room.isGameStarted) return;
+    console.log(`⏱️ [서버] ${animationDelay}ms 경과 → processSkipTurn 실행`);
     processSkipTurn(room, io);
-  }, 4500); // playWinAnimation 케릭터 애니메이션 시간(4000ms) + 여유(500ms)
+  }, animationDelay);
 }
 
 function emitServerDebug(room, event, payload = {}) {
@@ -6929,14 +6937,24 @@ io.on("connection", (socket) => {
           bellTotal: Number(socket.bellTotal) || 0,
         });
 
-        // ✅ 【케릭터 애니메이션 대기】 playWinAnimation의 케릭터 애니메이션(4초)이 완료될 때까지 대기 후 다음 턴
+        // ✅ 【다음 턴 타이밍 조정】 획득 카드 수에 따라 애니메이션 시간 달리함
+        // 10장 미만: 즉시 (100ms)
+        // 10장 이상: 케릭터 애니메이션 시간 (4000ms) + 여유 (500ms)
+        const animationDelay = collected.length < 10 ? 100 : 4500;
+        console.log(
+          `⏱️ [서버] bellResult 전송 후 ${animationDelay}ms 대기 → processSkipTurn (수집: ${collected.length}장)`,
+        );
+
         // leave bellLocked true until processSkipTurn clears it; that way
         // any AI flip arriving between result emission and turn advancement
         // will be ignored.
         setTimeout(() => {
           if (!room || !room.isGameStarted) return;
+          console.log(
+            `⏱️ [서버] ${animationDelay}ms 경과 → processSkipTurn 실행`,
+          );
           processSkipTurn(room, io);
-        }, 4500); // playWinAnimation 케릭터 애니메이션 시간(4000ms) + 여유(500ms)
+        }, animationDelay);
       } else {
         const p = room.players.find((pl) => pl.id === sock.id);
         const others = room.players.filter(

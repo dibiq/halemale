@@ -14917,6 +14917,10 @@ class GameScene extends Phaser.Scene {
     }
 
     socket.off("turnChanged").on("turnChanged", (data) => {
+      const turnChangeTime = Date.now();
+      const timeSinceBellResult = this.lastBellResultTime ? turnChangeTime - this.lastBellResultTime : 0;
+      console.log(`🔄 [turnChanged 이벤트 수신] bellResult로부터 ${timeSinceBellResult}ms 경과 | nextTurnId: ${data.nextTurnId}`);
+      
       const nextIdx = this.roundData.players.findIndex(
         (p) => p.id === data.nextTurnId,
       );
@@ -14928,6 +14932,7 @@ class GameScene extends Phaser.Scene {
 
         // 💡 내 차례가 왔을 때 띵! 소리나 진동(모바일) 주기
         if (isMyTurnNow) {
+          console.log(`🎯 [내 턴 시작!] canClick = true 설정`);
           this.canClick = true;
 
           // 모바일이라면 진동 추가 (브라우저 지원 시)
@@ -14935,6 +14940,7 @@ class GameScene extends Phaser.Scene {
             window.navigator.vibrate(100);
           }
         } else {
+          console.log(`⏸️ [상대방 턴] canClick = false`);
           this.canClick = false;
           this.clearMyTurnTimer();
         }
@@ -15132,6 +15138,10 @@ class GameScene extends Phaser.Scene {
     });
 
     socket.off("bellResult").on("bellResult", (data) => {
+      const bellResultStartTime = Date.now();
+      this.lastBellResultTime = bellResultStartTime; // turnChanged에서 사용할 시간 저장
+      console.log(`🔔 [bellResult 이벤트 수신] success: ${data.success}, winnerId: ${data.winnerId}, 획득: ${data.collectedCount}장`);
+      
       // suppress duplicate results that arrive shortly after one another
       // (server or network may accidentally send a second copy).
       const now = Date.now();
@@ -15253,6 +15263,8 @@ class GameScene extends Phaser.Scene {
         const shouldPlayCharacterAnim = data.collectedCount >= 10;
         console.log(`✨ [캐릭터 애니메이션] ${data.winnerNickname}: 획득 ${data.collectedCount}장 ${shouldPlayCharacterAnim ? "→ 재생 ✓" : "→스킵 (10장 미만)"}`);
         const winEventKey = `${data.winnerId}_${Date.now()}`; // 중복 호출 방지 키
+        console.log(`🎬 [playWinAnimation 호출 직전] - 콜백이 호출될 때까지 대기 시작`);
+        const callbackStartTime = Date.now();
         this.playWinAnimation({
           winnerId: data.winnerId, // 서버에서 승자 ID를 보내준다고 가정
           players: updatedPlayers,
@@ -15261,15 +15273,21 @@ class GameScene extends Phaser.Scene {
           collectedCount: data.collectedCount,
           skipAvatar: !shouldPlayCharacterAnim || skipAnimation, // 10장 미만이면 캐릭터 애니메이션 스킵
         }, () => {
+          console.log(`🎬 [playWinAnimation 콜백 시작] ${Date.now() - callbackStartTime}ms 경과`);
+          const callbackDetailStartTime = Date.now();
+          
           // ✅ 애니메이션 완료 후 다음 턴 시작 준비 (한 곳에서만 처리)
           // winner case - just update players immediately
+          const updatePlayersStart = Date.now();
           this.roundData.players = updatedPlayers;
+          console.log(`📦 [roundData.players 업데이트] ${Date.now() - updatePlayersStart}ms`);
 
           // 멀티플레이: 로컬 플레이어가 카드를 획득했으면 즉시 경험치 지급 (중복 호출 방지)
           try {
             // ✅ 플래그로 중복 호출 방지
             if (!this._lastWinExpEvent || this._lastWinExpEvent !== winEventKey) {
               this._lastWinExpEvent = winEventKey;
+              console.log(`💰 [경험치 지급 블록 진입]`);
               
               if (
                 !this.isSingle &&
@@ -15278,20 +15296,22 @@ class GameScene extends Phaser.Scene {
                 Number.isFinite(Number(data.collectedCount)) &&
                 Number(data.collectedCount) > 0
               ) {
+                const expStart = Date.now();
                 const baseGained = Number(data.collectedCount) || 0;
                 const multiplier = this.roundData?.gameMultiplier || 1;
                 const gained = baseGained * multiplier; // 배수 적용
                 if (typeof this.awardExperience === "function") {
                   this.awardExperience(gained);
                 }
+                console.log(`✨ [awardExperience 호출] ${Date.now() - expStart}ms`);
               }
             }
           } catch (e) {
+            console.error(`❌ [경험치 지급 에러]`, e);
           }
+          
+          console.log(`✅ [playWinAnimation 콜백 완료] 총 ${Date.now() - callbackDetailStartTime}ms 소요`);
         });
-        /*this.time.delayedCall(500, () => {
-          this.renderTable(this.roundData.players);
-        });*/
       } else {
         // 실패 시 콤보 초기화
         if (this.comboState) {
@@ -15458,6 +15478,7 @@ class GameScene extends Phaser.Scene {
 
         // 💡 [수정] roundData 업데이트는 playPenaltyAnimation 내부에서 처리됨
         // this.roundData.players = updatedPlayers; (제거 - 바닥 카드 보존을 위해)
+        console.log(`✅ [playWinAnimation 콜백 완료] 총 ${Date.now() - callbackStartTime}ms 소요`);
       }
     });
 
@@ -17457,6 +17478,9 @@ class GameScene extends Phaser.Scene {
   }
 
   playWinAnimation(data = {}, onComplete = null) {
+    const _startTime = Date.now();
+    console.log(`🎬 [playWinAnimation] 시작 | 수집카드: ${data.collectedCount}`);
+    
     // block further inputs by placing a transparent fullscreen overlay
     const { width, height } = this.cameras.main;
     const overlay = this.add
@@ -17483,17 +17507,23 @@ class GameScene extends Phaser.Scene {
     // 애니메이션이 완전히 끝났는지 체크하는 함수
     const checkAllAnimationsComplete = () => {
       if (characterAnimationDone && cardAnimationDone) {
+        const elapsed = Date.now() - _startTime;
+        console.log(`✅ [checkAllAnimationsComplete 호출] ${elapsed}ms 경과`);
         this.renderTable(data.players);
         if (overlay) overlay.destroy();
         // ✅ 애니메이션 완료 후 콜백 실행 - 다음 턴 시작 로직이 여기서 실행됨
         if (typeof onComplete === "function") {
+          const callbackStartTime = Date.now();
+          console.log(`📞 [onComplete 콜백 실행 직전] ${elapsed}ms`);
           onComplete();
+          console.log(`📞 [onComplete 콜백 실행 완료] ${Date.now() - callbackStartTime}ms 소요`);
         }
       }
     };
 
     const skipAvatarAnim =
       typeof data.skipAvatar === "boolean" ? data.skipAvatar : false;
+    console.log(`🚩 [skipAvatarAnim] ${skipAvatarAnim}`);
 
     // inspect `this` context
     // ensure animations are enabled when called
@@ -17506,7 +17536,9 @@ class GameScene extends Phaser.Scene {
     const { players, prevPlayers, winnerId } = data;
 
     // 💥 멀티플레이 정답 시 스펙타클한 이펙트
+    const successEffectStart = Date.now();
     this.playSuccessEffect();
+    console.log(`🎊 [playSuccessEffect] ${Date.now() - successEffectStart}ms 소요`);
 
     const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
     const myIndex = players.findIndex((p) => p.id === myId);
@@ -17784,22 +17816,33 @@ class GameScene extends Phaser.Scene {
 
     // ✅ 【카드 애니메이션 조건】 10장 미만이면 카드 애니메이션 스킵
     if (skipAvatarAnim) {
+      const elapsed = Date.now() - _startTime;
+      console.log(`⚡ [10장 미만 분기 진입] ${elapsed}ms | 바로 완료 처리`);
+      
       // 10장 미만: 즉시 완료 처리 (캐릭터 애니메이션 시간 대기 없음)
       cardAnimationDone = true;
       characterAnimationDone = true;
-      console.log(`⚡ [애니메이션 스킵] 10장 미만 - 경험치 후 즉시 카드 제출 가능`);
       
       // 💡 바닥 카드 즉시 정리
+      const cleanupStart = Date.now();
       this.roundData.players.forEach((player) => {
         player.openStack = [];
         player.openCard = null;
       });
+      console.log(`🧹 [바닥 카드 정리] ${Date.now() - cleanupStart}ms`);
+      
+      const renderStart = Date.now();
       this.renderTable(this.roundData.players);
+      console.log(`🎨 [renderTable 호출] ${Date.now() - renderStart}ms`);
       
       // 💥 즉시 애니메이션 완료 처리
-      this.time.delayedCall(100, () => {
+      const delayStartTime = Date.now();
+      this.time.delayedCall(0, () => {
+        const delayElapsed = Date.now() - delayStartTime;
+        console.log(`⏱️ [delayedCall 이후] ${delayElapsed}ms 경과 후 checkAllAnimationsComplete 호출`);
         checkAllAnimationsComplete();
       });
+      console.log(`🔙 [return으로 나머지 애니메이션 코드 스킵]`);
       return; // 나머지 애니메이션 코드 스킵
     }
 
