@@ -1430,9 +1430,17 @@ class LobbyScene extends Phaser.Scene {
         },
         onEvent: (event) => {
           this.isIapPurchasing = false;
+          this.shopPurchaseInProgress = false;
 
           if (event?.type === "success") {
             this.showToast(`💰 ${product.amount} 코인 충전 완료!`, "#2ecc71");
+          }
+          
+          // 🔴 [중요] 버튼 활성화 - 코인 구매 완료/실패
+          if (this.shopBuyBtn) {
+            this.shopBuyBtn.setInteractive(true);
+            this.shopBuyBtn.setAlpha(1);
+            if (this.shopBuyBtnText) this.shopBuyBtnText.setAlpha(1);
           }
 
           if (typeof this.iapPurchaseCleanup === "function") {
@@ -1442,10 +1450,18 @@ class LobbyScene extends Phaser.Scene {
         },
         onError: (error) => {
           this.isIapPurchasing = false;
+          this.shopPurchaseInProgress = false;
           this.showToast(
             `결제 실패: ${this.parseIapErrorMessage(error)}`,
             "#e74c3c",
           );
+
+          // 🔴 [중요] 버튼 활성화 - 결제 실패
+          if (this.shopBuyBtn) {
+            this.shopBuyBtn.setInteractive(true);
+            this.shopBuyBtn.setAlpha(1);
+            if (this.shopBuyBtnText) this.shopBuyBtnText.setAlpha(1);
+          }
 
           if (typeof this.iapPurchaseCleanup === "function") {
             this.iapPurchaseCleanup();
@@ -7898,6 +7914,10 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         strokeThickness: 4,
       })
       .setOrigin(0.5);
+    
+    // 🔴 [중요] 버튼을 전역으로 저장 (다른 함수에서 접근 가능)
+    this.shopBuyBtn = buyBtn;
+    this.shopBuyBtnText = buyBtnText;
 
     const renderShopContent = () => {
       cardDisplayContainer.removeAll(true);
@@ -8260,7 +8280,19 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       renderShopContent();
     });
 
+    // 🔴 [중요] buyBtn 이벤트 기존 핸들러 제거 (중복 등록 방지)
+    buyBtn.off("pointerdown");
+    
     buyBtn.on("pointerdown", () => {
+      // 🔴 [중요] 구매 진행 중이면 무시 (중복 클릭 방지)
+      if (this.shopPurchaseInProgress) return;
+      this.shopPurchaseInProgress = true;
+      
+      // 🔴 [중요] 버튼 비활성화 - 구매 처리 중 상태 시각화
+      buyBtn.setInteractive(false);
+      buyBtn.setAlpha(0.5);
+      if (buyBtnText) buyBtnText.setAlpha(0.5);
+      
       this.sound.play("btn", { volume: 0.4 });
       this.tweens.add({
         targets: buyBtn,
@@ -8344,6 +8376,11 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             // 서버 응답을 기다렸다가 렌더링
             const updateUIOnProfileReceived = (profile) => {
               renderShopContent();
+              this.shopPurchaseInProgress = false;
+              // 🔴 [중요] 버튼 활성화 - 구매 완료
+              buyBtn.setInteractive(true);
+              buyBtn.setAlpha(1);
+              if (buyBtnText) buyBtnText.setAlpha(1);
               socket.off("myProfile", updateUIOnProfileReceived);
             };
             
@@ -8354,13 +8391,28 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             this.time.delayedCall(1000, () => {
               socket.off("myProfile", updateUIOnProfileReceived);
               renderShopContent();
+              this.shopPurchaseInProgress = false;
+              // 🔴 [중요] 버튼 활성화 - 타임아웃 후
+              buyBtn.setInteractive(true);
+              buyBtn.setAlpha(1);
+              if (buyBtnText) buyBtnText.setAlpha(1);
             });
           } else {
             // 싱글플레이: 즉시 렌더링
             renderShopContent();
+            this.shopPurchaseInProgress = false;
+            // 🔴 [중요] 버튼 활성화 - 구매 완료
+            buyBtn.setInteractive(true);
+            buyBtn.setAlpha(1);
+            if (buyBtnText) buyBtnText.setAlpha(1);
           }
         } else {
           this.showToast("코인이 부족합니다!", "#e74c3c");
+          this.shopPurchaseInProgress = false;
+          // 🔴 [중요] 버튼 활성화 - 구매 실패
+          buyBtn.setInteractive(true);
+          buyBtn.setAlpha(1);
+          if (buyBtnText) buyBtnText.setAlpha(1);
         }
         return;
       }
@@ -8391,11 +8443,21 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
           this.showToast(`${character.name} 착용 완료!`, "#2ecc71");
           renderShopContent();
+          this.shopPurchaseInProgress = false;
+          // 🔴 [중요] 버튼 활성화
+          buyBtn.setInteractive(true);
+          buyBtn.setAlpha(1);
+          if (buyBtnText) buyBtnText.setAlpha(1);
           return;
         }
 
         if (this.myProfile.coins < character.price) {
           this.showToast("코인이 부족합니다!", "#e74c3c");
+          this.shopPurchaseInProgress = false;
+          // 🔴 [중요] 버튼 활성화
+          buyBtn.setInteractive(true);
+          buyBtn.setAlpha(1);
+          if (buyBtnText) buyBtnText.setAlpha(1);
           return;
         }
 
@@ -8439,7 +8501,27 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           ownedCharacters[character.key] = true;
           saveOwnedCharacters(ownedCharacters);
           this.equipCharacter(character.key);
-          renderShopContent();
+          
+          // 🔴 [중요] 서버 응답 대기 후 플래그 해제 + 버튼 활성화
+          const updateUIOnProfileReceived = (profile) => {
+            renderShopContent();
+            this.shopPurchaseInProgress = false;
+            // 🔴 [중요] 버튼 활성화 - 캐릭터 구매 완료
+            buyBtn.setInteractive(true);
+            buyBtn.setAlpha(1);
+            if (buyBtnText) buyBtnText.setAlpha(1);
+            socket.off("myProfile", updateUIOnProfileReceived);
+          };
+          socket.once("myProfile", updateUIOnProfileReceived);
+          this.time.delayedCall(2000, () => {
+            socket.off("myProfile", updateUIOnProfileReceived);
+            this.shopPurchaseInProgress = false;
+            // 🔴 [중요] 버튼 활성화 - 타임아웃 후
+            buyBtn.setInteractive(true);
+            buyBtn.setAlpha(1);
+            if (buyBtnText) buyBtnText.setAlpha(1);
+            renderShopContent();
+          });
           return;
         } else {
           // 싱글플레이어 모드에서만 로컬 처리
@@ -8455,6 +8537,11 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           this.lastCharacterPurchaseToastAt = Date.now();
           this.showToast(`${character.name} 구매 완료!`, "#2ecc71");
           renderShopContent();
+          this.shopPurchaseInProgress = false;
+          // 🔴 [중요] 버튼 활성화 - 싱글플레이 구매 완료
+          buyBtn.setInteractive(true);
+          buyBtn.setAlpha(1);
+          if (buyBtnText) buyBtnText.setAlpha(1);
         }
 
         return;
@@ -8471,6 +8558,8 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         }
         
         const product = coinProducts[tabIndexes.coin];
+        // 🔴 [중요] purchaseCoinProduct 내부에서 성공 시 플래그 해제 예정
+        // 현재는 콜백으로 처리하므로 purchaseCoinProduct 끝에서 플래그 해제해야 함
         this.purchaseCoinProduct(product);
       }
     });
@@ -15259,8 +15348,6 @@ class GameScene extends Phaser.Scene {
     socket.off("bellResult").on("bellResult", (data) => {
       const bellResultStartTime = Date.now();
       this.lastBellResultTime = bellResultStartTime; // turnChanged에서 사용할 시간 저장
-      console.log(`🔔 [bellResult] success=${data.success} winnerId=${data.winnerId} penaltyId=${data.penaltyId} autoLockUsedBy=${data.autoLockUsedBy} myId=${socket.id}`);
-      console.log(`🔔 [bellResult 전체] ${JSON.stringify(data)}`);
       
       // suppress duplicate results that arrive shortly after one another
       // (server or network may accidentally send a second copy).
@@ -15445,7 +15532,6 @@ class GameScene extends Phaser.Scene {
 
         // 서버가 자물쇠 자동 사용으로 패널티를 면제했을 때 처리 (멀티 전용)
         if (data.autoLockUsedBy) {
-          console.log(`🔒 [bellResult autoLockUsedBy] 감지됨: ${data.autoLockUsedBy}`);
           // 싱글플레이에서는 서버가 autoLockUsedBy 를 보내더라도 이를 무시합니다.
           if (!this.isSingle) {
             try {
@@ -15460,7 +15546,6 @@ class GameScene extends Phaser.Scene {
 
               // 서버가 보낸 플레이어 목록으로 갱신
               if (Array.isArray(data.players) && data.players.length > 0) {
-                console.log(`🔒 [bellResult autoLockUsedBy] 플레이어 병합 시작`);
                 // 💡 Preserve any open stacks the client already had, since server
                 // may send players with emptied stacks. Similar to later lock
                 // handling logic.
@@ -15469,13 +15554,11 @@ class GameScene extends Phaser.Scene {
                   if (newPlayer) {
                     // 🔒 [중요] autoLockUsedBy인 경우 specialCards[4] 직접 차감
                     if (data.autoLockUsedBy === oldPlayer.id) {
-                      const before = oldPlayer.specialCards?.[4] || newPlayer.specialCards?.[4];
                       // newPlayer에서 차감
                       if (newPlayer.specialCards) {
                         newPlayer.specialCards[4] = Math.max(0, (Number(newPlayer.specialCards[4]) || 1) - 1);
                         if (newPlayer.specialCards[4] <= 0) delete newPlayer.specialCards[4];
                       }
-                      console.log(`🔒 [specialCards 차감] ${oldPlayer.nickname}: card4 ${before}개 → ${newPlayer.specialCards?.[4] || 0}개`);
                     }
                     
                     const preservedOpenStack = oldPlayer.openStack;
@@ -15485,11 +15568,9 @@ class GameScene extends Phaser.Scene {
                     // 🔒 [명시적 업데이트] specialCards가 제대로 반영되도록 다시 할당
                     if (newPlayer.specialCards) {
                       oldPlayer.specialCards = { ...newPlayer.specialCards };
-                      console.log(`🔒 [명시적 업데이트] ${oldPlayer.nickname}.specialCards=${JSON.stringify(oldPlayer.specialCards)}`);
                     }
                   }
                 });
-                console.log(`🔒 [bellResult autoLockUsedBy] 즉시 렌더링 호출`);
                 this._renderTableImmediate(this.roundData.players);
               }
             } catch (e) {
@@ -15501,7 +15582,6 @@ class GameScene extends Phaser.Scene {
 
         // 자동 사용: 패널티 대상이 로컬 플레이어이고 자물쇠(lock, id=4)를 보유한 경우
         const myIdCheck = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
-        console.log(`🔒 [auto-lock 체크 시작] penaltyId=${data.penaltyId} myIdCheck=${myIdCheck} 일치=${data.penaltyId === myIdCheck} isSingle=${this.isSingle}`);
         
         // 싱글플레이에서는 패널티시 아이템 자동 사용 금지
         if (this.isSingle) {
@@ -15514,7 +15594,6 @@ class GameScene extends Phaser.Scene {
         }
         
         if (data.penaltyId === myIdCheck) {
-          console.log(`🔒 [패널티 대상 확인] 내가 페널티 대상입니다`);
           try {
             // ✅ 서버 데이터만 사용 (localStorage 제거)
             const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
@@ -15523,23 +15602,16 @@ class GameScene extends Phaser.Scene {
               myPlayer = this.roundData.players.find(p => p && p.id === myId);
             }
             
-            console.log(`🔒 [플레이어 조회] myId=${myId} found=${!!myPlayer} specialCards=${JSON.stringify(myPlayer?.specialCards)}`);
-            
             const owned = myPlayer?.specialCards || {};
             const lockCount = Number(owned[4] || 0);
-            console.log(`🔒 [자물쇠 개수 확인] lockCount=${lockCount}`);
             
             if (lockCount > 0) {
-              console.log(`🔒 [auto-lock 발동 조건 만족] socket.connected=${socket?.connected}`);
-              
               // 멀티플레이: 서버에 사용 요청을 보낸 뒤 응답(또는 타임아웃)을 기다림
               if (!this.isSingle && socket && socket.connected) {
-                console.log(`🔒 [requestUseSpecial 요청 전송 시작]`);
                 let handled = false;
                 const timeout = this.time.delayedCall(1200, () => {
                   if (handled) return;
                   handled = true;
-                  console.log(`🔒 [요청 타임아웃 1200ms] 패널티 처리 계속`);
                   // 타임아웃 시 패널티 처리 계속
                   this.playPenaltyAnimation({
                     penaltyId: data.penaltyId,
@@ -15557,18 +15629,13 @@ class GameScene extends Phaser.Scene {
                     penaltyId: data.penaltyId,
                   },
                   (res) => {
-                    console.log(`🔒 [응답 콜백 호출됨] res=${JSON.stringify(res)}`);
                     if (handled) return;
                     handled = true;
                     timeout.remove(false);
 
-                    console.log(`🔒 [auto-lock 응답] success=${res?.success} updatedSpecialCards=${JSON.stringify(res?.updatedSpecialCards)} hasPlayers=${Array.isArray(res?.players)}`);
-
                     // 서버가 사용을 허용한 경우
                     if (res && res.success) {
                       const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
-                      const beforeUpdate = this.roundData.players.find(p => p.id === myId)?.specialCards;
-                      console.log(`🔒 [auto-lock 적용 전] myPlayer.specialCards=${JSON.stringify(beforeUpdate)}`);
                       
                       // 서버가 갱신한 보유 아이템 정보이 있으면 적용
                       if (res.updatedSpecialCards) {
@@ -15588,10 +15655,6 @@ class GameScene extends Phaser.Scene {
 
                       // 서버가 플레이어 상태를 함께 보냈으면 적용
                       if (res.players && Array.isArray(res.players)) {
-                        console.log(`🔒 [res.players 존재] 플레이어 데이터 병합 시작`);
-                        const resPlayerForMe = res.players.find(p => p.id === myId);
-                        console.log(`🔒 [res.players의 내 정보] specialCards=${JSON.stringify(resPlayerForMe?.specialCards)}`);
-                        
                         // 보존해야 할 openStack 유지
                         this.roundData.players.forEach((oldPlayer) => {
                           const newPlayer = res.players.find(
@@ -15604,12 +15667,8 @@ class GameScene extends Phaser.Scene {
                           }
                         });
                         
-                        const afterUpdate = this.roundData.players.find(p => p.id === myId)?.specialCards;
-                        console.log(`🔒 [auto-lock 적용 후] myPlayer.specialCards=${JSON.stringify(afterUpdate)}`);
-                        console.log(`🔒 [renderTable 호출] 다시 그리기 시작`);
                         this.renderTable(this.roundData.players);
                       } else {
-                        console.log(`🔒 [res.players 없음] localStorage에서만 적용`);
                         // 단순히 UI 갱신
                         this.renderTable(this.roundData.players);
                       }
@@ -15620,8 +15679,6 @@ class GameScene extends Phaser.Scene {
                       });
                       return;
                     }
-
-                    console.log(`🔒 [응답 실패] 패널티 처리 계속`);
                     this.playPenaltyAnimation({
                       penaltyId: data.penaltyId,
                       recipients: data.recipients,
@@ -17425,7 +17482,6 @@ class GameScene extends Phaser.Scene {
         } else {
           // 활성 아이템이고 미사용: 클릭 가능
           cardBg.on("pointerdown", () => {
-            console.log(`🖱️ [아이템 클릭] cardId=${card.id} (${card.name})`);
             // Prevent double-clicks: mark as clicked and disable interaction immediately
             if (cardBg._clicked) {
               return;

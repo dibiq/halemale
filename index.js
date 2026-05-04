@@ -2839,13 +2839,40 @@ io.on("connection", (socket) => {
   // 특수카드 구매 이벤트
   socket.on("buySpecialCard", async (data) => {
     const { cardId, cardPrice, avetime } = data || {};
+
+    // 🔴 [중요] 중복 요청 방지 (2초 내 동일 요청 감지)
+    if (!socket.lastCardPurchase) socket.lastCardPurchase = {};
+    const purchaseKey = `card_${cardId}`;
+    const now = Date.now();
+    if (
+      socket.lastCardPurchase[purchaseKey] &&
+      now - socket.lastCardPurchase[purchaseKey] < 2000
+    ) {
+      console.warn(
+        `⚠️ ${socket.nickname} 중복 구매 감지 (cardId: ${cardId}), 무시`,
+      );
+      return;
+    }
+    socket.lastCardPurchase[purchaseKey] = now;
+
     if (typeof avetime !== "undefined") {
       const a = parseFloat(avetime);
       if (!isNaN(a)) socket.avetime = a;
     }
 
+    // 🔴 [중요] 코인 부족 검증 (차감 전)
+    const currentCoins = Number(socket.coins) || 0;
+    const price = Number(cardPrice) || 0;
+    if (currentCoins < price) {
+      console.error(
+        `❌ ${socket.nickname} 코인 부족: 보유 ${currentCoins} < 필요 ${price}`,
+      );
+      socket.emit("buyItemError", "코인이 부족합니다!");
+      return;
+    }
+
     // 1. 코인 차감
-    socket.coins -= cardPrice;
+    socket.coins = currentCoins - price;
 
     // 2. 특수카드 수량 증가
     if (!socket.specialCards[cardId]) {
@@ -2873,9 +2900,13 @@ io.on("connection", (socket) => {
           ? socket.avetime
           : null,
       );
-      console.log(`✅ ${socket.nickname} 특수카드 ${cardId} 구매 DB 저장 완료`);
     } catch (e) {
+      // 🔴 [중요] DB 저장 실패 시 롤백
+      socket.coins = currentCoins;
+      socket.specialCards[cardId] -= 1;
       console.error(`❌ ${socket.nickname} 특수카드 구매 DB 저장 실패:`, e);
+      socket.emit("buyItemError", "구매 처리 중 오류가 발생했습니다.");
+      return;
     }
 
     // 4. 클라이언트에 최신 프로필 전송
@@ -2896,15 +2927,27 @@ io.on("connection", (socket) => {
       owned_characters: socket.ownedCharacters || ["player_1"],
       current_character: socket.currentCharacter || "player_1",
     });
-
-    console.log(
-      `✅ ${socket.nickname}이(가) 카드 ${cardId} 구매 (현재 보유: ${socket.specialCards[cardId]}개)`,
-    );
   });
 
   // 코인 추가 구매 이벤트
   socket.on("addCoins", async (data) => {
     const { amount, nickname, playerId, timestamp, avetime } = data || {};
+
+    // 🔴 [중요] 중복 요청 방지 (orderId 또는 timestamp 기반)
+    if (!socket.lastCoinPurchase) socket.lastCoinPurchase = {};
+    const now = Date.now();
+    const purchaseKey = `coins_${amount}_${timestamp || now}`;
+    if (
+      socket.lastCoinPurchase[purchaseKey] &&
+      now - socket.lastCoinPurchase[purchaseKey] < 2000
+    ) {
+      console.warn(
+        `⚠️ ${nickname || socket.nickname} 중복 코인 구매 감지, 무시`,
+      );
+      return;
+    }
+    socket.lastCoinPurchase[purchaseKey] = now;
+
     // 클라이언트가 평균속도를 함께 보낼 수 있도록 허용
     if (typeof avetime !== "undefined") {
       const a = parseFloat(avetime);
@@ -2912,16 +2955,6 @@ io.on("connection", (socket) => {
         socket.avetime = a;
       }
     }
-
-    console.log(`💰 [DEBUG] addCoins 요청 받음:`, {
-      amount,
-      clientNickname: nickname,
-      socketNickname: socket.nickname,
-      playerId,
-      timestamp,
-      socketId: socket.id,
-      socketCoins: socket.coins,
-    });
 
     // 닉네임 결정 (클라이언트에서 보낸 것을 우선 사용)
     const targetNickname = nickname || socket.nickname;
@@ -2933,19 +2966,12 @@ io.on("connection", (socket) => {
 
     // socket.nickname 동기화
     if (nickname && socket.nickname !== nickname) {
-      console.log(
-        `🔄 socket.nickname 업데이트: ${socket.nickname} → ${nickname}`,
-      );
       socket.nickname = nickname;
     }
 
     // 1. 코인 추가
     const previousCoins = Number(socket.coins) || 0;
     socket.coins = previousCoins + amount;
-
-    console.log(
-      `💰 [DEBUG] 코인 업데이트: ${previousCoins} → ${socket.coins} (+${amount})`,
-    );
 
     // 2. DB에 저장
     const mergedItems = {
@@ -2967,12 +2993,9 @@ io.on("connection", (socket) => {
           ? socket.avetime
           : null,
       );
-      console.log(
-        `✅ ${targetNickname} 코인 ${amount} 충전 DB 저장 완료 (총 코인: ${socket.coins})`,
-      );
     } catch (e) {
+      // 🔴 [중요] DB 저장 실패 시 롤백
       console.error(`❌ ${targetNickname} 코인 충전 DB 저장 실패:`, e);
-      // 롤백
       socket.coins = previousCoins;
       socket.emit("buyItemError", "코인 충전 처리 중 오류가 발생했습니다.");
       return;
@@ -3003,10 +3026,6 @@ io.on("connection", (socket) => {
       newCoins: socket.coins,
       message: "코인 충전이 완료되었습니다!",
     });
-
-    console.log(
-      `✅ [FINAL] ${targetNickname}이(가) 코인 ${amount}개 구매 완료 (현재 보유: ${socket.coins}개)`,
-    );
   });
 
   // 인앱결제 내역 저장 (멱등성 설계: 중복 요청 안전 처리)
@@ -3230,6 +3249,26 @@ io.on("connection", (socket) => {
 
   const handleBuyCharacter = async (data) => {
     const payload = data && typeof data === "object" ? data : {};
+
+    // 🔴 [중요] 중복 요청 방지 (2초 내 동일 요청 감지)
+    if (!socket.lastCharacterPurchase) socket.lastCharacterPurchase = {};
+    const now = Date.now();
+    const characterKey =
+      normalizeCharacterKey(payload.characterKey) ||
+      normalizeCharacterKey(payload.currentCharacter) ||
+      normalizeCharacterKey(payload.current_character);
+    const purchaseKey = `char_${characterKey}`;
+    if (
+      socket.lastCharacterPurchase[purchaseKey] &&
+      now - socket.lastCharacterPurchase[purchaseKey] < 2000
+    ) {
+      console.warn(
+        `⚠️ ${socket.nickname} 중복 캐릭터 구매 감지 (${characterKey}), 무시`,
+      );
+      return;
+    }
+    socket.lastCharacterPurchase[purchaseKey] = now;
+
     // allow average reaction time to be included when coins/characters change
     if (typeof payload.avetime !== "undefined") {
       const a = parseFloat(payload.avetime);
@@ -3243,14 +3282,6 @@ io.on("connection", (socket) => {
           : typeof payload.nickname === "string" && payload.nickname.trim()
             ? payload.nickname.trim()
             : socket.nickname;
-
-    console.log("🛒 buyCharacter 수신:", {
-      socketNickname: socket.nickname,
-      payloadId: payload.id,
-      payloadNickname: payload.nickname,
-      targetPlayerId,
-      payload,
-    });
 
     if (!targetPlayerId) {
       socket.emit("buyCharacterError", "유효하지 않은 플레이어입니다.");
@@ -3274,16 +3305,6 @@ io.on("connection", (socket) => {
       }
     }
 
-    const characterKey =
-      normalizeCharacterKey(payload.characterKey) ||
-      normalizeCharacterKey(payload.currentCharacter) ||
-      normalizeCharacterKey(payload.current_character);
-
-    console.log("🛒 [DEBUG] buyCharacter characterKey validation:", {
-      payloadCharacterKey: payload.characterKey,
-      normalizedValue: characterKey,
-    });
-
     if (!characterKey) {
       socket.emit("buyCharacterError", "유효하지 않은 캐릭터입니다.");
       return;
@@ -3296,7 +3317,9 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const hasEnoughCoins = (Number(socket.coins) || 0) >= characterPrice;
+    // 🔴 [중요] 코인 부족 검증 (최종 확인)
+    const currentCoins = Number(socket.coins) || 0;
+    const hasEnoughCoins = currentCoins >= characterPrice;
     if (!hasEnoughCoins) {
       socket.emit("buyCharacterError", "코인이 부족합니다.");
       return;
@@ -3310,7 +3333,7 @@ io.on("connection", (socket) => {
     }
 
     // 코인 및 캐릭터 정보 업데이트
-    const previousCoins = Number(socket.coins) || 0;
+    const previousCoins = currentCoins;
     socket.coins = previousCoins - characterPrice;
     socket.ownedCharacters = normalizeOwnedCharacters([
       ...currentOwnedCharacters,
@@ -3318,14 +3341,6 @@ io.on("connection", (socket) => {
     ]);
     socket.currentCharacter = characterKey;
     socket.avatarKey = characterKey;
-
-    console.log("🛒 [handleBuyCharacter] 구매 후 업데이트:", {
-      characterKey,
-      currentOwnedCharacters,
-      newOwnedCharacters: socket.ownedCharacters,
-      coins: socket.coins,
-      currentCharacter: socket.currentCharacter,
-    });
 
     const mergedItems = {
       items: Array.isArray(socket.items) ? socket.items : [],
@@ -3365,12 +3380,6 @@ io.on("connection", (socket) => {
         owned_characters: socket.ownedCharacters || ["player_1"],
         current_character: socket.currentCharacter || "player_1",
       };
-
-      console.log("🛒 [handleBuyCharacter] DB 저장 후 클라이언트에 전송:", {
-        owned_characters: profileToSend.owned_characters,
-        current_character: profileToSend.current_character,
-        coins: profileToSend.coins,
-      });
 
       socket.emit("myProfile", profileToSend);
 
@@ -3414,17 +3423,12 @@ io.on("connection", (socket) => {
           players: room.players,
         });
       }
-
-      console.log(
-        `✅ ${targetPlayerId} 캐릭터 구매 완료: ${characterKey}, 남은 코인 ${socket.coins}`,
-      );
     } catch (e) {
       console.error(`❌ ${targetPlayerId} 캐릭터 구매 DB 저장 실패:`, e);
-      // 롤백 - 원래 상태로 되돌리기
+      // 🔴 [중요] 롤백 - 원래 상태로 되돌리기
       socket.coins = previousCoins;
-      socket.ownedCharacters = currentOwnedCharacters; // 기존 상태로 완전 복원
+      socket.ownedCharacters = currentOwnedCharacters;
       if (socket.currentCharacter === characterKey) {
-        // 새로 설정된 currentCharacter도 원래대로 되돌리기
         socket.currentCharacter = currentOwnedCharacters[0] || "player_1";
         socket.avatarKey = socket.currentCharacter;
       }
