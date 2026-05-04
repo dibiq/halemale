@@ -7139,6 +7139,15 @@ io.on("connection", (socket) => {
               if (penalizedSocket.specialCards[4] <= 0)
                 delete penalizedSocket.specialCards[4];
 
+              // 🔒 [중요] room.players에도 즉시 반영
+              const playerInRoom = room.players.find((p) => p.id === sock.id);
+              if (playerInRoom) {
+                playerInRoom.specialCards = { ...penalizedSocket.specialCards };
+                console.log(
+                  `🔒 [room.players 갱신] ${playerInRoom.nickname}.specialCards=${JSON.stringify(playerInRoom.specialCards)}`,
+                );
+              }
+
               // DB 동기화 (비동기)
               const mergedItems = {
                 items: Array.isArray(penalizedSocket.items)

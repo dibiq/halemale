@@ -15259,7 +15259,8 @@ class GameScene extends Phaser.Scene {
     socket.off("bellResult").on("bellResult", (data) => {
       const bellResultStartTime = Date.now();
       this.lastBellResultTime = bellResultStartTime; // turnChanged에서 사용할 시간 저장
-      console.log(`🔔 [bellResult 이벤트 수신] success: ${data.success}, winnerId: ${data.winnerId}, 획득: ${data.collectedCount}장`);
+      console.log(`🔔 [bellResult] success=${data.success} winnerId=${data.winnerId} penaltyId=${data.penaltyId} autoLockUsedBy=${data.autoLockUsedBy} myId=${socket.id}`);
+      console.log(`🔔 [bellResult 전체] ${JSON.stringify(data)}`);
       
       // suppress duplicate results that arrive shortly after one another
       // (server or network may accidentally send a second copy).
@@ -15444,6 +15445,7 @@ class GameScene extends Phaser.Scene {
 
         // 서버가 자물쇠 자동 사용으로 패널티를 면제했을 때 처리 (멀티 전용)
         if (data.autoLockUsedBy) {
+          console.log(`🔒 [bellResult autoLockUsedBy] 감지됨: ${data.autoLockUsedBy}`);
           // 싱글플레이에서는 서버가 autoLockUsedBy 를 보내더라도 이를 무시합니다.
           if (!this.isSingle) {
             try {
@@ -15458,18 +15460,37 @@ class GameScene extends Phaser.Scene {
 
               // 서버가 보낸 플레이어 목록으로 갱신
               if (Array.isArray(data.players) && data.players.length > 0) {
+                console.log(`🔒 [bellResult autoLockUsedBy] 플레이어 병합 시작`);
                 // 💡 Preserve any open stacks the client already had, since server
                 // may send players with emptied stacks. Similar to later lock
                 // handling logic.
                 this.roundData.players.forEach((oldPlayer) => {
                   const newPlayer = updatedPlayers.find((p) => p.id === oldPlayer.id);
                   if (newPlayer) {
+                    // 🔒 [중요] autoLockUsedBy인 경우 specialCards[4] 직접 차감
+                    if (data.autoLockUsedBy === oldPlayer.id) {
+                      const before = oldPlayer.specialCards?.[4] || newPlayer.specialCards?.[4];
+                      // newPlayer에서 차감
+                      if (newPlayer.specialCards) {
+                        newPlayer.specialCards[4] = Math.max(0, (Number(newPlayer.specialCards[4]) || 1) - 1);
+                        if (newPlayer.specialCards[4] <= 0) delete newPlayer.specialCards[4];
+                      }
+                      console.log(`🔒 [specialCards 차감] ${oldPlayer.nickname}: card4 ${before}개 → ${newPlayer.specialCards?.[4] || 0}개`);
+                    }
+                    
                     const preservedOpenStack = oldPlayer.openStack;
                     Object.assign(oldPlayer, newPlayer);
                     oldPlayer.openStack = preservedOpenStack;
+                    
+                    // 🔒 [명시적 업데이트] specialCards가 제대로 반영되도록 다시 할당
+                    if (newPlayer.specialCards) {
+                      oldPlayer.specialCards = { ...newPlayer.specialCards };
+                      console.log(`🔒 [명시적 업데이트] ${oldPlayer.nickname}.specialCards=${JSON.stringify(oldPlayer.specialCards)}`);
+                    }
                   }
                 });
-                this.renderTable(this.roundData.players);
+                console.log(`🔒 [bellResult autoLockUsedBy] 즉시 렌더링 호출`);
+                this._renderTableImmediate(this.roundData.players);
               }
             } catch (e) {
             }
@@ -15480,6 +15501,8 @@ class GameScene extends Phaser.Scene {
 
         // 자동 사용: 패널티 대상이 로컬 플레이어이고 자물쇠(lock, id=4)를 보유한 경우
         const myIdCheck = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
+        console.log(`🔒 [auto-lock 체크 시작] penaltyId=${data.penaltyId} myIdCheck=${myIdCheck} 일치=${data.penaltyId === myIdCheck} isSingle=${this.isSingle}`);
+        
         // 싱글플레이에서는 패널티시 아이템 자동 사용 금지
         if (this.isSingle) {
           this.playPenaltyAnimation({
@@ -15489,24 +15512,34 @@ class GameScene extends Phaser.Scene {
           });
           return;
         }
-          if (data.penaltyId === myIdCheck) {
-            try {
-              // ✅ 서버 데이터만 사용 (localStorage 제거)
-              const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
-              let myPlayer = null;
-              if (Array.isArray(this.roundData?.players)) {
-                myPlayer = this.roundData.players.find(p => p && p.id === myId);
-              }
-              
-              const owned = myPlayer?.specialCards || {};
-              const lockCount = Number(owned[4] || 0);
+        
+        if (data.penaltyId === myIdCheck) {
+          console.log(`🔒 [패널티 대상 확인] 내가 페널티 대상입니다`);
+          try {
+            // ✅ 서버 데이터만 사용 (localStorage 제거)
+            const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
+            let myPlayer = null;
+            if (Array.isArray(this.roundData?.players)) {
+              myPlayer = this.roundData.players.find(p => p && p.id === myId);
+            }
+            
+            console.log(`🔒 [플레이어 조회] myId=${myId} found=${!!myPlayer} specialCards=${JSON.stringify(myPlayer?.specialCards)}`);
+            
+            const owned = myPlayer?.specialCards || {};
+            const lockCount = Number(owned[4] || 0);
+            console.log(`🔒 [자물쇠 개수 확인] lockCount=${lockCount}`);
+            
             if (lockCount > 0) {
+              console.log(`🔒 [auto-lock 발동 조건 만족] socket.connected=${socket?.connected}`);
+              
               // 멀티플레이: 서버에 사용 요청을 보낸 뒤 응답(또는 타임아웃)을 기다림
               if (!this.isSingle && socket && socket.connected) {
+                console.log(`🔒 [requestUseSpecial 요청 전송 시작]`);
                 let handled = false;
                 const timeout = this.time.delayedCall(1200, () => {
                   if (handled) return;
                   handled = true;
+                  console.log(`🔒 [요청 타임아웃 1200ms] 패널티 처리 계속`);
                   // 타임아웃 시 패널티 처리 계속
                   this.playPenaltyAnimation({
                     penaltyId: data.penaltyId,
@@ -15524,12 +15557,19 @@ class GameScene extends Phaser.Scene {
                     penaltyId: data.penaltyId,
                   },
                   (res) => {
+                    console.log(`🔒 [응답 콜백 호출됨] res=${JSON.stringify(res)}`);
                     if (handled) return;
                     handled = true;
                     timeout.remove(false);
 
+                    console.log(`🔒 [auto-lock 응답] success=${res?.success} updatedSpecialCards=${JSON.stringify(res?.updatedSpecialCards)} hasPlayers=${Array.isArray(res?.players)}`);
+
                     // 서버가 사용을 허용한 경우
                     if (res && res.success) {
+                      const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
+                      const beforeUpdate = this.roundData.players.find(p => p.id === myId)?.specialCards;
+                      console.log(`🔒 [auto-lock 적용 전] myPlayer.specialCards=${JSON.stringify(beforeUpdate)}`);
+                      
                       // 서버가 갱신한 보유 아이템 정보이 있으면 적용
                       if (res.updatedSpecialCards) {
                         localStorage.setItem(
@@ -15548,6 +15588,10 @@ class GameScene extends Phaser.Scene {
 
                       // 서버가 플레이어 상태를 함께 보냈으면 적용
                       if (res.players && Array.isArray(res.players)) {
+                        console.log(`🔒 [res.players 존재] 플레이어 데이터 병합 시작`);
+                        const resPlayerForMe = res.players.find(p => p.id === myId);
+                        console.log(`🔒 [res.players의 내 정보] specialCards=${JSON.stringify(resPlayerForMe?.specialCards)}`);
+                        
                         // 보존해야 할 openStack 유지
                         this.roundData.players.forEach((oldPlayer) => {
                           const newPlayer = res.players.find(
@@ -15559,8 +15603,13 @@ class GameScene extends Phaser.Scene {
                             oldPlayer.openStack = preservedOpenStack;
                           }
                         });
+                        
+                        const afterUpdate = this.roundData.players.find(p => p.id === myId)?.specialCards;
+                        console.log(`🔒 [auto-lock 적용 후] myPlayer.specialCards=${JSON.stringify(afterUpdate)}`);
+                        console.log(`🔒 [renderTable 호출] 다시 그리기 시작`);
                         this.renderTable(this.roundData.players);
                       } else {
+                        console.log(`🔒 [res.players 없음] localStorage에서만 적용`);
                         // 단순히 UI 갱신
                         this.renderTable(this.roundData.players);
                       }
@@ -15572,6 +15621,7 @@ class GameScene extends Phaser.Scene {
                       return;
                     }
 
+                    console.log(`🔒 [응답 실패] 패널티 처리 계속`);
                     this.playPenaltyAnimation({
                       penaltyId: data.penaltyId,
                       recipients: data.recipients,
@@ -15579,6 +15629,8 @@ class GameScene extends Phaser.Scene {
                     });
                   },
                 );
+                console.log(`🔒 [requestUseSpecial emit 완료] 콜백 대기 중...`);
+                return;
                 return;
               }
 
@@ -16350,9 +16402,7 @@ class GameScene extends Phaser.Scene {
 
       this.drawPlayerInfo(p, layout);
       this.drawPlayerDeck(p, layout); // 💡 여기서 숫자가 그려짐
-      console.log(`🎨 drawSpecialCards 호출 전 - ${p.nickname} specialCards:`, p.specialCards);
       this.drawSpecialCards(p, layout); // 특수카드 표시
-      console.log(`🎨 drawSpecialCards 호출 후`);
 
       // Always render the open stack + current open card (if exists).
       // This prevents the open card from disappearing mid-flip.
@@ -17624,7 +17674,6 @@ class GameScene extends Phaser.Scene {
 
   playWinAnimation(data = {}, onComplete = null) {
     const _startTime = Date.now();
-    console.log(`🎬 [playWinAnimation] 시작 | 수집카드: ${data.collectedCount}`);
     
     // block further inputs by placing a transparent fullscreen overlay
     const { width, height } = this.cameras.main;
@@ -17653,22 +17702,18 @@ class GameScene extends Phaser.Scene {
     const checkAllAnimationsComplete = () => {
       if (characterAnimationDone && cardAnimationDone) {
         const elapsed = Date.now() - _startTime;
-        console.log(`✅ [checkAllAnimationsComplete 호출] ${elapsed}ms 경과`);
         this.renderTable(data.players);
         if (overlay) overlay.destroy();
         // ✅ 애니메이션 완료 후 콜백 실행 - 다음 턴 시작 로직이 여기서 실행됨
         if (typeof onComplete === "function") {
           const callbackStartTime = Date.now();
-          console.log(`📞 [onComplete 콜백 실행 직전] ${elapsed}ms`);
           onComplete();
-          console.log(`📞 [onComplete 콜백 실행 완료] ${Date.now() - callbackStartTime}ms 소요`);
         }
       }
     };
 
     const skipAvatarAnim =
       typeof data.skipAvatar === "boolean" ? data.skipAvatar : false;
-    console.log(`🚩 [skipAvatarAnim] ${skipAvatarAnim}`);
 
     // inspect `this` context
     // ensure animations are enabled when called
@@ -17683,7 +17728,6 @@ class GameScene extends Phaser.Scene {
     // 💥 멀티플레이 정답 시 스펙타클한 이펙트
     const successEffectStart = Date.now();
     this.playSuccessEffect();
-    console.log(`🎊 [playSuccessEffect] ${Date.now() - successEffectStart}ms 소요`);
 
     const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
     const myIndex = players.findIndex((p) => p.id === myId);
@@ -17962,7 +18006,6 @@ class GameScene extends Phaser.Scene {
     // ✅ 【카드 애니메이션 조건】 10장 미만이면 캐릭터 애니메이션만 스킵, 카드 애니메이션은 계속 진행
     if (skipAvatarAnim) {
       const elapsed = Date.now() - _startTime;
-      console.log(`⚡ [10장 미만 분기 진입] ${elapsed}ms | 캐릭터 애니메이션 스킵, 카드 애니메이션만 진행`);
       
       // 10장 미만: 캐릭터 애니메이션만 스킵
       characterAnimationDone = true;
@@ -18808,7 +18851,6 @@ class GameScene extends Phaser.Scene {
         timeout.remove(false);
         
         if (res && res.success) {
-          console.log(`📩 [서버 응답 성공] cardId=${cardId}`);
           
           // ✅ 【데이터 동기화】서버 응답으로 플레이어의 specialCards 업데이트
           if (res.updatedSpecialCards && Array.isArray(this.roundData?.players)) {
