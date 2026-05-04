@@ -1540,8 +1540,15 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
       // 🔴 [중요] 배수를 적용한 실제 획득 코인 계산
       const baseCoinReward =
         rankIndex >= 0 ? RANK_REWARD_COINS[rankIndex] || 0 : 0;
-      const multiplier = room.gameMultiplier || 1;
-      const earnedCoins = Math.floor(baseCoinReward * multiplier);
+
+      // ✅ 【캐릭터 보너스 배수 적용】 client에 표시할 earnedCoins도 배수 적용
+      const characterKey = p.currentCharacter || p.avatarKey || "player_1";
+      const characterBonus = getCharacterBonus(characterKey);
+      const characterMultiplier = characterBonus?.coinMultiplier || 1;
+      const gameMultiplier = room.gameMultiplier || 1;
+      const totalMultiplier = gameMultiplier * characterMultiplier;
+
+      const earnedCoins = Math.floor(baseCoinReward * totalMultiplier);
       const finalCoins = Number(p.coins) || 0;
 
       console.log("[gameEnded] 멀티플레이 순위 보상 포함", {
@@ -1549,7 +1556,9 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
         rank: rankIndex + 1,
         beforeCoins: before.beforeCoins,
         baseReward: baseCoinReward,
-        multiplier,
+        characterMultiplier,
+        gameMultiplier,
+        totalMultiplier,
         earnedCoins,
         finalCoins,
       });

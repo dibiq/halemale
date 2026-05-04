@@ -14845,17 +14845,15 @@ class GameScene extends Phaser.Scene {
 
         // 멀티플레이는 커튼 후에 배수 애니메이션 실행, 싱글플레이는 기존 흐름
         if (!this.isSingle && !this._multiplierAnimationShown) {
-          // 멀티플레이: 커튼 열림 → 배수 애니메이션 → Ready-Go
+          // 멀티플레이: 커튼 열림 → 배수 애니메이션 → 배수 표시 (1초) → Ready-Go
           this._multiplierAnimationShown = true;
           this._multiplierAnimationPlaying = true; // 배수 애니메이션 진행 중 플래그
           
           this.time.delayedCall(1200, () => {
-            this.playMultiplierSelectionAnimation(); // 3~5초 회전 + 1.6초 결과 표시 및 fade-out
+            this.playMultiplierSelectionAnimation(); // 3~5초 회전
             
-            // ✅ 더 정확한 timing: 애니메이션 + 결과 표시 + fade-out (~3.5초) 후 바로 Ready-Go 표시
-            // 이전: 5000ms (너무 길어서 텀이 발생)
-            // 개선: 3500ms (충분한 margin 포함)
-            this.time.delayedCall(3500, () => {
+            // ✅ 더 정확한 timing: 애니메이션 + 배수 표시 후 Ready-Go
+            this.time.delayedCall(5100, () => {
               this.showReadyGo();
               this.time.delayedCall(2000, () => {
                 const myId = this.isSingle ? this.myId : socket.id;
@@ -15251,6 +15249,9 @@ class GameScene extends Phaser.Scene {
 
         // 💡 [수정] 승리 애니메이션 호출 (renderTable은 애니메이션 끝난 후 함수 내부에서 실행됨)
         // ✅ skipAnimation 여부와 상관없이 항상 playWinAnimation 호출 (한 번의 콜백으로 통합)
+        // ✅ 【캐릭터 애니메이션 조건】 획득 카드가 10장 이상일 때만 재생
+        const shouldPlayCharacterAnim = data.collectedCount >= 10;
+        console.log(`✨ [캐릭터 애니메이션] ${data.winnerNickname}: 획득 ${data.collectedCount}장 ${shouldPlayCharacterAnim ? "→ 재생 ✓" : "→스킵 (10장 미만)"}`);
         const winEventKey = `${data.winnerId}_${Date.now()}`; // 중복 호출 방지 키
         this.playWinAnimation({
           winnerId: data.winnerId, // 서버에서 승자 ID를 보내준다고 가정
@@ -15258,7 +15259,7 @@ class GameScene extends Phaser.Scene {
           prevPlayers: prevPlayers, // 바닥 카드가 남아있는 이전 상태 전달
           winnerNickname: data.winnerNickname,
           collectedCount: data.collectedCount,
-          skipAvatar: skipAnimation, // skipAnimation 옵션 전달
+          skipAvatar: !shouldPlayCharacterAnim || skipAnimation, // 10장 미만이면 캐릭터 애니메이션 스킵
         }, () => {
           // ✅ 애니메이션 완료 후 다음 턴 시작 준비 (한 곳에서만 처리)
           // winner case - just update players immediately
@@ -17779,6 +17780,27 @@ class GameScene extends Phaser.Scene {
       if (this.cache && this.cache.audio && this.cache.audio.exists("combo")) {
         this.sound.play("combo", { volume: 0.35 });
       }
+    }
+
+    // ✅ 【카드 애니메이션 조건】 10장 미만이면 카드 애니메이션 스킵
+    if (skipAvatarAnim) {
+      // 10장 미만: 즉시 완료 처리 (캐릭터 애니메이션 시간 대기 없음)
+      cardAnimationDone = true;
+      characterAnimationDone = true;
+      console.log(`⚡ [애니메이션 스킵] 10장 미만 - 경험치 후 즉시 카드 제출 가능`);
+      
+      // 💡 바닥 카드 즉시 정리
+      this.roundData.players.forEach((player) => {
+        player.openStack = [];
+        player.openCard = null;
+      });
+      this.renderTable(this.roundData.players);
+      
+      // 💥 즉시 애니메이션 완료 처리
+      this.time.delayedCall(100, () => {
+        checkAllAnimationsComplete();
+      });
+      return; // 나머지 애니메이션 코드 스킵
     }
 
     // 1. 전체 날려야 할 카드 총 개수 먼저 계산
@@ -22888,11 +22910,14 @@ class GameScene extends Phaser.Scene {
     });
 
     // 5. 애니메이션 실행 (싱글은 캐릭터 연출만 생략)
+    // ✅ 【캐릭터 애니메이션 조건】 획득 카드가 10장 이상일 때만 재생
+    const shouldPlayCharacterAnim = totalCollected >= 10;
+    console.log(`✨ [캐릭터 애니메이션] ${winner.nickname || "플레이어"}: 획득 ${totalCollected}장 ${shouldPlayCharacterAnim ? "→ 재생 ✓" : "→스킵 (10장 미만)"}`);
     this.playWinAnimation({
       winnerId: winner.id,
       players: updatedPlayers,
       prevPlayers: prevPlayers,
-      skipAvatar: this.isSingle,
+      skipAvatar: this.isSingle || !shouldPlayCharacterAnim, // 싱글이거나 10장 미만이면 캐릭터 애니메이션 스킵
       winnerNickname: winner.nickname || winner.name || "플레이어",
       collectedCount: totalCollected,
     }, () => {
@@ -23080,6 +23105,7 @@ class GameScene extends Phaser.Scene {
     let currentRotation = 0;
     let animationCompleted = false;
     let resultShown = false;
+    let lastPlayedSection = -1;  // 마지막으로 소리 난 섹션 추적
     
     // ✅ 배수 표시 함수
     const showResult = () => {
@@ -23087,6 +23113,11 @@ class GameScene extends Phaser.Scene {
       resultShown = true;
       
       console.log(`[배수 선택 완료] ${finalMultiplier}배`);
+      
+      // 🎵 【배수 결과 사운드】 effect 사운드 재생
+      try {
+        this.sound.play("effect", { volume: 0.6 });
+      } catch (e) {}
       
       // 배수 텍스트 표시 - 짜잔하고 강조된 애니메이션
       const resultTxt = this.add.text(centerX, centerY, `${finalMultiplier}배!`, {
@@ -23173,19 +23204,33 @@ class GameScene extends Phaser.Scene {
         } catch (e) {}
       });
       
-      // wheel과 텍스트는 천천히 사라짐 (배경에서)
+      // ✅ 【배수 텍스트 표시 시간 단축】 
+      // wheel은 1200ms에 사라지고, resultTxt는 1300ms까지 표시 후 사라짐
       this.time.delayedCall(1200, () => {
+        // wheel과 arrow만 먼저 fade-out
         this.tweens.add({
-          targets: [wheelContainer, resultTxt, arrow],
+          targets: [wheelContainer, arrow],
           alpha: 0,
           duration: 400,
           ease: "Power2.easeIn",
           onComplete: () => {
             wheelContainer.destroy();
-            resultTxt.destroy();
             arrow.destroy();
             try { if (this.textures.exists("wheel_canvas")) this.textures.remove("wheel_canvas"); } catch (e) {}
             try { if (this.textures.exists("arrow_canvas")) this.textures.remove("arrow_canvas"); } catch (e) {}
+          },
+        });
+      });
+      
+      // resultTxt는 빠르게 사라짐 (1300ms 후 사라짐)
+      this.time.delayedCall(1300, () => {
+        this.tweens.add({
+          targets: resultTxt,
+          alpha: 0,
+          duration: 300,
+          ease: "Power2.easeIn",
+          onComplete: () => {
+            try { resultTxt.destroy(); } catch (e) {}
           },
         });
       });
@@ -23201,6 +23246,16 @@ class GameScene extends Phaser.Scene {
         
         currentRotation += speed * 0.015;
         wheelContainer.setRotation(currentRotation);
+        
+        // 🎵 【룰렛 회전 사운드】 섹션이 바뀔 때마다 "pop" 사운드 재생
+        const currentSectionIndex = Math.floor((currentRotation / sectionAngle + 10) % multipliers.length);
+        if (currentSectionIndex !== lastPlayedSection && progress > 0.05 && progress < 0.95) {
+          // 회전 중간에만 소리 재생 (시작/끝에서는 제외)
+          lastPlayedSection = currentSectionIndex;
+          try {
+            this.sound.play("pop", { volume: 0.4 });
+          } catch (e) {}
+        }
         
         // ✅ 목표 도달 또는 시간 끝 확인
         if (currentRotation >= targetRotation || progress >= 1) {
@@ -25053,9 +25108,17 @@ class GameScene extends Phaser.Scene {
           ? RANK_REWARD_COINS
           : [30, 20, 10];
       
-      // 배수 적용: 게임 배수가 설정되었으면 각 순위별 코인에 배수 적용
-      const multiplier = this.roundData?.gameMultiplier || 1;
-      const rankRewardCoins = baseRankRewardCoins.map(coin => Math.floor(coin * multiplier));
+      // ✅ 【멀티플레이】server에서 받은 earnedCoins (배수 적용됨) 사용
+      // ✅ 【싱글플레이】client에서 계산한 값 사용
+      const rankRewardCoins = rankedPlayers.map((player, idx) => {
+        // 멀티플레이이고 earnedCoins가 있으면 그 값 사용 (server에서 배수 적용됨)
+        if (!this.isSingle && player && typeof player.earnedCoins === 'number') {
+          return player.earnedCoins;
+        }
+        // 그 외: client에서 계산 (싱글플레이 또는 earnedCoins 없음)
+        const multiplier = this.roundData?.gameMultiplier || 1;
+        return Math.floor((baseRankRewardCoins[idx] || 0) * multiplier);
+      });
       
       const totalRankCoins = rankedPlayers.reduce(
         (sum, _, idx) => sum + (baseRankRewardCoins[idx] || 0),
@@ -25086,7 +25149,18 @@ class GameScene extends Phaser.Scene {
         const targetPos = podiumPositions[rankIndex];
         // 🔴 [수정] 애니메이션 개수는 기본 보상 기준, 텍스트 표시는 배수 적용 기준으로 분리
         const animationCoinCount = baseRankRewardCoins[rankIndex] || 0; // 애니메이션 개수 (배수 미적용)
-        const rewardCoinCount = rankRewardCoins[rankIndex] || 0; // 보상 텍스트 (배수 적용)
+        const rewardCoinCount = rankRewardCoins[rankIndex] || 0; // 보상 텍스트 (배수 적용 ✅ server earnedCoins 또는 client 계산)
+        const playerData = rankedPlayers[rankIndex];
+        
+        // 📊 디버그 로그: server earnedCoins 사용 여부 확인
+        if (!this.isSingle && playerData && playerData.earnedCoins !== undefined) {
+          console.log(`✅ [시상대 애니메이션] 순위 ${rankIndex + 1} - server earnedCoins 사용`, {
+            player: playerData.nickname,
+            baseReward: baseRankRewardCoins[rankIndex],
+            serverEarnedCoins: playerData.earnedCoins,
+            displayValue: rewardCoinCount,
+          });
+        }
         
         if (!targetPos || animationCoinCount <= 0) {
           return;
