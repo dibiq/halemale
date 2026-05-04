@@ -2892,6 +2892,23 @@ class LobbyScene extends Phaser.Scene {
           payload.current_character = currentCharacter;
         }
 
+        // ✅ 【로깅】payload 전송 전 상태 확인
+        console.log(`📋 [emitInventory] payload 생성 완료:`, {
+          reason,
+          owned_characters: payload.owned_characters,
+          coins: payload.coins,
+          socket_connected: socket?.connected,
+          socket_exists: !!socket,
+        });
+
+        if (!socket || !socket.connected) {
+          console.warn(`⚠️ [emitInventory] socket 미연결 - 전송 불가:`, {
+            socket_exists: !!socket,
+            socket_connected: socket?.connected,
+          });
+          return;
+        }
+
         socket.emit("syncPlayerInventory", payload);
         socket.emit("syncInventory", payload);
         socket.emit("updatePlayerInventory", payload);
@@ -2938,6 +2955,8 @@ class LobbyScene extends Phaser.Scene {
       
       // 🔴 [중요] LobbyScene에서 myProfile을 받을 때 처리
       // setNickname 응답으로 온 myProfile을 받고, _pendingInitialInventoryEmit 플래그를 확인해서 emit
+      this._pendingInitialInventoryEmit = true; // ✅ 플래그 초기화
+      
       if (!this._lobbyProfileListener) {
         this._lobbyProfileListener = true;
         socket.off("myProfile").on("myProfile", (profile) => {
@@ -2960,7 +2979,21 @@ class LobbyScene extends Phaser.Scene {
             
             if (profile?.nickname) this.myProfile.nickname = profile.nickname;
             if (profile?.avatarKey) this.myProfile.avatarKey = profile.avatarKey;
-            if (profile?.owned_characters) this.myProfile.owned_characters = profile.owned_characters;
+            
+            // ✅ 【중요】owned_characters는 로컬스토리지와 병합 (우승 보상 캐릭터 손실 방지)
+            if (profile?.owned_characters || this.myProfile.owned_characters) {
+              const serverOwnedChars = Array.isArray(profile?.owned_characters) ? profile.owned_characters : [];
+              const localOwnedChars = Array.isArray(this.myProfile.owned_characters) ? this.myProfile.owned_characters : [];
+              
+              // 서버 데이터와 로컬 데이터를 병합 (로컬에 우승 보상 캐릭터가 있을 수 있음)
+              const mergedOwnedChars = Array.from(
+                new Set([...serverOwnedChars, ...localOwnedChars].filter(k => typeof k === 'string'))
+              );
+              
+              this.myProfile.owned_characters = mergedOwnedChars;
+              console.log(`📥 [owned_characters 병합] 서버: ${JSON.stringify(serverOwnedChars)} + 로컬: ${JSON.stringify(localOwnedChars)} = ${JSON.stringify(mergedOwnedChars)}`);
+            }
+            
             if (profile?.current_character) this.myProfile.current_character = profile.current_character;
             if (profile?.specialCards) this.myProfile.specialCards = profile.specialCards;
             
@@ -2971,12 +3004,38 @@ class LobbyScene extends Phaser.Scene {
             } else {
             }
             
-            // 🔴 [중요] _pendingInitialInventoryEmit이 true면 이제 emitInventory 호출
-            if (this._pendingInitialInventoryEmit) {
-              this._pendingInitialInventoryEmit = false;
-              this.emitInventory('initial');
+            // 🔴 [중요] 이제 emitInventory 호출 - 우승 보상 캐릭터를 서버에 저장
+            console.log(`📤 [로비 로드] emitInventory 호출 전:`, {
+              owned_characters: this.myProfile.owned_characters,
+              socket_connected: socket?.connected,
+              socket_exists: !!socket,
+            });
+            
+            if (typeof this.emitInventory === 'function') {
+              try {
+                this.emitInventory('initial', { requireServerProfile: false });
+                console.log(`✅ [로비 로드] emitInventory 호출 완료`);
+              } catch (err) {
+                console.error(`❌ [로비 로드] emitInventory 호출 중 오류:`, err);
+              }
+            } else {
+              console.warn(`⚠️ [로비 로드] emitInventory 함수가 없음`);
+            }
+            
+            // ✅ 【Fallback】 socket이 미연결이었다면, 재연결 시 자동으로 다시 시도
+            if (socket && !socket.connected) {
+              console.warn(`⚠️ [로비 로드] socket 미연결 - 재연결 시 다시 시도`);
+              const retryEmitInventory = () => {
+                console.log(`🔄 [socket reconnect] emitInventory 재시도`);
+                if (typeof this.emitInventory === 'function') {
+                  this.emitInventory('initial', { requireServerProfile: false });
+                }
+                socket.off('connect', retryEmitInventory);
+              };
+              socket.once('connect', retryEmitInventory);
             }
           } catch (e) {
+            console.error(`❌ [socket.on myProfile] 에러:`, e);
           }
         });
       }
@@ -18755,8 +18814,11 @@ class GameScene extends Phaser.Scene {
                 );
                 if (newPlayer) {
                   const preservedOpenStack = oldPlayer.openStack;
+                  const preservedSpecialCards = oldPlayer.specialCards; // ✅ specialCards 보존 (이미 감소됨)
                   Object.assign(oldPlayer, newPlayer);
                   oldPlayer.openStack = preservedOpenStack;
+                  oldPlayer.specialCards = preservedSpecialCards; // ✅ 낙관적 업데이트된 specialCards 유지
+                  console.log(`✅ [players 병합] ${oldPlayer.nickname} - specialCards 보존됨:`, oldPlayer.specialCards);
                 }
               });
               this.renderTable(this.roundData.players);
@@ -24465,13 +24527,20 @@ class GameScene extends Phaser.Scene {
             }
           }
           
-          // ✅ 【중요】 서버의 socket.ownedCharacters도 즉시 업데이트
-          // 이렇게 하면 사용자가 보상 캐릭터를 즉시 착용할 수 있음
+          // ✅ 【중요】 서버에 즉시 우승 보상을 저장 (멀티/싱글 동일)
           if (socket && socket.connected) {
             socket.emit("syncOwnedCharacters", {
               owned_characters: this.myProfile.owned_characters,
             });
             console.log(`📤 [서버 sync] owned_characters 전송:`, this.myProfile.owned_characters);
+          } else {
+            // 싱글플레이 또는 socket 미연결: 로컬스토리지 임시 저장 (로비 복귀 후 emitInventory로 전송)
+            try {
+              localStorage.setItem("ownedCharacters", JSON.stringify(this.myProfile.owned_characters));
+              console.log(`💾 [로컬스토리지] owned_characters 임시 저장:`, this.myProfile.owned_characters);
+            } catch (e) {
+              console.warn(`⚠️ 로컬스토리지 저장 실패:`, e);
+            }
           }
         }
       }
@@ -24482,6 +24551,33 @@ class GameScene extends Phaser.Scene {
           const myId = this.myId || "PLAYER_ME";
           const myRankIndex = players.findIndex(p => String(p.id) === String(myId));
           if (myRankIndex >= 0) {
+            // ✅ 【싱글플레이 우승 보상】 1등이면 player_2(잠옷 곰돌이) 보상
+            if (myRankIndex === 0) {
+              const awardedCharacter = "player_2"; // 잠옷 곰돌이
+              if (!Array.isArray(this.myProfile.owned_characters)) {
+                this.myProfile.owned_characters = ["player_1"];
+              }
+              if (!this.myProfile.owned_characters.includes(awardedCharacter)) {
+                this.myProfile.owned_characters.push(awardedCharacter);
+                console.log(`🎁 [싱글플레이 우승 보상] 캐릭터 획득: ${awardedCharacter}`);
+                
+                // ✅ socket이 있으면 즉시 전송, 없으면 로컬스토리지에 저장
+                if (socket && socket.connected) {
+                  socket.emit("syncOwnedCharacters", {
+                    owned_characters: this.myProfile.owned_characters,
+                  });
+                  console.log(`📤 [서버 sync] owned_characters 전송:`, this.myProfile.owned_characters);
+                } else {
+                  try {
+                    localStorage.setItem("ownedCharacters", JSON.stringify(this.myProfile.owned_characters));
+                    console.log(`💾 [로컬스토리지] 우승 보상 캐릭터 저장:`, this.myProfile.owned_characters);
+                  } catch (e) {
+                    console.warn(`⚠️ 로컬스토리지 저장 실패:`, e);
+                  }
+                }
+              }
+            }
+            
             const baseRewardCoins = [30, 20, 10];
             const gameMultiplier = this.roundData?.gameMultiplier || 1;
             

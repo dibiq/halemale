@@ -4364,6 +4364,10 @@ io.on("connection", (socket) => {
             console.warn("emit myProfile error on useSpecial", e);
           }
 
+          // ✅ [CRITICAL] callback 반환 전에 room.players의 specialCards 동기화
+          refreshRoomSpecialCards(room);
+          console.log(`✅ [refreshRoomSpecialCards] 콜백 전 동기화 완료`);
+
           // 룸에 효과 브로드캐스트
           let broadcastMessage = `${socket.nickname}님이 도둑 카드를 사용했습니다!`;
           if (cardId === 8)
@@ -4400,7 +4404,7 @@ io.on("connection", (socket) => {
           // Special cards can change deck sizes; check game end after effects.
           checkGameOver(room, io, { forceEliminateZeroDeck: cardId === 7 });
 
-          // 콜백 응답
+          // 콜백 응답 - room.players는 이미 refreshRoomSpecialCards로 최신 상태
           if (typeof cb === "function")
             cb({
               success: true,
