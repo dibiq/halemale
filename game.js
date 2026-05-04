@@ -14853,7 +14853,7 @@ class GameScene extends Phaser.Scene {
             this.playMultiplierSelectionAnimation(); // 3~5초 회전
             
             // ✅ 더 정확한 timing: 애니메이션 + 배수 표시 후 Ready-Go
-            this.time.delayedCall(5100, () => {
+            this.time.delayedCall(6000, () => {
               this.showReadyGo();
               this.time.delayedCall(2000, () => {
                 const myId = this.isSingle ? this.myId : socket.id;
@@ -15478,7 +15478,6 @@ class GameScene extends Phaser.Scene {
 
         // 💡 [수정] roundData 업데이트는 playPenaltyAnimation 내부에서 처리됨
         // this.roundData.players = updatedPlayers; (제거 - 바닥 카드 보존을 위해)
-        console.log(`✅ [playWinAnimation 콜백 완료] 총 ${Date.now() - callbackStartTime}ms 소요`);
       }
     });
 
@@ -23132,9 +23131,16 @@ class GameScene extends Phaser.Scene {
     const randomRotations = Math.floor(3 + Math.random() * 4); // 3, 4, 5, 6
     let targetRotation = randomRotations * 2 * Math.PI + targetAngle;
     
-    // ✅ 애니메이션 시간 동적 계산 (targetRotation 도달 확보)
-    // 최대 속도: 8π, 평균: 8π/3 → 안전하게 1.5배 여유
-    const animationDuration = Math.max(3000, (targetRotation / (8 * Math.PI)) * 5000);
+    // ✅ 【애니메이션 시간 고정】 항상 4500ms로 일정하게 유지 (randomRotations에 상관없이)
+    // 이렇게 해야 ready go 타이밍이 항상 일정함
+    const animationDuration = 4500;
+    
+    // ✅ 【배수 매칭 검증 로그】
+    console.log(`🎡 [룰렛 초기화] 선택배수: ${finalMultiplier}배 (인덱스: ${multiplierIndex})`);
+    console.log(`  → wheelActualAngle: ${wheelActualAngle.toFixed(3)} rad (${(wheelActualAngle / Math.PI).toFixed(3)}π)`);
+    console.log(`  → targetAngle: ${targetAngle.toFixed(3)} rad (${(targetAngle / Math.PI).toFixed(3)}π)`);
+    console.log(`  → randomRotations: ${randomRotations}바퀴`);
+    console.log(`  → targetRotation: ${targetRotation.toFixed(3)} rad (${(targetRotation / Math.PI).toFixed(3)}π)`);
     
     this.roundData.gameMultiplier = finalMultiplier;
     const targetAngleNorm = ((targetAngle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
@@ -23149,6 +23155,8 @@ class GameScene extends Phaser.Scene {
     let animationCompleted = false;
     let resultShown = false;
     let lastPlayedSection = -1;  // 마지막으로 소리 난 섹션 추적
+    
+    console.log(`🎡 [룰렛 시작] 시작시간: ${startTime} | 애니메이션지속: ${animationDuration}ms | 목표회전: ${targetRotation.toFixed(2)} rad (${(targetRotation / Math.PI).toFixed(2)}π) | 배수: ${finalMultiplier}배`);
     
     // ✅ 배수 표시 함수
     const showResult = () => {
@@ -23284,10 +23292,12 @@ class GameScene extends Phaser.Scene {
       const progress = Math.min(elapsed / animationDuration, 1);
       
       if (!animationCompleted) {
-        // 속도: 처음부터 끝까지 부드럽게 감속
-        const speed = Math.PI * 8 * Math.pow(1 - progress, 2);
+        // ✅ 【속도 조정】 progress에 따라 정확히 targetRotation에 도달
+        // progress=0 → currentRotation=0, progress=1 → currentRotation=targetRotation
+        // 감속 효과: (1-progress)^3 사용
+        const easeProgress = 1 - Math.pow(1 - progress, 3);
+        currentRotation = targetRotation * easeProgress;
         
-        currentRotation += speed * 0.015;
         wheelContainer.setRotation(currentRotation);
         
         // 🎵 【룰렛 회전 사운드】 섹션이 바뀔 때마다 "pop" 사운드 재생
@@ -23300,12 +23310,43 @@ class GameScene extends Phaser.Scene {
           } catch (e) {}
         }
         
-        // ✅ 목표 도달 또는 시간 끝 확인
-        if (currentRotation >= targetRotation || progress >= 1) {
+        // ✅ 【중단 조건】 progress >= 1 (4500ms 경과)일 때만 끝남
+        if (progress >= 1) {
           animationCompleted = true;
-          const normalizedRotation = ((currentRotation % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
-          const normalizedTarget = ((targetAngle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+          const actualTime = Date.now() - startTime;
 
+          // ✅ 【배수 매칭 검증】 최종 위치에서 어느 배수에 멈추었는지 역산
+          // 화살표 위치(12시 = -π/2)에 가장 가까운 배수 찾기
+          const arrowPos = -Math.PI / 2;
+          let detectedMultiplier = null;
+          let minDistance = Math.PI;
+          
+          for (let i = 0; i < multipliers.length; i++) {
+            // 각 배수의 초기 위치
+            const initialAngle = i * sectionAngle - Math.PI / 2 + sectionAngle / 2;
+            // 회전 후 최종 위치
+            const finalAngle = initialAngle + currentRotation;
+            // 정규화 (0~2π)
+            const normalizedAngle = ((finalAngle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+            
+            // 화살표 위치(12시 = -π/2)에 정규화 (0~2π 범위에서 12시는 3π/2)
+            const arrowPosNorm = ((arrowPos % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+            
+            // 거리 계산 (원형이므로 최단거리)
+            let distance = Math.abs(normalizedAngle - arrowPosNorm);
+            if (distance > Math.PI) distance = 2 * Math.PI - distance;
+            
+            if (distance < minDistance) {
+              minDistance = distance;
+              detectedMultiplier = multipliers[i];
+            }
+          }
+          
+          const isMatched = detectedMultiplier === finalMultiplier ? "✅ 일치" : "❌ 불일치";
+          console.log(`🎡 [룰렛 완료] 실제시간: ${actualTime}ms`);
+          console.log(`  → 선택배수: ${finalMultiplier}배 | 감지배수: ${detectedMultiplier}배 | ${isMatched}`);
+          console.log(`  → 회전각도: ${currentRotation.toFixed(3)} rad (${(currentRotation / Math.PI).toFixed(3)}π) | 목표: ${targetRotation.toFixed(3)} rad`);
+          
           showResult();
           return;
         }
