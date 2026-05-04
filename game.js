@@ -17813,36 +17813,16 @@ class GameScene extends Phaser.Scene {
       }
     }
 
-    // ✅ 【카드 애니메이션 조건】 10장 미만이면 카드 애니메이션 스킵
+    // ✅ 【카드 애니메이션 조건】 10장 미만이면 캐릭터 애니메이션만 스킵, 카드 애니메이션은 계속 진행
     if (skipAvatarAnim) {
       const elapsed = Date.now() - _startTime;
-      console.log(`⚡ [10장 미만 분기 진입] ${elapsed}ms | 바로 완료 처리`);
+      console.log(`⚡ [10장 미만 분기 진입] ${elapsed}ms | 캐릭터 애니메이션 스킵, 카드 애니메이션만 진행`);
       
-      // 10장 미만: 즉시 완료 처리 (캐릭터 애니메이션 시간 대기 없음)
-      cardAnimationDone = true;
+      // 10장 미만: 캐릭터 애니메이션만 스킵
       characterAnimationDone = true;
+      // cardAnimationDone은 여전히 false (카드 애니메이션은 계속 진행)
       
-      // 💡 바닥 카드 즉시 정리
-      const cleanupStart = Date.now();
-      this.roundData.players.forEach((player) => {
-        player.openStack = [];
-        player.openCard = null;
-      });
-      console.log(`🧹 [바닥 카드 정리] ${Date.now() - cleanupStart}ms`);
-      
-      const renderStart = Date.now();
-      this.renderTable(this.roundData.players);
-      console.log(`🎨 [renderTable 호출] ${Date.now() - renderStart}ms`);
-      
-      // 💥 즉시 애니메이션 완료 처리
-      const delayStartTime = Date.now();
-      this.time.delayedCall(0, () => {
-        const delayElapsed = Date.now() - delayStartTime;
-        console.log(`⏱️ [delayedCall 이후] ${delayElapsed}ms 경과 후 checkAllAnimationsComplete 호출`);
-        checkAllAnimationsComplete();
-      });
-      console.log(`🔙 [return으로 나머지 애니메이션 코드 스킵]`);
-      return; // 나머지 애니메이션 코드 스킵
+      // ✅ return 제거 - 아래의 카드 날아오는 애니메이션 코드가 실행되도록 함
     }
 
     // 1. 전체 날려야 할 카드 총 개수 먼저 계산

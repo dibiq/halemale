@@ -2406,10 +2406,11 @@ function handleAiBell(room, io, playerId) {
     bellTotal: winnerBellTotal,
   });
 
-  // ✅ 【다음 턴 타이밍 조정】 획득 카드 수에 따라 애니메이션 시간 달리함
-  // 10장 미만: 즉시 (100ms)
-  // 10장 이상: 케릭터 애니메이션 시간 (4000ms) + 여유 (500ms)
-  const animationDelay = collected.length < 10 ? 100 : 4500;
+  // ✅ 【다음 턴 타이밍 조정】 카드 애니메이션 완료 후 다음 턴으로 넘어감
+  // 10장 미만: 카드 애니메이션만 진행 (캐릭터 애니메이션 스킵) → 1500ms
+  // 10장 이상: 캐릭터 + 카드 애니메이션 진행 → 4500ms
+  // ✅ 【중요】 10장 미만이어도 카드 날아오는 애니메이션은 1000~1500ms 걸리므로 충분히 대기
+  const animationDelay = collected.length < 10 ? 1500 : 4500;
   console.log(
     `⏱️ [서버] bellResult 전송 후 ${animationDelay}ms 대기 → processSkipTurn (수집: ${collected.length}장)`,
   );
@@ -6937,10 +6938,11 @@ io.on("connection", (socket) => {
           bellTotal: Number(socket.bellTotal) || 0,
         });
 
-        // ✅ 【다음 턴 타이밍 조정】 획득 카드 수에 따라 애니메이션 시간 달리함
-        // 10장 미만: 즉시 (100ms)
-        // 10장 이상: 케릭터 애니메이션 시간 (4000ms) + 여유 (500ms)
-        const animationDelay = collected.length < 10 ? 100 : 4500;
+        // ✅ 【다음 턴 타이밍 조정】 카드 애니메이션 완료 후 다음 턴으로 넘어감
+        // 10장 미만: 카드 애니메이션만 진행 (캐릭터 애니메이션 스킵) → 1500ms
+        // 10장 이상: 캐릭터 + 카드 애니메이션 진행 → 4500ms
+        // ✅ 【중요】 10장 미만이어도 카드 날아오는 애니메이션은 1000~1500ms 걸리므로 충분히 대기
+        const animationDelay = collected.length < 10 ? 1500 : 4500;
         console.log(
           `⏱️ [서버] bellResult 전송 후 ${animationDelay}ms 대기 → processSkipTurn (수집: ${collected.length}장)`,
         );
