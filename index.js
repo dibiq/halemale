@@ -3756,9 +3756,19 @@ io.on("connection", (socket) => {
 
       // ✅ 【즉시 차감 및 응답】클라이언트가 기다리지 않도록
       // 카드 사용 차감 (모든 카드 공통)
+      console.log(
+        `⏰ [requestUseSpecial] 차감 전 cardId=${cardId} count=${Number(socket.specialCards[cardId] || 0)}`,
+      );
       socket.specialCards[cardId] =
         Number(socket.specialCards[cardId] || 0) - 1;
       if (socket.specialCards[cardId] <= 0) delete socket.specialCards[cardId];
+      console.log(
+        `⏰ [requestUseSpecial] 차감 후 cardId=${cardId} count=${Number(socket.specialCards[cardId] || 0)}`,
+      );
+      console.log(
+        `📊 [requestUseSpecial] socket.specialCards 상태:`,
+        JSON.stringify(socket.specialCards),
+      );
 
       // DB 저장 (비동기)
       savePlayer(
@@ -3779,9 +3789,30 @@ io.on("connection", (socket) => {
       ).catch((e) => console.warn("savePlayer error on useSpecial", e));
 
       // room.players 동기화
+      console.log(
+        `🔄 [room.players 동기화 전] socket.specialCards:`,
+        JSON.stringify(socket.specialCards),
+      );
       refreshRoomSpecialCards(room);
+      const myRoomPlayer = room.players.find((p) => p && p.id === socket.id);
+      console.log(
+        `🔄 [room.players 동기화 후] myRoomPlayer.specialCards:`,
+        JSON.stringify(myRoomPlayer?.specialCards || {}),
+      );
+      console.log(
+        `📤 [room.players] 전체 플레이어:`,
+        room.players.map((p) => ({
+          id: p.id,
+          nickname: p.nickname,
+          specialCards: p.specialCards,
+        })),
+      );
 
       // ✅ 【즉시 응답】1400ms 기다리지 않음
+      console.log(
+        `✅ [즉시 응답 전송] cardId=${cardId} updatedSpecialCards:`,
+        JSON.stringify(socket.specialCards),
+      );
       if (typeof cb === "function") {
         cb({
           success: true,
@@ -3789,6 +3820,7 @@ io.on("connection", (socket) => {
           updatedSpecialCards: socket.specialCards,
         });
       }
+      console.log(`✅ [즉시 응답 완료]`);
 
       // 애니메이션 브로드캐스트
       const ANIM_MS = 1400;

@@ -17256,17 +17256,21 @@ class GameScene extends Phaser.Scene {
 
     // ✅ 【최신 서버 데이터 사용】항상 this.roundData.players에서 직접 조회
     let specialCardsOwned = p.specialCards || {};
+    console.log(`📋 [drawSpecialCards 진입] 매개변수 p.specialCards:`, p.specialCards);
+    
     try {
       const latestMe = this.roundData.players?.find(pp => pp && pp.id === myId);
       if (latestMe && latestMe.specialCards) {
         specialCardsOwned = latestMe.specialCards;
-        console.log(`📇 [특수카드 표시] 최신 데이터 조회: ${latestMe.nickname}`, JSON.stringify(specialCardsOwned));
+        console.log(`✅ [최신 데이터 조회 성공] ${latestMe.nickname} specialCards:`, JSON.stringify(specialCardsOwned));
+      } else {
+        console.warn(`⚠️ [최신 데이터 조회 실패] latestMe:`, latestMe ? latestMe.id : 'null');
       }
     } catch (e) {
-      console.warn(`⚠️ 최신 데이터 조회 실패, 기존값 사용`);
+      console.warn(`⚠️ [최신 데이터 조회 중 오류]:`, e);
     }
     
-    console.log(`📇 [특수카드 표시] ${p.nickname} - 보유카드:`, JSON.stringify(specialCardsOwned));
+    console.log(`📇 [특수카드 표시] ${p.nickname} - 최종 사용 보유카드:`, JSON.stringify(specialCardsOwned));
 
     // 하단 중앙에 고정 배치 - 더 크고 눈에 띄게
     const cardSize = Math.min(width * 0.20, 160);
@@ -18763,6 +18767,9 @@ class GameScene extends Phaser.Scene {
       return;
     }
     try {
+      const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
+      console.log(`🎯 [아이템 사용 시작] cardId=${cardId} myId=${myId}`);
+      
       let handled = false;
       const timeout = this.time.delayedCall(2500, () => {
         if (handled) return;
@@ -18773,8 +18780,6 @@ class GameScene extends Phaser.Scene {
         
         this.showToast("서버 응답이 없어 사용이 취소되었습니다.", "#e74c3c");
       });
-
-      const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
 
       // ✅ 스냅샷 저장만 수행 (UI 업데이트는 서버 응답 후에만)
       if (Number(cardId) === 7 && Array.isArray(this.roundData?.players)) {
@@ -18801,22 +18806,24 @@ class GameScene extends Phaser.Scene {
         this.pendingSpecialUse[myId] = true;
       } catch (e) {}
 
-      console.log(`🎯 [아이템 사용 요청] cardId=${cardId}`);
-
       socket.emit("requestUseSpecial", { cardId }, (res) => {
         if (handled) return;
         handled = true;
         timeout.remove(false);
         
+        console.log(`📩 [서버 응답] cardId=${cardId} success=${res?.success}`);
+        console.log(`📊 updatedSpecialCards:`, res?.updatedSpecialCards);
+        
         if (res && res.success) {
-          console.log(`✅ [서버 응답 성공] cardId=${cardId}, updatedSpecialCards:`, res.updatedSpecialCards);
+          console.log(`✅ [응답 성공] 클라이언트 데이터 업데이트 시작`);
           
-          // ✅ 【데이터 동기화】서버 응답으로 playe의 specialCards 업데이트
+          // ✅ 【데이터 동기화】서버 응답으로 플레이어의 specialCards 업데이트
           if (res.updatedSpecialCards && Array.isArray(this.roundData?.players)) {
             const myPlayer = this.roundData.players.find(p => p && p.id === myId);
             if (myPlayer) {
+              console.log(`🔄 [업데이트 전] myPlayer.specialCards:`, myPlayer.specialCards);
               myPlayer.specialCards = { ...res.updatedSpecialCards };
-              console.log(`🔄 myPlayer specialCards 업데이트:`, myPlayer.specialCards);
+              console.log(`🔄 [업데이트 후] myPlayer.specialCards:`, myPlayer.specialCards);
             }
           }
           
@@ -18837,9 +18844,15 @@ class GameScene extends Phaser.Scene {
             console.error(`❌ players 병합 실패:`, e);
           }
           
-          // ✅ 【UI 즉시 업데이트】딜레이 무시하고 직접 렌더링 (중요!)
-          console.log(`🔄 _renderTableImmediate 직접 호출 (딜레이 무시)`);
+          // ✅ 【UI 즉시 업데이트】딜레이 무시하고 직접 렌더링
+          console.log(`🎨 _renderTableImmediate 호출 시작`);
+          console.log(`📋 roundData.players 상태:`, this.roundData.players.map(p => ({
+            id: p.id,
+            nickname: p.nickname,
+            specialCards: p.specialCards
+          })));
           this._renderTableImmediate(this.roundData.players);
+          console.log(`🎨 _renderTableImmediate 호출 완료`);
           
           const syncKey =
             cardId === 6
