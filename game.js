@@ -2943,11 +2943,20 @@ class LobbyScene extends Phaser.Scene {
           try {
             if (this !== scene) return; // 다른 씬이면 무시
             
+            // ✅ 【멀티플레이 게임 후 데이터 우선순위】 게임에서 받은 최종 프로필 > 서버 프로필
+            const finalProfileFromGame = socket && socket.finalProfile;
+            
             // myProfile 업데이트
             this.myProfile = this.myProfile || {};
-            this.myProfile.level = Number(profile?.level) || this.myProfile.level || 1;
-            this.myProfile.coins = Number(profile?.coins) || this.myProfile.coins || 0;
-            this.myProfile.experience = Number(profile?.experience) || this.myProfile.experience || 0;
+            
+            // ⭐ [CRITICAL] 게임 종료 후 socket.finalProfile이 있으면 그 값을 우선 사용
+            // (서버에서 아직 업데이트가 반영되지 않은 구 데이터를 받을 수 있으므로)
+            this.myProfile.level = finalProfileFromGame?.level ?? Number(profile?.level) ?? this.myProfile.level ?? 1;
+            this.myProfile.coins = finalProfileFromGame?.coins ?? Number(profile?.coins) ?? this.myProfile.coins ?? 0;
+            this.myProfile.experience = finalProfileFromGame?.experience ?? Number(profile?.experience) ?? this.myProfile.experience ?? 0;
+            
+            console.log(`📊 [프로필 업데이트] Lv: ${this.myProfile.level} | Coins: ${this.myProfile.coins} | Exp: ${this.myProfile.experience} | (최종게임데이터: ${!!finalProfileFromGame})`);
+            
             if (profile?.nickname) this.myProfile.nickname = profile.nickname;
             if (profile?.avatarKey) this.myProfile.avatarKey = profile.avatarKey;
             if (profile?.owned_characters) this.myProfile.owned_characters = profile.owned_characters;
@@ -3035,14 +3044,36 @@ class LobbyScene extends Phaser.Scene {
     // 멀티플레이 게임 종료 후 socket.finalProfile에 저장된 최종 프로필 사용
     const finalProfileFromGame = socket && socket.finalProfile;
     
+    // ✅ 【캐릭터 선택】 게임에서 돌아온 최종 프로필의 캐릭터 우선 사용
+    const gameAvatarKey = finalProfileFromGame?.current_character || finalProfileFromGame?.currentCharacter || finalProfileFromGame?.avatarKey;
+    const effectiveAvatarKey = 
+      (typeof gameAvatarKey === "string" && isValidCharacterKey(gameAvatarKey))
+        ? gameAvatarKey  // ✅ 게임에서 착용한 캐릭터 사용
+        : ((typeof savedAvatarKey === "string" && isValidCharacterKey(savedAvatarKey))
+          ? savedAvatarKey  // localStorage의 저장된 캐릭터 사용
+          : this.profileAvatarKeys[this.profileAvatarIndex] || "player_1");  // 기본값
+    
+    console.log(`🎭 [대기실 캐릭터 로드] 게임캐릭터: ${gameAvatarKey} | 저장캐릭터: ${savedAvatarKey} | 최종: ${effectiveAvatarKey}`);
+    
+    // ✅ 【localStorage 동기화】 현재 캐릭터를 localStorage에 저장
+    try {
+      localStorage.setItem("profileAvatarKey", effectiveAvatarKey);
+      const newIndex = this.profileAvatarKeys.indexOf(effectiveAvatarKey);
+      if (newIndex >= 0) {
+        this.profileAvatarIndex = newIndex;
+      }
+    } catch (e) {
+      console.warn(`⚠️ localStorage 업데이트 실패:`, e);
+    }
+    
     this.myProfile = {
       nickname: this.myNickname || savedNickname || "요리사",
       level: finalProfileFromGame?.level || 1,
       coins: finalProfileFromGame?.coins || 0,  // 서버로부터 받을 때까지 기본값 또는 게임 최종값
       experience: finalProfileFromGame?.experience || 0,
       owned_characters: initialOwnedCharacters,
-      current_character: initialAvatarKey || "player_1",
-      avatarKey: initialAvatarKey || "player_1",
+      current_character: effectiveAvatarKey,
+      avatarKey: effectiveAvatarKey,
     };
 
     if (finalProfileFromGame) {
@@ -14439,11 +14470,18 @@ class GameScene extends Phaser.Scene {
       // (로비 또는 다음 게임 시작 시 정확한 데이터 필요)
       if (this.isGameEnded && !this.isSingle) {
         
+        // ⭐ [CRITICAL] 게임 종료 후: socket.finalProfile > 서버 profile 우선순위
+        // (서버에서 아직 업데이트가 반영되지 않은 구 데이터를 받을 수 있으므로)
+        const finalProfileFromGame = socket && socket.finalProfile;
+        
         // myProfile 즉시 업데이트 (로비로 전달될 값)
         this.myProfile = this.myProfile || {};
-        this.myProfile.level = Number(profile?.level) || Number(this.myProfile?.level) || 1;
-        this.myProfile.coins = Number(profile?.coins) || Number(this.myProfile?.coins) || 0;
-        this.myProfile.experience = Number(profile?.experience) || Number(this.myProfile?.experience) || 0;
+        this.myProfile.level = finalProfileFromGame?.level ?? Number(profile?.level) ?? Number(this.myProfile?.level) ?? 1;
+        this.myProfile.coins = finalProfileFromGame?.coins ?? Number(profile?.coins) ?? Number(this.myProfile?.coins) ?? 0;
+        this.myProfile.experience = finalProfileFromGame?.experience ?? Number(profile?.experience) ?? Number(this.myProfile?.experience) ?? 0;
+        
+        console.log(`📊 [게임종료 프로필] Lv: ${this.myProfile.level} | Coins: ${this.myProfile.coins} | Exp: ${this.myProfile.experience}`);
+        
         if (profile?.nickname) this.myProfile.nickname = profile.nickname;
         if (profile?.avatarKey) this.myProfile.avatarKey = profile.avatarKey;
         if (profile?.owned_characters) this.myProfile.owned_characters = profile.owned_characters;
@@ -17118,9 +17156,15 @@ class GameScene extends Phaser.Scene {
     ];
 
     // localStorage에서 보유한 특수카드 로드
-    const specialCardsOwned = JSON.parse(
-      localStorage.getItem("specialCards") || "{}",
-    );
+    // ✅ [수정] gameStart에서 받은 p.specialCards 우선 사용 (CHARACTER_BONUSES 적용됨)
+    // localStorage 없음 → gameStart에서 받은 specialCards
+    const specialCardsOwned = p.specialCards 
+      ? { ...p.specialCards }  // gameStart에서 받은 최신 데이터 우선
+      : JSON.parse(
+          localStorage.getItem("specialCards") || "{}",
+        );
+    
+    console.log(`📇 [특수카드 표시] ${p.nickname} - 보유카드:`, JSON.stringify(specialCardsOwned));
 
     // 하단 중앙에 고정 배치 - 더 크고 눈에 띄게
     const cardSize = Math.min(width * 0.20, 160);
@@ -17640,13 +17684,13 @@ class GameScene extends Phaser.Scene {
             .setDepth(11100)
             .setVisible(false)
             .setOrigin(0.5, 0.5)
-            .setScale(0.8); // 20% 축소
+            .setScale(1.2); // ✅ 1.5배 크기 증가 (0.8 * 1.5 = 1.2)
         }
         const tempSprite = this._winAvatarSprite;
         tempSprite.x = centerX;
         tempSprite.y = centerY;
         tempSprite.setOrigin(0.5, 0.5); // ✅ 정중앙 기준점
-        tempSprite.setScale(0.8); // ✅ 20% 축소
+        tempSprite.setScale(1.2); // ✅ 1.5배 크기 증가 (0.8 * 1.5 = 1.2)
         tempSprite.setVisible(true);
 
         const hideWinAvatar = () => {
@@ -17672,9 +17716,9 @@ class GameScene extends Phaser.Scene {
             // ✅ ensurePlayer5/6Frames 제거: preload/loadDeferredAssets에서 이미 개별 프레임이 로드됨
             this.applyAvatarAnimation(tempSprite, avatarKey);
             
-            // ✅ applyAvatarAnimation 호출 후 크기 및 위치 재설정 (20% 축소)
+            // ✅ applyAvatarAnimation 호출 후 크기 및 위치 재설정 (1.5배 크기)
             tempSprite.setOrigin(0.5, 0.5);
-            tempSprite.setScale(0.8);
+            tempSprite.setScale(1.2); // ✅ 1.5배 크기 증가
             tempSprite.setPosition(centerX, centerY);
             
             try {

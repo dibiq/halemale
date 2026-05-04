@@ -5128,6 +5128,23 @@ io.on("connection", (socket) => {
         }
       }
       socket.items = parsedItems;
+
+      // ✅ [추가] specialCards 파싱 (캐릭터 보너스 아이템 복원)
+      let parsedSpecialCards = {};
+      if (
+        typeof savedData.items === "object" &&
+        !Array.isArray(savedData.items)
+      ) {
+        parsedSpecialCards = savedData.items.specialCards || {};
+      } else if (typeof savedData.items === "string") {
+        try {
+          const parsed = JSON.parse(savedData.items);
+          parsedSpecialCards = parsed.specialCards || {};
+        } catch (e) {
+          parsedSpecialCards = {};
+        }
+      }
+      socket.specialCards = parsedSpecialCards;
     } else {
       console.log(`⚠️ joinRoom - ${nickname}의 DB 데이터 없음, 기본값 사용`);
       socket.level = socket.level || 1;
@@ -5155,6 +5172,8 @@ io.on("connection", (socket) => {
         id: socket.id,
         nickname,
         avatarKey: socket.avatarKey || "player_1",
+        currentCharacter:
+          socket.currentCharacter || socket.avatarKey || "player_1", // ✅ 착용 캐릭터 추가
         level: socket.level || 1, // 💡 socket에 저장된 값을 가져옴
         coins: socket.coins || 0, // 💡 socket에 저장된 값을 가져옴
         experience: socket.experience || 0,
@@ -5295,6 +5314,23 @@ io.on("connection", (socket) => {
         }
       }
       socket.items = parsedItems;
+
+      // ✅ [추가] specialCards 파싱 (캐릭터 보너스 아이템 복원)
+      let parsedSpecialCards = {};
+      if (
+        typeof savedData.items === "object" &&
+        !Array.isArray(savedData.items)
+      ) {
+        parsedSpecialCards = savedData.items.specialCards || {};
+      } else if (typeof savedData.items === "string") {
+        try {
+          const parsed = JSON.parse(savedData.items);
+          parsedSpecialCards = parsed.specialCards || {};
+        } catch (e) {
+          parsedSpecialCards = {};
+        }
+      }
+      socket.specialCards = parsedSpecialCards;
     } else {
       console.log(
         `⚠️ joinPublicRoom - ${nickname}의 DB 데이터 없음, 기본값 사용`,
@@ -5324,6 +5360,8 @@ io.on("connection", (socket) => {
         id: socket.id,
         nickname,
         avatarKey: socket.avatarKey || "player_1",
+        currentCharacter:
+          socket.currentCharacter || socket.avatarKey || "player_1", // ✅ 착용 캐릭터 추가
         level: socket.level || 1, // 💡 이 부분 추가
         coins: socket.coins || 0, // 💡 이 부분 추가
         experience: socket.experience || 0,
@@ -5333,6 +5371,7 @@ io.on("connection", (socket) => {
           : null,
         bellTotal: Number.isFinite(socket.bellTotal) ? socket.bellTotal : null,
         avetime: socket.avetime || 0,
+        specialCards: socket.specialCards || {}, // ✅ 특수카드 추가
         items: socket.items || [], // 💡 이 부분 추가
         myDeck: [],
         openCard: null,
