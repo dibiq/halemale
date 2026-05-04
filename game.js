@@ -92,6 +92,24 @@ function canUseIntegratedAd() {
 // Reward character key (저장/잠금 해제에 사용되는 아이디)
 const PREMIUM_BEAR_KEY = "player_2"; // 보상으로 지급되는 캐릭터 키 (player_2)
 
+// ✅ 【캐릭터 특성】각 캐릭터별 코인 배수 + 특수카드 보너스 (전역 정의)
+// 특수카드 ID: 4=자물쇠, 5=방패, 6=먹물, 7=도둑, 8=왕(전세역전)
+const CHARACTER_BONUSES = {
+  player_1: { coinMultiplier: 1, specialCards: {} },
+  player_2: { coinMultiplier: 2, specialCards: {} },
+  player_3: { coinMultiplier: 2, specialCards: {} },
+  player_4: { coinMultiplier: 2, specialCards: {} },
+  player_5: { coinMultiplier: 3, specialCards: {} },
+  player_6: { coinMultiplier: 3, specialCards: {} },
+  player_7: { coinMultiplier: 3, specialCards: { 4: 1 } },     // 패널티방어 1회
+  player_8: { coinMultiplier: 3, specialCards: { 5: 1 } },     // 방패 1회
+  player_9: { coinMultiplier: 4, specialCards: { 6: 1 } },     // 먹물 1회
+  player_10: { coinMultiplier: 4, specialCards: { 7: 1 } },    // 도둑 1회
+  player_11: { coinMultiplier: 4, specialCards: { 8: 1 } },    // 전세역전 1회
+  player_12: { coinMultiplier: 5, specialCards: { 4: 1, 5: 1, 6: 1, 7: 1, 8: 1 } }, // 모든 카드 1회
+  premium_bear: { coinMultiplier: 1, specialCards: {} },
+};
+
 function loadTutorialProgress() {
   try {
     const raw = localStorage.getItem(TUTORIAL_PROGRESS_KEY) || "";
@@ -7428,24 +7446,6 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       },
     ];
     
-    // ✅ 【캐릭터 특성】각 캐릭터별 코인 배수 + 특수카드 보너스
-    // 특수카드 ID: 4=자물쇠, 5=방패, 6=먹물, 7=도둑, 8=왕(전세역전)
-    const CHARACTER_BONUSES = {
-      player_1: { coinMultiplier: 1, specialCards: {} },
-      player_2: { coinMultiplier: 2, specialCards: {} },
-      player_3: { coinMultiplier: 2, specialCards: {} },
-      player_4: { coinMultiplier: 2, specialCards: {} },
-      player_5: { coinMultiplier: 3, specialCards: {} },
-      player_6: { coinMultiplier: 3, specialCards: {} },
-      player_7: { coinMultiplier: 3, specialCards: { 4: 1 } },     // 패널티방어 1회
-      player_8: { coinMultiplier: 3, specialCards: { 5: 1 } },     // 방패 1회
-      player_9: { coinMultiplier: 4, specialCards: { 6: 1 } },     // 먹물 1회
-      player_10: { coinMultiplier: 4, specialCards: { 7: 1 } },    // 도둑 1회
-      player_11: { coinMultiplier: 4, specialCards: { 8: 1 } },    // 전세역전 1회
-      player_12: { coinMultiplier: 5, specialCards: { 4: 1, 5: 1, 6: 1, 7: 1, 8: 1 } }, // 모든 카드 1회
-      premium_bear: { coinMultiplier: 1, specialCards: {} },
-    };
-
     const coinProducts = [
       { amount: 1000, display: "1100원", sku: COIN_PRODUCT_SKUS[1000] },
       { amount: 3000, display: "2200원", sku: COIN_PRODUCT_SKUS[3000] },
