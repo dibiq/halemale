@@ -17256,21 +17256,13 @@ class GameScene extends Phaser.Scene {
 
     // ✅ 【최신 서버 데이터 사용】항상 this.roundData.players에서 직접 조회
     let specialCardsOwned = p.specialCards || {};
-    console.log(`📋 [drawSpecialCards 진입] 매개변수 p.specialCards:`, p.specialCards);
     
     try {
       const latestMe = this.roundData.players?.find(pp => pp && pp.id === myId);
       if (latestMe && latestMe.specialCards) {
         specialCardsOwned = latestMe.specialCards;
-        console.log(`✅ [최신 데이터 조회 성공] ${latestMe.nickname} specialCards:`, JSON.stringify(specialCardsOwned));
-      } else {
-        console.warn(`⚠️ [최신 데이터 조회 실패] latestMe:`, latestMe ? latestMe.id : 'null');
       }
-    } catch (e) {
-      console.warn(`⚠️ [최신 데이터 조회 중 오류]:`, e);
-    }
-    
-    console.log(`📇 [특수카드 표시] ${p.nickname} - 최종 사용 보유카드:`, JSON.stringify(specialCardsOwned));
+    } catch (e) {}
 
     // 하단 중앙에 고정 배치 - 더 크고 눈에 띄게
     const cardSize = Math.min(width * 0.20, 160);
@@ -17375,11 +17367,15 @@ class GameScene extends Phaser.Scene {
           // 🔴 [중요] 자물쇠(4)와 방패(5)는 패시브 자동 방어이므로 클릭 불가
           const isPassiveCard = card.id === 4 || card.id === 5; // lock, shield
           if (isPassiveCard) {
+            console.log(`🚫 [아이템 버튼] cardId=${card.id} (${card.name})는 패시브 아이템 - 클릭 비활성화`);
             cardBg.disableInteractive();
           } else {
             cardBg.on("pointerdown", () => {
+              console.log(`🖱️ [아이템 클릭] cardId=${card.id} (${card.name})`);
               // Prevent double-clicks: mark as clicked and disable interaction immediately
-              if (cardBg._clicked) return;
+              if (cardBg._clicked) {
+                return;
+              }
               cardBg._clicked = true;
               cardBg.disableInteractive();
 
@@ -18811,19 +18807,14 @@ class GameScene extends Phaser.Scene {
         handled = true;
         timeout.remove(false);
         
-        console.log(`📩 [서버 응답] cardId=${cardId} success=${res?.success}`);
-        console.log(`📊 updatedSpecialCards:`, res?.updatedSpecialCards);
-        
         if (res && res.success) {
-          console.log(`✅ [응답 성공] 클라이언트 데이터 업데이트 시작`);
+          console.log(`📩 [서버 응답 성공] cardId=${cardId}`);
           
           // ✅ 【데이터 동기화】서버 응답으로 플레이어의 specialCards 업데이트
           if (res.updatedSpecialCards && Array.isArray(this.roundData?.players)) {
             const myPlayer = this.roundData.players.find(p => p && p.id === myId);
             if (myPlayer) {
-              console.log(`🔄 [업데이트 전] myPlayer.specialCards:`, myPlayer.specialCards);
               myPlayer.specialCards = { ...res.updatedSpecialCards };
-              console.log(`🔄 [업데이트 후] myPlayer.specialCards:`, myPlayer.specialCards);
             }
           }
           
@@ -18836,7 +18827,6 @@ class GameScene extends Phaser.Scene {
                   const preservedOpenStack = oldPlayer.openStack;
                   Object.assign(oldPlayer, newPlayer);
                   oldPlayer.openStack = preservedOpenStack;
-                  console.log(`✅ [players 병합] ${oldPlayer.nickname} - specialCards:`, oldPlayer.specialCards);
                 }
               });
             }
@@ -18845,14 +18835,7 @@ class GameScene extends Phaser.Scene {
           }
           
           // ✅ 【UI 즉시 업데이트】딜레이 무시하고 직접 렌더링
-          console.log(`🎨 _renderTableImmediate 호출 시작`);
-          console.log(`📋 roundData.players 상태:`, this.roundData.players.map(p => ({
-            id: p.id,
-            nickname: p.nickname,
-            specialCards: p.specialCards
-          })));
           this._renderTableImmediate(this.roundData.players);
-          console.log(`🎨 _renderTableImmediate 호출 완료`);
           
           const syncKey =
             cardId === 6
@@ -18869,7 +18852,7 @@ class GameScene extends Phaser.Scene {
             this.specialUsedThisTurn[myId] = true; // 서버 성공 시 사용 플래그 설정
           } catch (e) {}
         } else {
-          console.error(`❌ [서버 응답 실패] cardId=${cardId}`, res);
+          console.log(`📩 [서버 응답 실패] cardId=${cardId} message=${res?.message}`);
           
           if (Number(cardId) === 7) {
             this.pendingThiefSnapshot = null;

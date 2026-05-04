@@ -3609,10 +3609,6 @@ io.on("connection", (socket) => {
         room.players.forEach((p) => {
           if (!p || !p.id) return;
           const s = io.sockets.sockets.get(p.id);
-          const sockCards = s && s.specialCards ? s.specialCards : {};
-          console.log(
-            `[debug] refreshRoomSpecialCards player=${p.nickname} id=${p.id} socketCards=${JSON.stringify(sockCards)}`,
-          );
           if (s && s.specialCards) {
             // copy to avoid mutation issues
             p.specialCards = { ...s.specialCards };
@@ -3663,17 +3659,10 @@ io.on("connection", (socket) => {
       }
 
       // 보유 여부 확인
-      console.log(
-        `[debug] requestUseSpecial from ${socket.nickname} (${socket.id}) cardId=${cardId} specialCards=`,
-        socket.specialCards,
-      );
       if (
         !socket.specialCards ||
         Number(socket.specialCards[cardId] || 0) <= 0
       ) {
-        console.log(
-          `[debug] requestUseSpecial denied no_card for ${socket.nickname} cardId=${cardId}`,
-        );
         if (typeof cb === "function")
           cb({ success: false, message: "no_card" });
         return;
@@ -3715,8 +3704,14 @@ io.on("connection", (socket) => {
 
           // also update room snapshot for clients that look at players
           refreshRoomSpecialCards(room);
+          console.log(
+            `🔒 [auto-lock 처리] ${socket.nickname} 자물쇠 사용 완료 - room.players 업데이트됨`,
+          );
 
           // broadcast lock usage so other clients show animation
+          console.log(
+            `📡 [specialUsed 브로드캐스트] roomId=${room.roomId} cardId=4 by=${socket.id}`,
+          );
           io.to(room.roomId).emit("specialUsed", {
             cardId: 4,
             by: socket.id,
@@ -3725,6 +3720,7 @@ io.on("connection", (socket) => {
             shielded: [],
             message: `${socket.nickname}님 자물쇠 사용!`,
           });
+          console.log(`✅ [specialUsed 브로드캐스트 완료]`);
 
           // Ensure the room advances to the next turn (clear any bell lock state)
           // so bots can resume play after auto-lock prevents a penalty.
@@ -3756,19 +3752,9 @@ io.on("connection", (socket) => {
 
       // ✅ 【즉시 차감 및 응답】클라이언트가 기다리지 않도록
       // 카드 사용 차감 (모든 카드 공통)
-      console.log(
-        `⏰ [requestUseSpecial] 차감 전 cardId=${cardId} count=${Number(socket.specialCards[cardId] || 0)}`,
-      );
       socket.specialCards[cardId] =
         Number(socket.specialCards[cardId] || 0) - 1;
       if (socket.specialCards[cardId] <= 0) delete socket.specialCards[cardId];
-      console.log(
-        `⏰ [requestUseSpecial] 차감 후 cardId=${cardId} count=${Number(socket.specialCards[cardId] || 0)}`,
-      );
-      console.log(
-        `📊 [requestUseSpecial] socket.specialCards 상태:`,
-        JSON.stringify(socket.specialCards),
-      );
 
       // DB 저장 (비동기)
       savePlayer(
@@ -3789,30 +3775,9 @@ io.on("connection", (socket) => {
       ).catch((e) => console.warn("savePlayer error on useSpecial", e));
 
       // room.players 동기화
-      console.log(
-        `🔄 [room.players 동기화 전] socket.specialCards:`,
-        JSON.stringify(socket.specialCards),
-      );
       refreshRoomSpecialCards(room);
-      const myRoomPlayer = room.players.find((p) => p && p.id === socket.id);
-      console.log(
-        `🔄 [room.players 동기화 후] myRoomPlayer.specialCards:`,
-        JSON.stringify(myRoomPlayer?.specialCards || {}),
-      );
-      console.log(
-        `📤 [room.players] 전체 플레이어:`,
-        room.players.map((p) => ({
-          id: p.id,
-          nickname: p.nickname,
-          specialCards: p.specialCards,
-        })),
-      );
 
       // ✅ 【즉시 응답】1400ms 기다리지 않음
-      console.log(
-        `✅ [즉시 응답 전송] cardId=${cardId} updatedSpecialCards:`,
-        JSON.stringify(socket.specialCards),
-      );
       if (typeof cb === "function") {
         cb({
           success: true,
@@ -3820,7 +3785,6 @@ io.on("connection", (socket) => {
           updatedSpecialCards: socket.specialCards,
         });
       }
-      console.log(`✅ [즉시 응답 완료]`);
 
       // 애니메이션 브로드캐스트
       const ANIM_MS = 1400;
