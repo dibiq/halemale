@@ -17327,7 +17327,10 @@ class GameScene extends Phaser.Scene {
 
       // 해당 턴에 이미 특수카드를 사용했는지 확인 (턴당 1회 규칙)
       const myIdForFlag = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
-      const usedFlag = (this.specialUsedThisTurn || {})[myIdForFlag] === true;
+      
+      // 🔒 [패시브 아이템] 항상 정상 표시 (비활성 상태도 아님)
+      const isPassiveCard = card.id === 4 || card.id === 5;
+      const usedFlag = isPassiveCard ? false : (this.specialUsedThisTurn || {})[myIdForFlag] === true;
 
       if (count > 0) {
         // ✨ 게임 아이템 느낌 배경 (그라데이션 효과를 위해 그래픽스 사용)
@@ -17411,30 +17414,31 @@ class GameScene extends Phaser.Scene {
           .setDepth(104)
           .setScrollFactor(0);
 
-        if (usedFlag) {
+        // � 패시브 아이템: 항상 비활성화 (음영 처리 없음)
+        if (isPassiveCard) {
+          // 패시브 아이템: 사용 여부와 관계없이 항상 비활성화
+          console.log(`🚫 [패시브 아이템] cardId=${card.id} (${card.name}) - 항상 클릭 불가`);
+          cardBg.disableInteractive();
+        } else if (usedFlag) {
+          // 활성 아이템인데 이미 사용됨: 비활성화
           cardBg.disableInteractive();
         } else {
-          // 🔴 [중요] 자물쇠(4)와 방패(5)는 패시브 자동 방어이므로 클릭 불가
-          const isPassiveCard = card.id === 4 || card.id === 5; // lock, shield
-          if (isPassiveCard) {
-            console.log(`🚫 [아이템 버튼] cardId=${card.id} (${card.name})는 패시브 아이템 - 클릭 비활성화`);
+          // 활성 아이템이고 미사용: 클릭 가능
+          cardBg.on("pointerdown", () => {
+            console.log(`🖱️ [아이템 클릭] cardId=${card.id} (${card.name})`);
+            // Prevent double-clicks: mark as clicked and disable interaction immediately
+            if (cardBg._clicked) {
+              return;
+            }
+            cardBg._clicked = true;
             cardBg.disableInteractive();
-          } else {
-            cardBg.on("pointerdown", () => {
-              console.log(`🖱️ [아이템 클릭] cardId=${card.id} (${card.name})`);
-              // Prevent double-clicks: mark as clicked and disable interaction immediately
-              if (cardBg._clicked) {
-                return;
-              }
-              cardBg._clicked = true;
-              cardBg.disableInteractive();
 
-              if ((this.specialUsedThisTurn || {})[myIdForFlag]) {
-                // 이미 특수카드를 사용한 경우 별도 토스트 없이 차단
-                return;
-              }
+            if ((this.specialUsedThisTurn || {})[myIdForFlag]) {
+              // 이미 특수카드를 사용한 경우 별도 토스트 없이 차단
+              return;
+            }
 
-              // Optimistic guard so rapid clicks (during tween) won't trigger again
+            // Optimistic guard so rapid clicks (during tween) won't trigger again
             try {
               this.specialUsedThisTurn = this.specialUsedThisTurn || {};
               this.specialUsedThisTurn[myIdForFlag] = true;
@@ -17453,8 +17457,7 @@ class GameScene extends Phaser.Scene {
             this.time.delayedCall(100, () => {
               this.useSpecialCard(card.id, card.name, card.cooldown || 12000);
             });
-            });
-          }
+          });
         }
 
         this.playerTableGroup.add([cardBg, cardImg, countTxt]);
