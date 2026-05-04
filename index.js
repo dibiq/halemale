@@ -1194,9 +1194,23 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
   );
 
   // 순위별 보상(1등 30, 2등 20, 3등 10) - 배수 적용
-  console.log("[finalizeGame] 순위 보상 시작", {
+  const roomGameMultiplier = room.gameMultiplier || 1;
+
+  // ⚠️ 배수가 설정되지 않았을 경우 경고
+  if (!room.gameMultiplier) {
+    console.warn(
+      "⚠️ [finalizeGame] 게임 배수가 설정되지 않음! 기본값 1배 사용",
+      {
+        roomId: room.roomId,
+        timestamp: new Date().toISOString(),
+      },
+    );
+  }
+
+  console.log("[finalizeGame] 순위 보상 시작 - 배수 검증", {
     sortedCount: sorted.length,
-    roomGameMultiplier: room.gameMultiplier,
+    roomGameMultiplier: roomGameMultiplier,
+    multiplierSet: !!room.gameMultiplier,
     timestamp: new Date().toISOString(),
   });
   console.log("[🔴 CRITICAL] 순위 보상 시작 - sorted array details:", {
@@ -1206,6 +1220,7 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
       sorted.map((p) => ({
         id: p.id,
         nickname: p.nickname,
+        character: p.currentCharacter || p.avatarKey || "player_1",
         currentCoins: p.coins,
       })),
   });
@@ -1515,6 +1530,8 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
     }, {}),
     // attach debug strings from server execution so the client can see them
     serverDebug: debugLines,
+    // ✅ 【게임 배수 전달】 client에서 캐릭터 배수 계산에 필요
+    gameMultiplier: room.gameMultiplier || 1,
     ranking: sorted.map((p) => {
       const before = beforeStateById.get(p.id) || {
         beforeCoins: Number(p.coins) || 0,
@@ -1544,6 +1561,9 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
         currentCoins: before.beforeCoins,
         earnedCoins,
         finalCoins,
+        currentCharacter: p.currentCharacter || p.avatarKey || "player_1",
+        coinBefore: before.beforeCoins,
+        coins: finalCoins,
       };
     }),
     winner: winner.nickname,
@@ -2423,10 +2443,16 @@ io.on("connection", (socket) => {
       }
 
       room.gameMultiplier = Number(gameMultiplier) || 1;
-      console.log("[setGameMultiplier] 배수 저장 완료", {
+      console.log("✅ [setGameMultiplier] 게임 배수 저장 완료", {
         roomId,
         gameMultiplier: room.gameMultiplier,
         playersCount: room.players.length,
+        players: room.players.map((p) => ({
+          id: p.id,
+          nickname: p.nickname,
+          character: p.currentCharacter || p.avatarKey || "player_1",
+        })),
+        timestamp: new Date().toISOString(),
       });
 
       if (typeof ack === "function") {

@@ -15042,13 +15042,14 @@ class GameScene extends Phaser.Scene {
           ? Number(data.coinTotal)
           : undefined;
 
-        // 📊 【클라이언트 코인카드 획득 로그】 게임 중 코인 카드 획득 추적
+        // 📊 【클라이언트 코인카드 획득 로그】 게임 중 코인 카드 획득 추적 + server 계산 검증
         const playerInfo = this.roundData.players.find((p) => p.id === data.playerId);
         const characterKey = playerInfo?.currentCharacter || playerInfo?.avatarKey || "player_1";
         const characterBonus = CHARACTER_BONUSES[characterKey] || CHARACTER_BONUSES.player_1;
         const characterMultiplier = characterBonus?.coinMultiplier || 1;
         const gameMultiplier = this.roundData?.gameMultiplier || 1;
         const totalMultiplier = gameMultiplier * characterMultiplier;
+        const clientCalculated = Math.floor(COIN_CARD_REWARD * totalMultiplier);
         
         console.log("💰 [클라이언트] 코인카드 획득됨 ✅ 배수 적용됨", {
           playerId: data.playerId,
@@ -15058,7 +15059,9 @@ class GameScene extends Phaser.Scene {
           gameMultiplier: `${gameMultiplier}배`,
           totalMultiplier: `${totalMultiplier}배`,
           baseReward: COIN_CARD_REWARD,
-          actualReward: reward,
+          "client_calculated": clientCalculated,
+          "server_actual": reward,
+          "✅_match": clientCalculated === reward ? "✓" : `❌ MISMATCH (calc: ${clientCalculated} vs server: ${reward})`,
           isMe: data.playerId === myId ? "✓" : "",
           newTotal: newTotal !== undefined ? newTotal : "미동기",
         });
@@ -15734,10 +15737,13 @@ class GameScene extends Phaser.Scene {
       
       // 📊 【클라이언트 게임 종료 로그】 순위별 코인 보상 + 캐릭터 배수 추적
       console.log("");
-      console.log("╔═══════════════════════════════════════════╗");
-      console.log("║ 🏁 멀티플레이 게임 종료 - 순위별 보상 정보  ║");
-      console.log("╚═══════════════════════════════════════════╝");
+      console.log("╔═════════════════════════════════════════════════════╗");
+      console.log("║ 🏁 멀티플레이 게임 종료 - 최종 코인 계산 검증         ║");
+      console.log("╚═════════════════════════════════════════════════════╝");
+      console.log("📌 게임 배수 (server → client):", data.gameMultiplier || 1);
+      console.log("");
       console.log("📊 최종 순위 및 코인 보상:");
+      
       if (Array.isArray(data?.ranking)) {
         data.ranking.forEach((player, rank) => {
           if (!player) return;
@@ -15750,22 +15756,31 @@ class GameScene extends Phaser.Scene {
           // 순위별 기본 보상
           const rankRewards = { 0: 30, 1: 20, 2: 10 };
           const baseReward = rankRewards[rank] || 0;
-          const finalReward = Math.floor(baseReward * totalMultiplier);
+          const calculatedReward = Math.floor(baseReward * totalMultiplier);
+          const actualReward = player.earnedCoins || 0;
+          const isMatch = calculatedReward === actualReward;
           
           console.log(`   [${rank + 1}등] ${player.nickname || player.id}`, {
             character: characterKey,
             characterMultiplier: `${characterMultiplier}배`,
             gameMultiplier: `${gameMultiplier}배`,
             totalMultiplier: `${totalMultiplier}배`,
-            baseReward,
-            finalReward,
-            coinBefore: player.coinBefore || 0,
-            coinAfter: player.coins || 0,
+            baseReward: baseReward,
+            "client_calculated": calculatedReward,
+            "server_actual": actualReward,
+            "✅_match": isMatch ? "✓" : "❌ MISMATCH",
+            "coins_before": player.coinBefore || 0,
+            "coins_after": player.coins || 0,
+            "delta": (player.coins || 0) - (player.coinBefore || 0),
             isMe: player.id === socket.id ? "✓" : "",
           });
         });
       }
-      console.log("╔═══════════════════════════════════════════╗");
+      
+      console.log("");
+      console.log("╔═════════════════════════════════════════════════════╗");
+      console.log("║ ✅ 코인 배수 검증 완료                              ║");
+      console.log("╚═════════════════════════════════════════════════════╝");
       console.log("");
       
       const isMultiplayerWin = !this.isSingle && data && data.winnerId === socket.id;
