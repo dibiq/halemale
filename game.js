@@ -17254,9 +17254,17 @@ class GameScene extends Phaser.Scene {
       { id: 8, key: "king", icon: "king", name: "왕", cooldown: 12000 },
     ];
 
-    // ✅ 【서버 데이터만 사용】gameStart에서 받은 p.specialCards만 표시
-    // localStorage 사용 금지 (보안 및 동기화 문제)
-    const specialCardsOwned = p.specialCards || {};
+    // ✅ 【최신 서버 데이터 사용】항상 this.roundData.players에서 직접 조회
+    let specialCardsOwned = p.specialCards || {};
+    try {
+      const latestMe = this.roundData.players?.find(pp => pp && pp.id === myId);
+      if (latestMe && latestMe.specialCards) {
+        specialCardsOwned = latestMe.specialCards;
+        console.log(`📇 [특수카드 표시] 최신 데이터 조회: ${latestMe.nickname}`, JSON.stringify(specialCardsOwned));
+      }
+    } catch (e) {
+      console.warn(`⚠️ 최신 데이터 조회 실패, 기존값 사용`);
+    }
     
     console.log(`📇 [특수카드 표시] ${p.nickname} - 보유카드:`, JSON.stringify(specialCardsOwned));
 
@@ -18376,7 +18384,7 @@ class GameScene extends Phaser.Scene {
 
       const shieldSprite = this.add
         .image(baseX, specialY, "shield")
-        .setDisplaySize(10, 10)
+        .setDisplaySize(50, 50)  // ✅ 5배 확대 (10 → 50)
         .setDepth(600000)
         .setAlpha(0)
         .setScale(0);
@@ -18385,7 +18393,7 @@ class GameScene extends Phaser.Scene {
       this.tweens.add({
         targets: shieldSprite,
         alpha: 1,
-        scale: 0.5,
+        scale: 2.5,  // ✅ 5배 확대 (0.5 → 2.5)
         duration: 300,
         ease: "Back.out",
         yoyo: true,
@@ -18464,7 +18472,7 @@ class GameScene extends Phaser.Scene {
 
       const lockSprite = this.add
         .image(baseX, lockY, "lock")
-        .setDisplaySize(10, 10)
+        .setDisplaySize(50, 50)  // ✅ 5배 확대 (10 → 50)
         .setDepth(600000)
         .setAlpha(0)
         .setScale(0);
@@ -18472,7 +18480,7 @@ class GameScene extends Phaser.Scene {
       this.tweens.add({
         targets: lockSprite,
         alpha: 1,
-        scale: 0.5,
+        scale: 2.5,  // ✅ 5배 확대 (0.5 → 2.5)
         duration: 300,
         ease: "Back.out",
         yoyo: true,
@@ -18755,7 +18763,6 @@ class GameScene extends Phaser.Scene {
       return;
     }
     try {
-      //this.showToast(`${cardName} 카드를 사용 요청합니다...`, "#f39c12");
       let handled = false;
       const timeout = this.time.delayedCall(2500, () => {
         if (handled) return;
@@ -18763,81 +18770,77 @@ class GameScene extends Phaser.Scene {
         if (Number(cardId) === 7) {
           this.pendingThiefSnapshot = null;
         }
+        
         this.showToast("서버 응답이 없어 사용이 취소되었습니다.", "#e74c3c");
       });
 
       const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
 
-      // 낙관적 업데이트: UI와 로컬 인벤토리 차감 (하지만 사용 플래그는 서버 응답 시에 설정)
+      // ✅ 스냅샷 저장만 수행 (UI 업데이트는 서버 응답 후에만)
+      if (Number(cardId) === 7 && Array.isArray(this.roundData?.players)) {
+        try {
+          this.pendingThiefSnapshot = {
+            by: myId,
+            players: this.roundData.players.map((p) => ({
+              ...p,
+              openStack: p.openStack ? [...p.openStack] : [],
+            })),
+            createdAt: Date.now(),
+          };
+        } catch (snapshotErr) {
+          this.pendingThiefSnapshot = null;
+        }
+      }
+
       try {
         this.pendingSpecialUse = this.pendingSpecialUse || {};
         if (this.pendingSpecialUse[myId]) {
-          // 이미 요청 대기 중이면 중복 방지
           timeout.remove(false);
           return;
         }
         this.pendingSpecialUse[myId] = true;
+      } catch (e) {}
 
-        if (Number(cardId) === 7 && Array.isArray(this.roundData?.players)) {
-          try {
-            this.pendingThiefSnapshot = {
-              by: myId,
-              players: this.roundData.players.map((p) => ({
-                ...p,
-                openStack: p.openStack ? [...p.openStack] : [],
-              })),
-              createdAt: Date.now(),
-            };
-          } catch (snapshotErr) {
-            this.pendingThiefSnapshot = null;
-          }
-        }
-
-        // ✅ 【데이터 동기화】roundData.players의 플레이어 specialCards 감소
-        console.log(`🎯 [아이템 사용 시작] cardId=${cardId}`);
-        this.decrementSpecialCard(cardId);
-        console.log(`🔄 renderTable 호출 전 - players 개수=${this.roundData.players.length}`);
-        this.renderTable(this.roundData.players);
-        console.log(`✅ renderTable 호출 완료`);
-      } catch (e) {
-        console.error(`❌ 낙관적 업데이트 중 오류:`, e);
-      }
+      console.log(`🎯 [아이템 사용 요청] cardId=${cardId}`);
 
       socket.emit("requestUseSpecial", { cardId }, (res) => {
         if (handled) return;
         handled = true;
         timeout.remove(false);
+        
         if (res && res.success) {
           console.log(`✅ [서버 응답 성공] cardId=${cardId}, updatedSpecialCards:`, res.updatedSpecialCards);
-          // ✅ 【데이터 동기화】서버 응답으로 플레이어의 specialCards 업데이트
+          
+          // ✅ 【데이터 동기화】서버 응답으로 playe의 specialCards 업데이트
           if (res.updatedSpecialCards && Array.isArray(this.roundData?.players)) {
             const myPlayer = this.roundData.players.find(p => p && p.id === myId);
             if (myPlayer) {
-              console.log(`🔄 myPlayer specialCards 업데이트 전:`, myPlayer.specialCards);
               myPlayer.specialCards = { ...res.updatedSpecialCards };
-              console.log(`🔄 myPlayer specialCards 업데이트 후:`, myPlayer.specialCards);
+              console.log(`🔄 myPlayer specialCards 업데이트:`, myPlayer.specialCards);
             }
           }
+          
+          // ✅ 【플레이어 데이터 동기화】서버 응답의 players 정보로 업데이트
           try {
             if (Array.isArray(res.players) && res.players.length > 0) {
               this.roundData.players.forEach((oldPlayer) => {
-                const newPlayer = res.players.find(
-                  (p) => p.id === oldPlayer.id,
-                );
+                const newPlayer = res.players.find(p => p.id === oldPlayer.id);
                 if (newPlayer) {
                   const preservedOpenStack = oldPlayer.openStack;
-                  const preservedSpecialCards = oldPlayer.specialCards; // ✅ specialCards 보존 (이미 감소됨)
                   Object.assign(oldPlayer, newPlayer);
                   oldPlayer.openStack = preservedOpenStack;
-                  oldPlayer.specialCards = preservedSpecialCards; // ✅ 낙관적 업데이트된 specialCards 유지
-                  console.log(`✅ [players 병합] ${oldPlayer.nickname} - specialCards 보존됨:`, oldPlayer.specialCards);
+                  console.log(`✅ [players 병합] ${oldPlayer.nickname} - specialCards:`, oldPlayer.specialCards);
                 }
               });
-              this.renderTable(this.roundData.players);
             }
           } catch (e) {
+            console.error(`❌ players 병합 실패:`, e);
           }
-
+          
+          // ✅ 【UI 즉시 업데이트】딜레이 무시하고 직접 렌더링 (중요!)
+          console.log(`🔄 _renderTableImmediate 직접 호출 (딜레이 무시)`);
+          this._renderTableImmediate(this.roundData.players);
+          
           const syncKey =
             cardId === 6
               ? "useBlock"
@@ -18847,42 +18850,30 @@ class GameScene extends Phaser.Scene {
                   ? "useKing"
                   : "useSpecial";
           this.safeSyncInventory(syncKey, { usedCardId: cardId });
+          
           try {
             this.specialUsedThisTurn = this.specialUsedThisTurn || {};
             this.specialUsedThisTurn[myId] = true; // 서버 성공 시 사용 플래그 설정
           } catch (e) {}
-          try {
-            if (this.pendingSpecialUse) delete this.pendingSpecialUse[myId];
-          } catch (e) {}
-          //this.showToast(`${cardName} 사용 요청을 보냈습니다.`, "#f39c12");
         } else {
+          console.error(`❌ [서버 응답 실패] cardId=${cardId}`, res);
+          
           if (Number(cardId) === 7) {
             this.pendingThiefSnapshot = null;
           }
-          try {
-            // ✅ 옙관적 업데이트: 서버 데이터 사용
-            const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
-            let myPlayer = null;
-            if (Array.isArray(this.roundData?.players)) {
-              myPlayer = this.roundData.players.find(p => p && p.id === myId);
-            }
-            
-            if (res && res.updatedSpecialCards && myPlayer) {
-              myPlayer.specialCards = { ...res.updatedSpecialCards };
-            }
-          } catch (e) {
-          }
-          try {
-            if (this.pendingSpecialUse) delete this.pendingSpecialUse[myId];
-          } catch (e) {}
-          this.renderTable(this.roundData.players);
+          
           this.showToast(
             res && res.message ? res.message : "사용 실패",
             "#e74c3c",
           );
         }
+        
+        try {
+          if (this.pendingSpecialUse) delete this.pendingSpecialUse[myId];
+        } catch (e) {}
       });
     } catch (e) {
+      console.error(`❌ requestUseSpecialWithOptimistic 오류:`, e);
     }
   }
 

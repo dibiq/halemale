@@ -3754,7 +3754,43 @@ io.on("connection", (socket) => {
       let shieldedGlobal = [];
       let emittedEffectId = null;
 
-      // 애니메이션을 먼저 모든 플레이어에게 브로드캐스트하고, 일정 시간 후 실제 효과를 적용합니다.
+      // ✅ 【즉시 차감 및 응답】클라이언트가 기다리지 않도록
+      // 카드 사용 차감 (모든 카드 공통)
+      socket.specialCards[cardId] =
+        Number(socket.specialCards[cardId] || 0) - 1;
+      if (socket.specialCards[cardId] <= 0) delete socket.specialCards[cardId];
+
+      // DB 저장 (비동기)
+      savePlayer(
+        socket.nickname,
+        socket.level || 1,
+        socket.coins || 0,
+        {
+          items: Array.isArray(socket.items) ? socket.items : [],
+          specialCards: socket.specialCards || {},
+        },
+        socket.experience || 0,
+        socket.ownedCharacters || ["player_1"],
+        socket.currentCharacter || socket.avatarKey || "player_1",
+        null,
+        typeof socket.avetime === "number" && socket.avetime > 0
+          ? socket.avetime
+          : null,
+      ).catch((e) => console.warn("savePlayer error on useSpecial", e));
+
+      // room.players 동기화
+      refreshRoomSpecialCards(room);
+
+      // ✅ 【즉시 응답】1400ms 기다리지 않음
+      if (typeof cb === "function") {
+        cb({
+          success: true,
+          players: room.players,
+          updatedSpecialCards: socket.specialCards,
+        });
+      }
+
+      // 애니메이션 브로드캐스트
       const ANIM_MS = 1400;
       const animMap = {
         6: {
@@ -4080,12 +4116,8 @@ io.on("connection", (socket) => {
             return false;
           };
 
-          // 기존 로직: 카드별 효과 적용
+          // 기존 로직: 카드별 효과 적용 (카드 차감은 이미 위에서 완료됨)
           if (cardId === 7) {
-            // 차감
-            socket.specialCards[7] = Number(socket.specialCards[7] || 0) - 1;
-            if (socket.specialCards[7] <= 0) delete socket.specialCards[7];
-
             // thief 효과: 생존 플레이어들(자기 제외, 탈락자 제외)로부터 카드 3장씩 가져옴
             const givers = room.players.filter(
               (p) =>
@@ -4155,9 +4187,7 @@ io.on("connection", (socket) => {
 
             recipients.push(...stolenFrom);
           } else if (cardId === 8) {
-            socket.specialCards[8] = Number(socket.specialCards[8] || 0) - 1;
-            if (socket.specialCards[8] <= 0) delete socket.specialCards[8];
-
+            // 카드 차감은 이미 위에서 완료됨
             const candidates = room.players.filter(
               (p) => p.id !== socket.id && !p.isEliminated,
             );
@@ -4240,9 +4270,7 @@ io.on("connection", (socket) => {
               }
             }
           } else if (cardId === 6) {
-            socket.specialCards[6] = Number(socket.specialCards[6] || 0) - 1;
-            if (socket.specialCards[6] <= 0) delete socket.specialCards[6];
-
+            // 카드 차감은 이미 위에서 완료됨
             const effectId = `block_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
             emittedEffectId = effectId;
             room.blockEffects = room.blockEffects || [];
@@ -4321,11 +4349,7 @@ io.on("connection", (socket) => {
               }
             });
           } else if (cardId === 5 || cardId === 4) {
-            // 방어 아이템(낙관적 소모 및 프로필 업데이트)
-            socket.specialCards[cardId] =
-              Number(socket.specialCards[cardId] || 0) - 1;
-            if (socket.specialCards[cardId] <= 0)
-              delete socket.specialCards[cardId];
+            // 카드 차감은 이미 위에서 완료됨
           }
 
           // 모든 플레이어의 cards 속성 갱신
@@ -4422,13 +4446,7 @@ io.on("connection", (socket) => {
           // Special cards can change deck sizes; check game end after effects.
           checkGameOver(room, io, { forceEliminateZeroDeck: cardId === 7 });
 
-          // 콜백 응답 - room.players는 이미 refreshRoomSpecialCards로 최신 상태
-          if (typeof cb === "function")
-            cb({
-              success: true,
-              players: room.players,
-              updatedSpecialCards: socket.specialCards,
-            });
+          // ✅ 응답은 이미 위에서 보냄 (카드 차감 즉시)
         } catch (err) {
           console.error("deferred requestUseSpecial error", err);
           if (typeof cb === "function")
