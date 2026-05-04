@@ -1475,20 +1475,38 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
       });
 
       // 🔴 DB 저장 (비동기이지만 대기하지 않음)
+      const characterToSave =
+        sock?.currentCharacter ||
+        p.currentCharacter ||
+        p.avatarKey ||
+        "player_1";
+      const ownedCharactersToSave = sock?.ownedCharacters ||
+        p.ownedCharacters || ["player_1"];
+
       savePlayer(
         dbId,
         levelToSave,
         currentCoins,
         currentItems,
         expToSave,
-        null,
-        null,
+        ownedCharactersToSave,
+        characterToSave, // ✅ 현재 착용 캐릭터 저장
         null,
         av,
         ratioToSave,
         bellCorrectToSave,
         bellTotalToSave,
       ).catch((e) => console.warn("savePlayer game end failed", e));
+
+      console.log(`✅ [finalizeGame] currentCharacter 저장됨`, {
+        nickname: p.nickname,
+        characterToSave: characterToSave,
+        source: sock?.currentCharacter
+          ? "socket"
+          : p.currentCharacter
+            ? "room.player"
+            : "default",
+      });
 
       // 🔴 클라이언트에 최종 프로필 전송 (savePlayer 결과와 무관하게 수행)
       try {
@@ -4521,6 +4539,13 @@ io.on("connection", (socket) => {
     const reason = typeof payload.reason === "string" ? payload.reason : "";
     const isExperienceGain = reason.indexOf("experience") >= 0;
 
+    console.log(`🔍 [handleSyncPlayerInventory 경험치 판별]`, {
+      reason,
+      isExperienceGain,
+      incomingExp: payload.experience,
+      incomingLevel: payload.level,
+    });
+
     if (typeof payload.experience !== "undefined") {
       const incomingExp = Number(payload.experience);
       if (Number.isFinite(incomingExp)) {
@@ -4529,9 +4554,12 @@ io.on("connection", (socket) => {
           const prevRemainder = Number(socket.experience) || 0;
           let newExpTotal = prevRemainder + incomingExp;
           let newLevel = prevLevel;
+
+          let levelUpCount = 0;
           while (newExpTotal >= XP_PER_LEVEL) {
             newExpTotal -= XP_PER_LEVEL;
             newLevel += 1;
+            levelUpCount++;
           }
 
           // 🔴 [중요] 경험치 누적 상세 로그
@@ -4543,12 +4571,13 @@ io.on("connection", (socket) => {
               remainder: prevRemainder,
             },
             gain: incomingExp,
+            levelUps: levelUpCount,
             after: {
               level: newLevel,
               remainder: newExpTotal,
               totalExp: newLevel * XP_PER_LEVEL + newExpTotal,
             },
-            message: `Lv.${prevLevel}(exp:${prevRemainder}) + ${incomingExp} → Lv.${newLevel}(exp:${newExpTotal})`,
+            message: `Lv.${prevLevel}(exp:${prevRemainder}) + ${incomingExp} → Lv.${newLevel}(exp:${newExpTotal}) [${levelUpCount}레벨업]`,
             timestamp: new Date().toISOString(),
           });
 
@@ -4579,6 +4608,15 @@ io.on("connection", (socket) => {
     if (!isExperienceGain && typeof payload.level !== "undefined") {
       const incomingLevel = Number(payload.level);
       if (Number.isFinite(incomingLevel)) {
+        console.log(
+          `⚠️ [handleSyncPlayerInventory] 레벨 직접 설정 (non-experience)`,
+          {
+            nickname: socket.nickname,
+            before: socket.level,
+            after: incomingLevel,
+            reason,
+          },
+        );
         socket.level = incomingLevel;
       }
     }

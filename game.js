@@ -3647,12 +3647,20 @@ class LobbyScene extends Phaser.Scene {
           profile.current_character === "player_1" ||
           !!mergedOwnedCharacters[profile.current_character];
 
-        if (canApplyServerCharacter) {
+        // ✅ [CRITICAL] 게임 직후 로비 복귀 시, finalProfile의 캐릭터를 유지
+        // socket.on("myProfile")이 호출되어도 이미 설정된 캐릭터는 변경하지 않음
+        const currentAvatarKey = this.myProfile?.current_character || this.myProfile?.avatarKey;
+        const isDirectlyAfterGame = this.isGameEnded && socket.finalProfile && currentAvatarKey && currentAvatarKey !== "player_1";
+        
+        if (canApplyServerCharacter && !isDirectlyAfterGame) {
           const idx = this.profileAvatarKeys.indexOf(profile.current_character);
           if (idx >= 0) {
             this.profileAvatarIndex = idx;
             this.updateProfileAvatarUI(profile.current_character);
+            console.log(`🎭 [myProfile 캐릭터 변경] ${profile.current_character} (게임 직후 방지 비활성)`);
           }
+        } else if (isDirectlyAfterGame) {
+          console.log(`🎭 [myProfile 캐릭터 유지] 게임 직후 → ${currentAvatarKey} 유지 (${profile.current_character} 무시)`);
         }
       }
 
@@ -15395,10 +15403,11 @@ class GameScene extends Phaser.Scene {
 
           // 멀티플레이: 로컬 플레이어가 카드를 획득했으면 즉시 경험치 지급 (중복 호출 방지)
           try {
-            // ✅ 플래그로 중복 호출 방지
-            if (!this._lastWinExpEvent || this._lastWinExpEvent !== winEventKey) {
-              this._lastWinExpEvent = winEventKey;
-              console.log(`💰 [경험치 지급 블록 진입]`);
+            // ✅ 플래그로 중복 호출 방지 - winnerId + collectedCount + roundIndex로 정확한 추적
+            const expEventKey = `${data.winnerId}_collected${data.collectedCount}`;
+            if (!this._lastWinExpEventKey || this._lastWinExpEventKey !== expEventKey) {
+              this._lastWinExpEventKey = expEventKey;
+              console.log(`💰 [경험치 지급 블록 진입] key=${expEventKey}`);
               
               if (
                 !this.isSingle &&
@@ -15411,11 +15420,14 @@ class GameScene extends Phaser.Scene {
                 const baseGained = Number(data.collectedCount) || 0;
                 const multiplier = this.roundData?.gameMultiplier || 1;
                 const gained = baseGained * multiplier; // 배수 적용
+                console.log(`📊 [경험치 획득] base=${baseGained} * multiplier=${multiplier} = gained=${gained}`);
                 if (typeof this.awardExperience === "function") {
                   this.awardExperience(gained);
                 }
-                console.log(`✨ [awardExperience 호출] ${Date.now() - expStart}ms`);
+                console.log(`✨ [awardExperience 호출 완료] ${Date.now() - expStart}ms`);
               }
+            } else {
+              console.log(`⏭️ [경험치 중복 방지] key=${expEventKey} 이미 처리됨`);
             }
           } catch (e) {
             console.error(`❌ [경험치 지급 에러]`, e);
@@ -20747,12 +20759,34 @@ class GameScene extends Phaser.Scene {
       let newTotal = prevExpTotal + xpGain;
       let leveled = false;
 
+      // ✅ 【상세 로그】레벨업 전 상태
+      console.log(`📊 [awardExperience 시작]`, {
+        xpGain,
+        prevLevel,
+        prevExp: prevExpTotal,
+        newTotalBefore: newTotal,
+        timestamp: Date.now(),
+      });
+
       // 처리: 레벨업이 발생하면 레벨 증가 및 경험치 롤오버
+      let levelUpsCount = 0;
       while (newTotal >= XP_PER_LEVEL) {
         newTotal -= XP_PER_LEVEL;
         this.myProfile.level = (Number(this.myProfile.level) || 1) + 1;
+        levelUpsCount++;
         leveled = true;
       }
+      
+      // ✅ 【상세 로그】레벨업 후 상태
+      console.log(`📊 [awardExperience 계산 완료]`, {
+        levelUpsCount,
+        prevLevel,
+        newLevel: this.myProfile.level,
+        prevExp: prevExpTotal,
+        newExp: newTotal,
+        rolled: prevExpTotal + xpGain - newTotal,
+      });
+      
       this.myProfile.experience = newTotal;
 
       // 로그: 갱신된 값
@@ -20773,18 +20807,27 @@ class GameScene extends Phaser.Scene {
         }
       } catch (e) {}
 
-      // 서버 동기화
+      // 서버 동기화 - reason 명시적으로 지정하여 서버에서 정확하게 판별
       try {
-        this.safeSyncInventory("experienceGain", {
-          experience: xpGain,
+        const syncPayload = {
+          experience: xpGain,  // ← 증가분만 전송
           level: Number(this.myProfile.level) || prevLevel,
+        };
+        console.log(`📤 [safeSyncInventory experienceGain] 전송:`, {
+          experience: syncPayload.experience,
+          level: syncPayload.level,
+          prevExpTotal: prevExpTotal,
+          newExpTotal: newTotal,
         });
+        this.safeSyncInventory("experienceGain", syncPayload);
       } catch (e) {
+        console.warn(`⚠️ [awardExperience] sync 실패:`, e);
       }
 
       // 레벨업 효과 애니메이션
       if (leveled) {
         const newLv = Number(this.myProfile.level) || prevLevel;
+        console.log(`✨ [showLevelUpEffect] ${prevLevel} → ${newLv}`);
         this.showLevelUpEffect(prevLevel, newLv);
       }
       this._hasAwardExperienceRun = true;
