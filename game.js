@@ -4410,48 +4410,51 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       .setOrigin(0.5)
       .setDepth(11);
 
-    // 🔴 [디버그] 코인 추가 버튼 (+1000 코인)
-    const debugAddCoinBtn = this.add
-      .rectangle(coinBgX * 1.03 + profileSize * 0.28, statY, profileSize * 0.12, width * 0.05, 0xff6b6b)
-      .setInteractive({ useHandCursor: true })
-      .setDepth(12);
+    // � [비활성화] 디버그 코인 추가 버튼 (+1000 코인)
+    // const debugAddCoinBtn = this.add
+    //   .rectangle(coinBgX * 1.03 + profileSize * 0.28, statY, profileSize * 0.12, width * 0.05, 0xff6b6b)
+    //   .setInteractive({ useHandCursor: true })
+    //   .setDepth(12);
+    // 
+    // const debugAddCoinBtnText = this.add
+    //   .text(coinBgX * 1.03 + profileSize * 0.28, statY, "+1000", {
+    //     fontFamily: GAME_FONTS.main,
+    //     fontSize: `${width * 0.018}px`,
+    //     color: "#ffffff",
+    //     fontWeight: "bold",
+    //   })
+    //   .setOrigin(0.5)
+    //   .setDepth(13);
+    // 
+    // debugAddCoinBtn.on("pointerdown", () => {
+    //   this.myProfile.coins += 1000;
+    //   this.updateMyProfileUI();
+    //   
+    //   // 🔴 [중요] 서버에 코인 추가 반영
+    //   if (!this.isSingle && socket && socket.connected) {
+    //     const nickname = this.myProfile.nickname || localStorage.getItem("nickname") || "디버그";
+    //     socket.emit("addCoins", {
+    //       amount: 1000,
+    //       nickname,
+    //       playerId: socket.id,
+    //       timestamp: new Date().toISOString(),
+    //     });
+    //   } else {
+    //     // 싱글플레이: 로컬 저장소에만 반영
+    //     this.setCoinsAbsolute(this.myProfile.coins, { sync: true });
+    //   }
+    // });
+    // 
+    // debugAddCoinBtn.on("pointerover", () => {
+    //   debugAddCoinBtn.setFillStyle(0xff8787);
+    // });
+    // 
+    // debugAddCoinBtn.on("pointerout", () => {
+    //   debugAddCoinBtn.setFillStyle(0xff6b6b);
+    // });
     
-    const debugAddCoinBtnText = this.add
-      .text(coinBgX * 1.03 + profileSize * 0.28, statY, "+1000", {
-        fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.018}px`,
-        color: "#ffffff",
-        fontWeight: "bold",
-      })
-      .setOrigin(0.5)
-      .setDepth(13);
-
-    debugAddCoinBtn.on("pointerdown", () => {
-      this.myProfile.coins += 1000;
-      this.updateMyProfileUI();
-      
-      // 🔴 [중요] 서버에 코인 추가 반영
-      if (!this.isSingle && socket && socket.connected) {
-        const nickname = this.myProfile.nickname || localStorage.getItem("nickname") || "디버그";
-        socket.emit("addCoins", {
-          amount: 1000,
-          nickname,
-          playerId: socket.id,
-          timestamp: new Date().toISOString(),
-        });
-      } else {
-        // 싱글플레이: 로컬 저장소에만 반영
-        this.setCoinsAbsolute(this.myProfile.coins, { sync: true });
-      }
-    });
-
-    debugAddCoinBtn.on("pointerover", () => {
-      debugAddCoinBtn.setFillStyle(0xff8787);
-    });
-
-    debugAddCoinBtn.on("pointerout", () => {
-      debugAddCoinBtn.setFillStyle(0xff6b6b);
-    });
+    const debugAddCoinBtn = null;
+    const debugAddCoinBtnText = null;
 
     // 경험치 배경 막대 (회색, 둥근 모서리)
     const expBarGraphicsBg = this.add.graphics();
@@ -4503,8 +4506,8 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       this.profileIdText,
       this.profileStatusBg,
       this.profileCoinText,
-      debugAddCoinBtn,
-      debugAddCoinBtnText,
+      // debugAddCoinBtn,  // 🔇 비활성화됨
+      // debugAddCoinBtnText,  // 🔇 비활성화됨
       this.profileExpBarBg,
       this.profileExpBarFill,
       this.profileExpText,
