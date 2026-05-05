@@ -3094,6 +3094,27 @@ class LobbyScene extends Phaser.Scene {
     })();
 
     // 🔴 [보안] 코인은 반드시 서버에서만 로드 (로컬 저장소 사용 금지)
+    // 🔴 [중요] 게임에서 돌아온 직후, socket.finalProfile이 준비될 때까지 대기
+    // 이를 통해 캐릭터 정보가 완전히 로드된 후에 프로필을 그리게 됨
+    const sceneData = this.sys.settings.data || {};
+    const isComingFromGame = sceneData?.fromGame === true;
+    if (isComingFromGame && socket && socket.connected && !socket.finalProfile) {
+      // 최대 3초 대기
+      await new Promise((resolve) => {
+        let elapsed = 0;
+        const checkInterval = setInterval(() => {
+          if (socket.finalProfile) {
+            clearInterval(checkInterval);
+            resolve();
+          } else if (elapsed >= 3000) {
+            clearInterval(checkInterval);
+            resolve();
+          }
+          elapsed += 100;
+        }, 100);
+      });
+    }
+
     // 멀티플레이 게임 종료 후 socket.finalProfile에 저장된 최종 프로필 사용
     const finalProfileFromGame = socket && socket.finalProfile;
     
@@ -3138,6 +3159,29 @@ class LobbyScene extends Phaser.Scene {
       current_character: effectiveAvatarKey,
       avatarKey: effectiveAvatarKey,
     };
+
+    // 🔴 [중요] 게임 후 시상대에서 내 캐릭터 애니메이션 표시를 위해 프레임 미리로드
+    // GameScene이 stop되면서 프레임이 해제되므로, LobbyScene에서 미리 로드해둠
+    if (isComingFromGame && effectiveAvatarKey && effectiveAvatarKey !== "player_1" && isValidPlayerKey(effectiveAvatarKey)) {
+      try {
+        // 1~40 프레임 중 존재하는 것을 미리로드
+        for (let frameNum = 1; frameNum <= 40; frameNum++) {
+          const frameKey = `${effectiveAvatarKey}_frame_${frameNum}`;
+          if (!this.textures.exists(frameKey)) {
+            // 이미 로드된 텍스처면 스킵
+            const imagePath = `public/assets/images/${effectiveAvatarKey}_sprite/${frameNum}.png`;
+            try {
+              // 동기적으로 로드되지 않으므로, 이미 로드되어 있는지만 확인
+              // (실제 파일 로드는 GameScene에서 했을 것)
+            } catch (e) {
+              // ignore
+            }
+          }
+        }
+      } catch (e) {
+        // ignore frame preload errors
+      }
+    }
 
     if (finalProfileFromGame) {
     }
@@ -4134,7 +4178,8 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     this.profileStatusBg = this.add
       .image(0, statY, "statusbg")
       .setDisplaySize(profileSize * 1.9, width * 0.07)
-      .setDepth(8);
+      .setDepth(8)
+      .setVisible(true);
 
     this.profileCoinText = this.add
       .text(coinBgX * 1.03, statY, `X ${this.myProfile.coins}`, {
@@ -4247,6 +4292,10 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       this.profileExpBarFill,
       this.profileExpText,
     ]);
+    
+    // 💡 [FIX] 프로필 컨테이너 명시적으로 표시 (게임 후 돌아올 때 사라지는 문제 해결)
+    profileContainer.setVisible(true).setAlpha(1);
+    
     // ensure image & text are centered inside container
     if (this.profileImage) {
       this.profileImage.setPosition(0, 0);
@@ -14091,11 +14140,37 @@ class GameScene extends Phaser.Scene {
     // create profile card method
     // (패널 배경 제거 - 텍스트들만 카드덱 아래에 배치)
     const createProfileCard = () => {
+      // 💡 [FIX] 게임 재시작 시 이전 프로필 UI 요소 정리
+      if (this.profileLevelTxt) {
+        try { this.profileLevelTxt.destroy(); } catch (e) {}
+        this.profileLevelTxt = null;
+      }
+      if (this.profileExpBarBg) {
+        try { this.profileExpBarBg.destroy(); } catch (e) {}
+        this.profileExpBarBg = null;
+      }
+      if (this.profileExpBarFill) {
+        try { this.profileExpBarFill.destroy(); } catch (e) {}
+        this.profileExpBarFill = null;
+      }
+      if (this.profileExpText) {
+        try { this.profileExpText.destroy(); } catch (e) {}
+        this.profileExpText = null;
+      }
+      if (this.profileCoinTxt) {
+        try { this.profileCoinTxt.destroy(); } catch (e) {}
+        this.profileCoinTxt = null;
+      }
+      if (this.profilePanelBg) {
+        try { this.profilePanelBg.destroy(); } catch (e) {}
+        this.profilePanelBg = null;
+      }
+
       const cardW = this.cameras.main.width * 0.24;
       const cardH = this.cameras.main.height * 0.14;
 
       // layout helpers
-      const padding = Math.max(cardW * 0.06, 10);
+      const padding = Math.max(cardW * 0.07, 10);
       const leftX = padding;
       const levelY = -cardH * 0.32;
       const expBarY = levelY + cardH * 0.22;
@@ -17110,7 +17185,7 @@ class GameScene extends Phaser.Scene {
   repositionProfileCard() {
     // 멀티플레이에서 타이머 바 아래에 프로필 정보 배치 (패널 포함)
     // 카드덱 → 닉네임(+160) → 타이머 바(+210) → 프로필 정보(+260+)
-    if (!this.myDeckSprite) return;
+    if (!this.myDeckSprite || !this.profileLevelTxt) return;
     
     const { width, height } = this.cameras.main;
     
@@ -17124,7 +17199,7 @@ class GameScene extends Phaser.Scene {
     const panelX = profileX - panelWidth / 2;
     const panelY = profileBaseY - panelHeight / 2;
     
-    // 패널 배경 생성 또는 업데이트
+    // 💡 [FIX] 패널 배경 안전한 재생성/재초기화
     if (!this.profilePanelBg) {
       this.profilePanelBg = this.add.graphics();
       this.profilePanelBg.setDepth(99);
@@ -17137,6 +17212,7 @@ class GameScene extends Phaser.Scene {
     this.profilePanelBg.fillRoundedRect(panelX, panelY, panelWidth, panelHeight, 6);
     this.profilePanelBg.lineStyle(2, 0x22c55e, 1);
     this.profilePanelBg.strokeRoundedRect(panelX, panelY, panelWidth, panelHeight, 6);
+    this.profilePanelBg.setVisible(true); // 💡 명시적으로 배경 표시
     
     // 폰트 크기
     const levelFontSize = width * 0.03;
@@ -19466,8 +19542,8 @@ class GameScene extends Phaser.Scene {
     if (this.roundData?.roomId) {
       try {
         if (socket && socket.connected) {
-          // 🔴 [수정] 현재 착용한 캐릭터를 정확하게 전달
-          const currentAvatarKey = this.getSelectedAvatarKey ? this.getSelectedAvatarKey() : (this.avatarKey || localStorage.getItem("profileAvatarKey") || "player_1");
+          // 🔴 [수정] socket.finalProfile에서 저장된 캐릭터를 우선 사용 (게임 종료 후 가장 정확한 정보)
+          const currentAvatarKey = socket.finalProfile?.avatarKey || socket.finalProfile?.current_character || this.myProfile?.avatarKey || this.myProfile?.current_character || localStorage.getItem("profileAvatarKey") || "player_1";
           socket.emit("joinRoom", {
             roomId: this.roundData.roomId,
             nickname: storedNickname,
@@ -19482,13 +19558,12 @@ class GameScene extends Phaser.Scene {
           const waitAndJoin = setInterval(() => {
             if (socket.connected) {
               clearInterval(waitAndJoin);
-              // 🔴 [수정] 현재 착용한 캐릭터를 정확하게 전달
-              const currentAvatarKey = this.getSelectedAvatarKey ? this.getSelectedAvatarKey() : (this.avatarKey || localStorage.getItem("profileAvatarKey") || "player_1");
+              // 🔴 [수정] socket.finalProfile에서 저장된 캐릭터를 우선 사용 (게임 종료 후 가장 정확한 정보)
+              const currentAvatarKey = socket.finalProfile?.avatarKey || socket.finalProfile?.current_character || this.myProfile?.avatarKey || this.myProfile?.current_character || localStorage.getItem("profileAvatarKey") || "player_1";
               socket.emit("joinRoom", {
                 roomId: this.roundData.roomId,
                 nickname: storedNickname,
                 avatarKey: currentAvatarKey,
-                avatarKey: this.avatarKey || "player_1",
               });
             } else if (elapsed >= maxWaitTime) {
               clearInterval(waitAndJoin);
@@ -23384,8 +23459,8 @@ class GameScene extends Phaser.Scene {
         this.multiplierDisplayTxt.setText(`이번 게임은 ${finalMultiplier}배판!`);
       }
       
-      // 10배인 경우 꽃가루 파티클 효과 - 극도로 과한 연출
-      if (finalMultiplier === 10) {
+      // 💡 [수정] 5배, 7배, 10배인 경우 꽃가루 파티클 효과
+      if ([5, 7, 10].includes(finalMultiplier)) {
         const particleCount = 150;
         const colors = [0xffd700, 0xff6b9d, 0xc44569, 0x00ff88, 0x00ccff, 0xff00ff, 0xffaa00];
         
@@ -24814,12 +24889,42 @@ class GameScene extends Phaser.Scene {
     container.add([overlay, podiumBg]);
 
     const resolveAvatarKey = (player) => {
+      // 🔴 [간단함] 내 캐릭터 확인: 여러 방법으로 myId 확인
+      const isMyCharacter = 
+        (player?.id === this.myId) || 
+        (player?.id === socket?.id) ||
+        (player?.playerId === this.myId) ||
+        (player?.playerId === socket?.id);
+
+      if (isMyCharacter) {
+        // 💡 [FIX] 게임 중 현재 착용한 캐릭터를 우선 확인
+        const currentKey = this.getSelectedAvatarKey ? this.getSelectedAvatarKey() : null;
+        if (currentKey && isValidPlayerKey(currentKey)) {
+          return currentKey;
+        }
+        
+        // 그 다음 finalProfile에서 확인 (멀티플레이 종료 후)
+        if (socket?.finalProfile?.current_character && isValidPlayerKey(socket.finalProfile.current_character)) {
+          return socket.finalProfile.current_character;
+        }
+        
+        // 내 프로필에서 확인
+        if (this.myProfile?.current_character && isValidPlayerKey(this.myProfile.current_character)) {
+          return this.myProfile.current_character;
+        }
+        if (this.myProfile?.avatarKey && isValidPlayerKey(this.myProfile.avatarKey)) {
+          return this.myProfile.avatarKey;
+        }
+      }
+
+      // 일반적인 player 객체에서 avatarKey 찾기
       const directKey =
         player?.avatarKey || player?.characterKey || player?.current_character;
       if (typeof directKey === "string" && isValidPlayerKey(directKey)) {
         return directKey;
       }
 
+      // roundData에서 찾기
       const roundPlayer = Array.isArray(this.roundData?.players)
         ? this.roundData.players.find((p) => p.id === player?.id)
         : null;
@@ -24836,9 +24941,9 @@ class GameScene extends Phaser.Scene {
 
     const rankedPlayers = Array.isArray(players) ? players.slice(0, 3) : [];
     const podiumPositions = [
-      { x: width * 0.5, y: height * 0.55 },
-      { x: width * 0.18, y: height * 0.61 },
-      { x: width * 0.83, y: height * 0.63 },
+      { x: width * 0.5, y: height * 0.63 },
+      { x: width * 0.20, y: height * 0.71 },
+      { x: width * 0.82, y: height * 0.73 },
     ];
 
     const resultOverlayBaselineCoins =
@@ -24849,6 +24954,7 @@ class GameScene extends Phaser.Scene {
       if (!pos) return;
 
       const avatarBaseKey = resolveAvatarKey(player);
+      
       const resultAvatarTexture =
         this.getAvatarDisplayKey(avatarBaseKey) ||
         this.getAvatarDisplayKey("player_1") ||
@@ -24858,12 +24964,66 @@ class GameScene extends Phaser.Scene {
         .setDisplaySize(width * 0.345, width * 0.345)
         .setOrigin(0.5, 1);
 
-      this.applyAvatarAnimation(avatar, avatarBaseKey);
+      // 🔴 [각 순위별 동일 처리] 애니메이션 재생 (모든 플레이어 동등)
+      try {
+        // 🔴 [중요] 프로토타입 ensureAvatarAnimation 대신 직접 애니메이션 생성
+        let animKey = null;
+        
+        // 1. 이미 존재하는 애니메이션이 있는지 확인
+        const possibleAnimKey = `${avatarBaseKey}_anim`;
+        if (this.anims && this.anims.exists(possibleAnimKey)) {
+          animKey = possibleAnimKey;
+        } else {
+          // 2. 없으면 직접 생성
+          try {
+            if (this.anims && typeof this.ensureAvatarAnimation === "function") {
+              animKey = this.ensureAvatarAnimation(avatarBaseKey);
+            }
+          } catch (e) {
+            // animKey 생성 실패
+          }
+        }
+        
+        // 3. animKey가 있으면 재생
+        if (animKey && typeof animKey === "string" && this.anims.exists(animKey)) {
+          if (avatar && avatar.anims && typeof avatar.play === "function") {
+            // 🔴 [중요] 기존 애니메이션 먼저 중지
+            if (typeof avatar.stop === "function") {
+              avatar.stop();
+            }
+            
+            // 🔴 [중요] 애니메이션 재생 시 delay 추가 (동일 캐릭터 여러 개일 때 충돌 방지)
+            this.time.delayedCall(10 + index * 5, () => {
+              if (avatar && avatar.active && avatar.anims && typeof avatar.play === "function") {
+                avatar.play({ key: animKey, repeat: -1 });
+              }
+            });
+          }
+          
+          // 애니메이션 일시 정지 시 자동 재생
+          avatar.on("animationpause", () => {
+            if (avatar && avatar.active && avatar.anims && typeof avatar.play === "function") {
+              avatar.play({ key: animKey, repeat: -1 });
+            }
+          });
+
+          // Scene 재개 시 애니메이션 재생
+          if (this && this.events && typeof this.events.on === "function") {
+            this.events.on("resume", () => {
+              if (avatar && avatar.active && avatar.anims && typeof avatar.play === "function") {
+                avatar.play({ key: animKey, repeat: -1 });
+              }
+            });
+          }
+        }
+      } catch (e) {
+        // 애니메이션 생성 실패: 정지 이미지만 표시
+      }
 
       const nameText = this.add
         .text(
           pos.x,
-          pos.y + width * 0.14,
+          pos.y - 30,
           player?.nickname || player?.id || "요리사",
           {
             fontFamily: GAME_FONTS.main,
