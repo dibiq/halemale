@@ -7382,6 +7382,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       aiDifficulty: aiDifficulty || "normal",
       gameMode: "allin",
       timeAttackEndsAt: null,
+      playerAvatarKey: this.getSelectedAvatarKey(), // ✅ 싱글플레이 시작 시 현재 캐릭터 저장
 
       // 나를 항상 0번 인덱스에 배치
       players: [
@@ -14185,6 +14186,10 @@ class GameScene extends Phaser.Scene {
     const gameScene = this;
 
     // ✅ ensurePlayer5/6Frames 제거: preload/loadDeferredAssets에서 이미 개별 frame이 로드됨
+
+    // ✅ 게임 시작 시 현재 착용한 캐릭터 저장 (결과 화면에서 사용)
+    const sceneData = this.sys.settings.data || {};
+    this.gameStartAvatarKey = sceneData.playerAvatarKey || this.getSelectedAvatarKey?.() || "player_1";
 
     // ✅ GameScene에서도 emitInventory 메서드 정의 (싱글플레이/멀티플레이 모두에서 코인 동기화)
     if (typeof this.emitInventory !== 'function') {
@@ -25171,7 +25176,12 @@ class GameScene extends Phaser.Scene {
         (player?.playerId === socket?.id);
 
       if (isMyCharacter) {
-        // 💡 [FIX] 게임 중 현재 착용한 캐릭터를 우선 확인
+        // ✅ [FIX] 게임 시작 시 저장한 캐릭터를 우선으로 사용 (싱글플레이)
+        if (this.gameStartAvatarKey && isValidPlayerKey(this.gameStartAvatarKey)) {
+          return this.gameStartAvatarKey;
+        }
+        
+        // 💡 [FIX] 게임 중 현재 착용한 캐릭터를 다음으로 확인
         const currentKey = this.getSelectedAvatarKey ? this.getSelectedAvatarKey() : null;
         if (currentKey && isValidPlayerKey(currentKey)) {
           return currentKey;
