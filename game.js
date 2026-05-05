@@ -960,36 +960,43 @@ class LobbyScene extends Phaser.Scene {
         return;
       }
 
+      // 🔴 [중요] 먼저 로컬에서 코인 변경 기록 (서버 응답 대기용)
+      const originalCoins = Number(this.myProfile?.coins) || 0;
       const timeout = setTimeout(() => {
         console.warn(`⏱️ [emitServerCoinReward] 타임아웃 (${amount} ${source})`);
-        resolve({ success: false, error: "서버 응답 타임아웃" });
+        // 타임아웃 후 프로필 동기화로 서버 상태 확인
+        this.syncCoinsFromServer().then((success) => {
+          if (success) {
+            resolve({ success: true, synced: true });
+          } else {
+            resolve({ success: false, error: "서버 응답 타임아웃" });
+          }
+        });
       }, 5000); // 5초 타임아웃
 
-      // 일회용 리스너로 응답 대기
-      const listener = (response) => {
+      // 🔴 일회용 리스너로 응답 대기
+      // 1. myProfile 업데이트 대기 (서버가 보내는 프로필 업데이트)
+      const listener = (profile) => {
         clearTimeout(timeout);
-        socket.off("coinRewardResponse", listener);
+        socket.off("myProfile", listener);
         
-        if (response && response.success) {
-          console.log(`✅ [emitServerCoinReward] 성공 - ${source}: ${amount} 코인`);
+        if (profile && Number.isFinite(profile.coins)) {
+          console.log(`✅ [emitServerCoinReward] 성공 - ${source}: ${amount} 코인 → 서버: ${profile.coins}`);
           // 서버가 주는 새로운 코인값으로 업데이트
-          if (Number.isFinite(response.newCoins)) {
-            this.setCoinsAbsolute(response.newCoins, { sync: false });
-          }
-          resolve({ success: true, newCoins: response.newCoins });
+          this.setCoinsAbsolute(profile.coins, { sync: false });
+          resolve({ success: true, newCoins: profile.coins });
         } else {
-          console.warn(`❌ [emitServerCoinReward] 실패 - ${source}: ${response?.error || "알 수 없는 오류"}`);
-          resolve({ success: false, error: response?.error || "알 수 없는 오류" });
+          console.warn(`⚠️ [emitServerCoinReward] 프로필 정보 불완전`);
+          resolve({ success: false, error: "프로필 정보 오류" });
         }
       };
 
-      socket.once("coinRewardResponse", listener);
+      socket.once("myProfile", listener);
 
-      // 서버에 요청 전송
-      socket.emit("addCoinReward", {
+      // 2. 서버에 요청 전송 (기존 "addCoins" 이벤트 사용)
+      socket.emit("addCoins", {
         amount: Number(amount) || 0,
         source: String(source),
-        timestamp: new Date().toISOString(),
         ...options,
       });
     });
