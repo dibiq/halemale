@@ -15008,9 +15008,10 @@ class GameScene extends Phaser.Scene {
             }
           });
 
-          wrapper.appendChild(btnWin);
-          wrapper.appendChild(btnComplete);
-          document.body.appendChild(wrapper);
+          // 🔇 디버그 버튼 비활성화 - 화면에 표시되지 않음
+          // wrapper.appendChild(btnWin);
+          // wrapper.appendChild(btnComplete);
+          // document.body.appendChild(wrapper);
         } else {
           try { window.__HalemaleLastGameScene = scene; } catch (e) {}
         }
