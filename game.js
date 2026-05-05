@@ -217,7 +217,7 @@ const MULTI_QUEST_CONFIGS = [
     descriptionTemplate: "싱글 플레이를 {target}회 시작해보세요.",
     initialTarget: 1,
     targetIncrement: 1,
-    rewardCoins: 80,
+    rewardCoins: 50,
   },
   {
     key: "single_win",
@@ -226,7 +226,7 @@ const MULTI_QUEST_CONFIGS = [
     descriptionTemplate: "싱글 플레이에서 {target}회 승리하세요.",
     initialTarget: 1,
     targetIncrement: 1,
-    rewardCoins: 120,
+    rewardCoins: 50,
   },
   {
     key: "multi_play",
@@ -235,7 +235,7 @@ const MULTI_QUEST_CONFIGS = [
     descriptionTemplate: "멀티 플레이를 {target}회 시작해보세요.",
     initialTarget: 1,
     targetIncrement: 1,
-    rewardCoins: 60,
+    rewardCoins: 50,
   },
   {
     key: "multi_win",
@@ -244,7 +244,7 @@ const MULTI_QUEST_CONFIGS = [
     descriptionTemplate: "멀티 플레이에서 {target}회 1위를 달성하세요.",
     initialTarget: 1,
     targetIncrement: 1,
-    rewardCoins: 150,
+    rewardCoins: 50,
   },
   {
     key: "shop_buy",
@@ -253,7 +253,7 @@ const MULTI_QUEST_CONFIGS = [
     descriptionTemplate: "상점에서 아이템을 {target}회 구매하세요.",
     initialTarget: 1,
     targetIncrement: 1,
-    rewardCoins: 80,
+    rewardCoins: 50,
   },
   {
     key: "watch_ad",
@@ -14648,7 +14648,7 @@ class GameScene extends Phaser.Scene {
       const difficultySettings = {
         easy: { reactionTime: 1500, flipDelay: 1200 },      // 느리게
         normal: { reactionTime: 1300, flipDelay: 1000 },    // 기본
-        hard: { reactionTime: 900, flipDelay: 700 },        // ⚡ 빠르게
+        hard: { reactionTime: 500, flipDelay: 400 },        // ⚡ 빠르게
       };
       const difficulty = this.roundData?.aiDifficulty?.toLowerCase() || "normal";
       const settings = difficultySettings[difficulty] || difficultySettings.normal;
