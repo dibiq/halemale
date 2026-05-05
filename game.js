@@ -9504,7 +9504,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     });
   }*/
 
-  buyCoin(amount) {
+  async buyCoin(amount) {
     // 🔹 멀티플레이인 경우: 서버에 전송하고 응답을 기다림
     if (!this.isSingle && socket?.connected) {
       const nickname =
