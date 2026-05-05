@@ -2908,14 +2908,6 @@ class LobbyScene extends Phaser.Scene {
           payload.current_character = currentCharacter;
         }
 
-        // ✅ 【로깅】payload 전송 전 상태 확인
-        console.log(`📋 [emitInventory] payload 생성 완료:`, {
-          reason,
-          owned_characters: payload.owned_characters,
-          coins: payload.coins,
-          socket_connected: socket?.connected,
-          socket_exists: !!socket,
-        });
 
         if (!socket || !socket.connected) {
           console.warn(`⚠️ [emitInventory] socket 미연결 - 전송 불가:`, {
@@ -2991,8 +2983,7 @@ class LobbyScene extends Phaser.Scene {
             this.myProfile.coins = finalProfileFromGame?.coins ?? Number(profile?.coins) ?? this.myProfile.coins ?? 0;
             this.myProfile.experience = finalProfileFromGame?.experience ?? Number(profile?.experience) ?? this.myProfile.experience ?? 0;
             
-            console.log(`📊 [프로필 업데이트] Lv: ${this.myProfile.level} | Coins: ${this.myProfile.coins} | Exp: ${this.myProfile.experience} | (최종게임데이터: ${!!finalProfileFromGame})`);
-            
+           
             if (profile?.nickname) this.myProfile.nickname = profile.nickname;
             if (profile?.avatarKey) this.myProfile.avatarKey = profile.avatarKey;
             
@@ -3007,7 +2998,6 @@ class LobbyScene extends Phaser.Scene {
               );
               
               this.myProfile.owned_characters = mergedOwnedChars;
-              console.log(`📥 [owned_characters 병합] 서버: ${JSON.stringify(serverOwnedChars)} + 로컬: ${JSON.stringify(localOwnedChars)} = ${JSON.stringify(mergedOwnedChars)}`);
             }
             
             if (profile?.current_character) this.myProfile.current_character = profile.current_character;
@@ -3020,12 +3010,7 @@ class LobbyScene extends Phaser.Scene {
             } else {
             }
             
-            // 🔴 [중요] 이제 emitInventory 호출 - 우승 보상 캐릭터를 서버에 저장
-            console.log(`📤 [로비 로드] emitInventory 호출 전:`, {
-              owned_characters: this.myProfile.owned_characters,
-              socket_connected: socket?.connected,
-              socket_exists: !!socket,
-            });
+    
             
             if (typeof this.emitInventory === 'function') {
               try {
@@ -3122,7 +3107,6 @@ class LobbyScene extends Phaser.Scene {
       ),
     );
     
-    console.log(`🎁 [소유 캐릭터 로드] 게임: ${JSON.stringify(gameOwnedCharacters)} | 로컬: ${JSON.stringify(storedOwnedCharacters)} | 최종: ${JSON.stringify(initialOwnedCharacters)}`);
     
     // ✅ 【캐릭터 선택】 게임에서 돌아온 최종 프로필의 캐릭터 우선 사용
     const gameAvatarKey = finalProfileFromGame?.current_character || finalProfileFromGame?.currentCharacter || finalProfileFromGame?.avatarKey;
@@ -3133,7 +3117,6 @@ class LobbyScene extends Phaser.Scene {
           ? savedAvatarKey  // localStorage의 저장된 캐릭터 사용
           : this.profileAvatarKeys[this.profileAvatarIndex] || "player_1");  // 기본값
     
-    console.log(`🎭 [대기실 캐릭터 로드] 게임캐릭터: ${gameAvatarKey} | 저장캐릭터: ${savedAvatarKey} | 최종: ${effectiveAvatarKey}`);
     
     // ✅ 【localStorage 동기화】 현재 캐릭터를 localStorage에 저장
     try {
@@ -3673,10 +3656,8 @@ class LobbyScene extends Phaser.Scene {
           if (idx >= 0) {
             this.profileAvatarIndex = idx;
             this.updateProfileAvatarUI(profile.current_character);
-            console.log(`🎭 [myProfile 캐릭터 변경] ${profile.current_character} (게임 직후 방지 비활성)`);
           }
         } else if (isDirectlyAfterGame) {
-          console.log(`🎭 [myProfile 캐릭터 유지] 게임 직후 → ${currentAvatarKey} 유지 (${profile.current_character} 무시)`);
         }
       }
 
@@ -14406,11 +14387,6 @@ class GameScene extends Phaser.Scene {
         
         // 📊 【클라이언트 코인 추적 로그】 멀티플레이 게임 시작 시 플레이어 정보 + 캐릭터 배수 출력
         if (!this.isSingle) {
-          console.log("");
-          console.log("╔═══════════════════════════════════════════╗");
-          console.log("║ 💰 멀티플레이 게임 시작 - 코인 배수 정보   ║");
-          console.log("╚═══════════════════════════════════════════╝");
-          console.log("📌 플레이어 및 캐릭터 배수:");
           
           playersAtStart.forEach((player, idx) => {
             if (!player) return;
@@ -14418,16 +14394,8 @@ class GameScene extends Phaser.Scene {
             const characterBonus = CHARACTER_BONUSES[characterKey] || CHARACTER_BONUSES.player_1;
             const characterMultiplier = characterBonus?.coinMultiplier || 1;
             
-            console.log(`   [${idx + 1}] ${player.nickname || player.id}`, {
-              character: characterKey,
-              characterMultiplier: `${characterMultiplier}배`,
-              deckSize: player.myDeck?.length || 0,
-              isBot: player.isBot,
-              isMe: player.id === this.myId ? "✓" : "",
-            });
+
           });
-          console.log("╔═══════════════════════════════════════════╗");
-          console.log("");
         }
       }
     } catch (e) {
@@ -14692,8 +14660,7 @@ class GameScene extends Phaser.Scene {
         this.myProfile.coins = finalProfileFromGame?.coins ?? Number(profile?.coins) ?? Number(this.myProfile?.coins) ?? 0;
         this.myProfile.experience = finalProfileFromGame?.experience ?? Number(profile?.experience) ?? Number(this.myProfile?.experience) ?? 0;
         
-        console.log(`📊 [게임종료 프로필] Lv: ${this.myProfile.level} | Coins: ${this.myProfile.coins} | Exp: ${this.myProfile.experience}`);
-        
+       
         if (profile?.nickname) this.myProfile.nickname = profile.nickname;
         if (profile?.avatarKey) this.myProfile.avatarKey = profile.avatarKey;
         if (profile?.owned_characters) this.myProfile.owned_characters = profile.owned_characters;
@@ -15080,11 +15047,6 @@ class GameScene extends Phaser.Scene {
           isEliminated: p.isEliminated ?? false,
         }));
         
-        // ✅ 디버깅: specialCards 확인
-        console.log(`🎮 [게임 시작] roundData.players 초기화 완료`);
-        this.roundData.players.forEach((p) => {
-          console.log(`  - ${p.nickname}: specialCards=${JSON.stringify(p.specialCards)}`);
-        });
 
         this.roundData.hostId = data.hostId || this.roundData.hostId;
         if (typeof data.itemMode === "boolean") this.roundData.itemMode = data.itemMode;
@@ -15175,7 +15137,6 @@ class GameScene extends Phaser.Scene {
     socket.off("turnChanged").on("turnChanged", (data) => {
       const turnChangeTime = Date.now();
       const timeSinceBellResult = this.lastBellResultTime ? turnChangeTime - this.lastBellResultTime : 0;
-      console.log(`🔄 [turnChanged 이벤트 수신] bellResult로부터 ${timeSinceBellResult}ms 경과 | nextTurnId: ${data.nextTurnId}`);
       
       const nextIdx = this.roundData.players.findIndex(
         (p) => p.id === data.nextTurnId,
@@ -15188,7 +15149,6 @@ class GameScene extends Phaser.Scene {
 
         // 💡 내 차례가 왔을 때 띵! 소리나 진동(모바일) 주기
         if (isMyTurnNow) {
-          console.log(`🎯 [내 턴 시작!] canClick = true 설정`);
           this.canClick = true;
 
           // 모바일이라면 진동 추가 (브라우저 지원 시)
@@ -15196,7 +15156,6 @@ class GameScene extends Phaser.Scene {
             window.navigator.vibrate(100);
           }
         } else {
-          console.log(`⏸️ [상대방 턴] canClick = false`);
           this.canClick = false;
           this.clearMyTurnTimer();
         }
@@ -15310,21 +15269,7 @@ class GameScene extends Phaser.Scene {
         const gameMultiplier = this.roundData?.gameMultiplier || 1;
         const totalMultiplier = gameMultiplier * characterMultiplier;
         const clientCalculated = Math.floor(COIN_CARD_REWARD * totalMultiplier);
-        
-        console.log("💰 [클라이언트] 코인카드 획득됨 ✅ 배수 적용됨", {
-          playerId: data.playerId,
-          playerName: playerInfo?.nickname || "Unknown",
-          character: characterKey,
-          characterMultiplier: `${characterMultiplier}배`,
-          gameMultiplier: `${gameMultiplier}배`,
-          totalMultiplier: `${totalMultiplier}배`,
-          baseReward: COIN_CARD_REWARD,
-          "client_calculated": clientCalculated,
-          "server_actual": reward,
-          "✅_match": clientCalculated === reward ? "✓" : `❌ MISMATCH (calc: ${clientCalculated} vs server: ${reward})`,
-          isMe: data.playerId === myId ? "✓" : "",
-          newTotal: newTotal !== undefined ? newTotal : "미동기",
-        });
+
 
         // Only play the coin reward animation for the local player.
         if (data.playerId === myId) {
@@ -15516,9 +15461,7 @@ class GameScene extends Phaser.Scene {
         // ✅ skipAnimation 여부와 상관없이 항상 playWinAnimation 호출 (한 번의 콜백으로 통합)
         // ✅ 【캐릭터 애니메이션 조건】 획득 카드가 10장 이상일 때만 재생
         const shouldPlayCharacterAnim = data.collectedCount >= 10;
-        console.log(`✨ [캐릭터 애니메이션] ${data.winnerNickname}: 획득 ${data.collectedCount}장 ${shouldPlayCharacterAnim ? "→ 재생 ✓" : "→스킵 (10장 미만)"}`);
         const winEventKey = `${data.winnerId}_${Date.now()}`; // 중복 호출 방지 키
-        console.log(`🎬 [playWinAnimation 호출 직전] - 콜백이 호출될 때까지 대기 시작`);
         const callbackStartTime = Date.now();
         this.playWinAnimation({
           winnerId: data.winnerId, // 서버에서 승자 ID를 보내준다고 가정
@@ -15528,14 +15471,12 @@ class GameScene extends Phaser.Scene {
           collectedCount: data.collectedCount,
           skipAvatar: !shouldPlayCharacterAnim || skipAnimation, // 10장 미만이면 캐릭터 애니메이션 스킵
         }, () => {
-          console.log(`🎬 [playWinAnimation 콜백 시작] ${Date.now() - callbackStartTime}ms 경과`);
           const callbackDetailStartTime = Date.now();
           
           // ✅ 애니메이션 완료 후 다음 턴 시작 준비 (한 곳에서만 처리)
           // winner case - just update players immediately
           const updatePlayersStart = Date.now();
           this.roundData.players = updatedPlayers;
-          console.log(`📦 [roundData.players 업데이트] ${Date.now() - updatePlayersStart}ms`);
 
           // 멀티플레이: 로컬 플레이어가 카드를 획득했으면 즉시 경험치 지급 (중복 호출 방지)
           try {
@@ -15543,7 +15484,6 @@ class GameScene extends Phaser.Scene {
             const expEventKey = `${data.winnerId}_collected${data.collectedCount}`;
             if (!this._lastWinExpEventKey || this._lastWinExpEventKey !== expEventKey) {
               this._lastWinExpEventKey = expEventKey;
-              console.log(`💰 [경험치 지급 블록 진입] key=${expEventKey}`);
               
               if (
                 !this.isSingle &&
@@ -15556,20 +15496,15 @@ class GameScene extends Phaser.Scene {
                 const baseGained = Number(data.collectedCount) || 0;
                 const multiplier = this.roundData?.gameMultiplier || 1;
                 const gained = baseGained * multiplier; // 배수 적용
-                console.log(`📊 [경험치 획득] base=${baseGained} * multiplier=${multiplier} = gained=${gained}`);
                 if (typeof this.awardExperience === "function") {
                   this.awardExperience(gained);
                 }
-                console.log(`✨ [awardExperience 호출 완료] ${Date.now() - expStart}ms`);
               }
             } else {
-              console.log(`⏭️ [경험치 중복 방지] key=${expEventKey} 이미 처리됨`);
             }
           } catch (e) {
-            console.error(`❌ [경험치 지급 에러]`, e);
           }
           
-          console.log(`✅ [playWinAnimation 콜백 완료] 총 ${Date.now() - callbackDetailStartTime}ms 소요`);
         });
       } else {
         // 실패 시 콤보 초기화
@@ -15734,7 +15669,6 @@ class GameScene extends Phaser.Scene {
                     });
                   },
                 );
-                console.log(`🔒 [requestUseSpecial emit 완료] 콜백 대기 중...`);
                 return;
                 return;
               }
@@ -16048,14 +15982,6 @@ class GameScene extends Phaser.Scene {
       // 결과 텍스트/시상 연출과 같은 최종 단계가 시작됐음을 즉시 표시
       this.isResultTextVisible = true;
       
-      // 📊 【클라이언트 게임 종료 로그】 순위별 코인 보상 + 캐릭터 배수 추적
-      console.log("");
-      console.log("╔═════════════════════════════════════════════════════╗");
-      console.log("║ 🏁 멀티플레이 게임 종료 - 최종 코인 계산 검증         ║");
-      console.log("╚═════════════════════════════════════════════════════╝");
-      console.log("📌 게임 배수 (server → client):", data.gameMultiplier || 1);
-      console.log("");
-      console.log("📊 최종 순위 및 코인 보상:");
       
       if (Array.isArray(data?.ranking)) {
         data.ranking.forEach((player, rank) => {
@@ -16073,28 +15999,8 @@ class GameScene extends Phaser.Scene {
           const actualReward = player.earnedCoins || 0;
           const isMatch = calculatedReward === actualReward;
           
-          console.log(`   [${rank + 1}등] ${player.nickname || player.id}`, {
-            character: characterKey,
-            characterMultiplier: `${characterMultiplier}배`,
-            gameMultiplier: `${gameMultiplier}배`,
-            totalMultiplier: `${totalMultiplier}배`,
-            baseReward: baseReward,
-            "client_calculated": calculatedReward,
-            "server_actual": actualReward,
-            "✅_match": isMatch ? "✓" : "❌ MISMATCH",
-            "coins_before": player.coinBefore || 0,
-            "coins_after": player.coins || 0,
-            "delta": (player.coins || 0) - (player.coinBefore || 0),
-            isMe: player.id === socket.id ? "✓" : "",
-          });
         });
       }
-      
-      console.log("");
-      console.log("╔═════════════════════════════════════════════════════╗");
-      console.log("║ ✅ 코인 배수 검증 완료                              ║");
-      console.log("╚═════════════════════════════════════════════════════╝");
-      console.log("");
       
       const isMultiplayerWin = !this.isSingle && data && data.winnerId === socket.id;
       // Count multiplayer participation once per match. It should only increase when
@@ -17522,7 +17428,6 @@ class GameScene extends Phaser.Scene {
         // � 패시브 아이템: 항상 비활성화 (음영 처리 없음)
         if (isPassiveCard) {
           // 패시브 아이템: 사용 여부와 관계없이 항상 비활성화
-          console.log(`🚫 [패시브 아이템] cardId=${card.id} (${card.name}) - 항상 클릭 불가`);
           cardBg.disableInteractive();
         } else if (usedFlag) {
           // 활성 아이템인데 이미 사용됨: 비활성화
@@ -18914,7 +18819,6 @@ class GameScene extends Phaser.Scene {
     }
     try {
       const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
-      console.log(`🎯 [아이템 사용 시작] cardId=${cardId} myId=${myId}`);
       
       let handled = false;
       const timeout = this.time.delayedCall(2500, () => {
@@ -20895,14 +20799,6 @@ class GameScene extends Phaser.Scene {
       let newTotal = prevExpTotal + xpGain;
       let leveled = false;
 
-      // ✅ 【상세 로그】레벨업 전 상태
-      console.log(`📊 [awardExperience 시작]`, {
-        xpGain,
-        prevLevel,
-        prevExp: prevExpTotal,
-        newTotalBefore: newTotal,
-        timestamp: Date.now(),
-      });
 
       // 처리: 레벨업이 발생하면 레벨 증가 및 경험치 롤오버
       let levelUpsCount = 0;
@@ -20913,15 +20809,6 @@ class GameScene extends Phaser.Scene {
         leveled = true;
       }
       
-      // ✅ 【상세 로그】레벨업 후 상태
-      console.log(`📊 [awardExperience 계산 완료]`, {
-        levelUpsCount,
-        prevLevel,
-        newLevel: this.myProfile.level,
-        prevExp: prevExpTotal,
-        newExp: newTotal,
-        rolled: prevExpTotal + xpGain - newTotal,
-      });
       
       this.myProfile.experience = newTotal;
 
@@ -20949,12 +20836,7 @@ class GameScene extends Phaser.Scene {
           experience: xpGain,  // ← 증가분만 전송
           level: Number(this.myProfile.level) || prevLevel,
         };
-        console.log(`📤 [safeSyncInventory experienceGain] 전송:`, {
-          experience: syncPayload.experience,
-          level: syncPayload.level,
-          prevExpTotal: prevExpTotal,
-          newExpTotal: newTotal,
-        });
+
         this.safeSyncInventory("experienceGain", syncPayload);
       } catch (e) {
         console.warn(`⚠️ [awardExperience] sync 실패:`, e);
@@ -20963,7 +20845,6 @@ class GameScene extends Phaser.Scene {
       // 레벨업 효과 애니메이션
       if (leveled) {
         const newLv = Number(this.myProfile.level) || prevLevel;
-        console.log(`✨ [showLevelUpEffect] ${prevLevel} → ${newLv}`);
         this.showLevelUpEffect(prevLevel, newLv);
       }
       this._hasAwardExperienceRun = true;
@@ -23244,7 +23125,6 @@ class GameScene extends Phaser.Scene {
     // 5. 애니메이션 실행 (싱글은 캐릭터 연출만 생략)
     // ✅ 【캐릭터 애니메이션 조건】 획득 카드가 10장 이상일 때만 재생
     const shouldPlayCharacterAnim = totalCollected >= 10;
-    console.log(`✨ [캐릭터 애니메이션] ${winner.nickname || "플레이어"}: 획득 ${totalCollected}장 ${shouldPlayCharacterAnim ? "→ 재생 ✓" : "→스킵 (10장 미만)"}`);
     this.playWinAnimation({
       winnerId: winner.id,
       players: updatedPlayers,
@@ -23425,12 +23305,6 @@ class GameScene extends Phaser.Scene {
     // 이렇게 해야 ready go 타이밍이 항상 일정함
     const animationDuration = 4500;
     
-    // ✅ 【배수 매칭 검증 로그】
-    console.log(`🎡 [룰렛 초기화] 선택배수: ${finalMultiplier}배 (인덱스: ${multiplierIndex})`);
-    console.log(`  → wheelActualAngle: ${wheelActualAngle.toFixed(3)} rad (${(wheelActualAngle / Math.PI).toFixed(3)}π)`);
-    console.log(`  → targetAngle: ${targetAngle.toFixed(3)} rad (${(targetAngle / Math.PI).toFixed(3)}π)`);
-    console.log(`  → randomRotations: ${randomRotations}바퀴`);
-    console.log(`  → targetRotation: ${targetRotation.toFixed(3)} rad (${(targetRotation / Math.PI).toFixed(3)}π)`);
     
     this.roundData.gameMultiplier = finalMultiplier;
     const targetAngleNorm = ((targetAngle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
@@ -23446,14 +23320,12 @@ class GameScene extends Phaser.Scene {
     let resultShown = false;
     let lastPlayedSection = -1;  // 마지막으로 소리 난 섹션 추적
     
-    console.log(`🎡 [룰렛 시작] 시작시간: ${startTime} | 애니메이션지속: ${animationDuration}ms | 목표회전: ${targetRotation.toFixed(2)} rad (${(targetRotation / Math.PI).toFixed(2)}π) | 배수: ${finalMultiplier}배`);
     
     // ✅ 배수 표시 함수
     const showResult = () => {
       if (resultShown) return;
       resultShown = true;
       
-      console.log(`[배수 선택 완료] ${finalMultiplier}배`);
       
       // 🎵 【배수 결과 사운드】 effect 사운드 재생
       try {
@@ -23633,10 +23505,7 @@ class GameScene extends Phaser.Scene {
           }
           
           const isMatched = detectedMultiplier === finalMultiplier ? "✅ 일치" : "❌ 불일치";
-          console.log(`🎡 [룰렛 완료] 실제시간: ${actualTime}ms`);
-          console.log(`  → 선택배수: ${finalMultiplier}배 | 감지배수: ${detectedMultiplier}배 | ${isMatched}`);
-          console.log(`  → 회전각도: ${currentRotation.toFixed(3)} rad (${(currentRotation / Math.PI).toFixed(3)}π) | 목표: ${targetRotation.toFixed(3)} rad`);
-          
+
           showResult();
           return;
         }
@@ -24344,7 +24213,6 @@ class GameScene extends Phaser.Scene {
         const myPlayer = this.roundData.players.find(p => p && p.id === myId);
         if (myPlayer && myPlayer.specialCards) {
           myPlayer.specialCards[cardId] = Math.max(0, (myPlayer.specialCards[cardId] || 0) - 1);
-          console.log(`📊 [카드 사용] cardId=${cardId} | 남은개수=${myPlayer.specialCards[cardId]} | 플레이어=${myPlayer.nickname}`);
         }
       }
     } catch (e) {
@@ -24686,13 +24554,11 @@ class GameScene extends Phaser.Scene {
         
         // ✅ 【캐릭터 보상 처리】 resultData.ranking에서 awardedCharacter 받기
         if (myData && myData.awardedCharacter) {
-          console.log(`🎁 [게임 우승 보상] 캐릭터 획득: ${myData.awardedCharacter}`);
           if (!Array.isArray(this.myProfile.owned_characters)) {
             this.myProfile.owned_characters = ["player_1"];
           }
           if (!this.myProfile.owned_characters.includes(myData.awardedCharacter)) {
             this.myProfile.owned_characters.push(myData.awardedCharacter);
-            console.log(`✅ [owned_characters 업데이트] ${myData.awardedCharacter} 추가됨`);
           }
           
           // ✅ socket.finalProfile도 업데이트 (로비로 돌아갈 때 사용됨)
@@ -24702,7 +24568,6 @@ class GameScene extends Phaser.Scene {
             }
             if (!socket.finalProfile.owned_characters.includes(myData.awardedCharacter)) {
               socket.finalProfile.owned_characters.push(myData.awardedCharacter);
-              console.log(`✅ [socket.finalProfile updated] ${myData.awardedCharacter} 추가됨`);
             }
           }
           
@@ -24711,14 +24576,11 @@ class GameScene extends Phaser.Scene {
             socket.emit("syncOwnedCharacters", {
               owned_characters: this.myProfile.owned_characters,
             });
-            console.log(`📤 [서버 sync] owned_characters 전송:`, this.myProfile.owned_characters);
           } else {
             // 싱글플레이 또는 socket 미연결: 로컬스토리지 임시 저장 (로비 복귀 후 emitInventory로 전송)
             try {
               localStorage.setItem("ownedCharacters", JSON.stringify(this.myProfile.owned_characters));
-              console.log(`💾 [로컬스토리지] owned_characters 임시 저장:`, this.myProfile.owned_characters);
             } catch (e) {
-              console.warn(`⚠️ 로컬스토리지 저장 실패:`, e);
             }
           }
         }
@@ -24738,20 +24600,16 @@ class GameScene extends Phaser.Scene {
               }
               if (!this.myProfile.owned_characters.includes(awardedCharacter)) {
                 this.myProfile.owned_characters.push(awardedCharacter);
-                console.log(`🎁 [싱글플레이 우승 보상] 캐릭터 획득: ${awardedCharacter}`);
                 
                 // ✅ socket이 있으면 즉시 전송, 없으면 로컬스토리지에 저장
                 if (socket && socket.connected) {
                   socket.emit("syncOwnedCharacters", {
                     owned_characters: this.myProfile.owned_characters,
                   });
-                  console.log(`📤 [서버 sync] owned_characters 전송:`, this.myProfile.owned_characters);
                 } else {
                   try {
                     localStorage.setItem("ownedCharacters", JSON.stringify(this.myProfile.owned_characters));
-                    console.log(`💾 [로컬스토리지] 우승 보상 캐릭터 저장:`, this.myProfile.owned_characters);
                   } catch (e) {
-                    console.warn(`⚠️ 로컬스토리지 저장 실패:`, e);
                   }
                 }
               }
@@ -24772,17 +24630,7 @@ class GameScene extends Phaser.Scene {
             if (rankReward > 0) {
               const beforeCoins = Number(this.myProfile?.coins) || 0;
               
-              console.log('💰 [게임 종료] 싱글플레이 순위 보상 (캐릭터 배수 적용)', {
-                character: currentCharacter,
-                rank: myRankIndex + 1,
-                baseReward,
-                gameMultiplier,
-                characterMultiplier,
-                totalMultiplier,
-                rankReward,
-                beforeCoins,
-              });
-              
+             
               // 🔴 [일관성] modifyCoins 사용
               this.modifyCoins(rankReward, { sync: false, reason: 'rankReward' });
               
@@ -25617,16 +25465,7 @@ class GameScene extends Phaser.Scene {
         const rewardCoinCount = rankRewardCoins[rankIndex] || 0; // 보상 텍스트 (배수 적용 ✅ server earnedCoins 또는 client 계산)
         const playerData = rankedPlayers[rankIndex];
         
-        // 📊 디버그 로그: server earnedCoins 사용 여부 확인
-        if (!this.isSingle && playerData && playerData.earnedCoins !== undefined) {
-          console.log(`✅ [시상대 애니메이션] 순위 ${rankIndex + 1} - server earnedCoins 사용`, {
-            player: playerData.nickname,
-            baseReward: baseRankRewardCoins[rankIndex],
-            serverEarnedCoins: playerData.earnedCoins,
-            displayValue: rewardCoinCount,
-          });
-        }
-        
+      
         if (!targetPos || animationCoinCount <= 0) {
           return;
         }
