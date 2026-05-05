@@ -14642,18 +14642,20 @@ class GameScene extends Phaser.Scene {
     });
 
     // 싱글플레이(튜토리얼 제외)에서는 AI 제출 속도를 난이도별로 설정한다.
-    // ✅ EASY: 1500ms, NORMAL: 1300ms, HARD: 800ms
+    // ✅ reactionTime(판단): AI가 카드를 인식하고 결정하는 시간
+    // ✅ flipDelay(애니메이션): 카드를 뒤집는 시각적 애니메이션 시간
     if (this.isSingle && !this.isTutorialMode) {
-      const difficultyDelays = {
-        easy: 1500,
-        normal: 1300,
-        hard: 800,  // ✅ HARD 모드는 더 빠르게 설정
+      const difficultySettings = {
+        easy: { reactionTime: 1500, flipDelay: 1200 },      // 느리게
+        normal: { reactionTime: 1300, flipDelay: 1000 },    // 기본
+        hard: { reactionTime: 900, flipDelay: 700 },        // ⚡ 빠르게
       };
-      const delayMs = difficultyDelays[this.roundData?.aiDifficulty?.toLowerCase()] || 1300;
+      const difficulty = this.roundData?.aiDifficulty?.toLowerCase() || "normal";
+      const settings = difficultySettings[difficulty] || difficultySettings.normal;
       this.aiSettings = this.aiSettings.map((ai) => ({
         ...ai,
-        reactionTime: delayMs,
-        flipDelay: delayMs,
+        reactionTime: settings.reactionTime,
+        flipDelay: settings.flipDelay,
       }));
     }
 
