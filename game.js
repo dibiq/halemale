@@ -7370,6 +7370,12 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     const myId = socket.id || "PLAYER_ME";
     const myNickname = localStorage.getItem("nickname") || "나";
 
+    // ✅ 싱글플레이 시작 시 퀘스트 진행도 초기화 (매번 새로 시작)
+    try {
+      localStorage.removeItem(QUEST_PROGRESS_STORAGE_KEY);
+    } catch (e) {
+    }
+
     // 싱글플레이에서 사용하는 초기 카드 수 (이 값이 전체 카드 총합의 기준입니다)
     // (디버깅용으로 6장으로 설정)
     this.singleInitialCardCount = 6;
@@ -20720,12 +20726,23 @@ class GameScene extends Phaser.Scene {
   loadQuestProgressSnapshot() {
     const safe = {};
     let stored = {};
-    try {
-      stored = JSON.parse(
-        localStorage.getItem(QUEST_PROGRESS_STORAGE_KEY) || "{}",
-      );
-    } catch (e) {
-      stored = {};
+
+    // ✅ 싱글플레이 시작 시 항상 초기값으로 시작 (진행도 초기화)
+    if (this.isSingle) {
+      // 싱글플레이는 매번 새로 시작하므로 저장된 진행도 무시
+      try {
+        localStorage.removeItem(QUEST_PROGRESS_STORAGE_KEY);
+      } catch (e) {
+      }
+    } else {
+      // 멀티플레이는 저장된 진행도 로드
+      try {
+        stored = JSON.parse(
+          localStorage.getItem(QUEST_PROGRESS_STORAGE_KEY) || "{}",
+        );
+      } catch (e) {
+        stored = {};
+      }
     }
 
     QUEST_CONFIGS.forEach((quest) => {
