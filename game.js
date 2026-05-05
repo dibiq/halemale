@@ -7448,7 +7448,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         icon: "lock",
         name: "패널티 방어",
         description: "실수해도 카드를 잃지 않아요",
-        price: 500,
+        price: 300,
       },
       {
         id: 5,
@@ -7456,7 +7456,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         icon: "shield",
         name: "방패",
         description: "공격을 막아서 카드를 지켜요",
-        price: 700,
+        price: 500,
       },
       {
         id: 6,
@@ -7464,7 +7464,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         icon: "block",
         name: "먹물",
         description: "상대방 카드에 먹물을 뿌려요",
-        price: 1000,
+        price: 500,
       },
       {
         id: 7,
@@ -7472,7 +7472,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         icon: "thief",
         name: "도둑",
         description: "모두에게서 카드 3장씩 뺏어와요",
-        price: 1500,
+        price: 800,
       },
       {
         id: 8,
@@ -7480,7 +7480,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         icon: "king",
         name: "전세역전",
         description: "나와 1등 카드덱을 교환해요",
-        price: 2000,
+        price: 1000,
       },
     ];
 
@@ -7495,74 +7495,74 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         key: "player_2",
         name: "잠옷 곰돌이",
         description: "멀티플레이에서 코인획득량 2배",
-        price: 3000,
+        price: 5000,
       },
       {
         key: "player_3",
         name: "힙합 곰돌이",
         description: "멀티플레이에서 코인획득량 2배",
-        price: 3000,
+        price: 5000,
       },
       {
         key: "player_4",
         name: "클럽 곰돌이",
         description: "멀티플레이에서 코인획득량 2배",
-        price: 3000,
+        price: 5000,
       },
       {
         key: "player_5",
         name: "젠틀 곰돌이",
         description: "멀티플레이에서 코인획득량 3배",
-        price: 5000,
+        price: 8000,
       },
       {
         key: "player_6",
         name: "교관 곰돌이",
         description: "멀티플레이에서 코인획득량 3배",
-        price: 5000,
+        price: 8000,
       },
       {
         key: "player_7",
         name: "로빈 곰돌이",
         description: "멀티에서 코인획득 3배\n패널티방어 1회 가능",
-        price: 7000,
+        price: 10000,
       },
       {
         key: "player_8",
         name: "바이커 곰돌이",
         description: "멀티에서 코인획득 3배\n방패 1회 가능",
-        price: 10000,
+        price: 12000,
       },
       {
         key: "player_9",
         name: "장군 곰돌이",
         description: "멀티에서 코인획득 4배\n먹물 1회 가능",
-        price: 10000,
+        price: 12000,
       },
       {
         key: "player_10",
         name: "요원 곰돌이",
         description: "멀티에서 코인획득 4배\n카드뺏기 1회 가능",
-        price: 10000,
+        price: 20000,
       },
       {
         key: "player_11",
         name: "타잔 곰돌이",
         description: "멀티에서 코인획득 4배\n전세역전 1회 가능",
-        price: 15000,
+        price: 50000,
       },
       {
         key: "player_12",
         name: "슈퍼 곰돌이",
         description: "멀티에서 코인획득 5배\n모든 특수카드 1회 가능",
-        price: 20000,
+        price: 100000,
       },
     ];
     
     const coinProducts = [
-      { amount: 1000, display: "1100원", sku: COIN_PRODUCT_SKUS[1000] },
-      { amount: 3000, display: "2200원", sku: COIN_PRODUCT_SKUS[3000] },
-      { amount: 10000, display: "5500원", sku: COIN_PRODUCT_SKUS[10000] },
+      { amount: 10000, display: "1100원", sku: COIN_PRODUCT_SKUS[1000] },
+      { amount: 30000, display: "2200원", sku: COIN_PRODUCT_SKUS[3000] },
+      { amount: 100000, display: "5500원", sku: COIN_PRODUCT_SKUS[10000] },
     ];
 
     const normalizeOwnedCharacters = (rawValue) => {
@@ -7787,17 +7787,15 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     const buyButtonY = popupY + height * 0.31;
 
     const coinDisplayBg = this.add
-      .image(centerX, coinDisplayY, "roombg")
-      .setDisplaySize(width * 0.3, height * 0.04);
+      .image(centerX, coinDisplayY*0.997, "roombg")
+      .setDisplaySize(width * 0.3, height * 0.055);
 
     this.shopCoinText = this.add
       .text(centerX, coinDisplayY, `💰 ${this.myProfile.coins}`, {
         fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.045}px`,
-        color: "#ffffff",
+        fontSize: `${width * 0.07}px`,
+        color: "#DAA520",
         fontWeight: "bold",
-        stroke: "#000000",
-        strokeThickness: 3,
       })
       .setOrigin(0.5);
 
@@ -7904,8 +7902,6 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         fontSize: `${width * 0.05}px`,
         color: "#ffffff",
         fontWeight: "bold",
-        stroke: "#000000",
-        strokeThickness: 4,
       })
       .setOrigin(0.5);
     
@@ -7933,7 +7929,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         this.shopCoinText.setText(`💰 ${displayCoins}`);
         
         // 🔴 [추가] 상점 코인 텍스트 크기 동적 조정
-        const baseFontSize = width * 0.03;
+        const baseFontSize = width * 0.05;
         const coinsStr = String(displayCoins);
         let adjustedFontSize = baseFontSize;
         
@@ -7978,33 +7974,27 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           .text(0, height * -0.12, card.name, {
             fontFamily: GAME_FONTS.main,
             fontSize: `${width * 0.07}px`,
-            color: "#39ff14",
+            color: "#4B3621",
             fontWeight: "bold",
-            stroke: "#000000",
-            strokeThickness: 5,
           })
           .setOrigin(0.5);
 
         const descText = this.add
-          .text(0, height * 0.12, card.description, {
+          .text(0, height * 0.13, card.description, {
             fontFamily: GAME_FONTS.main,
             fontSize: `${width * 0.04}px`,
-            color: "#ffffff",
+            color: "#593115",
             align: "center",
-            stroke: "#000000",
-            strokeThickness: 3,
             wordWrap: { width: width * 0.5 },
           })
           .setOrigin(0.5);
 
         const priceText = this.add
-          .text(0, height * 0.08, `💰 ${card.price}`, {
+          .text(0, height * 0.09, `💰 ${card.price}`, {
             fontFamily: GAME_FONTS.main,
             fontSize: `${width * 0.05}px`,
-            color: "#ffd700",
+            color: "#DAA520",
             fontWeight: "bold",
-            stroke: "#000000",
-            strokeThickness: 4,
           })
           .setOrigin(0.5);
 
@@ -8012,10 +8002,8 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           .text(0, height * -0.089, `보유: ${ownedCount}개`, {
             fontFamily: GAME_FONTS.main,
             fontSize: `${width * 0.035}px`,
-            color: "#2ecc71",
+            color: "#1A3C40",
             fontWeight: "bold",
-            stroke: "#000000",
-            strokeThickness: 3,
           })
           .setOrigin(0.5);
 
@@ -8085,10 +8073,8 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           .text(0, height * -0.12, character.name, {
             fontFamily: GAME_FONTS.main,
             fontSize: `${width * 0.065}px`,
-            color: "#4ecdc4",
+            color: "#4B3621",
             fontWeight: "bold",
-            stroke: "#000000",
-            strokeThickness: 5,
           })
           .setOrigin(0.5);
 
@@ -8096,10 +8082,8 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           .text(0, height * 0.14, character.description, {
             fontFamily: GAME_FONTS.main,
             fontSize: `${width * 0.04}px`,
-            color: "#ffffff",
+            color: "#593115",
             align: "center",
-            stroke: "#000000",
-            strokeThickness: 3,
             wordWrap: { width: width * 0.5 },
           })
           .setOrigin(0.5);
@@ -8112,10 +8096,8 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             {
               fontFamily: GAME_FONTS.main,
               fontSize: `${width * 0.05}px`,
-              color: "#ffd700",
+              color: "#DAA520",
               fontWeight: "bold",
-              stroke: "#000000",
-              strokeThickness: 4,
             },
           )
           .setOrigin(0.5);
@@ -8124,10 +8106,8 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           .text(0, height * -0.09, isOwned ? "보유중" : "미보유", {
             fontFamily: GAME_FONTS.main,
             fontSize: `${width * 0.035}px`,
-            color: isOwned ? "#2ecc71" : "#ff6b6b",
+            color: isOwned ? "#1A3C40" : "#ff6b6b",
             fontWeight: "bold",
-            stroke: "#000000",
-            strokeThickness: 3,
           })
           .setOrigin(0.5);
 
@@ -8158,10 +8138,8 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           .text(0, -250, "코인 충전하기", {
             fontFamily: GAME_FONTS.main,
             fontSize: `${width * 0.06}px`,
-            color: "#ffd700",
+            color: "#4B3621",
             fontWeight: "bold",
-            stroke: "#000000",
-            strokeThickness: 6,
           })
           .setOrigin(0.5);
 
@@ -8170,10 +8148,8 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           .text(0, -190, "(소모품 아이템으로 구매 후 환불불가)", {
             fontFamily: GAME_FONTS.main,
             fontSize: `${width * 0.035}px`,
-            color: "#52dd3d",
+            color: "#4B3621",
             fontWeight: "bold",
-            stroke: "#000000",
-            strokeThickness: 5,
           })
           .setOrigin(0.5);
 
@@ -8184,13 +8160,11 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           .setOrigin(0.5);
 
         const amountText = this.add
-          .text(0, 200, `${product.amount}개`, {
+          .text(0, 200, `💰${product.amount}`, {
             fontFamily: GAME_FONTS.main,
-            fontSize: `${width * 0.07}px`,
-            color: "#ffffff",
+            fontSize: `${width * 0.05}px`,
+            color: "#DAA520",
             fontWeight: "bold",
-            stroke: "#000000",
-            strokeThickness: 6,
           })
           .setOrigin(0.5);
 
@@ -8215,13 +8189,11 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         // 할인율이 0이 아닐 때만 표시
         if (discountPercentage > 0) {
           const discountText = this.add
-            .text(0, 270, `🔥 ${discountPercentage}% SALE! 🔥`, {
+            .text(0, 290, `🔥 ${discountPercentage}% SALE! 🔥`, {
               fontFamily: GAME_FONTS.main,
               fontSize: `${width * 0.055}px`,
               color: "#ff6b6b",
               fontWeight: "bold",
-              stroke: "#000000",
-              strokeThickness: 3,
             })
             .setOrigin(0.5);
           elementsToAdd.push(discountText);
@@ -8887,10 +8859,8 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       const rowText = this.add
         .text(centerX - rowWidth * 0.38, rowY - rowHeight * 0.12, "", {
           fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.035}px`, // even smaller for extra padding
-          color: "#e2e8f0",
-          stroke: "#000000",
-          strokeThickness: 3,
+          fontSize: `${width * 0.037}px`, // even smaller for extra padding
+          color: "#4e3e09",
         })
         .setOrigin(0, 0.5);
       rowText.setText(runtime.title);
@@ -9543,9 +9513,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
               .text(0, 0, "방이 없습니다", {
                 fontFamily: "Jua",
                 fontSize: `${width * 0.05}px`,
-                color: "#ffffff",
-                stroke: "#000000",
-                strokeThickness: 4,
+                color: "#48420e",
               })
               .setOrigin(0.5);
             container.add(emptyText);
