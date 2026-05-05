@@ -1628,7 +1628,7 @@ class LobbyScene extends Phaser.Scene {
           this.shopPurchaseInProgress = false;
 
           if (event?.type === "success") {
-            this.showToast(`💰 ${product.amount} 코인 충전 완료!`, "#2ecc71");
+            this.showToast(`💰 ${product.amount} 코인 지급 완료!`, "#2ecc71");
           }
           
           // 🔴 [중요] 버튼 활성화 - 코인 구매 완료/실패
@@ -5267,6 +5267,11 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
       if (typeof data?.itemMode !== "boolean") {
         data.itemMode = this.currentItemMode !== false;
+      }
+
+      // ✅ 멀티플레이 게임 시작 시 현재 착용한 캐릭터 저장
+      if (!data.playerAvatarKey) {
+        data.playerAvatarKey = this.getSelectedAvatarKey?.() || "player_1";
       }
 
       // 안전: 서버가 players를 보내지 않을 수 있으므로 이전 플레이어 목록을 보존
@@ -9560,7 +9565,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           if (typeof this.updateMyProfileUI === "function") {
             this.updateMyProfileUI();
           }
-          this.showToast(`✅ 코인 충전 완료!`, "#2ecc71");
+          this.showToast(`✅ 코인 지급 완료!`, "#2ecc71");
         } else if (!result.success) {
           // 롤백: 서버 실패 시 이전 코인으로 복원
           this.myProfile.coins = originalCoins;
@@ -11317,6 +11322,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
                         roomId: ackPayload.roomId || self.currentRoomNumber || null,
                         nextTurnId: ackPayload.nextTurnId || null,
                         itemMode: typeof ackPayload.itemMode === 'boolean' ? ackPayload.itemMode : self.currentItemMode,
+                        playerAvatarKey: self.getSelectedAvatarKey?.() || "player_1",
                       };
                       try {
                         self.scene.start("GameScene", data);
