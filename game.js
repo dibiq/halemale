@@ -9207,8 +9207,9 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             this.showToast("아직 수령할 보상이 없어요!", "#f97316");
             return;
           }
-          const difficultyReward = getQuestRewardByDifficulty(this.roundData?.aiDifficulty);
-          if (difficultyReward > 0) {
+          // ✅ 싱글플레이는 난이도별, 멀티플레이는 quest.rewardCoins 사용
+          const rewardAmount = this.isSingle ? getQuestRewardByDifficulty(this.roundData?.aiDifficulty) : quest.rewardCoins;
+          if (rewardAmount > 0) {
             // play sound + burst animation from button location
             try {
               this.sound.play("pop", { volume: 0.5 });
@@ -9219,14 +9220,14 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             }
 
             if (typeof this.playQuestCoinBurst === "function") {
-              this.playQuestCoinBurst(claimX, claimY, difficultyReward);
+              this.playQuestCoinBurst(claimX, claimY, rewardAmount);
             }
 
             if (typeof this.rewardQuestCoins === "function") {
-              await this.rewardQuestCoins(difficultyReward, runtime.title, quest.key);
+              await this.rewardQuestCoins(rewardAmount, runtime.title, quest.key);
             } else {
               // Fallback: some builds may lose method binding, so apply reward manually.
-              const amount = difficultyReward;
+              const amount = rewardAmount;
               if (amount > 0) {
                 if (typeof this.rewardQuestCoins === "function") {
                   // 🔴 [중요] rewardQuestCoins는 이미 async/await 기반 서버 호출
