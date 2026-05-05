@@ -9184,7 +9184,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
       if (entry.ready) {
 
-        const handleClaim = () => {
+        const handleClaim = async () => {
           this.sound.play("btn", { volume: 0.4 });
           if (!entry.ready) {
             this.showToast("아직 수령할 보상이 없어요!", "#f97316");
@@ -9205,7 +9205,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             }
 
             if (typeof this.rewardQuestCoins === "function") {
-              this.rewardQuestCoins(quest.rewardCoins, runtime.title, quest.key);
+              await this.rewardQuestCoins(quest.rewardCoins, runtime.title, quest.key);
             } else {
               // Fallback: some builds may lose method binding, so apply reward manually.
               const amount = Number(quest.rewardCoins) || 0;
