@@ -9541,7 +9541,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           if (typeof this.updateMyProfileUI === "function") {
             this.updateMyProfileUI();
           }
-          this.showToast(`✅ 코인 충전 완료!", "#2ecc71");
+          this.showToast(`✅ 코인 충전 완료!`, "#2ecc71");
         } else if (!result.success) {
           // 롤백: 서버 실패 시 이전 코인으로 복원
           this.myProfile.coins = originalCoins;
