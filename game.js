@@ -16480,33 +16480,18 @@ class GameScene extends Phaser.Scene {
     // ✅ 배수 정보는 항상 표시 (카드 제출 여부 상관없이)
     const multiplier = this.roundData?.gameMultiplier || 1;
     const multiplierTxt = this.add
-      .text(cx, cy - width * 0.12, `${multiplier}배`, {
+      .text(cx, width * 0.15, `이번 게임은 ${multiplier}배판!`, {
         fontFamily: "Jua",
         fontSize: `${width * 0.050}px`,
-        color: "#FF4444",
+        color: "#baff30",
         fontWeight: "bold",
-        stroke: "#000000",
-        strokeThickness: 6,
       })
       .setOrigin(0.5)
       .setDepth(2001);
     
-    // ✅ 배수 텍스트 배경 박스 추가
-    const boxPadding = width * 0.013;
-    const textBounds = multiplierTxt.getBounds();
-    const boxWidth = textBounds.width + boxPadding * 2;
-    const boxHeight = textBounds.height + boxPadding * 2;
-    
-    const multiplierBox = this.add
-      .rectangle(cx, cy - width * 0.12, boxWidth, boxHeight, 0x000000, 0.6)
-      .setStrokeStyle(3, 0xFF4444, 1)
-      .setDepth(2000); // 텍스트 뒤에 표시
-    
-    this.playerTableGroup.add(multiplierBox);
     this.playerTableGroup.add(multiplierTxt);
     // 배수 텍스트 참조 저장 (애니메이션 완료 후 업데이트용)
     this.multiplierDisplayTxt = multiplierTxt;
-    this.multiplierDisplayBox = multiplierBox;
     
     // 카드 합계는 0보다 클 때만 표시
     if (totalStackCount > 0) {
@@ -19481,10 +19466,12 @@ class GameScene extends Phaser.Scene {
     if (this.roundData?.roomId) {
       try {
         if (socket && socket.connected) {
+          // 🔴 [수정] 현재 착용한 캐릭터를 정확하게 전달
+          const currentAvatarKey = this.getSelectedAvatarKey ? this.getSelectedAvatarKey() : (this.avatarKey || localStorage.getItem("profileAvatarKey") || "player_1");
           socket.emit("joinRoom", {
             roomId: this.roundData.roomId,
             nickname: storedNickname,
-            avatarKey: this.avatarKey || "player_1",
+            avatarKey: currentAvatarKey,
           });
         } else if (socket) {
           // socket이 존재하지만 연결되지 않은 경우
@@ -19495,9 +19482,12 @@ class GameScene extends Phaser.Scene {
           const waitAndJoin = setInterval(() => {
             if (socket.connected) {
               clearInterval(waitAndJoin);
+              // 🔴 [수정] 현재 착용한 캐릭터를 정확하게 전달
+              const currentAvatarKey = this.getSelectedAvatarKey ? this.getSelectedAvatarKey() : (this.avatarKey || localStorage.getItem("profileAvatarKey") || "player_1");
               socket.emit("joinRoom", {
                 roomId: this.roundData.roomId,
                 nickname: storedNickname,
+                avatarKey: currentAvatarKey,
                 avatarKey: this.avatarKey || "player_1",
               });
             } else if (elapsed >= maxWaitTime) {
@@ -23391,12 +23381,7 @@ class GameScene extends Phaser.Scene {
       
       // 배수 UI 업데이트
       if (this.multiplierDisplayTxt?.setText) {
-        this.multiplierDisplayTxt.setText(`${finalMultiplier}배`);
-        if (this.multiplierDisplayBox) {
-          const bounds = this.multiplierDisplayTxt.getBounds();
-          const pad = width * 0.015;
-          this.multiplierDisplayBox.setDisplaySize(bounds.width + pad * 2, bounds.height + pad * 2);
-        }
+        this.multiplierDisplayTxt.setText(`이번 게임은 ${finalMultiplier}배판!`);
       }
       
       // 10배인 경우 꽃가루 파티클 효과 - 극도로 과한 연출
@@ -24851,9 +24836,9 @@ class GameScene extends Phaser.Scene {
 
     const rankedPlayers = Array.isArray(players) ? players.slice(0, 3) : [];
     const podiumPositions = [
-      { x: width * 0.5, y: height * 0.54 },
-      { x: width * 0.23, y: height * 0.6 },
-      { x: width * 0.79, y: height * 0.62 },
+      { x: width * 0.5, y: height * 0.55 },
+      { x: width * 0.18, y: height * 0.61 },
+      { x: width * 0.83, y: height * 0.63 },
     ];
 
     const resultOverlayBaselineCoins =
