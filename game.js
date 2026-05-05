@@ -1539,33 +1539,12 @@ class LobbyScene extends Phaser.Scene {
           sku: product.sku,
           processProductGrant: async ({ orderId }) => {
             try {
-              // 코인 추가
+              // 🔴 [중요] 서버 기반 코인 추가 (await로 결과 대기)
               const nickname = this.myProfile.nickname || localStorage.getItem("nickname") || "추추";
+              const originalCoins = Number(this.myProfile.coins || 0);
               
-              // 로컬 코인 즉시 추가 (낙관적 업데이트)
-              this.myProfile.coins = Number(this.myProfile.coins || 0) + Number(product.amount);
-              
-              if (!this.isSingle && socket?.connected) {
-                // 멀티플레이: 서버에 코인 추가 요청
-                socket.emit("addCoins", {
-                  amount: product.amount,
-                  nickname,
-                  playerId: socket.id,
-                  timestamp: new Date().toISOString(),
-                });
-                
-                // 결제 내역 서버에 저장
-                socket.emit("savePurchaseHistory", {
-                  orderId,
-                  sku: product.sku,
-                  amount: product.amount,
-                  price: product.display,
-                  nickname,
-                  status: "PURCHASED",
-                });
-              }
-
-              // UI 업데이트 (로컬 코인으로 즉시 업데이트)
+              // 낙관적 업데이트: 즉시 UI에 반영
+              this.myProfile.coins = originalCoins + Number(product.amount);
               if (this.shopCoinText) {
                 this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
               }
@@ -1574,6 +1553,53 @@ class LobbyScene extends Phaser.Scene {
               }
               if (typeof this.updateMyProfileUI === "function") {
                 this.updateMyProfileUI();
+              }
+              
+              // 서버 응답 대기
+              if (!this.isSingle && socket?.connected) {
+                const result = await emitServerCoinReward.call(this, Number(product.amount), "product_purchase", {
+                  orderId,
+                  sku: product.sku,
+                  price: product.display,
+                });
+                
+                if (result.success && typeof result.newCoins === "number") {
+                  this.myProfile.coins = result.newCoins;
+                  if (this.shopCoinText) {
+                    this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
+                  }
+                  if (this.coinShopCurrentCoinText) {
+                    this.coinShopCurrentCoinText.setText(`현재 보유: 💰 ${this.myProfile.coins}`);
+                  }
+                  if (typeof this.updateMyProfileUI === "function") {
+                    this.updateMyProfileUI();
+                  }
+                } else if (!result.success) {
+                  // 롤백: 서버 실패 시 이전 코인으로 복원
+                  this.myProfile.coins = originalCoins;
+                  if (this.shopCoinText) {
+                    this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
+                  }
+                  if (this.coinShopCurrentCoinText) {
+                    this.coinShopCurrentCoinText.setText(`현재 보유: 💰 ${this.myProfile.coins}`);
+                  }
+                  this.showToast(result.error || "코인 추가 실패", "#e74c3c");
+                }
+                
+                // 결제 내역 서버에 저장 (별도 처리)
+                socket.emit("savePurchaseHistory", {
+                  orderId,
+                  sku: product.sku,
+                  amount: product.amount,
+                  price: product.display,
+                  nickname,
+                  status: "PURCHASED",
+                });
+              } else if (this.isSingle) {
+                // 싱글플레이: 로컬만 업데이트
+                if (typeof this.updateMyProfileUI === "function") {
+                  this.updateMyProfileUI();
+                }
               }
 
               if (IAP && typeof IAP.completeProductGrant === "function") {
@@ -1675,22 +1701,47 @@ class LobbyScene extends Phaser.Scene {
             continue;
           }
 
-          // 코인 추가
+          // 🔴 [중요] 서버 기반 코인 추가 (복원 - await로 결과 대기)
           const nickname = this.myProfile.nickname || localStorage.getItem("nickname") || "추추";
+          const originalCoins = Number(this.myProfile.coins || 0);
 
-          // 로컬 코인 즉시 추가 (낙관적 업데이트)
-          this.myProfile.coins = Number(this.myProfile.coins || 0) + coinAmount;
+          // 낙관적 업데이트: 즉시 UI에 반영
+          this.myProfile.coins = originalCoins + coinAmount;
+          if (this.shopCoinText) {
+            this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
+          }
+          if (this.coinShopCurrentCoinText) {
+            this.coinShopCurrentCoinText.setText(`현재 보유: 💰 ${this.myProfile.coins}`);
+          }
 
           if (!this.isSingle && socket?.connected) {
-            // 멀티플레이: 서버에 코인 추가 요청
-            socket.emit("addCoins", {
-              amount: coinAmount,
-              nickname,
-              playerId: socket.id,
-              timestamp: new Date().toISOString(),
+            // 멀티플레이: 서버에 코인 추가 요청 (await 대기)
+            const result = await emitServerCoinReward.call(this, coinAmount, "purchase_restore", {
+              orderId,
+              sku,
+              price: "복원됨",
             });
-
-            // 결제 내역 서버에 저장
+            
+            if (result.success && typeof result.newCoins === "number") {
+              this.myProfile.coins = result.newCoins;
+              if (this.shopCoinText) {
+                this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
+              }
+              if (this.coinShopCurrentCoinText) {
+                this.coinShopCurrentCoinText.setText(`현재 보유: 💰 ${this.myProfile.coins}`);
+              }
+            } else if (!result.success) {
+              // 롤백: 서버 실패 시 이전 코인으로 복원
+              this.myProfile.coins = originalCoins;
+              if (this.shopCoinText) {
+                this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
+              }
+              if (this.coinShopCurrentCoinText) {
+                this.coinShopCurrentCoinText.setText(`현재 보유: 💰 ${this.myProfile.coins}`);
+              }
+            }
+            
+            // 결제 내역 서버에 저장 (별도 처리)
             socket.emit("savePurchaseHistory", {
               orderId,
               sku,
@@ -1699,14 +1750,11 @@ class LobbyScene extends Phaser.Scene {
               nickname,
               status: "PURCHASED",
             });
-          }
-
-          // UI 업데이트 (로컬 코인으로 즉시 업데이트)
-          if (this.shopCoinText) {
-            this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
-          }
-          if (this.coinShopCurrentCoinText) {
-            this.coinShopCurrentCoinText.setText(`현재 보유: 💰 ${this.myProfile.coins}`);
+          } else if (this.isSingle) {
+            // 싱글플레이: 로컬만 업데이트
+            if (typeof this.updateMyProfileUI === "function") {
+              this.updateMyProfileUI();
+            }
           }
           if (typeof this.updateMyProfileUI === "function") {
             this.updateMyProfileUI();
@@ -9162,18 +9210,36 @@ if (this.isGameEnded || this.isResultOverlayActive) {
               // Fallback: some builds may lose method binding, so apply reward manually.
               const amount = Number(quest.rewardCoins) || 0;
               if (amount > 0) {
-                if (typeof this.modifyCoins === "function") {
+                if (typeof this.rewardQuestCoins === "function") {
+                  // 🔴 [중요] rewardQuestCoins는 이미 async/await 기반 서버 호출
+                  await this.rewardQuestCoins(amount, runtime.title, quest.key);
+                } else if (typeof this.modifyCoins === "function") {
                   this.modifyCoins(Number(amount), { sync: true });
                 } else {
-                  // Defensive fallback for legacy LobbyScene.
+                  // Defensive fallback: 서버 기반 코인 추가 (await)
                   this.myProfile = this.myProfile || {};
-                  this.myProfile.coins = (Number(this.myProfile.coins) || 0) + amount;
+                  const originalCoins = Number(this.myProfile.coins || 0);
+                  this.myProfile.coins = originalCoins + amount;
                   if (typeof this.updateMyProfileUI === "function") {
                     this.updateMyProfileUI();
                   }
-                  // Sync to server when modifyCoins is unavailable
+                  
+                  // 서버에 코인 추가 요청
                   try {
-                    if (typeof this.emitInventory === "function") {
+                    if (typeof emitServerCoinReward === "function") {
+                      const result = await emitServerCoinReward.call(this, amount, "quest_reward_" + quest.key);
+                      if (result.success && typeof result.newCoins === "number") {
+                        this.myProfile.coins = result.newCoins;
+                        if (typeof this.updateMyProfileUI === "function") {
+                          this.updateMyProfileUI();
+                        }
+                      } else if (!result.success) {
+                        this.myProfile.coins = originalCoins;
+                        if (typeof this.updateMyProfileUI === "function") {
+                          this.updateMyProfileUI();
+                        }
+                      }
+                    } else if (typeof this.emitInventory === "function") {
                       this.emitInventory("questReward", { 
                         amount: amount,
                         questKey: quest.key,
@@ -9443,16 +9509,11 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     if (!this.isSingle && socket?.connected) {
       const nickname =
         this.myProfile.nickname || localStorage.getItem("nickname") || "추추";
+      const originalCoins = Number(this.myProfile.coins || 0);
 
-      socket.emit("addCoins", {
-        amount,
-        nickname,
-        playerId: socket.id,
-        timestamp: new Date().toISOString(),
-      });
-
-      // 즉시 UI에 반영 (낙관적 업데이트)
-      this.myProfile.coins = Number(this.myProfile.coins || 0) + Number(amount);
+      // 🔴 [중요] 서버 기반 코인 추가 (await로 결과 대기)
+      // 낙관적 업데이트: 즉시 UI에 반영
+      this.myProfile.coins = originalCoins + Number(amount);
       if (this.shopCoinText) {
         this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
       }
@@ -9464,6 +9525,37 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       }
 
       this.showToast(`💰 ${amount} 코인 충전 요청 중...`, "#f39c12");
+      
+      // 서버 응답 대기
+      if (!this.isSingle && socket?.connected) {
+        const result = await emitServerCoinReward.call(this, Number(amount), "coin_purchase");
+        
+        if (result.success && typeof result.newCoins === "number") {
+          this.myProfile.coins = result.newCoins;
+          if (this.shopCoinText) {
+            this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
+          }
+          if (this.coinShopCurrentCoinText) {
+            this.coinShopCurrentCoinText.setText(`현재 보유: 💰 ${this.myProfile.coins}`);
+          }
+          if (typeof this.updateMyProfileUI === "function") {
+            this.updateMyProfileUI();
+          }
+          this.showToast(`✅ 코인 충전 완료!", "#2ecc71");
+        } else if (!result.success) {
+          // 롤백: 서버 실패 시 이전 코인으로 복원
+          this.myProfile.coins = originalCoins;
+          if (this.shopCoinText) {
+            this.shopCoinText.setText(`💰 ${this.myProfile.coins}`);
+          }
+          if (this.coinShopCurrentCoinText) {
+            this.coinShopCurrentCoinText.setText(`현재 보유: 💰 ${this.myProfile.coins}`);
+          }
+          this.showToast(result.error || "코인 충전 실패", "#e74c3c");
+        }
+      } else if (this.isSingle) {
+        // 싱글플레이: 로컬만 유지
+      }
       return;
     }
 
@@ -11837,44 +11929,39 @@ if (this.isGameEnded || this.isResultOverlayActive) {
                     scene.markDailyRewardClaimed(rowDateStr);
                   } catch (e) {
                   }
-                      
-                      const stamp = scene.add
-                        .text(rowX, rowY, "획득", {
-                          fontFamily:
-                            typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
-                          fontSize: `${width * 0.055}px`,
-                          color: "#ffffff",
-                          fontWeight: "bold",
-                          stroke: "#000000",
-                          strokeThickness: 4,
-                        })
-                        .setOrigin(0.5)
-                        .setDepth(4004)
-                        .setScale(0);
-                      stamp.setRotation(-0.3);
-                      scene.tweens.add({
-                        targets: stamp,
-                        scale: 1,
-                        duration: 450,
-                        ease: "Back.out",
-                      });
-                    }
-                  } catch (e) {
-                  }
-
-                  if (typeof scene.showToast === 'function') {
-                    scene.showToast(`🎉 광고보상 100 코인 획득!`, "#FFD700");
-                  }
-
-                  if (typeof scene.unregisterAttendanceAd === "function") {
-                    scene.unregisterAttendanceAd();
-                    scene.unregisterAttendanceAd = null;
-                  }
-                } catch (e) {
+                  
+                  const stamp = scene.add
+                    .text(rowX, rowY, "획득", {
+                      fontFamily:
+                        typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
+                      fontSize: `${width * 0.055}px`,
+                      color: "#ffffff",
+                      fontWeight: "bold",
+                      stroke: "#000000",
+                      strokeThickness: 4,
+                    })
+                    .setOrigin(0.5)
+                    .setDepth(4004)
+                    .setScale(0);
+                  stamp.setRotation(-0.3);
+                  scene.tweens.add({
+                    targets: stamp,
+                    scale: 1,
+                    duration: 450,
+                    ease: "Back.out",
+                  });
                 }
-              };
-              applyDirectReward();
-              return;
+              } catch (e) {
+              }
+
+              if (typeof scene.showToast === 'function') {
+                scene.showToast(`🎉 광고보상 100 코인 획득!`, "#FFD700");
+              }
+
+              if (typeof scene.unregisterAttendanceAd === "function") {
+                scene.unregisterAttendanceAd();
+                scene.unregisterAttendanceAd = null;
+              }
             }
 
             // � 출석 광고 보상 지급
@@ -12135,29 +12222,80 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             scene.sound.play("btn", { volume: 0.4 });
             scene.isDailyRewardClaimPending = true;
             
-            // 일반 보상 서버 요청
-            if (typeof socket !== "undefined") {
-              socket.emit("claimDailyReward");
-            }
-            
-            // 🔴 [중요] 로컬에서 즉시 코인 업데이트
-            // 결과 화면과 동일한 방식 - 사용자 경험 개선
-            if (scene && scene.myProfile) {
-              const currentCoins = Number(scene.myProfile.coins) || 0;
+            // 🔴 [중요] 서버 기반 출석 보상 (await로 결과 대기)
+            if (scene && scene.myProfile && socket && socket.connected) {
+              const originalCoins = Number(scene.myProfile.coins) || 0;
               const dailyRewardAmount = Number(scene.dailyRewardAmount) || 50;
-              const newCoins = currentCoins + dailyRewardAmount;
-              scene.myProfile.coins = newCoins;
               
-              // 메인 화면 코인 텍스트 즉시 업데이트
+              // 낙관적 업데이트: 즉시 UI에 반영
+              scene.myProfile.coins = originalCoins + dailyRewardAmount;
               if (typeof scene.updateMyProfileUI === "function") {
                 scene.updateMyProfileUI(scene.myProfile);
               }
-            }
-            
-            // 코인 폭발 이펙트 표시
-            try {
-              showCoinBurstEffect(scene, rowX, rowY, 50);
-            } catch (e) {
+              
+              // 코인 폭발 이펙트 표시
+              try {
+                showCoinBurstEffect(scene, rowX, rowY, dailyRewardAmount);
+              } catch (e) {
+              }
+              
+              // 서버 응답 대기 (async 콜백 내에서)
+              try {
+                const result = await new Promise((resolve) => {
+                  const timeout = setTimeout(() => {
+                    resolve({ success: false, error: "서버 응답 시간 초과" });
+                  }, 5000);
+                  
+                  socket.once("claimDailyRewardSuccess", (data) => {
+                    clearTimeout(timeout);
+                    resolve({ success: true, data });
+                  });
+                  
+                  socket.once("claimDailyRewardError", (error) => {
+                    clearTimeout(timeout);
+                    resolve({ success: false, error });
+                  });
+                  
+                  socket.emit("claimDailyReward");
+                });
+                
+                if (!result.success) {
+                  // 롤백: 서버 실패 시 이전 코인으로 복원
+                  scene.myProfile.coins = originalCoins;
+                  if (typeof scene.updateMyProfileUI === "function") {
+                    scene.updateMyProfileUI(scene.myProfile);
+                  }
+                  scene.showToast(result.error || "보상 처리 실패", "#e74c3c");
+                  scene.isDailyRewardClaimPending = false;
+                  if (typeof scene.updateDailyRewardButtonState === "function") {
+                    scene.updateDailyRewardButtonState();
+                  }
+                }
+              } catch (e) {
+                // 예외 발생: 롤백
+                scene.myProfile.coins = originalCoins;
+                if (typeof scene.updateMyProfileUI === "function") {
+                  scene.updateMyProfileUI(scene.myProfile);
+                }
+                scene.isDailyRewardClaimPending = false;
+                if (typeof scene.updateDailyRewardButtonState === "function") {
+                  scene.updateDailyRewardButtonState();
+                }
+              }
+            } else {
+              // 싱글플레이나 오프라인: 로컬만 업데이트
+              if (scene && scene.myProfile) {
+                const dailyRewardAmount = Number(scene.dailyRewardAmount) || 50;
+                scene.myProfile.coins = (Number(scene.myProfile.coins) || 0) + dailyRewardAmount;
+                if (typeof scene.updateMyProfileUI === "function") {
+                  scene.updateMyProfileUI(scene.myProfile);
+                }
+              }
+              
+              try {
+                showCoinBurstEffect(scene, rowX, rowY, 50);
+              } catch (e) {
+              }
             }
             
             // 스탠프 생성
