@@ -11849,7 +11849,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
       if (canClaim || isVideo) {
         const scene = this;
-        rowBg.setInteractive({ useHandCursor: true }).on("pointerdown", () => {
+        rowBg.setInteractive({ useHandCursor: true }).on("pointerdown", async () => {
           if (isVideo) {
             scene.sound.play("btn", { volume: 0.4 });
             
