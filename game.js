@@ -14641,13 +14641,19 @@ class GameScene extends Phaser.Scene {
       };
     });
 
-    // 싱글플레이(튜토리얼 제외)에서는 AI 제출 속도를 1.3초로 고정한다.
-    // (기존 느리게 조절하던 로직을 제거하고 요청대로 고정 딜레이를 적용)
+    // 싱글플레이(튜토리얼 제외)에서는 AI 제출 속도를 난이도별로 설정한다.
+    // ✅ EASY: 1500ms, NORMAL: 1300ms, HARD: 800ms
     if (this.isSingle && !this.isTutorialMode) {
+      const difficultyDelays = {
+        easy: 1500,
+        normal: 1300,
+        hard: 800,  // ✅ HARD 모드는 더 빠르게 설정
+      };
+      const delayMs = difficultyDelays[this.roundData?.aiDifficulty?.toLowerCase()] || 1300;
       this.aiSettings = this.aiSettings.map((ai) => ({
         ...ai,
-        reactionTime: 1300,
-        flipDelay: 1300,
+        reactionTime: delayMs,
+        flipDelay: delayMs,
       }));
     }
 
@@ -22511,14 +22517,7 @@ class GameScene extends Phaser.Scene {
       this.handleTutorialAfterFlip(playerId, randomCard);
     }
 
-    // 5. 💡 마지막 카드를 낸 순간 알림 (기사회생 독려)
-    if (playerId === myId && player.cards === 0) {
-      this.showToast(
-        "마지막 카드를 제출했습니다! 종을 쳐서 카드를 획득하세요!",
-        "#f39c12",
-      );
-    }
-
+ 
     // 6. 다음 턴으로 진행
     if (specialPauseMs > 0) {
       this.time.delayedCall(specialPauseMs, () => {
