@@ -4306,7 +4306,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     const dailyRewardBtnText = this.add
       .text(0, 0, "출석체크", {
         fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.032}px`,
+        fontSize: `${width * 0.04}px`,
         color: "#ffffff",
         fontWeight: "bold",
       })
@@ -4472,7 +4472,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     const adRewardBtnText = this.add
       .text(0, 0, "광고보상", {
         fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.03}px`,
+        fontSize: `${width * 0.04}px`,
         color: "#ffffff",
         fontWeight: "bold",
       })
@@ -4514,7 +4514,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     const questBtnText = this.add
       .text(0, 0, "퀘스트", {
         fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.032}px`,
+        fontSize: `${width * 0.04}px`,
         color: "#ffffff",
         fontWeight: "bold",
       })
@@ -4653,7 +4653,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     const multiBtnText = this.add
       .text(0, 0, "멀티플레이", {
         fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.042}px`,
+        fontSize: `${width * 0.045}px`,
         color: "#ffffff",
         fontWeight: "bold",
       })
@@ -4698,7 +4698,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       this.add
         .text(0, 0, "싱글플레이", {
           fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.042}px`,
+          fontSize: `${width * 0.045}px`,
           color: "#ffffff",
           fontWeight: "bold",
         })
@@ -4731,9 +4731,9 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       .setTint(0xff69b4); // 핑크 포인트
 
     const shopBtnText = this.add
-      .text(0, 0, "🎁 상점", {
+      .text(0, 0, "상점", {
         fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.032}px`,
+        fontSize: `${width * 0.04}px`,
         color: "#ffffff",
         fontWeight: "bold",
       })
@@ -11308,8 +11308,8 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       this.dailyRewardBtnBg.disableInteractive();
     }
     
-    // 🔴 [추가] 출석체크 팝업 열릴 때 광고 미리 로드
-    if (!this.isGameAdLoaded && !this.isGameAdLoading) {
+    // 🔴 [추가] 출석체크 팝업 열릴 때 광고 미리 로드 (브라우저 환경에서는 스킵)
+    if (!this.isGameAdLoaded && !this.isGameAdLoading && window.ReactNativeWebView) {
       this.isGameAdLoading = true;
       this.registry.set("gameAdLoading", true);
       
@@ -11320,21 +11320,26 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       );
       
       if (typeof loadFullScreenAd === "function") {
-        this.unregisterGameAd = loadFullScreenAd({
-          options: { adGroupId },
-          onEvent: (event) => {
-            if (event.type === "loaded") {
-              this.isGameAdLoaded = true;
+        try {
+          this.unregisterGameAd = loadFullScreenAd({
+            options: { adGroupId },
+            onEvent: (event) => {
+              if (event.type === "loaded") {
+                this.isGameAdLoaded = true;
+                this.isGameAdLoading = false;
+                this.registry.set("gameAdLoaded", true);
+                this.registry.set("gameAdLoading", false);
+              }
+            },
+            onError: (error) => {
               this.isGameAdLoading = false;
-              this.registry.set("gameAdLoaded", true);
               this.registry.set("gameAdLoading", false);
             }
-          },
-          onError: (error) => {
-            this.isGameAdLoading = false;
-            this.registry.set("gameAdLoading", false);
-          }
-        });
+          });
+        } catch (e) {
+          this.isGameAdLoading = false;
+          this.registry.set("gameAdLoading", false);
+        }
       }
     }
 
@@ -11477,27 +11482,10 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           fontSize: `${width * 0.04}px`,
           color: baseTextColor,
           fontWeight: "bold",
-          stroke: "#000000",
-          strokeThickness: 3,
         })
         .setOrigin(0.5)
         .setDepth(4003);
 
-      /*const amountText = this.add
-        .text(
-          rowX,
-          rowY - rowHeight * 0.05,
-          isVideo ? "" : `+${this.dailyRewardAmount}`,
-          {
-            fontFamily:
-              typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
-            fontSize: `${width * 0.036}px`,
-            color: "#22c55e",
-            fontWeight: "bold",
-          },
-        )
-        .setOrigin(0.5)
-        .setDepth(4003);*/
 
       // coin icon + number instead of text
       let coinImg = null;
@@ -11517,8 +11505,6 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             fontSize: `${width * 0.04}px`,
             color: isMissedGrey ? "#888888" : "#ffffff",
             fontWeight: "bold",
-            stroke: "#000000",
-            strokeThickness: 3,
           })
           .setOrigin(0.5)
           .setDepth(4003);
@@ -11594,8 +11580,92 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             };
 
             const adGroupId = getAdGroupId();
-            if (!adGroupId || !canUseAd()) {
-              scene.showToast("광고를 사용할 수 없습니다.", "#e74c3c");
+            // 🔴 [수정] 광고가 없어도 브라우저에서는 팝업이 열리도록 (비실제 광고 재생)
+            if (!adGroupId) {
+              // 브라우저 환경에서는 광고 건너뛰고 보상 직접 지급
+              const applyDirectReward = () => {
+                try {
+                  scene.showToast("💳 서버 요청 시작...", "#9b59b6");
+                  
+                  if (typeof socket === "undefined") {
+                    scene.showToast("❌ Socket 없음", "#e74c3c");
+                    return;
+                  }
+
+                  socket.emit("claimAdReward");
+                  
+                  if (scene && scene.myProfile) {
+                    const currentCoins = Number(scene.myProfile.coins) || 0;
+                    const newCoins = currentCoins + 100;
+                    scene.myProfile.coins = newCoins;
+                    
+                    if (typeof scene.updateMyProfileUI === "function") {
+                      scene.updateMyProfileUI(scene.myProfile);
+                    }
+                  }
+                  
+                  const responseTimeout = scene.time.delayedCall(3000, () => {
+                    scene.isDailyRewardClaimPending = false;
+                  });
+                  
+                  const handleAdRewardError = (message) => {
+                    if (responseTimeout) responseTimeout.remove();
+                    scene.showToast(message || "광고 보상 처리 중 오류가 발생했습니다.", "#e74c3c");
+                    scene.isDailyRewardClaimPending = false;
+                  };
+                  socket.once("dailyRewardError", handleAdRewardError);
+                  
+                  scene.showToast("✅ 서버 요청 완료!", "#27ae60");
+
+                  try {
+                    showCoinBurstEffect(scene, rowX, rowY, 100);
+                  } catch (e) {
+                  }
+
+                  try {
+                    if (rowDateStr) {
+                      scene.claimedDailyDates.add(rowDateStr);
+                      try {
+                        scene.markDailyRewardClaimed(rowDateStr);
+                      } catch (e) {
+                      }
+                      
+                      const stamp = scene.add
+                        .text(rowX, rowY, "획득", {
+                          fontFamily:
+                            typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
+                          fontSize: `${width * 0.055}px`,
+                          color: "#ffffff",
+                          fontWeight: "bold",
+                          stroke: "#000000",
+                          strokeThickness: 4,
+                        })
+                        .setOrigin(0.5)
+                        .setDepth(4004)
+                        .setScale(0);
+                      stamp.setRotation(-0.3);
+                      scene.tweens.add({
+                        targets: stamp,
+                        scale: 1,
+                        duration: 450,
+                        ease: "Back.out",
+                      });
+                    }
+                  } catch (e) {
+                  }
+
+                  if (typeof scene.showToast === 'function') {
+                    scene.showToast(`🎉 광고보상 100 코인 획득!`, "#FFD700");
+                  }
+
+                  if (typeof scene.unregisterAttendanceAd === "function") {
+                    scene.unregisterAttendanceAd();
+                    scene.unregisterAttendanceAd = null;
+                  }
+                } catch (e) {
+                }
+              };
+              applyDirectReward();
               return;
             }
 
