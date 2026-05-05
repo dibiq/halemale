@@ -951,30 +951,167 @@ class LobbyScene extends Phaser.Scene {
     }
   }
 
-  rewardQuestCoins(amount, reason, questKey) {
+  // 🔴 [서버 기반 코인 관리] 코인 보상을 서버에서 처리하고 응답을 기다리는 함수
+  async emitServerCoinReward(amount, source = "unknown", options = {}) {
+    return new Promise((resolve) => {
+      if (!socket || !socket.connected) {
+        console.warn(`⚠️ [emitServerCoinReward] 소켓 미연결`);
+        resolve({ success: false, error: "소켓 미연결" });
+        return;
+      }
+
+      const timeout = setTimeout(() => {
+        console.warn(`⏱️ [emitServerCoinReward] 타임아웃 (${amount} ${source})`);
+        resolve({ success: false, error: "서버 응답 타임아웃" });
+      }, 5000); // 5초 타임아웃
+
+      // 일회용 리스너로 응답 대기
+      const listener = (response) => {
+        clearTimeout(timeout);
+        socket.off("coinRewardResponse", listener);
+        
+        if (response && response.success) {
+          console.log(`✅ [emitServerCoinReward] 성공 - ${source}: ${amount} 코인`);
+          // 서버가 주는 새로운 코인값으로 업데이트
+          if (Number.isFinite(response.newCoins)) {
+            this.setCoinsAbsolute(response.newCoins, { sync: false });
+          }
+          resolve({ success: true, newCoins: response.newCoins });
+        } else {
+          console.warn(`❌ [emitServerCoinReward] 실패 - ${source}: ${response?.error || "알 수 없는 오류"}`);
+          resolve({ success: false, error: response?.error || "알 수 없는 오류" });
+        }
+      };
+
+      socket.once("coinRewardResponse", listener);
+
+      // 서버에 요청 전송
+      socket.emit("addCoinReward", {
+        amount: Number(amount) || 0,
+        source: String(source),
+        timestamp: new Date().toISOString(),
+        ...options,
+      });
+    });
+  }
+
+  // 🔴 [서버 기반 코인 관리] 출석 보상을 서버에서 처리하고 응답을 기다리는 함수
+  async emitServerDailyReward(amount = 100, options = {}) {
+    return new Promise((resolve) => {
+      if (!socket || !socket.connected) {
+        console.warn(`⚠️ [emitServerDailyReward] 소켓 미연결`);
+        resolve({ success: false, error: "소켓 미연결" });
+        return;
+      }
+
+      const timeout = setTimeout(() => {
+        console.warn(`⏱️ [emitServerDailyReward] 타임아웃`);
+        socket.off("dailyRewardSuccess", listener);
+        socket.off("dailyRewardError", errorListener);
+        resolve({ success: false, error: "서버 응답 타임아웃" });
+      }, 5000); // 5초 타임아웃
+
+      // 성공 리스너
+      const listener = (response) => {
+        clearTimeout(timeout);
+        socket.off("dailyRewardSuccess", listener);
+        socket.off("dailyRewardError", errorListener);
+        
+        console.log(`✅ [emitServerDailyReward] 성공 - 코인: ${amount}`);
+        if (Number.isFinite(response?.newCoins)) {
+          this.setCoinsAbsolute(response.newCoins, { sync: false });
+        }
+        resolve({ success: true, newCoins: response?.newCoins || amount });
+      };
+
+      // 에러 리스너
+      const errorListener = (error) => {
+        clearTimeout(timeout);
+        socket.off("dailyRewardSuccess", listener);
+        socket.off("dailyRewardError", errorListener);
+        
+        console.warn(`❌ [emitServerDailyReward] 실패 - ${error}`);
+        resolve({ success: false, error: String(error) || "알 수 없는 오류" });
+      };
+
+      socket.once("dailyRewardSuccess", listener);
+      socket.once("dailyRewardError", errorListener);
+
+      // 서버에 요청 전송
+      socket.emit("claimAdReward", {
+        amount: Number(amount) || 100,
+        timestamp: new Date().toISOString(),
+        ...options,
+      });
+    });
+  }
+
+  // 🔴 [서버 기반 코인 관리] 현재 프로필 코인을 서버와 동기화하는 함수
+  async syncCoinsFromServer() {
+    return new Promise((resolve) => {
+      if (!socket || !socket.connected) {
+        console.warn(`⚠️ [syncCoinsFromServer] 소켓 미연결`);
+        resolve(false);
+        return;
+      }
+
+      const timeout = setTimeout(() => {
+        console.warn(`⏱️ [syncCoinsFromServer] 타임아웃`);
+        socket.off("myProfile", listener);
+        resolve(false);
+      }, 3000); // 3초 타임아웃
+
+      const listener = (profile) => {
+        clearTimeout(timeout);
+        socket.off("myProfile", listener);
+        
+        if (profile && Number.isFinite(profile.coins)) {
+          console.log(`✅ [syncCoinsFromServer] 동기화됨 - 서버 코인: ${profile.coins}`);
+          this.setCoinsAbsolute(profile.coins, { sync: false });
+          resolve(true);
+        } else {
+          console.warn(`⚠️ [syncCoinsFromServer] 프로필 정보 없음`);
+          resolve(false);
+        }
+      };
+
+      socket.once("myProfile", listener);
+      socket.emit("requestProfile", {});
+    });
+  }
+
+  async rewardQuestCoins(amount, reason, questKey) {
     if (!Number.isFinite(amount) || amount <= 0) return;
 
     const beforeCoins = Number(this.myProfile?.coins) || 0;
 
-    this.modifyCoins(Number(amount), { sync: true, reason: 'questReward', questKey });
-    
-    const afterCoins = Number(this.myProfile?.coins) || 0;
-    
-    if (!this.isSingle) {
-      this.showToast(`퀘스트 보상 ${amount}💰 (${reason})`, "#22c55e");
-    }
-    
-    // Explicitly sync quest reward to server with full coins amount
+    // 🔴 [수정] 퀘스트 보상은 서버에서 처리
     try {
-      if (typeof this.emitInventory === "function") {
-        this.emitInventory("questReward", { 
-          amount: Number(amount),
-          questKey,
-          reason,
-          requireServerProfile: false 
-        });
+      const result = await this.emitServerCoinReward(
+        Number(amount),
+        `quest_reward_${questKey}`,
+        { reason, questKey }
+      );
+
+      if (result.success) {
+        // ✅ 성공: 서버가 주는 새로운 코인값으로 이미 업데이트됨 (emitServerCoinReward 내부)
+        if (!this.isSingle) {
+          this.showToast(`퀘스트 보상 ${amount}💰 (${reason})`, "#22c55e");
+        }
+      } else {
+        // ❌ 실패
+        if (!this.isSingle) {
+          this.showToast(
+            `퀘스트 보상 저장 실패: ${result.error}`,
+            "#e74c3c"
+          );
+        }
       }
-    } catch (e) {
+    } catch (err) {
+      console.error(`❌ [rewardQuestCoins] 오류:`, err);
+      if (!this.isSingle) {
+        this.showToast(`퀘스트 보상 처리 중 오류 발생`, "#e74c3c");
+      }
     }
   }
 
@@ -1205,60 +1342,75 @@ class LobbyScene extends Phaser.Scene {
                     eventType === "dismissed" ||
                     eventType === "success"
                   ) {
-                    // 🔴 5️⃣ 광고 종료 → 보상 처리
+                    // 🔴 5️⃣ 광고 종료 → 서버에서 보상 처리
                     scene.isAdRewardShowing = false;
-                    scene.time.delayedCall(300, () => {
-
-                      // 💰 코인 100개 로컬 업데이트
-                      if (scene.myProfile) {
-                        const currentCoins =
-                          Number(scene.myProfile.coins) || 0;
-                        const newCoins = currentCoins + REWARD_AMOUNT;
-                        scene.myProfile.coins = newCoins;
-
-                        // 🎨 UI 즉시 업데이트
-                        if (
-                          typeof scene.updateMyProfileUI === "function"
-                        ) {
-                          scene.updateMyProfileUI(scene.myProfile);
+                    scene.time.delayedCall(300, async () => {
+                      try {
+                        // 🟡 [임시] 로컬 UI에 먼저 코인 표시 (낙관적 업데이트)
+                        const originalCoins = Number(scene.myProfile?.coins) || 0;
+                        const predictedCoins = originalCoins + REWARD_AMOUNT;
+                        
+                        if (scene.myProfile) {
+                          scene.myProfile.coins = predictedCoins;
+                          if (typeof scene.updateMyProfileUI === "function") {
+                            scene.updateMyProfileUI(scene.myProfile);
+                          }
                         }
 
-                        // 🎆 코인 폭발 이펙트
+                        // 🎆 코인 폭발 이펙트 (즉시 표시)
                         try {
                           const centerX = scene.sys.canvas.width / 2;
                           const centerY = scene.sys.canvas.height / 2;
-                          showCoinBurstEffect(
-                            scene,
-                            centerX,
-                            centerY,
-                            REWARD_AMOUNT,
+                          showCoinBurstEffect(scene, centerX, centerY, REWARD_AMOUNT);
+                        } catch (e) {}
+
+                        // 🟢 [중요] 서버에 보상 요청 및 응답 대기
+                        const result = await scene.emitServerCoinReward(
+                          REWARD_AMOUNT,
+                          "ad_reward"
+                        );
+
+                        if (result.success) {
+                          // ✅ 성공: 서버가 주는 새로운 코인값으로 이미 업데이트됨 (emitServerCoinReward 내부)
+                          // 🕐 쿨타임 저장 (성공 시에만)
+                          localStorage.setItem(LAST_CLAIM_KEY, Date.now());
+
+                          // 배지 업데이트 (쿨타임이 시작되었으므로 배지 숨김)
+                          if (typeof scene.updateAdRewardBadgeState === "function") {
+                            scene.updateAdRewardBadgeState();
+                          }
+
+                          // ✅ 완료 메시지
+                          scene.showToast(
+                            `광고 시청 감사합니다! 💰 ${REWARD_AMOUNT}개 코인 획득!`,
+                            "#2ecc71"
                           );
-                        } catch (e) {
+                        } else {
+                          // ❌ 실패: 로컬 코인 롤백
+                          scene.myProfile.coins = originalCoins;
+                          if (typeof scene.updateMyProfileUI === "function") {
+                            scene.updateMyProfileUI(scene.myProfile);
+                          }
+
+                          scene.showToast(
+                            `보상 저장 실패: ${result.error}`,
+                            "#e74c3c"
+                          );
                         }
+                      } catch (err) {
+                        // 예외 발생: 로컬 코인 롤백
+                        const originalCoins = Number(scene.myProfile?.coins) || 0 - REWARD_AMOUNT;
+                        scene.myProfile.coins = Math.max(0, originalCoins);
+                        if (typeof scene.updateMyProfileUI === "function") {
+                          scene.updateMyProfileUI(scene.myProfile);
+                        }
+
+                        console.error(`❌ [playAdForCoinReward] 오류:`, err);
+                        scene.showToast(
+                          `광고 보상 처리 중 오류 발생`,
+                          "#e74c3c"
+                        );
                       }
-
-                      // 🕐 쿨타임 저장
-                      localStorage.setItem(LAST_CLAIM_KEY, Date.now());
-
-                      // � 배지 업데이트 (쿨타임이 시작되었으므로 배지 숨김)
-                      if (typeof scene.updateAdRewardBadgeState === "function") {
-                        scene.updateAdRewardBadgeState();
-                      }
-
-                      // �📡 서버에 보상 저장
-                      if (typeof socket !== "undefined") {
-                        socket.emit("addCoins", {
-                          amount: REWARD_AMOUNT,
-                          source: "ad_reward",
-                        });
-                      }
-
-                      // ✅ 완료 메시지
-                      scene.showToast(
-                        `광고 시청 감사합니다! 💰 ${REWARD_AMOUNT}개 코인 획득!`,
-                        "#2ecc71",
-                      );
-
                     });
                   }
                 },
@@ -11632,52 +11784,52 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             // 🔴 [수정] 광고가 없어도 브라우저에서는 팝업이 열리도록 (비실제 광고 재생)
             if (!adGroupId) {
               // 브라우저 환경에서는 광고 건너뛰고 보상 직접 지급
-              const applyDirectReward = () => {
+              const applyDirectReward = async () => {
                 try {
-                  scene.showToast("💳 서버 요청 시작...", "#9b59b6");
+                  scene.showToast("💳 서버에 보상 요청 중...", "#9b59b6");
                   
-                  if (typeof socket === "undefined") {
-                    scene.showToast("❌ Socket 없음", "#e74c3c");
-                    return;
-                  }
-
-                  socket.emit("claimAdReward");
-                  
-                  if (scene && scene.myProfile) {
-                    const currentCoins = Number(scene.myProfile.coins) || 0;
-                    const newCoins = currentCoins + 100;
-                    scene.myProfile.coins = newCoins;
-                    
-                    if (typeof scene.updateMyProfileUI === "function") {
-                      scene.updateMyProfileUI(scene.myProfile);
-                    }
-                  }
-                  
-                  const responseTimeout = scene.time.delayedCall(3000, () => {
-                    scene.isDailyRewardClaimPending = false;
+                  // 🔴 [수정] 출석 보상은 서버 응답을 기다린 후 적용
+                  const result = await scene.emitServerDailyReward(100, {
+                    rewardType: "daily_check_in"
                   });
-                  
-                  const handleAdRewardError = (message) => {
-                    if (responseTimeout) responseTimeout.remove();
-                    scene.showToast(message || "광고 보상 처리 중 오류가 발생했습니다.", "#e74c3c");
-                    scene.isDailyRewardClaimPending = false;
-                  };
-                  socket.once("dailyRewardError", handleAdRewardError);
-                  
-                  scene.showToast("✅ 서버 요청 완료!", "#27ae60");
 
+                  if (result.success) {
+                    // ✅ 성공: 서버가 주는 새로운 코인값으로 이미 업데이트됨
+                    try {
+                      showCoinBurstEffect(scene, rowX, rowY, 100);
+                    } catch (e) {}
+
+                    scene.showToast("✅ 출석 보상 획득!", "#27ae60");
+                  } else {
+                    // ❌ 실패
+                    scene.showToast(
+                      `보상 저장 실패: ${result.error}`,
+                      "#e74c3c"
+                    );
+                  }
+
+                  scene.isDailyRewardClaimPending = false;
+                } catch (err) {
+                  console.error(`❌ [출석 보상] 오류:`, err);
+                  scene.showToast(
+                    `출석 보상 처리 중 오류 발생`,
+                    "#e74c3c"
+                  );
+                  scene.isDailyRewardClaimPending = false;
+                }
+              };
+
+              // 출석 보상 적용
+              applyDirectReward();
+
+              // 다른 이벤트 처리들
+              try {
+                if (rowDateStr) {
+                  scene.claimedDailyDates.add(rowDateStr);
                   try {
-                    showCoinBurstEffect(scene, rowX, rowY, 100);
+                    scene.markDailyRewardClaimed(rowDateStr);
                   } catch (e) {
                   }
-
-                  try {
-                    if (rowDateStr) {
-                      scene.claimedDailyDates.add(rowDateStr);
-                      try {
-                        scene.markDailyRewardClaimed(rowDateStr);
-                      } catch (e) {
-                      }
                       
                       const stamp = scene.add
                         .text(rowX, rowY, "획득", {
@@ -11719,9 +11871,9 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             }
 
             // � 출석 광고 보상 지급
-            const applyDailyAdReward = () => {
+            const applyDailyAdReward = async () => {
               try {
-                scene.showToast("🎁 보상 처리 시작...", "#3498db");
+                scene.showToast("보상 처리 시작...", "#3498db");
                 
                 if (!scene) {
                   return;
@@ -11729,43 +11881,20 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
                 // 광고 보상을 서버에 요청
                 // 일반 코인 보상과 동일한 방식으로 처리
-                scene.showToast("💳 서버 요청 시작...", "#9b59b6");
-                
-                if (typeof socket === "undefined") {
-                  scene.showToast("❌ Socket 없음", "#e74c3c");
+                scene.showToast("서버에 보상 요청 중...", "#9b59b6");
+
+                // 🔴 [수정] 출석 보상은 서버 응답을 기다린 후 적용
+                const result = await scene.emitServerDailyReward(100, {
+                  rewardType: "daily_ad_reward"
+                });
+
+                if (!result.success) {
+                  scene.showToast(`보상 저장 실패: ${result.error}`, "#e74c3c");
+                  scene.isDailyRewardClaimPending = false;
                   return;
                 }
-
-                // 일반 코인 보상과 동일하게 socket.emit을 사용 (광고용 별도 이벤트)
-                socket.emit("claimAdReward");
                 
-                // 🔴 [중요] 로컬에서 즉시 코인 업데이트 (서버 응답 대기 없이)
-                // 결과 화면과 동일한 방식 - 사용자 경험 개선
-                if (scene && scene.myProfile) {
-                  const currentCoins = Number(scene.myProfile.coins) || 0;
-                  const newCoins = currentCoins + 100;
-                  scene.myProfile.coins = newCoins;
-                  
-                  // 메인 화면 코인 텍스트 즉시 업데이트
-                  if (typeof scene.updateMyProfileUI === "function") {
-                    scene.updateMyProfileUI(scene.myProfile);
-                  }
-                }
-                
-                // 타임아웃: 3초 내에 응답 없으면 상태 초기화
-                const responseTimeout = scene.time.delayedCall(3000, () => {
-                  scene.isDailyRewardClaimPending = false;
-                });
-                
-                // 서버 에러 응답 처리
-                const handleAdRewardError = (message) => {
-                  if (responseTimeout) responseTimeout.remove();
-                  scene.showToast(message || "광고 보상 처리 중 오류가 발생했습니다.", "#e74c3c");
-                  scene.isDailyRewardClaimPending = false;
-                };
-                socket.once("dailyRewardError", handleAdRewardError);
-                
-                scene.showToast("✅ 서버 요청 완료!", "#27ae60");
+                // ✅ 성공: 서버가 주는 새로운 코인값으로 이미 업데이트됨
 
                 // 1. 코인 폭발 이펙트 표시 (일반 보상과 동일)
                 try {
@@ -11893,9 +12022,9 @@ if (this.isGameEnded || this.isResultOverlayActive) {
                   
                   if (eventType === "closed" || eventType === "completed" || eventType === "dismissed" || eventType === "success") {
                     scene.registry.set("gameAdShowing", false);
-                    scene.showToast("📺 광고 종료됨! 보상 처리 중...", "#38bdf8");
-                    scene.time.delayedCall(500, () => {
-                      applyDailyAdReward();
+                    scene.showToast("광고 종료됨! 보상 처리 중...", "#38bdf8");
+                    scene.time.delayedCall(500, async () => {
+                      await applyDailyAdReward();
                       
                       // 광고 종료 후 gameAd 상태 초기화 (다음 클릭 시 다시 로드 가능하게)
                       scene.registry.set("gameAdLoaded", false);
@@ -11968,8 +12097,8 @@ if (this.isGameEnded || this.isResultOverlayActive) {
                             const eventType = String(evt.type).toLowerCase();
                             if (eventType === "closed" || eventType === "completed" || eventType === "dismissed" || eventType === "success") {
                               scene.registry.set("gameAdShowing", false);
-                              scene.time.delayedCall(500, () => {
-                                applyDailyAdReward();
+                              scene.time.delayedCall(500, async () => {
+                                await applyDailyAdReward();
                                 scene.registry.set("gameAdLoaded", false);
                               });
                             }
@@ -25324,8 +25453,8 @@ class GameScene extends Phaser.Scene {
             event.type === "completed" ||
             event.type === "dismissed"
           ) {
-            this.time.delayedCall(500, () => {
-              applyAdReward();
+            this.time.delayedCall(500, async () => {
+              await applyAdReward();
             });
           }
         },
@@ -25337,7 +25466,7 @@ class GameScene extends Phaser.Scene {
         },
       });
 
-      const applyAdReward = () => {
+      const applyAdReward = async () => {
         adRewardWatched = true;
 
         // 기존 코인 가져오기
@@ -25355,35 +25484,42 @@ class GameScene extends Phaser.Scene {
 
         // 광고 보상: 순위 보상의 5배
         const adReward = Math.floor(totalRankReward * 5);
-        const newCoins = currentCoins + adReward;
+        const predictedCoins = currentCoins + adReward;
 
-        setResultAdDebug(`광고 보상 적용: ${adReward} 코인 (총 ${newCoins})`);
+        setResultAdDebug(`광고 보상 적용: ${adReward} 코인 (총 ${predictedCoins})`);
 
-        // 코인 업데이트
-        this.myProfile.coins = newCoins;
+        // 🟡 [임시] 로컬 UI에 먼저 코인 표시 (낙관적 업데이트)
+        this.myProfile.coins = predictedCoins;
         this.updateMyProfileUI(this.myProfile);
 
         // 광고보상 토스트
         if (typeof this.showToast === "function") {
-          this.showToast(`🎉 광고보상 ${adReward} 코인 획득!`, "#FFD700");
+          this.showToast(`광고보상 ${adReward} 코인 획득!`, "#FFD700");
         }
 
         // 광고보상 버튼 상태 업데이트
         updateResultAdButtonState();
 
-        // 로컬 스토리지 동기화
-        try {
-          localStorage.setItem("profileCoins", String(newCoins));
-          if (typeof this.emitInventory === "function") {
-            this.emitInventory("adReward", { 
-              adReward,
-              newCoins,
-              totalRankReward,
-            });
-          }
-        } catch (e) {
-        }
+        // 🔴 [수정] 서버에 보상 요청 및 응답 대기
+        const result = await this.emitServerCoinReward(
+          adReward,
+          "game_ad_reward",
+          { roundData: this.roundData }
+        );
 
+        if (!result.success) {
+          // ❌ 실패: 로컬 코인 롤백
+          this.myProfile.coins = currentCoins;
+          this.updateMyProfileUI(this.myProfile);
+          
+          if (typeof this.showToast === "function") {
+            this.showToast(`보상 저장 실패: ${result.error}`, "#e74c3c");
+          }
+        } else {
+          // ✅ 성공: 서버가 주는 새로운 코인값으로 이미 업데이트됨 (emitServerCoinReward 내부)
+          setResultAdDebug(`서버 보상 저장 완료: ${adReward} 코인`);
+        }
+        
         // 🎬 광고 시청 후 자동 재로드
         this.isGameAdLoaded = false;
         this.isGameAdLoading = false;
