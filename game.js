@@ -21002,8 +21002,9 @@ class GameScene extends Phaser.Scene {
       }
 
       if (row.claimLabel) {
-        const rewardText = state.quest.rewardCoins
-          ? `💰${state.quest.rewardCoins}`
+        const difficultyReward = getQuestRewardByDifficulty(this.roundData?.aiDifficulty);
+        const rewardText = difficultyReward
+          ? `💰${difficultyReward}`
           : "받기";
         row.claimLabel.setText(rewardText);
         row.claimLabel.setAlpha(ready ? 1 : 0.65);
