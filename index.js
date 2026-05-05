@@ -42,17 +42,17 @@ const PLAYER_ANIMATION_SPEED = 18; // 모든 플레이어 캐릭터의 재생 �
 // ✅ 【캐릭터 가격】game.js의 캐릭터 정보와 동기화
 const CHARACTER_PRICES = {
   player_1: 0, // 기본 케릭터 (무료)
-  player_2: 3000, // 명품 곰돌이
-  player_3: 3000, // 댄서 곰돌이
-  player_4: 3000, // 관리 곰돌이
-  player_5: 5000, // 또르 곰돌이
-  player_6: 5000, // 번개 곰돌이
-  player_7: 7000, // 데드 곰돌이
-  player_8: 10000, // 또르 곰돌이
-  player_9: 10000, // 쪼로 곰돌이
-  player_10: 10000, // 검사 곰돌이
-  player_11: 15000, // 타노 곰돌이
-  player_12: 20000, // 슈퍼 곰돌이
+  player_2: 5000, // 명품 곰돌이
+  player_3: 5000, // 댄서 곰돌이
+  player_4: 5000, // 관리 곰돌이
+  player_5: 8000, // 또르 곰돌이
+  player_6: 8000, // 번개 곰돌이
+  player_7: 10000, // 데드 곰돌이
+  player_8: 12000, // 또르 곰돌이
+  player_9: 12000, // 쪼로 곰돌이
+  player_10: 20000, // 검사 곰돌이
+  player_11: 50000, // 타노 곰돌이
+  player_12: 100000, // 슈퍼 곰돌이
   premium_bear: 0, // 튜토리얼 보상 (무료)
 };
 

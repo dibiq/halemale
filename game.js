@@ -11258,7 +11258,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         .text(startX + btnWidth / 2, mainBtnY, "시작하기", {
           fontFamily: GAME_FONTS.main,
           color: "#fff",
-          fontSize: `${width * 0.03}px`,
+          fontSize: `${width * 0.04}px`,
           fontWeight: "bold",
         })
         .setDepth(20)
@@ -11399,7 +11399,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       .text(startX + btnWidth + btnGap + btnWidth / 2, mainBtnY, "상점", {
         fontFamily: GAME_FONTS.main,
         color: "#fff",
-        fontSize: `${width * 0.03}px`,
+        fontSize: `${width * 0.04}px`,
         fontWeight: "bold",
       })
       .setDepth(20)
@@ -11431,7 +11431,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       .text(startX + (btnWidth + btnGap) * 2 + btnWidth / 2, mainBtnY, "초대", {
         fontFamily: GAME_FONTS.main,
         color: "#fff",
-        fontSize: `${width * 0.03}px`,
+        fontSize: `${width * 0.04}px`,
         fontWeight: "bold",
       })
       .setDepth(20)
@@ -11466,7 +11466,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         {
           fontFamily: GAME_FONTS.main,
           color: "#fff",
-          fontSize: `${width * 0.03}px`,
+          fontSize: `${width * 0.04}px`,
           fontWeight: "bold",
         },
       )
@@ -25387,22 +25387,9 @@ class GameScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setVisible(this.isSingle); // 🔴 [수정] 싱글플레이에서만 보이기
 
-    const resultAdDebugText = this.add
-      .text(width / 2, height * 0.97, "[광고 디버그] 준비중...", {
-        fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.03}px`,
-        color: "#ffd700",
-        align: "center",
-        wordWrap: { width: width * 0.85 },
-      })
-      .setOrigin(0.5);
-
-    container.add(resultAdDebugText);
 
     const setResultAdDebug = (message) => {
-      if (resultAdDebugText) {
-        resultAdDebugText.setText(`[광고 디버그] ${message}`);
-      }
+
     };
 
     const confirmBtn = this.add
