@@ -4185,8 +4185,21 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
     debugAddCoinBtn.on("pointerdown", () => {
       this.myProfile.coins += 1000;
-      this.setCoinsAbsolute(this.myProfile.coins, { sync: true });
       this.updateMyProfileUI();
+      
+      // 🔴 [중요] 서버에 코인 추가 반영
+      if (!this.isSingle && socket && socket.connected) {
+        const nickname = this.myProfile.nickname || localStorage.getItem("nickname") || "디버그";
+        socket.emit("addCoins", {
+          amount: 1000,
+          nickname,
+          playerId: socket.id,
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        // 싱글플레이: 로컬 저장소에만 반영
+        this.setCoinsAbsolute(this.myProfile.coins, { sync: true });
+      }
     });
 
     debugAddCoinBtn.on("pointerover", () => {
@@ -8336,11 +8349,11 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           } catch (e) {
           }
 
-          if (!specialCardsOwned[card.id]) {
-            specialCardsOwned[card.id] = 0;
+          // 🔴 [중요] Optimistic update를 this.myProfile.specialCards에 직접 반영
+          if (!this.myProfile.specialCards[card.id]) {
+            this.myProfile.specialCards[card.id] = 0;
           }
-          specialCardsOwned[card.id] += 1;
-          // ✅ localStorage 제거 - 서버 데이터만 사용
+          this.myProfile.specialCards[card.id] += 1;
 
           // UI updated by modifyCoins
 
@@ -8373,35 +8386,55 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           
           // 🔴 [중요] 멀티플레이: 서버 응답 대기 후 UI 업데이트
           if (!this.isSingle && socket.connected) {
-            // 서버 응답을 기다렸다가 렌더링
-            const updateUIOnProfileReceived = (profile) => {
+            // 🔴 [중요] 이전 우/에스응답 대기 핸들러 정리
+            if (this.shopPurchaseResponseTimer) {
+              this.time.removeEvent(this.shopPurchaseResponseTimer);
+              this.shopPurchaseResponseTimer = null;
+            }
+            
+            // 🔴 [중요] 서버 응답이 올 때마다 처리 (socket.once가 아닌 임시 핸들러)
+            const handleSpecialCardResponse = (profile) => {
+              // 서버 응답으로 specialCards 값 확인
+              if (profile && profile.specialCards) {
+                // 🔴 [중요] 값 검증: 서버 값이 클라이언트 값보다 작으면, 클라이언트 값 유지
+                const serverCount = Number(profile.specialCards[card.id]) || 0;
+                const clientCount = Number(this.myProfile.specialCards[card.id]) || 0;
+                if (serverCount < clientCount) {
+                  // 서버가 아직 처리 중이므로, 클라이언트 값 유지
+                  profile.specialCards[card.id] = clientCount;
+                } else {
+                  // 서버가 처리 완료, 서버 값 반영
+                  this.myProfile.specialCards[card.id] = serverCount;
+                }
+              }
+              
               renderShopContent();
               this.shopPurchaseInProgress = false;
-              // 🔴 [중요] 버튼 활성화 - 구매 완료
               buyBtn.setInteractive(true);
               buyBtn.setAlpha(1);
               if (buyBtnText) buyBtnText.setAlpha(1);
-              socket.off("myProfile", updateUIOnProfileReceived);
+              
+              // 임시 핸들러 제거
+              socket.off("myProfile", handleSpecialCardResponse);
             };
             
-            // myProfile 신호를 받을 때 한 번만 실행
-            socket.once("myProfile", updateUIOnProfileReceived);
+            // 한 번의 myProfile 응답만 처리
+            socket.once("myProfile", handleSpecialCardResponse);
             
-            // 혹시 서버 응답이 없을 경우를 대비해 timeout 설정 (1초)
-            this.time.delayedCall(1000, () => {
-              socket.off("myProfile", updateUIOnProfileReceived);
+            // 혹시 서버 응답이 없을 경우를 대비해 timeout 설정 (1.5초)
+            this.shopPurchaseResponseTimer = this.time.delayedCall(1500, () => {
+              socket.off("myProfile", handleSpecialCardResponse);
               renderShopContent();
               this.shopPurchaseInProgress = false;
-              // 🔴 [중요] 버튼 활성화 - 타임아웃 후
               buyBtn.setInteractive(true);
               buyBtn.setAlpha(1);
               if (buyBtnText) buyBtnText.setAlpha(1);
+              this.shopPurchaseResponseTimer = null;
             });
           } else {
             // 싱글플레이: 즉시 렌더링
             renderShopContent();
             this.shopPurchaseInProgress = false;
-            // 🔴 [중요] 버튼 활성화 - 구매 완료
             buyBtn.setInteractive(true);
             buyBtn.setAlpha(1);
             if (buyBtnText) buyBtnText.setAlpha(1);
@@ -8503,24 +8536,39 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           this.equipCharacter(character.key);
           
           // 🔴 [중요] 서버 응답 대기 후 플래그 해제 + 버튼 활성화
-          const updateUIOnProfileReceived = (profile) => {
+          if (this.shopPurchaseResponseTimer) {
+            this.time.removeEvent(this.shopPurchaseResponseTimer);
+            this.shopPurchaseResponseTimer = null;
+          }
+          
+          const handleCharacterResponse = (profile) => {
+            // 서버 응답으로 owned_characters 값 확인
+            if (profile && profile.owned_characters) {
+              // 클라이언트 값이 우선 (이미 optimistic으로 설정함)
+              if (!profile.owned_characters.includes(character.key)) {
+                profile.owned_characters = [...profile.owned_characters, character.key];
+              }
+              this.myProfile.owned_characters = profile.owned_characters;
+            }
+            
             renderShopContent();
             this.shopPurchaseInProgress = false;
-            // 🔴 [중요] 버튼 활성화 - 캐릭터 구매 완료
             buyBtn.setInteractive(true);
             buyBtn.setAlpha(1);
             if (buyBtnText) buyBtnText.setAlpha(1);
-            socket.off("myProfile", updateUIOnProfileReceived);
+            
+            socket.off("myProfile", handleCharacterResponse);
           };
-          socket.once("myProfile", updateUIOnProfileReceived);
-          this.time.delayedCall(2000, () => {
-            socket.off("myProfile", updateUIOnProfileReceived);
+          
+          socket.once("myProfile", handleCharacterResponse);
+          this.shopPurchaseResponseTimer = this.time.delayedCall(2000, () => {
+            socket.off("myProfile", handleCharacterResponse);
             this.shopPurchaseInProgress = false;
-            // 🔴 [중요] 버튼 활성화 - 타임아웃 후
             buyBtn.setInteractive(true);
             buyBtn.setAlpha(1);
             if (buyBtnText) buyBtnText.setAlpha(1);
             renderShopContent();
+            this.shopPurchaseResponseTimer = null;
           });
           return;
         } else {

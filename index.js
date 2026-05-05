@@ -2840,13 +2840,13 @@ io.on("connection", (socket) => {
   socket.on("buySpecialCard", async (data) => {
     const { cardId, cardPrice, avetime } = data || {};
 
-    // 🔴 [중요] 중복 요청 방지 (2초 내 동일 요청 감지)
+    // 🔴 [중요] 중복 요청 방지 (500ms 내 동일 요청 감지 - 진정한 중복만 필터링)
     if (!socket.lastCardPurchase) socket.lastCardPurchase = {};
     const purchaseKey = `card_${cardId}`;
     const now = Date.now();
     if (
       socket.lastCardPurchase[purchaseKey] &&
-      now - socket.lastCardPurchase[purchaseKey] < 2000
+      now - socket.lastCardPurchase[purchaseKey] < 500
     ) {
       console.warn(
         `⚠️ ${socket.nickname} 중복 구매 감지 (cardId: ${cardId}), 무시`,
@@ -2933,13 +2933,13 @@ io.on("connection", (socket) => {
   socket.on("addCoins", async (data) => {
     const { amount, nickname, playerId, timestamp, avetime } = data || {};
 
-    // 🔴 [중요] 중복 요청 방지 (orderId 또는 timestamp 기반)
+    // 🔴 [중요] 중복 요청 방지 (500ms 내 동일 요청 감지 - 진정한 중복만 필터링)
     if (!socket.lastCoinPurchase) socket.lastCoinPurchase = {};
     const now = Date.now();
     const purchaseKey = `coins_${amount}_${timestamp || now}`;
     if (
       socket.lastCoinPurchase[purchaseKey] &&
-      now - socket.lastCoinPurchase[purchaseKey] < 2000
+      now - socket.lastCoinPurchase[purchaseKey] < 500
     ) {
       console.warn(
         `⚠️ ${nickname || socket.nickname} 중복 코인 구매 감지, 무시`,
@@ -3250,7 +3250,7 @@ io.on("connection", (socket) => {
   const handleBuyCharacter = async (data) => {
     const payload = data && typeof data === "object" ? data : {};
 
-    // 🔴 [중요] 중복 요청 방지 (2초 내 동일 요청 감지)
+    // 🔴 [중요] 중복 요청 방지 (500ms 내 동일 요청 감지 - 진정한 중복만 필터링)
     if (!socket.lastCharacterPurchase) socket.lastCharacterPurchase = {};
     const now = Date.now();
     const characterKey =
@@ -3260,7 +3260,7 @@ io.on("connection", (socket) => {
     const purchaseKey = `char_${characterKey}`;
     if (
       socket.lastCharacterPurchase[purchaseKey] &&
-      now - socket.lastCharacterPurchase[purchaseKey] < 2000
+      now - socket.lastCharacterPurchase[purchaseKey] < 500
     ) {
       console.warn(
         `⚠️ ${socket.nickname} 중복 캐릭터 구매 감지 (${characterKey}), 무시`,
