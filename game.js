@@ -270,6 +270,16 @@ const QUEST_CONFIG_MAP = QUEST_CONFIGS.reduce((acc, quest) => {
   return acc;
 }, {});
 
+// ✅ 난이도별 퀘스트 보상 계산
+function getQuestRewardByDifficulty(difficulty) {
+  const difficultyRewards = {
+    easy: 10,
+    normal: 20,
+    hard: 30,
+  };
+  return difficultyRewards[difficulty?.toLowerCase()] || 20; // 기본값: NORMAL 20코인
+}
+
 function formatQuestTemplate(template, vars) {
   if (!template) return "";
   return template
@@ -9197,7 +9207,8 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             this.showToast("아직 수령할 보상이 없어요!", "#f97316");
             return;
           }
-          if (quest.rewardCoins) {
+          const difficultyReward = getQuestRewardByDifficulty(this.roundData?.aiDifficulty);
+          if (difficultyReward > 0) {
             // play sound + burst animation from button location
             try {
               this.sound.play("pop", { volume: 0.5 });
@@ -9208,14 +9219,14 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             }
 
             if (typeof this.playQuestCoinBurst === "function") {
-              this.playQuestCoinBurst(claimX, claimY, quest.rewardCoins);
+              this.playQuestCoinBurst(claimX, claimY, difficultyReward);
             }
 
             if (typeof this.rewardQuestCoins === "function") {
-              await this.rewardQuestCoins(quest.rewardCoins, runtime.title, quest.key);
+              await this.rewardQuestCoins(difficultyReward, runtime.title, quest.key);
             } else {
               // Fallback: some builds may lose method binding, so apply reward manually.
-              const amount = Number(quest.rewardCoins) || 0;
+              const amount = difficultyReward;
               if (amount > 0) {
                 if (typeof this.rewardQuestCoins === "function") {
                   // 🔴 [중요] rewardQuestCoins는 이미 async/await 기반 서버 호출
@@ -21095,7 +21106,8 @@ class GameScene extends Phaser.Scene {
 
     const { quest, entry, title } = state;
     const questKey = quest.key;
-    if (quest.rewardCoins) {
+    const difficultyReward = getQuestRewardByDifficulty(this.roundData?.aiDifficulty);
+    if (difficultyReward > 0) {
       if (typeof this.ensureQuestCoinBurst === "function") {
         this.ensureQuestCoinBurst();
       }
@@ -21115,9 +21127,9 @@ class GameScene extends Phaser.Scene {
         }
       }
       if (typeof this.playQuestCoinBurst === "function") {
-        this.playQuestCoinBurst(burstX, burstY, quest.rewardCoins);
+        this.playQuestCoinBurst(burstX, burstY, difficultyReward);
       }
-      this.rewardQuestCoins(quest.rewardCoins, title, questKey);
+      this.rewardQuestCoins(difficultyReward, title, questKey);
     } else {
       if (!this.isSingle) {
         this.showToast(`${title} 완료!`, "#22c55e");
