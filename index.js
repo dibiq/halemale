@@ -3024,7 +3024,7 @@ io.on("connection", (socket) => {
     socket.emit("coinPurchased", {
       amount,
       newCoins: socket.coins,
-      message: "코인 충전이 완료되었습니다!",
+      message: "코인 지급이 완료되었습니다!",
     });
   });
 

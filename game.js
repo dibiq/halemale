@@ -4228,7 +4228,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       this.showInviteReceivePopup(data);
     });
 
-    this.backHandler = await App.addListener("backButton", () => {
+    /*this.backHandler = await App.addListener("backButton", () => {
       if (typeof this.currentTutorialCloseHandler === "function") {
         this.currentTutorialCloseHandler();
         this.lastBackPressedAt = 0;
@@ -4266,7 +4266,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
       this.lastBackPressedAt = now;
       this.showToast("한번 더 누르면 앱이 종료됩니다", "#f1c40f");
-    });
+    });*/
 
     /* =======================================================
    멀티 플레이 버튼 (단일 버튼, 4인 기준)
