@@ -11308,18 +11308,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
               "anim.frames[1]?.textureKey": anim.frames[1]?.textureKey,
             });
           }
-        }
-        
-        // 🔴 [디버그] 다음 프레임 업데이트 후 상태 (100ms 후)
-        setTimeout(() => {
-          console.log(`🔍 [showWaiting] 100ms 후 texture 상태:`, {
-            "profileImg.texture.key": profileImg.texture.key,
-            "profileImg.anims.currentFrame?.textureKey": profileImg.anims.currentFrame?.textureKey,
-            "profileImg.visible": profileImg.visible,
-            "profileImg.active": profileImg.active,
-          });
-        }, 100);
-      }
+        }      }
 
       if (isHost && !isThisPlayerHost) {
         profileImg.setInteractive({ useHandCursor: true });
