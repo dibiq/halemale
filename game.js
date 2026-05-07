@@ -2269,7 +2269,13 @@ class LobbyScene extends Phaser.Scene {
         "baseKey": baseKey,
         "isValidPlayerKey(baseKey)": isValidPlayerKey(baseKey),
         "target.texture.key": target.texture.key,
+        "target.getData('___debug_char___')": target.getData?.call(target, '___debug_char___'),
       });
+      
+      // 혹시 잘못된 sprite가 전달되었나?
+      if (target.texture.key !== "player_12_frame_1" && target.getData?.call(target, '___debug_char___') === 'player_12') {
+        console.warn(`🔴 CRITICAL: player_12인데 texture가 ${target.texture.key}!`);
+      }
     }
 
     if (typeof target.getData === "function") {
@@ -11273,7 +11279,12 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         console.log(`🔍 [showWaiting] applyAvatarAnimation 호출 직전:`, {
           "profileImg.texture.key": profileImg.texture.key,
           "baseAvatarKey": baseAvatarKey,
+          "profileImg object id": profileImg.name || `sprite_at_${profileX}_${pos.y}`,
+          "profileImg.getData('___id___')": profileImg.getData?.call(profileImg, '___id___'),
         });
+        
+        // object reference 저장
+        profileImg.setData('___debug_char___', 'player_12');
       }
       
       this.applyAvatarAnimation(profileImg, baseAvatarKey);
