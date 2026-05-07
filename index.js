@@ -5258,7 +5258,8 @@ io.on("connection", (socket) => {
         ratio: Number(socket.ratio) || 0,
         avetime: socket.avetime || 0,
         avatarKey: socket.currentCharacter || socket.avatarKey || "player_1", // ✅ 착용 캐릭터 추가
-        current_character: socket.currentCharacter || socket.avatarKey || "player_1", // ✅ 착용 캐릭터 추가
+        current_character:
+          socket.currentCharacter || socket.avatarKey || "player_1", // ✅ 착용 캐릭터 추가
         specialCards: socket.specialCards || {},
         items: socket.items || [],
         myDeck: [],
@@ -5840,7 +5841,8 @@ io.on("connection", (socket) => {
       id: socket.id,
       nickname: socket.nickname,
       avatarKey: socket.avatarKey || socket.currentCharacter || "player_1",
-      current_character: socket.currentCharacter || socket.avatarKey || "player_1", // ✅ 착용 캐릭터 추가
+      current_character:
+        socket.currentCharacter || socket.avatarKey || "player_1", // ✅ 착용 캐릭터 추가
       isReady: false,
       level: socket.level,
       coins: socket.coins,
