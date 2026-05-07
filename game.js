@@ -6798,6 +6798,22 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     // 서버가 주는 데이터가 있으면 갱신, 없으면 기존값 유지 (undefined 방지)
     this.currentRoomId = data.roomId || this.currentRoomId;
     this.currentPlayers = data.players || [];
+    
+    // 🔴 [디버그] player_12 캐릭터 확인
+    if (Array.isArray(this.currentPlayers)) {
+      this.currentPlayers.forEach((p, idx) => {
+        if (p?.avatarKey === "player_12" || p?.current_character === "player_12") {
+          console.log(`🔍 [refreshLobbyUI] player_12 감지 (인덱스: ${idx}):`, {
+            id: p.id,
+            nickname: p.nickname,
+            avatarKey: p.avatarKey,
+            currentCharacter: p.currentCharacter,
+            current_character: p.current_character,
+            allKeys: Object.keys(p),
+          });
+        }
+      });
+    }
     if (typeof data.max === "number") {
       this.currentMax = data.max;
     } else if (typeof this.currentMax !== "number") {
@@ -11051,6 +11067,18 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         : isValidPlayerKey(p.current_character)
           ? p.current_character
           : `player_${i + 1}`; // ✅ avatarKey, current_character, 기본값 순으로 확인
+      
+      // 🔴 [디버그] player_12 캐릭터 확인
+      if (baseAvatarKey === "player_12" || p.avatarKey === "player_12" || p.current_character === "player_12") {
+        console.log(`🔍 [showWaiting] player_12 처리 (슬롯: ${i}, 닉네임: ${p.nickname}):`, {
+          "p.avatarKey": p.avatarKey,
+          "p.current_character": p.current_character,
+          "isValidPlayerKey(p.avatarKey)": isValidPlayerKey(p.avatarKey),
+          "isValidPlayerKey(p.current_character)": isValidPlayerKey(p.current_character),
+          "선택된_baseAvatarKey": baseAvatarKey,
+        });
+      }
+      
       const avatarTextureKey = this.textures.exists(`${baseAvatarKey}_1`)
         ? `${baseAvatarKey}_1`
         : this.getAvatarDisplayKey(baseAvatarKey) || "player_1_frame_1";
