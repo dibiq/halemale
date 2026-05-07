@@ -10870,6 +10870,15 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     const { width, height } = this.cameras.main;
     const centerX = width / 2;
 
+    // 🔴 [디버그] showWaiting 초반에 player_12 텍스처 상태 확인
+    console.log(`🔍 [showWaiting 초반] player_12 텍스처 로드 상태:`, {
+      "exists(player_12_frame_1)": this.textures.exists("player_12_frame_1"),
+      "exists(player_12_1)": this.textures.exists("player_12_1"),
+      "exists(player_12_sprite_a)": this.textures.exists("player_12_sprite_a"),
+      "allTextures_count": this.textures.list.length,
+      "player12_in_list": this.textures.list.includes("player_12_frame_1"),
+    });
+
     // 1. 메인 화면 UI 숨기기 (나중에 다시 보여줄 수 있도록 파괴하지 않음)
     if (this.mainUIContainer) {
       try {
@@ -11082,6 +11091,17 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       const avatarTextureKey = this.textures.exists(`${baseAvatarKey}_1`)
         ? `${baseAvatarKey}_1`
         : this.getAvatarDisplayKey(baseAvatarKey) || "player_1_frame_1";
+      
+      // 🔴 [디버그] 실제 사용되는 텍스처 확인
+      if (baseAvatarKey === "player_12") {
+        console.log(`🔍 [showWaiting] player_12 텍스처 선택:`, {
+          "baseAvatarKey": baseAvatarKey,
+          "this.textures.exists(${baseAvatarKey}_1)": this.textures.exists(`${baseAvatarKey}_1`),
+          "this.getAvatarDisplayKey(baseAvatarKey)": this.getAvatarDisplayKey(baseAvatarKey),
+          "최종_avatarTextureKey": avatarTextureKey,
+        });
+      }
+      
       const profileX = cardLeft + profileSize * 1.1;
 
       const profileImg = this.add
