@@ -11048,7 +11048,9 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       // 프로필 이미지 - 애니메이션 적용
       const baseAvatarKey = isValidPlayerKey(p.avatarKey)
         ? p.avatarKey
-        : `player_${i + 1}`;
+        : isValidPlayerKey(p.current_character)
+          ? p.current_character
+          : `player_${i + 1}`; // ✅ avatarKey, current_character, 기본값 순으로 확인
       const avatarTextureKey = this.textures.exists(`${baseAvatarKey}_1`)
         ? `${baseAvatarKey}_1`
         : this.getAvatarDisplayKey(baseAvatarKey) || "player_1_frame_1";
@@ -25475,7 +25477,7 @@ class GameScene extends Phaser.Scene {
         enableButton();
         adRewardBtn.setAlpha(1);
         adRewardTxt.setAlpha(1);
-        adRewardTxt.setText("🎬 광고 보고 5배 보상받기");
+        adRewardTxt.setText("광고 보고 5배 보상받기");
         return;
       }
 
