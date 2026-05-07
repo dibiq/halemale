@@ -2124,6 +2124,17 @@ class LobbyScene extends Phaser.Scene {
             frames.push({ key: textureKey });
           }
         }
+        
+        // 🔴 [디버그] player_12 animation 프레임 데이터
+        if (baseKey === "player_12") {
+          console.log(`🔍 [ensureAvatarAnimation] player_12 frame 빌드:`, {
+            "maxFrame": maxFrame,
+            "collected_frames_count": frames.length,
+            "first_5_frames": frames.slice(0, 5).map(f => f.key),
+            "animation_will_be_created": frames.length > 0,
+          });
+        }
+        
         if (frames.length > 0) {
           this.anims.create({
             key: animKey,
@@ -2131,6 +2142,19 @@ class LobbyScene extends Phaser.Scene {
             frameRate: this.getAvatarAnimFrameRate(baseKey),
             repeat: -1,
           });
+          
+          // 🔴 [디버그] animation 생성 후 확인
+          if (baseKey === "player_12") {
+            const createdAnim = this.anims.get(animKey);
+            console.log(`🔍 [ensureAvatarAnimation] player_12 animation 생성됨:`, {
+              "animKey": animKey,
+              "frames_in_anim": createdAnim.frames.length,
+              "first_frame_textureKey": createdAnim.frames[0]?.textureKey,
+              "second_frame_textureKey": createdAnim.frames[1]?.textureKey,
+              "frameRate": createdAnim.frameRate,
+            });
+          }
+          
           return animKey;
         }
 
@@ -11154,12 +11178,23 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       this.lobbyUIContainer.add(profileImg);
       this.applyAvatarAnimation(profileImg, baseAvatarKey);
       
-      // 🔴 [디버그] applyAvatarAnimation 후 텍스처 확인
+      // 🔴 [디버그] applyAvatarAnimation 후 sprite frame 확인
       if (baseAvatarKey === "player_12") {
         console.log(`🔍 [showWaiting] applyAvatarAnimation 후:`, {
           "profileImg.texture.key": profileImg.texture.key,
           "profileImg.anims.currentAnim?.key": profileImg.anims.currentAnim?.key,
+          "profileImg.anims.currentFrame?.textureKey": profileImg.anims.currentFrame?.textureKey,
+          "profileImg.anims.currentFrame?.textureFrame": profileImg.anims.currentFrame?.textureFrame,
         });
+        
+        // 다음 프레임도 미리 확인
+        const anim = this.anims.get(profileImg.anims.currentAnim?.key);
+        if (anim) {
+          console.log(`🔍 [showWaiting] animation 프레임 데이터:`, {
+            "anim.frames[0].textureKey": anim.frames[0]?.textureKey,
+            "anim.frames[1]?.textureKey": anim.frames[1]?.textureKey,
+          });
+        }
       }
 
       if (isHost && !isThisPlayerHost) {
