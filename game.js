@@ -15917,8 +15917,8 @@ class GameScene extends Phaser.Scene {
 
         // 💡 [수정] 승리 애니메이션 호출 (renderTable은 애니메이션 끝난 후 함수 내부에서 실행됨)
         // ✅ skipAnimation 여부와 상관없이 항상 playWinAnimation 호출 (한 번의 콜백으로 통합)
-        // ✅ 【캐릭터 애니메이션 조건】 획득 카드가 10장 이상일 때만 재생
-        const shouldPlayCharacterAnim = data.collectedCount >= 10;
+        // ✅ 【캐릭터 애니메이션 조건】 획득 카드가 4장 이상일 때 재생
+        const shouldPlayCharacterAnim = data.collectedCount >= 4;
         const winEventKey = `${data.winnerId}_${Date.now()}`; // 중복 호출 방지 키
         const callbackStartTime = Date.now();
         this.playWinAnimation({
@@ -15927,7 +15927,7 @@ class GameScene extends Phaser.Scene {
           prevPlayers: prevPlayers, // 바닥 카드가 남아있는 이전 상태 전달
           winnerNickname: data.winnerNickname,
           collectedCount: data.collectedCount,
-          skipAvatar: !shouldPlayCharacterAnim || skipAnimation, // 10장 미만이면 캐릭터 애니메이션 스킵
+          skipAvatar: !shouldPlayCharacterAnim || skipAnimation, // 4장 미만이면 캐릭터 애니메이션 스킵
         }, () => {
           const callbackDetailStartTime = Date.now();
           
@@ -23577,13 +23577,13 @@ class GameScene extends Phaser.Scene {
     });
 
     // 5. 애니메이션 실행 (싱글은 캐릭터 연출만 생략)
-    // ✅ 【캐릭터 애니메이션 조건】 획득 카드가 10장 이상일 때만 재생
-    const shouldPlayCharacterAnim = totalCollected >= 10;
+    // ✅ 【캐릭터 애니메이션 조건】 획득 카드가 4장 이상일 때 재생
+    const shouldPlayCharacterAnim = totalCollected >= 4;
     this.playWinAnimation({
       winnerId: winner.id,
       players: updatedPlayers,
       prevPlayers: prevPlayers,
-      skipAvatar: this.isSingle || !shouldPlayCharacterAnim, // 싱글이거나 10장 미만이면 캐릭터 애니메이션 스킵
+      skipAvatar: this.isSingle || !shouldPlayCharacterAnim, // 싱글이거나 4장 미만이면 캐릭터 애니메이션 스킵
       winnerNickname: winner.nickname || winner.name || "플레이어",
       collectedCount: totalCollected,
     }, () => {
