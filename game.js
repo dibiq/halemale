@@ -6822,15 +6822,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     
     if (Array.isArray(this.currentPlayers)) {
       this.currentPlayers.forEach((p, idx) => {
-        if (p?.avatarKey === "player_12" || p?.current_character === "player_12") {
-            id: p.id,
-            nickname: p.nickname,
-            avatarKey: p.avatarKey,
-            currentCharacter: p.currentCharacter,
-            current_character: p.current_character,
-            allKeys: Object.keys(p),
-          });
-        }
+        // player_12 처리는 여기서 필요시 추가
       });
     }
     if (typeof data.max === "number") {
