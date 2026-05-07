@@ -2369,7 +2369,25 @@ class LobbyScene extends Phaser.Scene {
         }
         
         if (avatarDisplayWidth > 0 && avatarDisplayHeight > 0) {
+          // 🔴 [디버그] setDisplaySize 직전
+          if (baseKey === "player_12") {
+            console.log(`🔍 [applyAvatarAnimation] player_12 setDisplaySize 직전:`, {
+              "target.texture.key": target.texture.key,
+              "displayWidth": avatarDisplayWidth,
+              "displayHeight": avatarDisplayHeight,
+            });
+          }
+          
           target.setDisplaySize(avatarDisplayWidth, avatarDisplayHeight);
+          
+          // 🔴 [디버그] setDisplaySize 직후
+          if (baseKey === "player_12") {
+            console.log(`🔍 [applyAvatarAnimation] player_12 setDisplaySize 직후:`, {
+              "target.texture.key": target.texture.key,
+              "target.displayWidth": target.displayWidth,
+              "target.displayHeight": target.displayHeight,
+            });
+          }
         }
       }
     } else {
@@ -11233,15 +11251,23 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       
       // 🔴 [디버그] sprite 생성 후 텍스처 확인
       if (baseAvatarKey === "player_12") {
-        console.log(`🔍 [showWaiting] sprite 생성 후:`, {
-          "avatarTextureKey": avatarTextureKey,
+        console.log(`🔍 [showWaiting] sprite 생성 직후:`, {
           "profileImg.texture.key": profileImg.texture.key,
-          "profileImg.texture 존재": !!profileImg.texture,
-          "profileImg.visible": profileImg.visible,
+          "profileImg.displayWidth": profileImg.displayWidth,
+          "profileImg.displayHeight": profileImg.displayHeight,
         });
       }
       
       this.lobbyUIContainer.add(profileImg);
+      
+      // 🔴 [디버그] container add 후
+      if (baseAvatarKey === "player_12") {
+        console.log(`🔍 [showWaiting] container.add() 직후:`, {
+          "profileImg.texture.key": profileImg.texture.key,
+          "profileImg.parent?.name": profileImg.parent?.name,
+        });
+      }
+      
       this.applyAvatarAnimation(profileImg, baseAvatarKey);
       
       // 🔴 [디버그] applyAvatarAnimation 후 sprite frame 확인
@@ -11261,6 +11287,16 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             "anim.frames[1]?.textureKey": anim.frames[1]?.textureKey,
           });
         }
+        
+        // 🔴 [디버그] 다음 프레임 업데이트 후 상태 (100ms 후)
+        setTimeout(() => {
+          console.log(`🔍 [showWaiting] 100ms 후 texture 상태:`, {
+            "profileImg.texture.key": profileImg.texture.key,
+            "profileImg.anims.currentFrame?.textureKey": profileImg.anims.currentFrame?.textureKey,
+            "profileImg.visible": profileImg.visible,
+            "profileImg.active": profileImg.active,
+          });
+        }, 100);
       }
 
       if (isHost && !isThisPlayerHost) {
