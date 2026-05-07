@@ -68,7 +68,7 @@ function getIntegratedAdGroupId() {
   return (
     window.__INTEGRATED_AD_GROUP_ID ||
     localStorage.getItem("integratedAdGroupId") ||
-    "ait-ad-test-interstitial-id"
+    "ait.v2.live.ff7f88183dfc4c3e"
   );
 }
 
@@ -1326,7 +1326,7 @@ class LobbyScene extends Phaser.Scene {
         adGroupId:
           window.__INTEGRATED_AD_GROUP_ID ||
           localStorage.getItem("integratedAdGroupId") ||
-          "ait-ad-test-interstitial-id",
+          "ait.v2.live.ff7f88183dfc4c3e",
       },
       onEvent: (event) => {
 
@@ -1342,13 +1342,20 @@ class LobbyScene extends Phaser.Scene {
               !scene.isAdRewardShowing
             ) {
               scene.isAdRewardShowing = true;
+              
+              // 🔇 광고 시작 - BGM 일시정지
+              const bgm = scene.sound.get("bgm");
+              const wasPlayingBgm = bgm && bgm.isPlaying;
+              if (bgm && bgm.isPlaying) {
+                bgm.pause();
+              }
 
               scene.unregisterShowAdReward = showFullScreenAd({
                 options: {
                   adGroupId:
                     window.__INTEGRATED_AD_GROUP_ID ||
                     localStorage.getItem("integratedAdGroupId") ||
-                    "ait-ad-test-interstitial-id",
+                    "ait.v2.live.ff7f88183dfc4c3e",
                 },
                 onEvent: (evt) => {
                   const eventType = String(evt.type).toLowerCase();
@@ -1359,6 +1366,12 @@ class LobbyScene extends Phaser.Scene {
                     eventType === "dismissed" ||
                     eventType === "success"
                   ) {
+                    // 🔇 광고 종료 - BGM 다시 재생
+                    const bgmToResume = scene.sound.get("bgm");
+                    if (bgmToResume && wasPlayingBgm && bgmToResume.isPaused) {
+                      bgmToResume.resume();
+                    }
+                    
                     // 🔴 5️⃣ 광고 종료 → 서버에서 보상 처리
                     scene.isAdRewardShowing = false;
                     scene.time.delayedCall(300, async () => {
@@ -1928,6 +1941,13 @@ class LobbyScene extends Phaser.Scene {
 
     this.isLobbyIntegratedAdLoaded = false;
     this.updateLobbyAdButtonState();
+    
+    // 🔇 광고 시작 - BGM 일시정지
+    const bgm = this.sound.get("bgm");
+    const wasPlayingBgm = bgm && bgm.isPlaying;
+    if (bgm && bgm.isPlaying) {
+      bgm.pause();
+    }
 
     showFullScreenAd({
       options: { adGroupId },
@@ -1935,6 +1955,11 @@ class LobbyScene extends Phaser.Scene {
         switch (event.type) {
           case "dismissed":
           case "failedToShow":
+            // 🔇 광고 종료 - BGM 다시 재생
+            const bgmToResume = this.sound.get("bgm");
+            if (bgmToResume && wasPlayingBgm && bgmToResume.isPaused) {
+              bgmToResume.resume();
+            }
             this.prepareLobbyIntegratedAd();
             break;
           default:
@@ -1942,6 +1967,11 @@ class LobbyScene extends Phaser.Scene {
         }
       },
       onError: (error) => {
+        // 🔇 광고 오류 - BGM 다시 재생
+        const bgmToResume = this.sound.get("bgm");
+        if (bgmToResume && wasPlayingBgm && bgmToResume.isPaused) {
+          bgmToResume.resume();
+        }
         this.showLobbyAdDiagnosticToast(
           `광고 표시 실패: ${this.parseIntegratedAdErrorMessage(error)}`,
           "#e74c3c",
@@ -11644,7 +11674,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       const adGroupId = (
         window.__INTEGRATED_AD_GROUP_ID ||
         localStorage.getItem("integratedAdGroupId") ||
-        "ait-ad-test-interstitial-id"
+        "ait.v2.live.ff7f88183dfc4c3e"
       );
       
       if (typeof loadFullScreenAd === "function") {
@@ -11887,7 +11917,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
               return (
                 window.__INTEGRATED_AD_GROUP_ID ||
                 localStorage.getItem("integratedAdGroupId") ||
-                "ait-ad-test-interstitial-id"
+                "ait.v2.live.ff7f88183dfc4c3e"
               );
             };
 
@@ -12189,7 +12219,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             const adGroupId_attendance = (
               window.__INTEGRATED_AD_GROUP_ID ||
               localStorage.getItem("integratedAdGroupId") ||
-              "ait-ad-test-interstitial-id"
+              "ait.v2.live.ff7f88183dfc4c3e"
             );
             
             scene.unregisterGameAd = loadFullScreenAd({
@@ -14267,7 +14297,7 @@ class GameScene extends Phaser.Scene {
         return (
           window.__INTEGRATED_AD_GROUP_ID ||
           localStorage.getItem("integratedAdGroupId") ||
-          "ait-ad-test-interstitial-id"
+          "ait.v2.live.ff7f88183dfc4c3e"
         );
       };
 
@@ -25482,7 +25512,7 @@ class GameScene extends Phaser.Scene {
         return (
           window.__INTEGRATED_AD_GROUP_ID ||
           localStorage.getItem("integratedAdGroupId") ||
-          "ait-ad-test-interstitial-id"
+          "ait.v2.live.ff7f88183dfc4c3e"
         );
       };
 
@@ -25611,7 +25641,7 @@ class GameScene extends Phaser.Scene {
         return (
           window.__INTEGRATED_AD_GROUP_ID ||
           localStorage.getItem("integratedAdGroupId") ||
-          "ait-ad-test-interstitial-id"
+          "ait.v2.live.ff7f88183dfc4c3e"
         );
       };
 
@@ -25722,7 +25752,7 @@ class GameScene extends Phaser.Scene {
             return (
               window.__INTEGRATED_AD_GROUP_ID ||
               localStorage.getItem("integratedAdGroupId") ||
-              "ait-ad-test-interstitial-id"
+              "ait.v2.live.ff7f88183dfc4c3e"
             );
           };
 
@@ -25785,7 +25815,7 @@ class GameScene extends Phaser.Scene {
                   return (
                     window.__INTEGRATED_AD_GROUP_ID ||
                     localStorage.getItem("integratedAdGroupId") ||
-                    "ait-ad-test-interstitial-id"
+                    "ait.v2.live.ff7f88183dfc4c3e"
                   );
                 };
 
@@ -25849,7 +25879,7 @@ class GameScene extends Phaser.Scene {
                         return (
                           window.__INTEGRATED_AD_GROUP_ID ||
                           localStorage.getItem("integratedAdGroupId") ||
-                          "ait-ad-test-interstitial-id"
+                          "ait.v2.live.ff7f88183dfc4c3e"
                         );
                       };
 
@@ -26325,7 +26355,7 @@ class GameScene extends Phaser.Scene {
           return (
             window.__INTEGRATED_AD_GROUP_ID ||
             localStorage.getItem("integratedAdGroupId") ||
-            "ait-ad-test-interstitial-id"
+            "ait.v2.live.ff7f88183dfc4c3e"
           );
         };
 
