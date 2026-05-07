@@ -10875,8 +10875,6 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       "exists(player_12_frame_1)": this.textures.exists("player_12_frame_1"),
       "exists(player_12_1)": this.textures.exists("player_12_1"),
       "exists(player_12_sprite_a)": this.textures.exists("player_12_sprite_a"),
-      "allTextures_count": this.textures.list.length,
-      "player12_in_list": this.textures.list.includes("player_12_frame_1"),
     });
 
     // 1. 메인 화면 UI 숨기기 (나중에 다시 보여줄 수 있도록 파괴하지 않음)
