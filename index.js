@@ -1550,16 +1550,23 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
     serverDebug: debugLines,
     // ✅ 【게임 배수 전달】 client에서 캐릭터 배수 계산에 필요
     gameMultiplier: room.gameMultiplier || 1,
-    
+
     // 🔴 [디버그] player_12 전송 확인
-    ...(room.players.some(p => p?.current_character === "player_12" || p?.avatarKey === "player_12") && {
+    ...(room.players.some(
+      (p) =>
+        p?.current_character === "player_12" || p?.avatarKey === "player_12",
+    ) && {
       _player12Debug: room.players
-        .filter(p => p?.current_character === "player_12" || p?.avatarKey === "player_12")
-        .map(p => ({
+        .filter(
+          (p) =>
+            p?.current_character === "player_12" ||
+            p?.avatarKey === "player_12",
+        )
+        .map((p) => ({
           nickname: p.nickname,
           avatarKey: p.avatarKey,
           current_character: p.current_character,
-        }))
+        })),
     }),
     ranking: sorted.map((p) => {
       const before = beforeStateById.get(p.id) || {
@@ -5278,18 +5285,21 @@ io.on("connection", (socket) => {
         openCardStack: [],
         isReady: false,
       };
-      
+
       // 🔴 [디버그] player_12 저장 확인
-      if (playerData.avatarKey === "player_12" || playerData.current_character === "player_12") {
+      if (
+        playerData.avatarKey === "player_12" ||
+        playerData.current_character === "player_12"
+      ) {
         console.log(`🔍 [joinRoom] player_12 저장:`, {
           nickname: playerData.nickname,
           "socket.currentCharacter": socket.currentCharacter,
           "socket.avatarKey": socket.avatarKey,
-          "저장된_avatarKey": playerData.avatarKey,
-          "저장된_current_character": playerData.current_character,
+          저장된_avatarKey: playerData.avatarKey,
+          저장된_current_character: playerData.current_character,
         });
       }
-      
+
       console.log(`✅ joinRoom - 플레이어 추가:`, {
         nickname: playerData.nickname,
         level: playerData.level,
