@@ -11268,6 +11268,14 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         });
       }
       
+      // 🔴 [디버그] applyAvatarAnimation 호출 직전
+      if (baseAvatarKey === "player_12") {
+        console.log(`🔍 [showWaiting] applyAvatarAnimation 호출 직전:`, {
+          "profileImg.texture.key": profileImg.texture.key,
+          "baseAvatarKey": baseAvatarKey,
+        });
+      }
+      
       this.applyAvatarAnimation(profileImg, baseAvatarKey);
       
       // 🔴 [디버그] applyAvatarAnimation 후 sprite frame 확인
@@ -11280,12 +11288,15 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         });
         
         // 다음 프레임도 미리 확인
-        const anim = this.anims.get(profileImg.anims.currentAnim?.key);
-        if (anim) {
-          console.log(`🔍 [showWaiting] animation 프레임 데이터:`, {
-            "anim.frames[0].textureKey": anim.frames[0]?.textureKey,
-            "anim.frames[1]?.textureKey": anim.frames[1]?.textureKey,
-          });
+        const animKey = profileImg.anims.currentAnim?.key;
+        if (animKey) {
+          const anim = this.anims.get(animKey);
+          if (anim) {
+            console.log(`🔍 [showWaiting] animation 프레임 데이터:`, {
+              "anim.frames[0].textureKey": anim.frames[0]?.textureKey,
+              "anim.frames[1]?.textureKey": anim.frames[1]?.textureKey,
+            });
+          }
         }
         
         // 🔴 [디버그] 다음 프레임 업데이트 후 상태 (100ms 후)
