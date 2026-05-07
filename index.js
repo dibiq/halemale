@@ -6119,6 +6119,20 @@ io.on("connection", (socket) => {
       room.aiTimers = { turn: null, bells: {} };
     }
 
+    // ✅ [게임 시작 직전] 모든 플레이어의 최신 character 정보를 room.players에 동기화
+    // 플레이어가 대기실에서 캐릭터를 변경했을 수 있으므로, 소켓에서 최신값을 가져와 업데이트
+    room.players.forEach((p) => {
+      if (!p.isBot) {
+        const liveSocket = io.sockets.sockets.get(p.id);
+        if (liveSocket) {
+          const latestCharacter = liveSocket.currentCharacter || liveSocket.avatarKey || "player_1";
+          p.avatarKey = latestCharacter;
+          p.current_character = latestCharacter;
+          console.log(`✅ [게임시작] 플레이어 character 동기화: ${p.nickname} = ${latestCharacter}`);
+        }
+      }
+    });
+
     room.isGameStarted = true;
     room.gameMultiplier = 1; // 🔴 [중요] 매 게임마다 배수 초기화 (클라이언트에서 배수 애니메이션으로 결정됨)
     // Do not reset bell accuracy totals here; we want them to persist across matches.
