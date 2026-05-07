@@ -2033,6 +2033,16 @@ class LobbyScene extends Phaser.Scene {
       scene = this;
     }
     const animKey = scene.getAvatarAnimKey(baseKey);
+    
+    // 🔴 [디버그] player_12 ensureAvatarAnimation 시작
+    if (baseKey === "player_12") {
+      const existingAnim = scene.anims.get(animKey);
+      console.log(`🔍 [ensureAvatarAnimation] player_12 시작:`, {
+        "animKey": animKey,
+        "existingAnim exists": !!existingAnim,
+        "existingAnim.frames.length": existingAnim?.frames?.length,
+      });
+    }
 
     // If animation already exists but frame set may have grown (deferred loading),
     // late-rebuild for updated sprite data.
@@ -2079,7 +2089,27 @@ class LobbyScene extends Phaser.Scene {
       }
 
       const hasNewFrames = candidateKeys.some((k) => !existingFrameKeys.has(k));
+      
+      // 🔴 [디버그] player_12 late-rebuild 로직
+      if (baseKey === "player_12") {
+        console.log(`🔍 [ensureAvatarAnimation] player_12 late-rebuild 체크:`, {
+          "existingFrameKeys.size": existingFrameKeys.size,
+          "candidateKeys.length": candidateKeys.length,
+          "hasNewFrames": hasNewFrames,
+          "will_update_animation": hasNewFrames,
+        });
+      }
+      
       if (!hasNewFrames) {
+        // 🔴 [디버그] 캐시 반환
+        if (baseKey === "player_12") {
+          const cachedAnim = scene.anims.get(animKey);
+          console.log(`🔍 [ensureAvatarAnimation] player_12 캐시 반환:`, {
+            "animKey": animKey,
+            "cachedAnim.frames[0]?.textureKey": cachedAnim?.frames[0]?.textureKey,
+            "cachedAnim.frames.length": cachedAnim?.frames?.length,
+          });
+        }
         return animKey;
       }
 
@@ -2127,11 +2157,11 @@ class LobbyScene extends Phaser.Scene {
         
         // 🔴 [디버그] player_12 animation 프레임 데이터
         if (baseKey === "player_12") {
-          console.log(`🔍 [ensureAvatarAnimation] player_12 frame 빌드:`, {
+          console.log(`🔍 [ensureAvatarAnimation] player_12 1차 frame 빌드:`, {
             "maxFrame": maxFrame,
             "collected_frames_count": frames.length,
-            "first_5_frames": frames.slice(0, 5).map(f => f.key),
-            "animation_will_be_created": frames.length > 0,
+            "first_3_frames": frames.slice(0, 3).map(f => f.key),
+            "will_create_animation": frames.length > 0,
           });
         }
         
@@ -2166,6 +2196,16 @@ class LobbyScene extends Phaser.Scene {
             frames.push({ key: textureKey });
           }
         }
+        
+        // 🔴 [디버그] player_12 2차 fallback
+        if (baseKey === "player_12") {
+          console.log(`🔍 [ensureAvatarAnimation] player_12 2차 fallback:`, {
+            "collected_frames_count": frames.length,
+            "first_3_frames": frames.slice(0, 3).map(f => f.key),
+            "will_create_animation": frames.length > 0,
+          });
+        }
+        
         if (frames.length > 0) {
           this.anims.create({
             key: animKey,
@@ -2186,6 +2226,16 @@ class LobbyScene extends Phaser.Scene {
           frames.push({ key: textureKey });
         }
       }
+      
+      // 🔴 [디버그] player_12 fallback 처리
+      if (baseKey === "player_12") {
+        console.log(`🔴 [ensureAvatarAnimation] player_12 기타_캐릭터_fallback!`, {
+          "maxFrame": maxFrame,
+          "collected_frames": frames.length,
+          "frames_will_be_created": frames.length > 0,
+        });
+      }
+      
       if (frames.length === 0) {
         return null;
       }
@@ -2197,6 +2247,13 @@ class LobbyScene extends Phaser.Scene {
       });
       return animKey;
     } catch (err) {
+      // 🔴 [디버그] exception 로깅
+      if (baseKey === "player_12") {
+        console.error(`🔴 [ensureAvatarAnimation] player_12 EXCEPTION:`, {
+          "error": err.message,
+          "stack": err.stack,
+        });
+      }
       return null;
     }
   }
@@ -2302,6 +2359,15 @@ class LobbyScene extends Phaser.Scene {
       
       if (animKey) {
         target.play({ key: animKey, repeat: -1 });
+        
+        // 🔴 [디버그] animation play 직후 texture 확인
+        if (baseKey === "player_12") {
+          console.log(`🔍 [applyAvatarAnimation] player_12 animation.play() 직후:`, {
+            "target.texture.key": target.texture.key,
+            "target.anims.currentFrame?.textureKey": target.anims.currentFrame?.textureKey,
+          });
+        }
+        
         if (avatarDisplayWidth > 0 && avatarDisplayHeight > 0) {
           target.setDisplaySize(avatarDisplayWidth, avatarDisplayHeight);
         }
