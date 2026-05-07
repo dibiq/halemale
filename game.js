@@ -2181,6 +2181,15 @@ class LobbyScene extends Phaser.Scene {
     const scene = target && target.scene ? target.scene : this;
     if (!scene || !scene.add) return;
     if (!target || !target.active) return;
+    
+    // 🔴 [디버그] player_12 처리
+    if (baseKey === "player_12") {
+      console.log(`🔍 [applyAvatarAnimation] player_12 시작`, {
+        "baseKey": baseKey,
+        "isValidPlayerKey(baseKey)": isValidPlayerKey(baseKey),
+        "target.texture.key": target.texture.key,
+      });
+    }
 
     if (typeof target.getData === "function") {
       if (target.getData("avatarDisplayWidth") === undefined) {
@@ -2238,9 +2247,35 @@ class LobbyScene extends Phaser.Scene {
         firstFrameKey = `${baseKey}_1`;
       }
       
+      // 🔴 [디버그] player_12 texture 설정
+      if (baseKey === "player_12") {
+        console.log(`🔍 [applyAvatarAnimation] texture 설정 전:`, {
+          "firstFrameKey": firstFrameKey,
+          "this.textures.exists(firstFrameKey)": this.textures.exists(firstFrameKey),
+          "target.texture.key": target.texture.key,
+        });
+      }
+      
       if (firstFrameKey && this.textures.exists(firstFrameKey)) {
         target.setTexture(firstFrameKey);
+        
+        // 🔴 [디버그] player_12 texture 설정 후
+        if (baseKey === "player_12") {
+          console.log(`🔍 [applyAvatarAnimation] texture 설정 후:`, {
+            "firstFrameKey": firstFrameKey,
+            "target.texture.key": target.texture.key,
+          });
+        }
+      } else {
+        // 🔴 [디버그] texture 설정 실패
+        if (baseKey === "player_12") {
+          console.log(`🔴 [applyAvatarAnimation] player_12 texture 설정 실패!`, {
+            "firstFrameKey": firstFrameKey,
+            "exists": this.textures.exists(firstFrameKey),
+          });
+        }
       }
+      
       if (animKey) {
         target.play({ key: animKey, repeat: -1 });
         if (avatarDisplayWidth > 0 && avatarDisplayHeight > 0) {
@@ -11105,8 +11140,27 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       const profileImg = this.add
         .sprite(profileX, pos.y - cardH * 0.0, avatarTextureKey)
         .setScale(0.8); // ✅ 20% 축소 (80% 크기)
+      
+      // 🔴 [디버그] sprite 생성 후 텍스처 확인
+      if (baseAvatarKey === "player_12") {
+        console.log(`🔍 [showWaiting] sprite 생성 후:`, {
+          "avatarTextureKey": avatarTextureKey,
+          "profileImg.texture.key": profileImg.texture.key,
+          "profileImg.texture 존재": !!profileImg.texture,
+          "profileImg.visible": profileImg.visible,
+        });
+      }
+      
       this.lobbyUIContainer.add(profileImg);
       this.applyAvatarAnimation(profileImg, baseAvatarKey);
+      
+      // 🔴 [디버그] applyAvatarAnimation 후 텍스처 확인
+      if (baseAvatarKey === "player_12") {
+        console.log(`🔍 [showWaiting] applyAvatarAnimation 후:`, {
+          "profileImg.texture.key": profileImg.texture.key,
+          "profileImg.anims.currentAnim?.key": profileImg.anims.currentAnim?.key,
+        });
+      }
 
       if (isHost && !isThisPlayerHost) {
         profileImg.setInteractive({ useHandCursor: true });
