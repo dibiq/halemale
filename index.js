@@ -6125,10 +6125,13 @@ io.on("connection", (socket) => {
       if (!p.isBot) {
         const liveSocket = io.sockets.sockets.get(p.id);
         if (liveSocket) {
-          const latestCharacter = liveSocket.currentCharacter || liveSocket.avatarKey || "player_1";
+          const latestCharacter =
+            liveSocket.currentCharacter || liveSocket.avatarKey || "player_1";
           p.avatarKey = latestCharacter;
           p.current_character = latestCharacter;
-          console.log(`✅ [게임시작] 플레이어 character 동기화: ${p.nickname} = ${latestCharacter}`);
+          console.log(
+            `✅ [게임시작] 플레이어 character 동기화: ${p.nickname} = ${latestCharacter}`,
+          );
         }
       }
     });
