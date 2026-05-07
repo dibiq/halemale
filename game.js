@@ -2016,9 +2016,6 @@ class LobbyScene extends Phaser.Scene {
     if (baseKey === "player_11") {
       if (this.textures.exists("player_11_frame_1")) return "player_11_frame_1";
     }
-    if (baseKey === "player_12") {
-      if (this.textures.exists("player_12_frame_1")) return "player_12_frame_1";
-    }
     const sheetKey = `${baseKey}_sprite_a`;
     if (this.textures.exists(sheetKey)) return sheetKey;
     return null;
@@ -2034,15 +2031,6 @@ class LobbyScene extends Phaser.Scene {
     }
     const animKey = scene.getAvatarAnimKey(baseKey);
     
-    // 🔴 [디버그] player_12 ensureAvatarAnimation 시작
-    if (baseKey === "player_12") {
-      const existingAnim = scene.anims.get(animKey);
-      console.log(`🔍 [ensureAvatarAnimation] player_12 시작:`, {
-        "animKey": animKey,
-        "existingAnim exists": !!existingAnim,
-        "existingAnim.frames.length": existingAnim?.frames?.length,
-      });
-    }
 
     // If animation already exists but frame set may have grown (deferred loading),
     // late-rebuild for updated sprite data.
@@ -2090,26 +2078,9 @@ class LobbyScene extends Phaser.Scene {
 
       const hasNewFrames = candidateKeys.some((k) => !existingFrameKeys.has(k));
       
-      // 🔴 [디버그] player_12 late-rebuild 로직
-      if (baseKey === "player_12") {
-        console.log(`🔍 [ensureAvatarAnimation] player_12 late-rebuild 체크:`, {
-          "existingFrameKeys.size": existingFrameKeys.size,
-          "candidateKeys.length": candidateKeys.length,
-          "hasNewFrames": hasNewFrames,
-          "will_update_animation": hasNewFrames,
-        });
-      }
       
       if (!hasNewFrames) {
         // 🔴 [디버그] 캐시 반환
-        if (baseKey === "player_12") {
-          const cachedAnim = scene.anims.get(animKey);
-          console.log(`🔍 [ensureAvatarAnimation] player_12 캐시 반환:`, {
-            "animKey": animKey,
-            "cachedAnim.frames[0]?.textureKey": cachedAnim?.frames[0]?.textureKey,
-            "cachedAnim.frames.length": cachedAnim?.frames?.length,
-          });
-        }
         return animKey;
       }
 
@@ -2155,15 +2126,6 @@ class LobbyScene extends Phaser.Scene {
           }
         }
         
-        // 🔴 [디버그] player_12 animation 프레임 데이터
-        if (baseKey === "player_12") {
-          console.log(`🔍 [ensureAvatarAnimation] player_12 1차 frame 빌드:`, {
-            "maxFrame": maxFrame,
-            "collected_frames_count": frames.length,
-            "first_3_frames": frames.slice(0, 3).map(f => f.key),
-            "will_create_animation": frames.length > 0,
-          });
-        }
         
         if (frames.length > 0) {
           this.anims.create({
@@ -2174,16 +2136,6 @@ class LobbyScene extends Phaser.Scene {
           });
           
           // 🔴 [디버그] animation 생성 후 확인
-          if (baseKey === "player_12") {
-            const createdAnim = this.anims.get(animKey);
-            console.log(`🔍 [ensureAvatarAnimation] player_12 animation 생성됨:`, {
-              "animKey": animKey,
-              "frames_in_anim": createdAnim.frames.length,
-              "first_frame_textureKey": createdAnim.frames[0]?.textureKey,
-              "second_frame_textureKey": createdAnim.frames[1]?.textureKey,
-              "frameRate": createdAnim.frameRate,
-            });
-          }
           
           return animKey;
         }
@@ -2197,14 +2149,6 @@ class LobbyScene extends Phaser.Scene {
           }
         }
         
-        // 🔴 [디버그] player_12 2차 fallback
-        if (baseKey === "player_12") {
-          console.log(`🔍 [ensureAvatarAnimation] player_12 2차 fallback:`, {
-            "collected_frames_count": frames.length,
-            "first_3_frames": frames.slice(0, 3).map(f => f.key),
-            "will_create_animation": frames.length > 0,
-          });
-        }
         
         if (frames.length > 0) {
           this.anims.create({
@@ -2227,14 +2171,6 @@ class LobbyScene extends Phaser.Scene {
         }
       }
       
-      // 🔴 [디버그] player_12 fallback 처리
-      if (baseKey === "player_12") {
-        console.log(`🔴 [ensureAvatarAnimation] player_12 기타_캐릭터_fallback!`, {
-          "maxFrame": maxFrame,
-          "collected_frames": frames.length,
-          "frames_will_be_created": frames.length > 0,
-        });
-      }
       
       if (frames.length === 0) {
         return null;
@@ -2248,12 +2184,6 @@ class LobbyScene extends Phaser.Scene {
       return animKey;
     } catch (err) {
       // 🔴 [디버그] exception 로깅
-      if (baseKey === "player_12") {
-        console.error(`🔴 [ensureAvatarAnimation] player_12 EXCEPTION:`, {
-          "error": err.message,
-          "stack": err.stack,
-        });
-      }
       return null;
     }
   }
@@ -2263,20 +2193,6 @@ class LobbyScene extends Phaser.Scene {
     if (!scene || !scene.add) return;
     if (!target || !target.active) return;
     
-    // 🔴 [디버그] player_12 처리
-    if (baseKey === "player_12") {
-      console.log(`🔍 [applyAvatarAnimation] player_12 시작`, {
-        "baseKey": baseKey,
-        "isValidPlayerKey(baseKey)": isValidPlayerKey(baseKey),
-        "target.texture.key": target.texture.key,
-        "target.getData('___debug_char___')": target.getData?.call(target, '___debug_char___'),
-      });
-      
-      // 혹시 잘못된 sprite가 전달되었나?
-      if (target.texture.key !== "player_12_frame_1" && target.getData?.call(target, '___debug_char___') === 'player_12') {
-        console.warn(`🔴 CRITICAL: player_12인데 texture가 ${target.texture.key}!`);
-      }
-    }
 
     if (typeof target.getData === "function") {
       if (target.getData("avatarDisplayWidth") === undefined) {
@@ -2334,66 +2250,25 @@ class LobbyScene extends Phaser.Scene {
         firstFrameKey = `${baseKey}_1`;
       }
       
-      // 🔴 [디버그] player_12 texture 설정
-      if (baseKey === "player_12") {
-        console.log(`🔍 [applyAvatarAnimation] texture 설정 전:`, {
-          "firstFrameKey": firstFrameKey,
-          "this.textures.exists(firstFrameKey)": this.textures.exists(firstFrameKey),
-          "target.texture.key": target.texture.key,
-        });
-      }
       
       if (firstFrameKey && this.textures.exists(firstFrameKey)) {
         target.setTexture(firstFrameKey);
         
-        // 🔴 [디버그] player_12 texture 설정 후
-        if (baseKey === "player_12") {
-          console.log(`🔍 [applyAvatarAnimation] texture 설정 후:`, {
-            "firstFrameKey": firstFrameKey,
-            "target.texture.key": target.texture.key,
-          });
-        }
       } else {
         // 🔴 [디버그] texture 설정 실패
-        if (baseKey === "player_12") {
-          console.log(`🔴 [applyAvatarAnimation] player_12 texture 설정 실패!`, {
-            "firstFrameKey": firstFrameKey,
-            "exists": this.textures.exists(firstFrameKey),
-          });
-        }
       }
       
       if (animKey) {
         target.play({ key: animKey, repeat: -1 });
         
         // 🔴 [디버그] animation play 직후 texture 확인
-        if (baseKey === "player_12") {
-          console.log(`🔍 [applyAvatarAnimation] player_12 animation.play() 직후:`, {
-            "target.texture.key": target.texture.key,
-            "target.anims.currentFrame?.textureKey": target.anims.currentFrame?.textureKey,
-          });
-        }
         
         if (avatarDisplayWidth > 0 && avatarDisplayHeight > 0) {
           // 🔴 [디버그] setDisplaySize 직전
-          if (baseKey === "player_12") {
-            console.log(`🔍 [applyAvatarAnimation] player_12 setDisplaySize 직전:`, {
-              "target.texture.key": target.texture.key,
-              "displayWidth": avatarDisplayWidth,
-              "displayHeight": avatarDisplayHeight,
-            });
-          }
           
           target.setDisplaySize(avatarDisplayWidth, avatarDisplayHeight);
           
           // 🔴 [디버그] setDisplaySize 직후
-          if (baseKey === "player_12") {
-            console.log(`🔍 [applyAvatarAnimation] player_12 setDisplaySize 직후:`, {
-              "target.texture.key": target.texture.key,
-              "target.displayWidth": target.displayWidth,
-              "target.displayHeight": target.displayHeight,
-            });
-          }
         }
       }
     } else {
@@ -6810,9 +6685,6 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     if (baseKey === "player_11") {
       if (this.textures.exists("player_11_frame_1")) return "player_11_frame_1";
     }
-    if (baseKey === "player_12") {
-      if (this.textures.exists("player_12_frame_1")) return "player_12_frame_1";
-    }
     // use first sheet if available
     const sheetKey = `${baseKey}_sprite_a`;
     if (this.textures.exists(sheetKey)) return sheetKey;
@@ -6948,11 +6820,9 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     this.currentRoomId = data.roomId || this.currentRoomId;
     this.currentPlayers = data.players || [];
     
-    // 🔴 [디버그] player_12 캐릭터 확인
     if (Array.isArray(this.currentPlayers)) {
       this.currentPlayers.forEach((p, idx) => {
         if (p?.avatarKey === "player_12" || p?.current_character === "player_12") {
-          console.log(`🔍 [refreshLobbyUI] player_12 감지 (인덱스: ${idx}):`, {
             id: p.id,
             nickname: p.nickname,
             avatarKey: p.avatarKey,
@@ -11019,13 +10889,6 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     const { width, height } = this.cameras.main;
     const centerX = width / 2;
 
-    // 🔴 [디버그] showWaiting 초반에 player_12 텍스처 상태 확인
-    console.log(`🔍 [showWaiting 초반] player_12 텍스처 로드 상태:`, {
-      "exists(player_12_frame_1)": this.textures.exists("player_12_frame_1"),
-      "exists(player_12_1)": this.textures.exists("player_12_1"),
-      "exists(player_12_sprite_a)": this.textures.exists("player_12_sprite_a"),
-    });
-
     // 1. 메인 화면 UI 숨기기 (나중에 다시 보여줄 수 있도록 파괴하지 않음)
     if (this.mainUIContainer) {
       try {
@@ -11224,30 +11087,12 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           ? p.current_character
           : `player_${i + 1}`; // ✅ avatarKey, current_character, 기본값 순으로 확인
       
-      // 🔴 [디버그] player_12 캐릭터 확인
-      if (baseAvatarKey === "player_12" || p.avatarKey === "player_12" || p.current_character === "player_12") {
-        console.log(`🔍 [showWaiting] player_12 처리 (슬롯: ${i}, 닉네임: ${p.nickname}):`, {
-          "p.avatarKey": p.avatarKey,
-          "p.current_character": p.current_character,
-          "isValidPlayerKey(p.avatarKey)": isValidPlayerKey(p.avatarKey),
-          "isValidPlayerKey(p.current_character)": isValidPlayerKey(p.current_character),
-          "선택된_baseAvatarKey": baseAvatarKey,
-        });
-      }
       
       const avatarTextureKey = this.textures.exists(`${baseAvatarKey}_1`)
         ? `${baseAvatarKey}_1`
         : this.getAvatarDisplayKey(baseAvatarKey) || "player_1_frame_1";
       
       // 🔴 [디버그] 실제 사용되는 텍스처 확인
-      if (baseAvatarKey === "player_12") {
-        console.log(`🔍 [showWaiting] player_12 텍스처 선택:`, {
-          "baseAvatarKey": baseAvatarKey,
-          "this.textures.exists(${baseAvatarKey}_1)": this.textures.exists(`${baseAvatarKey}_1`),
-          "this.getAvatarDisplayKey(baseAvatarKey)": this.getAvatarDisplayKey(baseAvatarKey),
-          "최종_avatarTextureKey": avatarTextureKey,
-        });
-      }
       
       const profileX = cardLeft + profileSize * 1.1;
 
@@ -11256,60 +11101,11 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         .setScale(0.8); // ✅ 20% 축소 (80% 크기)
       
       // 🔴 [디버그] sprite 생성 후 텍스처 확인
-      if (baseAvatarKey === "player_12") {
-        console.log(`🔍 [showWaiting] sprite 생성 직후:`, {
-          "profileImg.texture.key": profileImg.texture.key,
-          "profileImg.displayWidth": profileImg.displayWidth,
-          "profileImg.displayHeight": profileImg.displayHeight,
-        });
-      }
       
       this.lobbyUIContainer.add(profileImg);
       
-      // 🔴 [디버그] container add 후
-      if (baseAvatarKey === "player_12") {
-        console.log(`🔍 [showWaiting] container.add() 직후:`, {
-          "profileImg.texture.key": profileImg.texture.key,
-          "profileImg.parent?.name": profileImg.parent?.name,
-        });
-      }
-      
-      // 🔴 [디버그] applyAvatarAnimation 호출 직전
-      if (baseAvatarKey === "player_12") {
-        console.log(`🔍 [showWaiting] applyAvatarAnimation 호출 직전:`, {
-          "profileImg.texture.key": profileImg.texture.key,
-          "baseAvatarKey": baseAvatarKey,
-          "profileImg object id": profileImg.name || `sprite_at_${profileX}_${pos.y}`,
-          "profileImg.getData('___id___')": profileImg.getData?.call(profileImg, '___id___'),
-        });
-        
-        // object reference 저장
-        profileImg.setData('___debug_char___', 'player_12');
-      }
-      
       this.applyAvatarAnimation(profileImg, baseAvatarKey);
       
-      // 🔴 [디버그] applyAvatarAnimation 후 sprite frame 확인
-      if (baseAvatarKey === "player_12") {
-        console.log(`🔍 [showWaiting] applyAvatarAnimation 후:`, {
-          "profileImg.texture.key": profileImg.texture.key,
-          "profileImg.anims.currentAnim?.key": profileImg.anims.currentAnim?.key,
-          "profileImg.anims.currentFrame?.textureKey": profileImg.anims.currentFrame?.textureKey,
-          "profileImg.anims.currentFrame?.textureFrame": profileImg.anims.currentFrame?.textureFrame,
-        });
-        
-        // 다음 프레임도 미리 확인
-        const animKey = profileImg.anims.currentAnim?.key;
-        if (animKey) {
-          const anim = this.anims.get(animKey);
-          if (anim) {
-            console.log(`🔍 [showWaiting] animation 프레임 데이터:`, {
-              "anim.frames[0].textureKey": anim.frames[0]?.textureKey,
-              "anim.frames[1]?.textureKey": anim.frames[1]?.textureKey,
-            });
-          }
-        }      }
-
       if (isHost && !isThisPlayerHost) {
         profileImg.setInteractive({ useHandCursor: true });
         profileImg.on("pointerdown", () => {
@@ -14015,9 +13811,6 @@ class GameScene extends Phaser.Scene {
     }
     if (baseKey === "player_11") {
       if (this.textures.exists("player_11_frame_1")) return "player_11_frame_1";
-    }
-    if (baseKey === "player_12") {
-      if (this.textures.exists("player_12_frame_1")) return "player_12_frame_1";
     }
     const sheetKey = `${baseKey}_sprite_a`;
     if (this.textures.exists(sheetKey)) return sheetKey;
