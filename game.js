@@ -11749,6 +11749,9 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       .setDepth(4000)
       .setInteractive();
 
+    // 🔴 [추가] 팝업에서 생성되는 모든 스탠프("획득") 추적
+    const stamps = [];
+
     // use the same background as quest popup
     const panelW = width * 0.86;
     const panelH = height * 0.7;
@@ -12040,6 +12043,8 @@ if (this.isGameEnded || this.isResultOverlayActive) {
                     .setDepth(4004)
                     .setScale(0);
                   stamp.setRotation(-0.3);
+                  stamps.push(stamp);
+                  stamps.push(stamp);
                   scene.tweens.add({
                     targets: stamp,
                     scale: 1,
@@ -12116,6 +12121,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
                       .setDepth(4004)
                       .setScale(0);
                     stamp.setRotation(-0.3);
+                    stamps.push(stamp);
                     scene.tweens.add({
                       targets: stamp,
                       scale: 1,
@@ -12414,6 +12420,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
                   .setDepth(4004)
                   .setScale(0);
                 stamp.setRotation(-0.3);
+                stamps.push(stamp);
                 scene.tweens.add({
                   targets: stamp,
                   scale: 1,
@@ -12447,6 +12454,17 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       .setDepth(4003);
 
     const closePopup = () => {
+      // 🔴 [추가] 팝업 내 모든 스탠프("획득") 정리
+      stamps.forEach((stamp) => {
+        if (stamp && typeof stamp.destroy === 'function') {
+          try {
+            stamp.destroy();
+          } catch (e) {
+            // 이미 파괴된 객체일 수 있으므로 무시
+          }
+        }
+      });
+
       [overlay, popupBg, titleText, closeBtn, helperText, ...rows].forEach((el) => {
         if (el) el.destroy();
       });
