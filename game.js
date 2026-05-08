@@ -2897,6 +2897,25 @@ class LobbyScene extends Phaser.Scene {
     const centerX = width ? width * 0.5 : 0;
     const centerY = height ? height * 0.5 : 0;
 
+    // 🔴 [추가] 로딩 중 표시할 팁 목록
+    const LOADING_TIPS = [
+      "💡 번개카드보다 폭탄카드가 우선순위가 높아요!",
+      "💡 싱글플레이에서 난이도별로 획득 코인이 달라요!",
+      "💡 캐릭터를 구매해서 코인 획득량을 늘리세요!",
+      "💡 패널티방어 아이템은 패널티를 면제해줘요!",
+      "💡 방패 아이템은 상대방의 공격을 막아줘요!",
+      "💡 먹물 아이템은 상대방을 방해해줘요!",
+      "💡 카드뺏기는 상대방의 카드를 가져올 수 있어요!",
+      "💡 전세역전 아이템으로 승리를 뒤집어보세요!",
+      "💡 경험치로 캐릭터를 강화할 수 있어요!",
+      "💡 매일 출석체크해서 코인을 획득하세요!",
+      "💡 광고를 시청하면 추가 보상을 받을 수 있어요!",
+      "💡 멀티플레이에서 더 많은 코인을 획득할 수 있어요!",
+      "💡 특수카드를 전략적으로 사용해보세요!",
+      "💡 프리미엄 패스는 다양한 혜택을 제공해요!",
+      "💡 첫 번째 플레이어부터 차근차근 이겨나가세요!",
+    ];
+
     // 추가 리소스 로딩 오버레이 표시
     const overlayBg = this.add
       .rectangle(0, 0, width, height, 0x000000, 0.7)
@@ -2908,17 +2927,21 @@ class LobbyScene extends Phaser.Scene {
       .container(0, 0)
       .setDepth(10001);
 
+    // 🔴 [수정] "추가 리소스 로딩중" 대신 팁 표시
+    let currentTipIndex = 0;
     const titleText = this.add
-      .text(centerX, centerY - 28, "추가 리소스 로딩중", {
+      .text(centerX, centerY - 28, LOADING_TIPS[0], {
         fontFamily: GAME_FONTS.main,
-        fontSize: `${Math.max(18, width * 0.045)}px`,
-        color: "#ffffff",
+        fontSize: `${Math.max(16, width * 0.04)}px`,
+        color: "#ffd700",
         fontStyle: "bold",
+        wordWrap: { width: width * 0.8, useAdvancedWrap: true },
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setAlign("center");
 
     const progressText = this.add
-      .text(centerX, centerY + 20, "로딩 중... 0%", {
+      .text(centerX, centerY + 60, "로딩 중... 0%", {
         fontFamily: GAME_FONTS.main,
         fontSize: `${Math.max(16, width * 0.035)}px`,
         color: "#ffffff",
@@ -2927,6 +2950,26 @@ class LobbyScene extends Phaser.Scene {
 
     overlayContainer.add([overlayBg, titleText, progressText]);
     this._deferredLoadingOverlay = overlayContainer;
+
+    // 🔴 [추가] 팁을 일정 시간마다 순환
+    let tipRotationTimer = null;
+    const rotateTip = () => {
+      currentTipIndex = (currentTipIndex + 1) % LOADING_TIPS.length;
+      if (titleText && titleText.active) {
+        titleText.setText(LOADING_TIPS[currentTipIndex]);
+      }
+    };
+
+    // 3초마다 팁 변경
+    if (this.time) {
+      tipRotationTimer = this.time.addTimer({
+        delay: 3000,
+        callback: rotateTip,
+        loop: true,
+      });
+      // 🔴 [추가] 타이머를 저장해서 나중에 정리할 수 있도록
+      this._tipRotationTimer = tipRotationTimer;
+    }
 
     this._deferredLoadingProgressHandler = (value) => {
       if (progressText && progressText.active) {
@@ -3001,6 +3044,12 @@ class LobbyScene extends Phaser.Scene {
     // );
     
     this.load.once("complete", () => {
+      // 🔴 [추가] 팁 타이머 정리
+      if (this._tipRotationTimer) {
+        this.time.removeTimer(this._tipRotationTimer);
+        this._tipRotationTimer = null;
+      }
+
       if (this._deferredLoadingProgressHandler) {
         this.load.off("progress", this._deferredLoadingProgressHandler);
         this._deferredLoadingProgressHandler = null;
