@@ -2962,7 +2962,7 @@ class LobbyScene extends Phaser.Scene {
 
     // 3초마다 팁 변경
     if (this.time) {
-      tipRotationTimer = this.time.addTimer({
+      tipRotationTimer = this.time.addEvent({
         delay: 3000,
         callback: rotateTip,
         loop: true,
@@ -3046,7 +3046,7 @@ class LobbyScene extends Phaser.Scene {
     this.load.once("complete", () => {
       // 🔴 [추가] 팁 타이머 정리
       if (this._tipRotationTimer) {
-        this.time.removeTimer(this._tipRotationTimer);
+        this.time.removeEvent(this._tipRotationTimer);
         this._tipRotationTimer = null;
       }
 
