@@ -2607,7 +2607,7 @@ class LobbyScene extends Phaser.Scene {
     // while the rest loads in the background.
     this.load.image(
       "mainbg_frame_1",
-      `assets/images/bg_sprite/1.png${VERSION}`,
+      `${ASSET_SERVER}/images/bg_sprite/1.png${VERSION}`,
     );
     this.load.image(
       "player_1_frame_1",
@@ -2960,7 +2960,7 @@ class LobbyScene extends Phaser.Scene {
     for (let i = 2; i <= 47; i += 1) {
       this.load.image(
         `mainbg_frame_${i}`,
-        `assets/images/bg_sprite/${i}.png${VERSION}`,
+        `${ASSET_SERVER}/images/bg_sprite/${i}.png${VERSION}`,
       );
     }
 
@@ -7831,7 +7831,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       },
       {
         key: "player_2",
-        name: "잠옷 곰돌이",
+        name: "메롱 곰돌이",
         description: "멀티플레이에서 코인획득량 2배",
         price: 5000,
       },
@@ -7843,7 +7843,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       },
       {
         key: "player_4",
-        name: "클럽 곰돌이",
+        name: "마우리 곰돌이",
         description: "멀티플레이에서 코인획득량 2배",
         price: 5000,
       },
@@ -7891,7 +7891,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       },
       {
         key: "player_12",
-        name: "슈퍼 곰돌이",
+        name: "리치 곰돌이",
         description: "멀티에서 코인획득 5배\n모든 특수카드 1회 가능",
         price: 100000,
       },
@@ -25076,9 +25076,9 @@ class GameScene extends Phaser.Scene {
           const myId = this.myId || "PLAYER_ME";
           const myRankIndex = players.findIndex(p => String(p.id) === String(myId));
           if (myRankIndex >= 0) {
-            // ✅ 【싱글플레이 우승 보상】 1등이면 player_2(잠옷 곰돌이) 보상
+            // ✅ 【싱글플레이 우승 보상】 1등이면 player_2(메롱 곰돌이) 보상
             if (myRankIndex === 0) {
-              const awardedCharacter = "player_2"; // 잠옷 곰돌이
+              const awardedCharacter = "player_2"; // 메롱 곰돌이
               if (!Array.isArray(this.myProfile.owned_characters)) {
                 this.myProfile.owned_characters = ["player_1"];
               }
