@@ -26973,8 +26973,6 @@ class GameScene extends Phaser.Scene {
         color: "#ffffff",
         align: "center",
         wordWrap: { width: width * 0.6 },
-        stroke: "#000000",
-            strokeThickness: 3,
       })
       .setOrigin(0.5)
       .setDepth(4002);
