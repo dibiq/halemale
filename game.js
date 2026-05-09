@@ -2482,7 +2482,7 @@ class LobbyScene extends Phaser.Scene {
             inner.style.color = '#fff';
             inner.style.maxWidth = '640px';
             inner.style.padding = '24px';
-            inner.innerHTML = '<h2 style="color:#ffd700;margin-bottom:12px">플레이어 2 획득!</h2><p style="margin-bottom:18px">싱글 플레이 1등 보상입니다. 받기를 눌러 잠금 해제하세요.</p>';
+            inner.innerHTML = '<h2 style="color:#ffd700;margin-bottom:12px">추가 케릭터 획득!</h2><p style="margin-bottom:18px">싱글 플레이 1등 보상입니다. 받기를 눌러 잠금 해제하세요.</p>';
             const btn = document.createElement('button');
             btn.textContent = '받기';
             Object.assign(btn.style, { padding: '10px 18px', fontSize: '16px', cursor: 'pointer' });
@@ -5989,7 +5989,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       .setStrokeStyle(2, 0xffffff, 0.25);
 
     const title = this.add
-      .text(width / 2, height * 0.27, "플레이어 2 보상!", {
+      .text(width / 2, height * 0.27, "추가 케릭터 보상!", {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.06}px`,
         color: "#ffd700",
@@ -6003,7 +6003,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       .text(
         width / 2,
         height * 0.35,
-        "싱글플레이에서 1등하면 플레이어 2를 획득할 수 있어요!",
+        "싱글플레이에서 1등하면 추가 케릭터를 획득할 수 있어요!",
         {
           fontFamily: GAME_FONTS.main,
           fontSize: `${width * 0.037}px`,
@@ -6087,7 +6087,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
       // Centered character image and a bottom confirm button
       const iconSize = Math.min(width * 0.5, height * 0.45);
-      const titleText = alreadyOwned ? "플레이어 2 보유 중" : "플레이어 2 획득!";
+      const titleText = alreadyOwned ? "추가 케릭터 보유 중" : "추가 케릭터 획득!";
       /*const subtitleText = alreadyOwned
         ? "이미 보유 중입니다. 계속 진행하세요."
         : "1등 보상으로 획득할 수 있습니다!";*/
@@ -12070,7 +12070,8 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
               // 다른 이벤트 처리들
               try {
-                if (rowDateStr) {
+                // 🔴 [수정] 팝업이 닫혔으면 스탠프 생성 안 함
+                if (rowDateStr && scene.isWeeklyRewardPopupOpen) {
                   scene.claimedDailyDates.add(rowDateStr);
                   try {
                     scene.markDailyRewardClaimed(rowDateStr);
@@ -12091,7 +12092,6 @@ if (this.isGameEnded || this.isResultOverlayActive) {
                     .setDepth(4004)
                     .setScale(0);
                   stamp.setRotation(-0.3);
-                  stamps.push(stamp);
                   stamps.push(stamp);
                   scene.tweens.add({
                     targets: stamp,
@@ -12147,7 +12147,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
                 // 2. "획득" 스탠프 표시 (일반 보상과 동일)
                 try {
-                  if (rowDateStr) {
+                  if (rowDateStr && scene.isWeeklyRewardPopupOpen) {
                     scene.claimedDailyDates.add(rowDateStr);
                     try {
                       scene.markDailyRewardClaimed(rowDateStr);
@@ -12449,7 +12449,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             }
             
             // 스탠프 생성
-            if (rowDateStr) {
+            if (rowDateStr && scene.isWeeklyRewardPopupOpen) {
               try {
                 scene.claimedDailyDates.add(rowDateStr);
                 scene.markDailyRewardClaimed(rowDateStr);
@@ -12502,6 +12502,9 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       .setDepth(4003);
 
     const closePopup = () => {
+      // 🔴 [추가] 팝업 닫기 중 flag 설정 (진행 중인 비동기 스탠프 생성 차단)
+      const isPopupClosing = true;
+
       // 🔴 [추가] 팝업 내 모든 스탠프("획득") 정리
       stamps.forEach((stamp) => {
         if (stamp && typeof stamp.destroy === 'function') {
@@ -19793,7 +19796,7 @@ class GameScene extends Phaser.Scene {
                     textAlign: 'center',
                   });
                   const inner = document.createElement('div');
-                  inner.innerHTML = '<div style="font-size:22px;margin-bottom:12px;color:#ffd700;">플레이어 2 획득!</div><div style="margin-bottom:18px;">싱글 승리 보상입니다. 계속하려면 닫기 버튼을 눌러주세요.</div>';
+                  inner.innerHTML = '<div style="font-size:22px;margin-bottom:12px;color:#ffd700;">추가 케릭터 획득!</div><div style="margin-bottom:18px;">싱글 승리 보상입니다. 계속하려면 닫기 버튼을 눌러주세요.</div>';
                   const button = document.createElement('button');
                   button.textContent = '닫기';
                   Object.assign(button.style, { padding: '10px 16px', fontSize: '16px', borderRadius: '4px', cursor: 'pointer' });
