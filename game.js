@@ -2725,7 +2725,6 @@ class LobbyScene extends Phaser.Scene {
     );
     this.load.image("coin", `${ASSET_SERVER}/images/coin.png${VERSION}`);
     this.load.image("coinpack", `${ASSET_SERVER}/images/coinpack.png${VERSION}`);
-    this.load.image("exp", `${ASSET_SERVER}/images/exp.png${VERSION}`);
     this.load.image(
       "statusbg",
       `${ASSET_SERVER}/images/statusbg.png${VERSION}`,
