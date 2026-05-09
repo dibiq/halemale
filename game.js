@@ -1580,7 +1580,7 @@ class LobbyScene extends Phaser.Scene {
               
               // 서버 응답 대기
               if (!this.isSingle && socket?.connected) {
-                const result = await emitServerCoinReward.call(this, Number(product.amount), "product_purchase", {
+                const result = await this.emitServerCoinReward(Number(product.amount), "product_purchase", {
                   orderId,
                   sku: product.sku,
                   price: product.display,
@@ -1739,7 +1739,7 @@ class LobbyScene extends Phaser.Scene {
 
           if (!this.isSingle && socket?.connected) {
             // 멀티플레이: 서버에 코인 추가 요청 (await 대기)
-            const result = await emitServerCoinReward.call(this, coinAmount, "purchase_restore", {
+            const result = await this.emitServerCoinReward(coinAmount, "purchase_restore", {
               orderId,
               sku,
               price: "복원됨",
