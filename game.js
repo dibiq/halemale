@@ -454,6 +454,58 @@ socket.off("serverHello").on("serverHello", (payload) => {
   socket._lastHeartbeat = Date.now();
 });
 
+// ✅ 【주기적 Heartbeat】10초마다 서버 응답 확인
+socket._heartbeatInterval = null;
+socket._lastHeartbeatSent = Date.now();
+socket._isHeartbeatPending = false;
+
+const startHeartbeatMonitoring = () => {
+  if (socket._heartbeatInterval) return; // 이미 시작됨
+
+  socket._heartbeatInterval = setInterval(() => {
+    if (!socket || !socket.connected) {
+      socket._stableConnected = false;
+      return;
+    }
+
+    // 1️⃣ 이전 heartbeat 응답이 없었다면 실패 판정
+    const now = Date.now();
+    const timeSinceLastResponse = now - socket._lastHeartbeat;
+
+    if (socket._isHeartbeatPending && timeSinceLastResponse > 3000) {
+      // 3초 이상 응답 없음 = 연결 실패
+      socket._stableConnected = false;
+      socket._isHeartbeatPending = false;
+    }
+
+    // 2️⃣ 새로운 heartbeat 전송
+    socket._isHeartbeatPending = true;
+    socket._lastHeartbeatSent = now;
+    
+    // serverHello를 heartbeat 요청으로 사용 (이미 정의된 이벤트)
+    socket.emit("heartbeatCheck", { timestamp: now });
+  }, 10000); // 10초마다 체크
+};
+
+const stopHeartbeatMonitoring = () => {
+  if (socket._heartbeatInterval) {
+    clearInterval(socket._heartbeatInterval);
+    socket._heartbeatInterval = null;
+  }
+};
+
+// 소켓 연결되면 heartbeat 시작
+socket.off("connect_success").on("connect", () => {
+  startHeartbeatMonitoring();
+});
+
+// 소켓 끊기면 heartbeat 중지
+socket.off("disconnect").on("disconnect", (reason) => {
+  socket._stableConnected = false;
+  socket._isHeartbeatPending = false;
+  stopHeartbeatMonitoring();
+});
+
 // NOTE: adReward와 dailyReward 리스너는 GameScene의 create에서 등록됨
 // (scene이 정의되지 않은 시점에서 여기서 등록하면 scene 참조 실패)
 
@@ -5355,38 +5407,76 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     }
 
     // ======================================
-    // 2️⃣ 백그라운드 진입/복귀 처리 (강화 버전)
+    // 2️⃣ 백그라운드 진입/복귀 처리 (강화 버전 - 실시간 모니터링)
     // ======================================
+    let backgroundConnectionMonitorTimer = null;
+
+    const startBackgroundConnectionMonitoring = () => {
+      if (backgroundConnectionMonitorTimer) return; // 이미 시작됨
+      
+      // 매 1초마다 연결 상태 확인
+      backgroundConnectionMonitorTimer = setInterval(() => {
+        const isConnected = socket && socket._stableConnected && socket.connected;
+        const now = Date.now();
+        const lastHeartbeat = socket._lastHeartbeat || 0;
+        const elapsed = now - lastHeartbeat;
+
+        // 🔴 3초 이상 응답 없으면 강제 복귀
+        if (!isConnected || elapsed > 3000) {
+          clearInterval(backgroundConnectionMonitorTimer);
+          backgroundConnectionMonitorTimer = null;
+
+          // 현재 씬이 GameScene이면 정리 후 로비로 이동
+          const isGameScene = this.scene.key === "GameScene";
+          if (isGameScene) {
+            this.cleanupGameSceneAndGoToLobby();
+          } else {
+            // LobbyScene이면 그냥 UI만 갱신
+            if (this.lobbyBlocker) {
+              this.lobbyBlocker.setVisible(false);
+            }
+            this.showToast("서버와의 연결이 끊겼습니다.", "#e74c3c");
+          }
+        }
+      }, 1000); // 1초마다 체크
+    };
+
+    const stopBackgroundConnectionMonitoring = () => {
+      if (backgroundConnectionMonitorTimer) {
+        clearInterval(backgroundConnectionMonitorTimer);
+        backgroundConnectionMonitorTimer = null;
+      }
+    };
+
     const handleVisibilityChange = () => {
-      // 백그라운드에서 포어그라운드로 복귀할 때만 연결 체크
       if (document.hidden) {
-        // 🔻 백그라운드로 진입
+        // 🔻 백그라운드로 진입 - 실시간 모니터링 시작
         if (bgm && bgm.isPlaying) {
           bgm.pause();
         }
+        startBackgroundConnectionMonitoring();
         return;
       }
 
-      // 🔺 포어그라운드로 복귀 - 연결 상태 확인
+      // 🔺 포어그라운드로 복귀
+      stopBackgroundConnectionMonitoring();
+
+      // 포어그라운드 복귀 시 최종 연결 확인
       const isConnected = socket && socket._stableConnected && socket.connected;
       const isGameScene = this.scene.key === "GameScene";
       
-      // 연결이 끊겼거나 stale 상태면 LobbyScene으로 이동
       if (!isConnected && isGameScene) {
-        // 게임 중 연결 끊김 감지
         const now = Date.now();
         const lastHeartbeat = socket._lastHeartbeat || 0;
         const elapsed = now - lastHeartbeat;
         
-        // 3초 이상 응답이 없거나 명시적 disconnect 상태
         if (elapsed > 3000 || !socket.connected) {
-          // 안전한 씬 정리 후 로비로 이동
           this.cleanupGameSceneAndGoToLobby();
           return;
         }
       }
       
-      // BGM 복구 (정상 상태)
+      // BGM 복구
       if (bgm) {
         if (bgm.isPaused && bgmOn) {
           bgm.resume();
@@ -5404,6 +5494,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         document.removeEventListener("visibilitychange", this._visibilityChangeHandler);
         this._visibilityChangeHandler = null;
       }
+      stopBackgroundConnectionMonitoring(); // 추가 정리
     });
 
     // ======================================
@@ -16930,13 +17021,50 @@ class GameScene extends Phaser.Scene {
     });
 
     // ======================================
-    // 🔴 【안전한 백그라운드 복귀 처리】GameScene
+    // 🔴 【안전한 백그라운드 복귀 처리】GameScene (실시간 모니터링)
     // ======================================
-    const handleGameSceneVisibilityChange = () => {
-      // 포어그라운드로 복귀할 때만 연결 체크
-      if (document.hidden) return;
+    let gameSceneBackgroundMonitorTimer = null;
 
-      // 연결 상태 확인
+    const startGameSceneBackgroundMonitoring = () => {
+      if (gameSceneBackgroundMonitorTimer) return;
+
+      gameSceneBackgroundMonitorTimer = setInterval(() => {
+        const isConnected = socket && socket._stableConnected && socket.connected;
+        const now = Date.now();
+        const lastHeartbeat = socket._lastHeartbeat || 0;
+        const elapsed = now - lastHeartbeat;
+
+        // 🔴 3초 이상 응답 없으면 강제 복귀
+        if (!isConnected || elapsed > 3000) {
+          clearInterval(gameSceneBackgroundMonitorTimer);
+          gameSceneBackgroundMonitorTimer = null;
+
+          // 게임씬이 활성화되어 있으면 정리 후 로비로 이동
+          if (this.scene.isActive("GameScene")) {
+            this.cleanupGameSceneAndGoToLobby();
+          }
+        }
+      }, 1000); // 1초마다 체크
+    };
+
+    const stopGameSceneBackgroundMonitoring = () => {
+      if (gameSceneBackgroundMonitorTimer) {
+        clearInterval(gameSceneBackgroundMonitorTimer);
+        gameSceneBackgroundMonitorTimer = null;
+      }
+    };
+
+    const handleGameSceneVisibilityChange = () => {
+      if (document.hidden) {
+        // 🔻 백그라운드로 진입 - 실시간 모니터링 시작
+        startGameSceneBackgroundMonitoring();
+        return;
+      }
+
+      // 🔺 포어그라운드로 복귀 - 모니터링 중지
+      stopGameSceneBackgroundMonitoring();
+
+      // 최종 연결 확인
       const isConnected = socket && socket._stableConnected && socket.connected;
       const isGameSceneActive = this.scene.isActive("GameScene");
       
@@ -16945,9 +17073,7 @@ class GameScene extends Phaser.Scene {
         const lastHeartbeat = socket._lastHeartbeat || 0;
         const elapsed = now - lastHeartbeat;
         
-        // 3초 이상 응답이 없거나 명시적 disconnect 상태면 로비로 이동
         if (elapsed > 3000 || !socket.connected) {
-          // 안전한 씬 정리 후 로비로 이동
           this.cleanupGameSceneAndGoToLobby();
         }
       }
@@ -16956,6 +17082,11 @@ class GameScene extends Phaser.Scene {
     // visibilitychange 리스너 등록 (GameScene용)
     this._visibilityChangeHandler = handleGameSceneVisibilityChange.bind(this);
     document.addEventListener("visibilitychange", this._visibilityChangeHandler);
+
+    // 씬 shutdown 시 모니터링 중지
+    this.events.once("shutdown", () => {
+      stopGameSceneBackgroundMonitoring();
+    });
   }
 
   addGameLog(message, color = "#ffffff") {
