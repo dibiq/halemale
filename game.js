@@ -425,16 +425,33 @@ socket.off("serverDebug").on("serverDebug", (payload) => {
   const ts = payload?.ts ? new Date(payload.ts).toLocaleTimeString() : "-";
 });
 
-socket.off("connect").on("connect", () => {
+// ✅ 【명시적 연결 상태 관리】전역 플래그로 실제 연결 여부 추적
+socket._stableConnected = true;  // 현재 연결 상태
+socket._lastHeartbeat = Date.now();  // 마지막 서버 응답 시간
+socket._isManuallyDisconnected = false;  // 사용자가 의도적으로 끊었는지 여부
 
+socket.off("connect").on("connect", () => {
+  socket._stableConnected = true;
+  socket._lastHeartbeat = Date.now();
+  socket._isManuallyDisconnected = false;
 });
 
 socket.off("disconnect").on("disconnect", (reason) => {
+  socket._stableConnected = false;
+  // 서버에서 강제 종료한 것이 아니면 재연결 시도
+  if (reason !== "io server disconnect") {
+    socket._isManuallyDisconnected = false;
+  }
+});
 
+socket.off("connect_error").on("connect_error", (error) => {
+  socket._stableConnected = false;
 });
 
 socket.off("serverHello").on("serverHello", (payload) => {
-
+  // 서버로부터 응답받음 = 연결 정상
+  socket._stableConnected = true;
+  socket._lastHeartbeat = Date.now();
 });
 
 // NOTE: adReward와 dailyReward 리스너는 GameScene의 create에서 등록됨
@@ -766,6 +783,51 @@ class LobbyScene extends Phaser.Scene {
     this.maxConcurrentAnims = isLowEndDevice ? 5 : (isMobileDevice ? 8 : 20);
     this.currentAnimCount = 0;
     
+  }
+
+  // 🔴 【안전한 씬 정리】게임씬 연결 끊김 후 로비로 안전하게 이동
+  cleanupGameSceneAndGoToLobby() {
+    try {
+      // 1️⃣ 모든 타이머 정리
+      if (this.time && typeof this.time.removeAllEvents === "function") {
+        this.time.removeAllEvents();
+      }
+
+      // 2️⃣ 모든 트윈 정리
+      if (this.tweens && typeof this.tweens.killAll === "function") {
+        this.tweens.killAll();
+      }
+
+      // 3️⃣ 모든 사운드 정리
+      try {
+        if (this.sound && typeof this.sound.stopAll === "function") {
+          this.sound.stopAll();
+        }
+      } catch (e) {}
+
+      // 4️⃣ visibilitychange 리스너 정리 (LobbyScene)
+      if (this._visibilityChangeHandler) {
+        document.removeEventListener("visibilitychange", this._visibilityChangeHandler);
+        this._visibilityChangeHandler = null;
+      }
+
+      // 5️⃣ 게임씬이 활성화되어 있으면 강제 종료
+      if (this.scene.isActive("GameScene")) {
+        this.scene.stop("GameScene");
+      }
+
+      // 6️⃣ 로비로 이동
+      this.scene.start("LobbyScene", {
+        fromGame: true,
+        connectionLost: true,
+        skipLobbyLoading: true,
+      });
+    } catch (err) {
+      // 최후의 수단: 하드 리셋
+      try {
+        window.location.reload();
+      } catch (e) {}
+    }
   }
 
   // avatar helper methods (copied from GameScene) so lobby can use same logic
@@ -5293,25 +5355,54 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     }
 
     // ======================================
-    // 2️⃣ 백그라운드 진입/복귀 처리
+    // 2️⃣ 백그라운드 진입/복귀 처리 (강화 버전)
     // ======================================
-    document.addEventListener("visibilitychange", () => {
-      if (!socket.connected) {
-        this.scene.start("LobbyScene", { fromGame: true });
-      }
-
-      if (!bgm) return;
-
+    const handleVisibilityChange = () => {
+      // 백그라운드에서 포어그라운드로 복귀할 때만 연결 체크
       if (document.hidden) {
-        // 🔻 백그라운드 → BGM만 멈춤
-        if (bgm.isPlaying) {
+        // 🔻 백그라운드로 진입
+        if (bgm && bgm.isPlaying) {
           bgm.pause();
         }
-      } else {
-        // 🔺 포그라운드 → BGM만 재생
+        return;
+      }
+
+      // 🔺 포어그라운드로 복귀 - 연결 상태 확인
+      const isConnected = socket && socket._stableConnected && socket.connected;
+      const isGameScene = this.scene.key === "GameScene";
+      
+      // 연결이 끊겼거나 stale 상태면 LobbyScene으로 이동
+      if (!isConnected && isGameScene) {
+        // 게임 중 연결 끊김 감지
+        const now = Date.now();
+        const lastHeartbeat = socket._lastHeartbeat || 0;
+        const elapsed = now - lastHeartbeat;
+        
+        // 3초 이상 응답이 없거나 명시적 disconnect 상태
+        if (elapsed > 3000 || !socket.connected) {
+          // 안전한 씬 정리 후 로비로 이동
+          this.cleanupGameSceneAndGoToLobby();
+          return;
+        }
+      }
+      
+      // BGM 복구 (정상 상태)
+      if (bgm) {
         if (bgm.isPaused && bgmOn) {
           bgm.resume();
         }
+      }
+    };
+
+    // visibilitychange 리스너 등록
+    this._visibilityChangeHandler = handleVisibilityChange.bind(this);
+    document.addEventListener("visibilitychange", this._visibilityChangeHandler);
+
+    // 씬 종료 시 리스너 정리
+    this.events.once("shutdown", () => {
+      if (this._visibilityChangeHandler) {
+        document.removeEventListener("visibilitychange", this._visibilityChangeHandler);
+        this._visibilityChangeHandler = null;
       }
     });
 
@@ -13394,6 +13485,58 @@ class GameScene extends Phaser.Scene {
     this.gameAdRetryTimer = null; // 광고 로드 재시도 타이머
   }
 
+  // 🔴 【안전한 씬 정리】연결 끊김 후 로비로 안전하게 이동 (GameScene용)
+  cleanupGameSceneAndGoToLobby() {
+    try {
+      // 1️⃣ 모든 타이머 정리
+      if (this.time && typeof this.time.removeAllEvents === "function") {
+        this.time.removeAllEvents();
+      }
+
+      // 2️⃣ 모든 트윈 정리
+      if (this.tweens && typeof this.tweens.killAll === "function") {
+        this.tweens.killAll();
+      }
+
+      // 3️⃣ 모든 사운드 정리
+      try {
+        if (this.sound && typeof this.sound.stopAll === "function") {
+          this.sound.stopAll();
+        }
+      } catch (e) {}
+
+      // 4️⃣ visibilitychange 리스너 정리
+      if (this._visibilityChangeHandler) {
+        document.removeEventListener("visibilitychange", this._visibilityChangeHandler);
+        this._visibilityChangeHandler = null;
+      }
+
+      // 5️⃣ socket 리스너 정리
+      socket.off("playerJoined");
+      socket.off("playerLeft");
+      socket.off("hostChanged");
+      socket.off("readyStatusUpdated");
+      socket.off("cardFlipped");
+      socket.off("bellResult");
+      socket.off("gameEnded");
+
+      // 6️⃣ GameScene 강제 종료
+      this.scene.stop("GameScene");
+
+      // 7️⃣ 로비로 이동
+      this.scene.start("LobbyScene", {
+        fromGame: true,
+        connectionLost: true,
+        skipLobbyLoading: true,
+      });
+    } catch (err) {
+      // 최후의 수단: 하드 리셋
+      try {
+        window.location.reload();
+      } catch (e) {}
+    }
+  }
+
   applyDeferredProfileUpdates() {
     if (!this._deferredMyProfile) return;
 
@@ -15086,7 +15229,7 @@ class GameScene extends Phaser.Scene {
     } catch (e) {}
 
     // Persistent DOM debug overlay to survive Phaser scene replacements.
-    try {
+    /*try {
       (function createPersistentDebugOverlay(scene) {
         try { window.__HalemaleLastGameScene = scene; } catch (e) {}
         const id = "halemale-debug-overlay";
@@ -15154,7 +15297,7 @@ class GameScene extends Phaser.Scene {
         }
       })(this);
     } catch (e) {
-    }
+    }*/
 
     // ============================================
     // 1. 공통 소켓 리스너 (방 관리)
@@ -16774,10 +16917,45 @@ class GameScene extends Phaser.Scene {
       socket.off("gameEnded");
       socket.off("startBlocked");
       socket.off("myProfile");
+      
+      // 🔴 【GameScene shutdown】visibilitychange 리스너 정리
+      if (this._visibilityChangeHandler) {
+        document.removeEventListener("visibilitychange", this._visibilityChangeHandler);
+        this._visibilityChangeHandler = null;
+      }
+      
       if (this.backHandler && typeof this.backHandler.remove === "function") {
         this.backHandler.remove();
       }
     });
+
+    // ======================================
+    // 🔴 【안전한 백그라운드 복귀 처리】GameScene
+    // ======================================
+    const handleGameSceneVisibilityChange = () => {
+      // 포어그라운드로 복귀할 때만 연결 체크
+      if (document.hidden) return;
+
+      // 연결 상태 확인
+      const isConnected = socket && socket._stableConnected && socket.connected;
+      const isGameSceneActive = this.scene.isActive("GameScene");
+      
+      if (!isConnected && isGameSceneActive) {
+        const now = Date.now();
+        const lastHeartbeat = socket._lastHeartbeat || 0;
+        const elapsed = now - lastHeartbeat;
+        
+        // 3초 이상 응답이 없거나 명시적 disconnect 상태면 로비로 이동
+        if (elapsed > 3000 || !socket.connected) {
+          // 안전한 씬 정리 후 로비로 이동
+          this.cleanupGameSceneAndGoToLobby();
+        }
+      }
+    };
+
+    // visibilitychange 리스너 등록 (GameScene용)
+    this._visibilityChangeHandler = handleGameSceneVisibilityChange.bind(this);
+    document.addEventListener("visibilitychange", this._visibilityChangeHandler);
   }
 
   addGameLog(message, color = "#ffffff") {
