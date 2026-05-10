@@ -3073,10 +3073,10 @@ class LobbyScene extends Phaser.Scene {
       }
     };
 
-    // 3초마다 팁 변경
+    // 5초마다 팁 변경 (사용자가 읽기 쉽게 시간 증가)
     if (this.time) {
       tipRotationTimer = this.time.addEvent({
-        delay: 3000,
+        delay: 5000,
         callback: rotateTip,
         loop: true,
       });
