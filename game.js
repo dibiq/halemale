@@ -13123,30 +13123,25 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       this.currentShopPopupCloseHandler = null;
     }
 
-    const { width, height, centerX, centerY } = this.cameras.main;
+    const { width, height } = this.cameras.main;
+    const centerX = width / 2;
+    const centerY = height / 2;
 
     this.setLobbyChatInputHidden(true);
 
-    // 배경 어둡게
+    // 배경 어둡게 (게임 중 종료 팝업과 동일)
     const overlay = this.add
-      .rectangle(centerX, centerY, width, height, 0x000000, 0.5)
-      .setDepth(30000)
+      .rectangle(centerX, centerY, width, height, 0x000000, 0.6)
+      .setDepth(4000)
       .setInteractive();
 
-    // 팝업 배경 (popupbg 이미지)
-
-    // remove outside click closing for invite receive
-    // overlay.setInteractive();
-    // overlay.on("pointerdown", () => {
-    //   this.sound.play("btn", { volume: 0.4 });
-    //   destroyPopup();
-    // });
+    // 팝업 배경 (게임 중 종료 팝업과 동일한 크기)
     const popupWidth = width * 0.75;
-    const popupHeight = height * 0.3;
+    const popupHeight = height * 0.25;
     const popupBg = this.add
       .image(centerX, centerY, "profilebg")
       .setDisplaySize(popupWidth, popupHeight)
-      .setDepth(30001);
+      .setDepth(4001);
 
     // 모든 객체 저장 배열
     const allObjects = [overlay, popupBg];
@@ -13177,97 +13172,65 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       destroyPopup();
     });
 
-    // 타이틀
-    /*const titleText = this.add
-      .text(
-        centerX,
-        centerY - popupHeight / 2 + height * 0.04,
-        "초대 받았습니다!",
-        {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.055}px`,
-          color: "#3498db",
-          fontWeight: "bold",
-        },
-      )
-      .setOrigin(0.5)
-      .setDepth(4002);*/
-
-    // 초대 정보
-    //        `${inviteData.inviterNickname}님이 초대했어요\n${inviteData.roomName}`,
-
+    // 초대 정보 텍스트 (게임 중 종료 팝업 스타일)
     const infoText = this.add
       .text(
         centerX,
-        centerY - height * 0.02,
+        centerY*0.94,
         `${inviteData.inviterNickname}님이 초대했어요`,
         {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.055}px`,
-          color: "#fff",
+          fontFamily: typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
+          fontSize: `${width * 0.05}px`,
+          color: "#964b26",
           align: "center",
         },
       )
       .setOrigin(0.5)
-      .setDepth(30002);
+      .setDepth(4002);
 
-    /*const playerCountText = this.add
-      .text(
-        centerX,
-        centerY + height * 0.08,
-        `플레이어: ${inviteData.currentPlayers}/${inviteData.maxPlayers}`,
-        {
-          fontFamily: GAME_FONTS.main,
-          fontSize: `${width * 0.03}px`,
-          color: "#aaa",
-        },
-      )
-      .setOrigin(0.5)
-      .setDepth(4002);*/
+    const btnY = centerY + 50;
+    const btnGap = width * 0.15;
 
-    // 수락 버튼 (uibtn 이미지)
-    const acceptBtn = this.add
-      .image(centerX - width * 0.15, centerY * 1.12, "uibtn")
-      .setDisplaySize(width * 0.2, height * 0.06)
-      .setTint(0x2ecc71)
-      .setDepth(30001)
-      .setInteractive({ useHandCursor: true });
-
-    const acceptBtnText = this.add
-      .text(centerX - width * 0.15, centerY * 1.12, "수락", {
-        fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.035}px`,
-        color: "#fff",
-        fontWeight: "bold",
-      })
-      .setOrigin(0.5)
-      .setDepth(30002);
-
-    // 거절 버튼 (uibtn 이미지)
+    // 거절 버튼 (왼쪽 - 취소 버튼처럼)
     const declineBtn = this.add
-      .image(centerX + width * 0.15, centerY * 1.12, "uibtn")
-      .setDisplaySize(width * 0.2, height * 0.06)
-      .setTint(0xe74c3c)
-      .setDepth(30001)
+      .image(centerX - btnGap, btnY* 1.03, "uibtn")
+      .setDisplaySize(width * 0.22, height * 0.06)
+      .setTint(0xffaaaa)
+      .setDepth(4002)
       .setInteractive({ useHandCursor: true });
 
     const declineBtnText = this.add
-      .text(centerX + width * 0.15, centerY * 1.12, "거절", {
-        fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.035}px`,
-        color: "#fff",
+      .text(centerX - btnGap, btnY* 1.03, "거절", {
+        fontFamily: typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
+        fontSize: `${width * 0.055}px`,
+        color: "#ffffff",
+      })
+      .setOrigin(0.5)
+      .setDepth(4003);
+
+    // 수락 버튼 (오른쪽 - 확인 버튼처럼)
+    const acceptBtn = this.add
+      .image(centerX + btnGap, btnY* 1.03, "uibtn")
+      .setDisplaySize(width * 0.22, height * 0.06)
+      .setDepth(4002)
+      .setInteractive({ useHandCursor: true });
+
+    const acceptBtnText = this.add
+      .text(centerX + btnGap, btnY* 1.03, "수락", {
+        fontFamily: typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
+        fontSize: `${width * 0.055}px`,
+        color: "#ffffff",
         fontWeight: "bold",
       })
       .setOrigin(0.5)
-      .setDepth(30002);
+      .setDepth(4003);
 
     allObjects.push(
       infoText,
-      // playerCountText,
-      acceptBtn,
-      acceptBtnText,
       declineBtn,
       declineBtnText,
+      acceptBtn,
+      acceptBtnText,
     );
 
     // 자동 닫기 (15초)
@@ -13290,9 +13253,9 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       this.sound.play("btn", { volume: 0.4 });
       this.tweens.add({
         targets: [acceptBtn, acceptBtnText],
-        scaleX: "*=0.9",
-        scaleY: "*=0.9",
-        duration: 100,
+        scaleX: "*=0.95",
+        scaleY: "*=0.95",
+        duration: 50,
         yoyo: true,
         ease: "Quad.easeInOut",
         onComplete: () => {
@@ -13308,9 +13271,9 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       this.sound.play("btn", { volume: 0.4 });
       this.tweens.add({
         targets: [declineBtn, declineBtnText],
-        scaleX: "*=0.9",
-        scaleY: "*=0.9",
-        duration: 100,
+        scaleX: "*=0.95",
+        scaleY: "*=0.95",
+        duration: 50,
         yoyo: true,
         ease: "Quad.easeInOut",
         onComplete: () => {
@@ -13600,6 +13563,20 @@ class GameScene extends Phaser.Scene {
       if (this._visibilityChangeHandler) {
         document.removeEventListener("visibilitychange", this._visibilityChangeHandler);
         this._visibilityChangeHandler = null;
+      }
+
+      // 4️⃣-1 socket disconnect 리스너 정리 및 기존 핸들러 복원
+      if (this._socketDisconnectHandler) {
+        socket.off("disconnect", this._socketDisconnectHandler);
+        this._socketDisconnectHandler = null;
+        // 전역 heartbeat 중지 핸들러 복원
+        socket.off("disconnect").on("disconnect", (reason) => {
+          socket._stableConnected = false;
+          socket._isHeartbeatPending = false;
+          if (typeof stopHeartbeatMonitoring === "function") {
+            stopHeartbeatMonitoring();
+          }
+        });
       }
 
       // 5️⃣ socket 리스너 정리
@@ -14622,7 +14599,50 @@ class GameScene extends Phaser.Scene {
       }
     });
 
-    // 🔴 [추가] Registry에서 광고 상태 복원 (씬 간에 유지)
+    // 🔴 【백그라운드 자동 재로드】게임 플레이 중 백그라운드로 5초 이상 나가면 앱 재로드
+    let backgroundReloadTimer = null;
+    this._visibilityChangeHandler = (event) => {
+      if (document.hidden) {
+        // 앱이 백그라운드로 갈 때
+        console.log("📱 앱이 백그라운드로 이동 - 5초 타이머 시작");
+        backgroundReloadTimer = setTimeout(() => {
+          console.log("⏱️ 5초 경과 - 앱 재로드");
+          window.location.reload();
+        }, 5000);
+      } else {
+        // 앱이 포그라운드로 돌아올 때
+        if (backgroundReloadTimer) {
+          console.log("✅ 앱이 포그라운드로 돌아옴 - 타이머 취소");
+          clearTimeout(backgroundReloadTimer);
+          backgroundReloadTimer = null;
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", this._visibilityChangeHandler);
+
+    // 🔴 【멀티플레이 연결 끊김 자동 재로드】게임 진행 중 소켓 연결 끊기면 앱 재로드
+    this._socketDisconnectHandler = (reason) => {
+      console.log("❌ Socket 연결 끊김:", reason);
+      
+      // 기존 heartbeat 중지 로직
+      socket._stableConnected = false;
+      socket._isHeartbeatPending = false;
+      if (typeof stopHeartbeatMonitoring === "function") {
+        stopHeartbeatMonitoring();
+      }
+      
+      // 게임이 진행 중인 경우만 자동 재로드 (로비는 재연결 시도)
+      if (this.isGameStarted && !this.isGameEnded) {
+        console.log("🔴 게임 진행 중 연결 끊김 - 5초 후 앱 재로드");
+        setTimeout(() => {
+          console.log("⏱️ 연결 끊김 재로드 실행");
+          window.location.reload();
+        }, 5000);
+      }
+    };
+    socket.off("disconnect").on("disconnect", this._socketDisconnectHandler);
+
+    // 🔴 【추가】Registry에서 광고 상태 복원 (씬 간에 유지)
     this.isGameAdLoaded = this.registry.get("gameAdLoaded") || false;
     this.isGameAdLoading = this.registry.get("gameAdLoading") || false;
 
@@ -15204,46 +15224,7 @@ class GameScene extends Phaser.Scene {
       this.isSingle &&
       (this.isTutorialMode || this.roundData?.roomId === "TUTORIAL" || this.roundData?.isTutorialMode || this.tutorialConfig)
     ) {
-      try {
-        // ensure top-level debug container exists and is above toasts
-        if (!this.debugUI || !this.debugUI.scene) {
-          this.debugUI = this.add.container(0, 0).setDepth(999999999);
-          this.debugUI.setScrollFactor(0);
-          this.debugUI.setVisible(true);
-          this.debugUI.setAlpha(1);
-        }
-        const btnX = this.cameras.main.width - 80;
-        const btnY = 40;
-        const forceBtn = this.add
-          .image(btnX, btnY, "ui_btn")
-          .setDisplaySize(140, 46)
-          .setInteractive({ useHandCursor: true });
-        const forceTxt = this.add
-          .text(btnX, btnY, "강제승리", {
-            fontFamily: GAME_FONTS.main,
-            fontSize: `${Math.max(12, this.cameras.main.width * 0.012)}px`,
-            color: "#ffffff",
-            fontWeight: "bold",
-          })
-          .setOrigin(0.5);
-        this.debugUI.add([forceBtn, forceTxt]);
-        this.children.bringToTop(this.debugUI);
-        this._debugForceWinBtn = forceBtn;
-        this._debugForceWinTxt = forceTxt;
-        forceBtn.on("pointerdown", () => {
-          this.sound.play("btn", { volume: 0.4 });
-          try {
-            if (typeof this.endSingleGame === "function") {
-              this.endSingleGame("WIN");
-            } else {
-              const proto = GameScene?.prototype?.endSingleGame;
-              if (typeof proto === "function") proto.call(this, "WIN");
-            }
-          } catch (e) {
-          }
-        });
-      } catch (e) {
-      }
+
     }
 
     // Debug: add 'complete tutorial' button to directly show completion overlay
@@ -15251,48 +15232,7 @@ class GameScene extends Phaser.Scene {
       this.isSingle &&
       (this.isTutorialMode || this.roundData?.roomId === "TUTORIAL" || this.roundData?.isTutorialMode || this.tutorialConfig)
     ) {
-      try {
-        if (!this.debugUI || !this.debugUI.scene) {
-          this.debugUI = this.add.container(0, 0).setDepth(999999999);
-          this.debugUI.setScrollFactor(0);
-          this.debugUI.setVisible(true);
-          this.debugUI.setAlpha(1);
-        }
-        const cbtnX = this.cameras.main.width - 80;
-        const cbtnY = 100;
-        const completeBtn = this.add
-          .image(cbtnX, cbtnY, "ui_btn")
-          .setDisplaySize(140, 46)
-          .setInteractive({ useHandCursor: true });
-        const completeTxt = this.add
-          .text(cbtnX, cbtnY, "튜토리얼 완료", {
-            fontFamily: GAME_FONTS.main,
-            fontSize: `${Math.max(12, this.cameras.main.width * 0.012)}px`,
-            color: "#ffffff",
-            fontWeight: "bold",
-          })
-          .setOrigin(0.5);
-        this.debugUI.add([completeBtn, completeTxt]);
-        this.children.bringToTop(this.debugUI);
-        this._debugCompleteTutorialBtn = completeBtn;
-        this._debugCompleteTutorialTxt = completeTxt;
 
-        completeBtn.on("pointerdown", () => {
-          this.sound.play("btn", { volume: 0.4 });
-          try {
-            if (typeof this.showTutorialCompletionOverlay === "function") {
-              this.showTutorialCompletionOverlay();
-            } else if (typeof this.completeTutorialStage === "function") {
-              try {
-                this.hasCompletedTutorial = true;
-                localStorage.setItem(TUTORIAL_STATE_KEY, "true");
-              } catch (err) {}
-            }
-          } catch (e) {
-          }
-        });
-      } catch (e) {
-      }
     }
 
     // 연출은 applyGameStartPayload에서 처리됩니다
@@ -27665,7 +27605,7 @@ class GameScene extends Phaser.Scene {
       .rectangle(
         centerX + width * 0.15,
         centerY + popupHeight / 2 - height * 0.05,
-        width * 0.2,
+        width * 0.15,
         height * 0.06,
         0xe74c3c,
         1,
