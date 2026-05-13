@@ -4,6 +4,7 @@ import {
   IAP,
   loadFullScreenAd,
   showFullScreenAd,
+  grantPromotionRewardForGame,
 } from "@apps-in-toss/web-framework";
 import { title } from "process";
 import { App } from "@capacitor/app";
@@ -703,6 +704,91 @@ const COLORS = {
   text: 0xf1f5f9,
 };
 const XP_PER_LEVEL = 100;
+
+// 🔴 【프로모션 테스트 유틸리티】개발자 콘솔에서 테스트용 프로모션 호출
+window.PromotionTestUtils = {
+  // 테스트 모드 플래그
+  useTestPromotion: false,
+
+  // 테스트 모드 토글
+  toggleTestMode() {
+    this.useTestPromotion = !this.useTestPromotion;
+    console.log(`🧪 프로모션 테스트 모드: ${this.useTestPromotion ? "ON ✅" : "OFF ❌"}`);
+    return this.useTestPromotion;
+  },
+
+  // 방 생성 프로모션 테스트
+  async testRoomCreationPromotion() {
+    console.log("🧪 방 생성 프로모션 테스트 시작...");
+    try {
+      const result = await grantPromotionRewardForGame({
+        params: {
+          promotionCode: "TEST_ROOM_CREATE", // 테스트 코드 (포인트 차감 없음)
+          amount: 100,
+        },
+      });
+      console.log("🧪 테스트 결과:", result);
+      return result;
+    } catch (error) {
+      console.error("🧪 테스트 실패:", error);
+    }
+  },
+
+  // 특수카드 구매 프로모션 테스트
+  async testSpecialCardBuyPromotion() {
+    console.log("🧪 특수카드 구매 프로모션 테스트 시작...");
+    try {
+      const result = await grantPromotionRewardForGame({
+        params: {
+          promotionCode: "TEST_SPECIAL_CARD_BUY", // 테스트 코드 (포인트 차감 없음)
+          amount: 1,
+        },
+      });
+      console.log("🧪 테스트 결과:", result);
+      return result;
+    } catch (error) {
+      console.error("🧪 테스트 실패:", error);
+    }
+  },
+
+  // 모든 프로모션 테스트
+  async testAllPromotions() {
+    console.log("🧪 모든 프로모션 테스트 시작...");
+    const results = {
+      roomCreation: await this.testRoomCreationPromotion(),
+      specialCardBuy: await this.testSpecialCardBuyPromotion(),
+    };
+    console.log("🧪 모든 테스트 완료:", results);
+    return results;
+  },
+
+  // 사용 설명서
+  help() {
+    console.log(`
+🧪 프로모션 테스트 유틸리티 사용 설명서:
+
+1. 테스트 모드 토글:
+   PromotionTestUtils.toggleTestMode()
+
+2. 각 프로모션별 테스트:
+   - PromotionTestUtils.testRoomCreationPromotion()
+   - PromotionTestUtils.testSpecialCardBuyPromotion()
+
+3. 모든 프로모션 한 번에 테스트:
+   PromotionTestUtils.testAllPromotions()
+
+📝 주의:
+- TEST_로 시작하는 코드는 포인트가 차감되지 않습니다
+- 실제 프로모션 시작 전에 최소 1회 테스트 필요
+- 콘솔에서 직접 호출 가능합니다
+
+💡 예:
+  await PromotionTestUtils.testRoomCreationPromotion()
+    `);
+  },
+};
+
+console.log("✅ 프로모션 테스트 유틸리티 로드됨. PromotionTestUtils.help() 참고");
 
 function showCoinBurstEffect(scene, targetX, targetY, amount = 0) {
   if (!scene || !scene.add || !scene.tweens) return;
@@ -5245,6 +5331,9 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       this.hideLoading(); // 🔹 로딩창 끄기
       this.showToast("방 생성 성공!", "#2ecc71"); // 초록색 토스트
 
+      // 🔴 【토스 포인트 지급】방 생성 보상
+      this.grantRoomCreationReward(data.roomId);
+
       this.createBlocker(); // 함수 호출
 
       this.refreshLobbyUI({
@@ -7496,6 +7585,165 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     });
   }
 
+  // 🔴 【토스 포인트 지급】방 생성 보상
+  async grantRoomCreationReward(roomId) {
+    try {
+      // 중복 지급 방지: localStorage에 지급 기록 저장
+      const rewardKey = `room_creation_reward_${roomId}`;
+      
+      if (localStorage.getItem(rewardKey)) {
+        console.log("✅ 이미 이 방에 대해 포인트를 지급했습니다.");
+        return;
+      }
+
+      // 🔴 【테스트 모드】개발 중에는 TEST_ 프로모션 코드 사용
+      const promotionCode = window.PromotionTestUtils?.useTestPromotion 
+        ? "TEST_ROOM_CREATE" 
+        : "ROOM_CREATE";
+      
+      const isTestMode = promotionCode.startsWith("TEST_");
+      if (isTestMode) {
+        console.log("🧪 테스트 모드로 방 생성 프로모션 호출 (포인트 차감 없음)");
+      }
+
+      // 토스 포인트 지급 (프로모션 코드: 'ROOM_CREATE' 또는 테스트 모드 'TEST_ROOM_CREATE')
+      const result = await grantPromotionRewardForGame({
+        params: {
+          promotionCode: promotionCode,
+          amount: 100, // 지급할 포인트 금액 (100 포인트)
+        },
+      });
+
+      // 결과 처리
+      if (!result) {
+        console.warn("⚠️ 토스앱 버전이 최소 지원 버전(5.232.0)보다 낮습니다.");
+        return;
+      }
+
+      if (result === "ERROR") {
+        console.error("❌ 포인트 지급 중 알 수 없는 오류가 발생했습니다.");
+        return;
+      }
+
+      if ("key" in result) {
+        // 성공
+        console.log(`✅ 방 생성 포인트 지급 성공! ${isTestMode ? "(테스트)" : ""}`, result.key);
+        this.showToast(`방 생성 보상 100 토스 포인트 지급!${isTestMode ? " (테스트)" : ""}`, "#FFD700");
+        
+        // 중복 지급 방지를 위해 localStorage에 기록
+        localStorage.setItem(rewardKey, "true");
+      } else if ("errorCode" in result) {
+        // 실패
+        console.error(
+          `❌ 포인트 지급 실패: [${result.errorCode}] ${result.message}`
+        );
+        
+        // 에러 코드별 처리
+        switch (result.errorCode) {
+          case "4100":
+            console.error("프로모션 정보를 찾을 수 없습니다. 콘솔에서 프로모션을 등록했는지 확인하세요.");
+            break;
+          case "4109":
+            console.error("프로모션이 실행 중이 아니거나 예산이 모두 소진되었습니다.");
+            break;
+          case "4110":
+            console.error("시스템 오류 발생. 다시 시도해주세요.");
+            break;
+          case "4112":
+            console.error("예산 부족으로 포인트 지급이 불가능합니다. 콘솔에서 예산을 증액해주세요.");
+            break;
+          case "4114":
+            console.error("1회 지급 금액을 초과했습니다.");
+            break;
+          default:
+            console.error(`알 수 없는 에러: ${result.errorCode}`);
+        }
+      }
+    } catch (error) {
+      console.error("❌ 토스 포인트 지급 중 예외 발생:", error);
+    }
+  }
+
+  // 🔴 【토스 포인트 지급】특수카드 구매 보상
+  async grantSpecialCardBuyReward(cardId) {
+    try {
+      // 중복 지급 방지: localStorage에 지급 기록 저장
+      // 특수카드는 여러 번 구매 가능하므로, 특수카드 종류마다 1회만 지급
+      const rewardKey = `special_card_buy_reward_${cardId}`;
+      
+      if (localStorage.getItem(rewardKey)) {
+        console.log(`✅ 카드 ID ${cardId}에 대해 이미 포인트를 지급했습니다.`);
+        return;
+      }
+
+      // 🔴 【테스트 모드】개발 중에는 TEST_ 프로모션 코드 사용
+      const promotionCode = window.PromotionTestUtils?.useTestPromotion 
+        ? "TEST_SPECIAL_CARD_BUY" 
+        : "SPECIAL_CARD_BUY";
+      
+      const isTestMode = promotionCode.startsWith("TEST_");
+      if (isTestMode) {
+        console.log("🧪 테스트 모드로 특수카드 구매 프로모션 호출 (포인트 차감 없음)");
+      }
+
+      // 토스 포인트 지급 (프로모션 코드: 'SPECIAL_CARD_BUY' 또는 테스트 모드 'TEST_SPECIAL_CARD_BUY')
+      const result = await grantPromotionRewardForGame({
+        params: {
+          promotionCode: promotionCode,
+          amount: 1, // 지급할 포인트 금액 (1 포인트)
+        },
+      });
+
+      // 결과 처리
+      if (!result) {
+        console.warn("⚠️ 토스앱 버전이 최소 지원 버전(5.232.0)보다 낮습니다.");
+        return;
+      }
+
+      if (result === "ERROR") {
+        console.error("❌ 포인트 지급 중 알 수 없는 오류가 발생했습니다.");
+        return;
+      }
+
+      if ("key" in result) {
+        // 성공
+        console.log(`✅ 특수카드 구매 포인트 지급 성공! ${isTestMode ? "(테스트)" : ""}`, result.key);
+        this.showToast(`특수카드 구매 보상 1 토스 포인트 지급!${isTestMode ? " (테스트)" : ""}`, "#FFD700");
+        
+        // 중복 지급 방지를 위해 localStorage에 기록
+        localStorage.setItem(rewardKey, "true");
+      } else if ("errorCode" in result) {
+        // 실패
+        console.error(
+          `❌ 포인트 지급 실패: [${result.errorCode}] ${result.message}`
+        );
+        
+        // 에러 코드별 처리
+        switch (result.errorCode) {
+          case "4100":
+            console.error("프로모션 정보를 찾을 수 없습니다. 콘솔에서 프로모션을 등록했는지 확인하세요.");
+            break;
+          case "4109":
+            console.error("프로모션이 실행 중이 아니거나 예산이 모두 소진되었습니다.");
+            break;
+          case "4110":
+            console.error("시스템 오류 발생. 다시 시도해주세요.");
+            break;
+          case "4112":
+            console.error("예산 부족으로 포인트 지급이 불가능합니다. 콘솔에서 예산을 증액해주세요.");
+            break;
+          case "4114":
+            console.error("1회 지급 금액을 초과했습니다.");
+            break;
+          default:
+            console.error(`알 수 없는 에러: ${result.errorCode}`);
+        }
+      }
+    } catch (error) {
+      console.error("❌ 토스 포인트 지급 중 예외 발생:", error);
+    }
+  }
+
   /*showJoinCodePopup(callback) {
     this.isJoinPopupOpen = true;
     const { width, height } = this.cameras.main;
@@ -8904,6 +9152,9 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           }
 
           this.showToast(`${card.name} 구매 완료!`, "#2ecc71");
+          
+          // 🔴 【토스 포인트 지급】특수카드 구매 보상 (1포인트)
+          this.grantSpecialCardBuyReward(card.id);
           
           // 🔴 [중요] 멀티플레이: 서버 응답 대기 후 UI 업데이트
           if (!this.isSingle && socket.connected) {
