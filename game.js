@@ -5500,32 +5500,25 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     // ======================================
     let backgroundConnectionMonitorTimer = null;
 
+    // 🔴 백그라운드 상태 플래그
+    let isAppInBackground = false;
+    
     const startBackgroundConnectionMonitoring = () => {
       if (backgroundConnectionMonitorTimer) return; // 이미 시작됨
+      
+      isAppInBackground = true; // ✅ 백그라운드 진입 플래그
+      console.log("🔻 백그라운드 진입 상태 플래그: true");
       
       // 매 1초마다 연결 상태 확인
       backgroundConnectionMonitorTimer = setInterval(() => {
         const isConnected = socket && socket._stableConnected && socket.connected;
-        const now = Date.now();
-        const lastHeartbeat = socket._lastHeartbeat || 0;
-        const elapsed = now - lastHeartbeat;
-
-        // 🔴 30초 이상 응답 없으면 강제 복귀 (충분한 여유 제공)
-        if (!isConnected || elapsed > 30000) {
+        
+        // 🔴 연결이 끊어졌을 때만 알림 (게임은 pause 상태 유지)
+        if (!isConnected) {
+          console.log("❌ 백그라운드 중 연결 끊김 감지");
+          // 게임 씬을 stop하지 않고, 포어그라운드에서 재연결 시도하도록 함
           clearInterval(backgroundConnectionMonitorTimer);
           backgroundConnectionMonitorTimer = null;
-
-          // 현재 씬이 GameScene이면 정리 후 로비로 이동
-          const isGameScene = this.scene.key === "GameScene";
-          if (isGameScene) {
-            this.cleanupGameSceneAndGoToLobby();
-          } else {
-            // LobbyScene이면 그냥 UI만 갱신
-            if (this.lobbyBlocker) {
-              this.lobbyBlocker.setVisible(false);
-            }
-            this.showToast("서버와의 연결이 끊겼습니다.", "#e74c3c");
-          }
         }
       }, 1000); // 1초마다 체크
     };
@@ -5535,14 +5528,25 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         clearInterval(backgroundConnectionMonitorTimer);
         backgroundConnectionMonitorTimer = null;
       }
+      isAppInBackground = false; // ✅ 포어그라운드 복귀 플래그
+      console.log("🔺 포어그라운드 복귀 상태 플래그: false");
     };
 
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        // 🔻 백그라운드로 진입 - 실시간 모니터링 시작
+        // 🔻 백그라운드로 진입 - 게임 씬을 나가지 말고 pause만 함
+        console.log("🔻 백그라운드 진입");
         if (bgm && bgm.isPlaying) {
           bgm.pause();
         }
+        
+        // GameScene이 활성화되어 있으면 pause (stop 아님!)
+        const isGameScene = this.scene.key === "GameScene";
+        if (isGameScene && this.scene.isActive("GameScene")) {
+          console.log("⏸️ GameScene pause");
+          this.scene.pause("GameScene");
+        }
+        
         startBackgroundConnectionMonitoring();
         return;
       }
@@ -5550,14 +5554,42 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       // 🔺 포어그라운드로 복귀
       stopBackgroundConnectionMonitoring();
 
-      // 포어그라운드 복귀 시 연결 상태만 확인 (타임아웃 없음)
+      console.log("🔺 포어그라운드 복귀");
+      
+      // socket 상태 확인
       const isConnected = socket && socket._stableConnected && socket.connected;
       const isGameScene = this.scene.key === "GameScene";
+      const isGameSceneActive = this.scene.isActive("GameScene");
       
-      // 🔴 연결 되어있으면 게임 계속, 끊어져있으면 재로딩
-      if (!isConnected && isGameScene) {
+      console.log(`📊 상태: isConnected=${isConnected}, isGameScene=${isGameScene}, isGameSceneActive=${isGameSceneActive}`);
+      
+      // ✅ GameScene이 pause 상태면 resume
+      if (isGameSceneActive === false && this.scene.isSleeping("GameScene")) {
+        console.log("▶️ GameScene resume");
+        this.scene.resume("GameScene");
+      } else if (!isGameSceneActive && this.scene.isActive("LobbyScene")) {
+        // GameScene이 완전히 종료되고 LobbyScene만 있으면, 연결 상태로 판단
+        if (!isConnected) {
+          console.log("❌ GameScene 종료됨 + 연결 끊김 → 현재 상태 유지");
+          return;
+        }
+        
+        // 연결은 되어있는데 GameScene이 종료된 경우는 드물지만, 로비에 머무름
+        console.log("⚠️ GameScene 종료됨, LobbyScene에서 대기");
+        return;
+      }
+      
+      // 🔴 연결 끊어졌고 GameScene이 활성화된 경우만 로비로 이동
+      if (!isConnected && isGameSceneActive) {
+        console.log("❌ 연결 끊김 감지 - 로비로 이동");
         this.cleanupGameSceneAndGoToLobby();
         return;
+      }
+      
+      // socket 재연결 시도
+      if (!isConnected && socket && typeof socket.connect === 'function') {
+        console.log("🔄 socket 재연결 시도");
+        socket.connect();
       }
       
       // BGM 복구
@@ -14815,6 +14847,121 @@ class GameScene extends Phaser.Scene {
     const sceneData = this.sys.settings.data || {};
     this.gameStartAvatarKey = sceneData.playerAvatarKey || this.getSelectedAvatarKey?.() || "player_1";
 
+    // 🔴 【백그라운드 처리】GameScene에서도 visibilitychange 리스너 등록
+    // (LobbyScene에서 등록된 리스너는 LobbyScene stop 시 제거되므로, GameScene에서 다시 등록)
+    let bgmOn = JSON.parse(localStorage.getItem("bgmEnabled")) !== false;
+    const bgm = this.sound.get("bgm");
+    
+    let backgroundConnectionMonitorTimer = null;
+    let isAppInBackground = false;
+    
+    const startBackgroundConnectionMonitoring = () => {
+      if (backgroundConnectionMonitorTimer) return;
+      
+      isAppInBackground = true;
+      console.log("🔻 백그라운드 진입 상태 플래그: true");
+      
+      backgroundConnectionMonitorTimer = setInterval(() => {
+        const isConnected = socket && socket._stableConnected && socket.connected;
+        
+        if (!isConnected) {
+          console.log("❌ 백그라운드 중 연결 끊김 감지");
+          clearInterval(backgroundConnectionMonitorTimer);
+          backgroundConnectionMonitorTimer = null;
+        }
+      }, 1000);
+    };
+    
+    const stopBackgroundConnectionMonitoring = () => {
+      if (backgroundConnectionMonitorTimer) {
+        clearInterval(backgroundConnectionMonitorTimer);
+        backgroundConnectionMonitorTimer = null;
+      }
+      isAppInBackground = false;
+      console.log("🔺 포어그라운드 복귀 상태 플래그: false");
+    };
+    
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        console.log("🔻 백그라운드 진입 (GameScene)");
+        if (bgm && bgm.isPlaying) {
+          bgm.pause();
+        }
+        
+        const isGameScene = this.scene.key === "GameScene";
+        if (isGameScene && this.scene.isActive("GameScene")) {
+          console.log("⏸️ GameScene pause");
+          this.scene.pause("GameScene");
+          this._gameScenePausedAt = Date.now(); // 🔴 pause 시간 기록
+        }
+        
+        startBackgroundConnectionMonitoring();
+        return;
+      }
+      
+      // 🔺 포어그라운드로 복귀
+      stopBackgroundConnectionMonitoring();
+      console.log("🔺 포어그라운드 복귀 (GameScene)");
+      
+      const isConnected = socket && socket._stableConnected && socket.connected;
+      const isGameScene = this.scene.key === "GameScene";
+      const isGameSceneActive = this.scene.isActive("GameScene");
+      const isGameSceneSleeping = this.scene.isSleeping("GameScene"); // 🔴 추가 로그
+      
+      console.log(`📊 상태 (GameScene): isConnected=${isConnected}, isGameScene=${isGameScene}, isGameSceneActive=${isGameSceneActive}, isSleeping=${isGameSceneSleeping}`);
+      
+      // ✅ GameScene이 pause 상태면 resume (더 강력한 로직)
+      if (isGameScene && this._gameScenePausedAt && !isGameSceneActive) {
+        console.log("▶️ GameScene resume 시도 (pause 기록 있음)");
+        try {
+          this.scene.resume("GameScene");
+          console.log("✅ GameScene resume 성공");
+          this._gameScenePausedAt = null; // 초기화
+        } catch (e) {
+          console.error("❌ GameScene resume 실패:", e.message);
+        }
+      } else if (isGameSceneActive === false && isGameSceneSleeping) {
+        // 기존 로직도 유지
+        console.log("▶️ GameScene resume (sleep 상태 감지)");
+        try {
+          this.scene.resume("GameScene");
+          console.log("✅ GameScene resume 성공");
+          this._gameScenePausedAt = null;
+        } catch (e) {
+          console.error("❌ GameScene resume 실패:", e.message);
+        }
+      }
+      
+      // socket 재연결 시도
+      if (!isConnected && socket && typeof socket.connect === 'function') {
+        console.log("🔄 socket 재연결 시도");
+        socket.connect();
+      }
+      
+      // BGM 복구
+      if (bgm) {
+        if (bgm.isPaused && bgmOn) {
+          bgm.resume();
+        }
+      }
+    };
+    
+    // visibilitychange 리스너 등록 (GameScene 전용)
+    this._gameSceneVisibilityChangeHandler = handleVisibilityChange.bind(this);
+    document.addEventListener("visibilitychange", this._gameSceneVisibilityChangeHandler);
+    
+    // 씬 종료 시 리스너 정리
+    this.events.once("shutdown", () => {
+      if (this._gameSceneVisibilityChangeHandler) {
+        document.removeEventListener("visibilitychange", this._gameSceneVisibilityChangeHandler);
+        this._gameSceneVisibilityChangeHandler = null;
+      }
+      if (backgroundConnectionMonitorTimer) {
+        clearInterval(backgroundConnectionMonitorTimer);
+        backgroundConnectionMonitorTimer = null;
+      }
+    });
+
     // ✅ GameScene에서도 emitInventory 메서드 정의 (싱글플레이/멀티플레이 모두에서 코인 동기화)
     if (typeof this.emitInventory !== 'function') {
       this.emitInventory = (reason = 'game', options = {}) => {
@@ -14851,30 +14998,21 @@ class GameScene extends Phaser.Scene {
       }
     });
 
-    // 🔴 【백그라운드 자동 재로드】게임 플레이 중 백그라운드로 5초 이상 나가면 앱 재로드
-    let backgroundReloadTimer = null;
-    this._visibilityChangeHandler = (event) => {
-      if (document.hidden) {
-        // 앱이 백그라운드로 갈 때
-        console.log("📱 앱이 백그라운드로 이동 - 5초 타이머 시작");
-        backgroundReloadTimer = setTimeout(() => {
-          console.log("⏱️ 5초 경과 - 앱 재로드");
-          window.location.reload();
-        }, 5000);
-      } else {
-        // 앱이 포그라운드로 돌아올 때
-        if (backgroundReloadTimer) {
-          console.log("✅ 앱이 포그라운드로 돌아옴 - 타이머 취소");
-          clearTimeout(backgroundReloadTimer);
-          backgroundReloadTimer = null;
-        }
-      }
-    };
-    document.addEventListener("visibilitychange", this._visibilityChangeHandler);
-
     // 🔴 【멀티플레이 연결 끊김 자동 재로드】게임 진행 중 소켓 연결 끊기면 앱 재로드
     this._socketDisconnectHandler = (reason) => {
-      console.log("❌ Socket 연결 끊김:", reason);
+      console.log("❌ Socket 연결 끊김:", reason, "백그라운드 상태:", isAppInBackground);
+      
+      // 🔴 【중요】백그라운드 중에는 socket disconnect를 무시! (네트워크 전환으로 인한 오류 방지)
+      if (isAppInBackground) {
+        console.log("⚠️ 백그라운드 중 socket 끊김 - 게임은 pause 상태 유지");
+        // 기존 heartbeat 중지 로직만 수행
+        socket._stableConnected = false;
+        socket._isHeartbeatPending = false;
+        if (typeof stopHeartbeatMonitoring === "function") {
+          stopHeartbeatMonitoring();
+        }
+        return; // ← 중요: 게임을 stop하지 않음
+      }
       
       // 기존 heartbeat 중지 로직
       socket._stableConnected = false;
@@ -14883,9 +15021,9 @@ class GameScene extends Phaser.Scene {
         stopHeartbeatMonitoring();
       }
       
-      // 🔴 게임이 진행 중인 경우 안전하게 로비로 이동 (앱 리로드 대신)
+      // 🔴 포어그라운드에서만: 게임이 진행 중인 경우 안전하게 로비로 이동 (앱 리로드 대신)
       if (this.isGameStarted && !this.isGameEnded) {
-        console.log("🔴 게임 진행 중 연결 끊김 - 로비로 안전하게 이동");
+        console.log("🔴 포어그라운드 중 게임 진행 중 연결 끊김 - 로비로 안전하게 이동");
         // window.location.reload() 대신 cleanupGameSceneAndGoToLobby() 호출
         // 이렇게 하면 로비(홈 화면)로 이동하지, 방 대기실로 돌아가지 않음
         if (typeof this.cleanupGameSceneAndGoToLobby === 'function') {
