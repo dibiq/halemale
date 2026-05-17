@@ -2212,6 +2212,8 @@ class LobbyScene extends Phaser.Scene {
       options: { adGroupId },
       onEvent: (event) => {
         switch (event.type) {
+          case "closed":
+          case "completed":
           case "dismissed":
           case "failedToShow":
             // 🔇 광고 종료 - BGM 다시 재생
@@ -5619,12 +5621,15 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
       console.log("🔺 포어그라운드 복귀");
       
-      // socket 상태 확인
-      const isConnected = socket && socket._stableConnected && socket.connected;
+      // 🔴 【싱글플레이 체크】싱글플레이는 socket이 없으므로 별도 처리
+      const isSinglePlayGame = this.isSingle === true;
+      
+      // socket 상태 확인 (멀티플레이만 체크)
+      const isConnected = !isSinglePlayGame && socket && socket._stableConnected && socket.connected;
       const isGameScene = this.scene.key === "GameScene";
       const isGameSceneActive = this.scene.isActive("GameScene");
       
-      console.log(`📊 상태: isConnected=${isConnected}, isGameScene=${isGameScene}, isGameSceneActive=${isGameSceneActive}`);
+      console.log(`📊 상태: isSingle=${isSinglePlayGame}, isConnected=${isConnected}, isGameScene=${isGameScene}, isGameSceneActive=${isGameSceneActive}`);
       
       // ✅ GameScene이 pause 상태면 resume
       if (isGameSceneActive === false && this.scene.isSleeping("GameScene")) {
@@ -5632,7 +5637,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         this.scene.resume("GameScene");
       } else if (!isGameSceneActive && this.scene.isActive("LobbyScene")) {
         // GameScene이 완전히 종료되고 LobbyScene만 있으면, 연결 상태로 판단
-        if (!isConnected) {
+        if (!isConnected && !isSinglePlayGame) {
           console.log("❌ GameScene 종료됨 + 연결 끊김 → 현재 상태 유지");
           return;
         }
@@ -5642,21 +5647,21 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         return;
       }
       
-      // 🔴 연결 끊어졌고 GameScene이 활성화된 경우만 로비로 이동
-      if (!isConnected && isGameSceneActive) {
+      // 🔴 【싱글플레이 제외】연결 끊어졌고 GameScene이 활성화된 경우만 로비로 이동 (멀티플레이만)
+      if (!isConnected && isGameSceneActive && !isSinglePlayGame) {
         console.log("❌ 연결 끊김 감지 - 로비로 이동");
         this.cleanupGameSceneAndGoToLobby();
         return;
       }
       
-      // socket 재연결 시도
-      if (!isConnected && socket && typeof socket.connect === 'function') {
+      // socket 재연결 시도 (멀티플레이만)
+      if (!isConnected && socket && typeof socket.connect === 'function' && !isSinglePlayGame) {
         console.log("🔄 socket 재연결 시도");
         socket.connect();
       }
       
-      // BGM 복구
-      if (bgm) {
+      // 🔴 【BGM 복구 - 광고 중이 아닐 때만】광고 재생 중이면 BGM 중복 재생 방지
+      if (bgm && !this.isAdPlaying) {
         if (bgm.isPaused && bgmOn) {
           bgm.resume();
         }
@@ -26482,6 +26487,14 @@ class GameScene extends Phaser.Scene {
         return;
       }
 
+      // 🔴 【추가】광고 시작 - BGM 일시정지
+      const resultBgm = this.sound.get("bgm");
+      const resultWasPlayingBgm = resultBgm && resultBgm.isPlaying;
+      if (resultBgm && resultBgm.isPlaying) {
+        resultBgm.pause();
+      }
+      this.isAdPlaying = true; // 광고 재생 중 플래그
+
       // showFullScreenAd 호출 (game_ad.js 방식)
       setResultAdDebug("광고 재생 시도");
       showFullScreenAd({
@@ -26495,12 +26508,26 @@ class GameScene extends Phaser.Scene {
             event.type === "completed" ||
             event.type === "dismissed"
           ) {
+            // 🔴 【추가】광고 종료 - BGM 다시 재생
+            const resultBgmToResume = this.sound.get("bgm");
+            if (resultBgmToResume && resultWasPlayingBgm && resultBgmToResume.isPaused) {
+              resultBgmToResume.resume();
+            }
+            this.isAdPlaying = false; // 광고 재생 완료
+            
             this.time.delayedCall(500, async () => {
               await applyAdReward();
             });
           }
         },
         onError: (error) => {
+          // 🔴 【추가】광고 오류 - BGM 다시 재생
+          const resultBgmToResume = this.sound.get("bgm");
+          if (resultBgmToResume && resultWasPlayingBgm && resultBgmToResume.isPaused) {
+            resultBgmToResume.resume();
+          }
+          this.isAdPlaying = false; // 광고 재생 완료
+          
           setResultAdDebug(`광고 오류: ${error?.message || String(error)}`);
           if (typeof this.showToast === "function") {
             this.showToast("광고 재생 중 오류가 발생했습니다.", "#e74c3c");
