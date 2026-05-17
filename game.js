@@ -3260,6 +3260,7 @@ class LobbyScene extends Phaser.Scene {
 
     // deferred frame loads (reduces initial startup time)
     // We already loaded frame 1 early for placeholders.
+    // 🔴 【포어그라운드 로드】배경 프레임 2~47 추가
     for (let i = 2; i <= 47; i += 1) {
       this.load.image(
         `mainbg_frame_${i}`,
@@ -3267,8 +3268,10 @@ class LobbyScene extends Phaser.Scene {
       );
     }
 
-    // ✅ 모든 플레이어 캐릭터 프레임 2~40 일괄 로드 (루프화)
-    // VALID_PLAYER_NUMBERS 배열에 따라 자동으로 처리됨
+    // 🔴 【우선 로딩】현재 착용한 캐릭터만 먼저 로드 (포어그라운드)
+    const currentAvatarKey = this.getSelectedAvatarKey?.() || "player_1";
+    const currentPlayerNum = Number(currentAvatarKey.split("_")[1]) || 1;
+
     const playerSpriteVersions = {
       1: PLAYER1_SPRITE_VERSION,
       2: PLAYER2_SPRITE_VERSION,
@@ -3284,26 +3287,63 @@ class LobbyScene extends Phaser.Scene {
       12: VERSION ? `${VERSION}&p12=20260426_1` : "?p12=20260426_1",
     };
     
-    for (const playerNum of VALID_PLAYER_NUMBERS) {
-      const spriteVersion = playerSpriteVersions[playerNum] || VERSION;
-      
-      // 프레임 2~PLAYER_ANIMATION_FRAMES 로드
-      for (let i = 2; i <= PLAYER_ANIMATION_FRAMES; i += 1) {
-        this.load.image(
-          `player_${playerNum}_frame_${i}`,
-          `assets/images/player_${playerNum}_sprite/${i}.png${spriteVersion}`,
-        );
-      }
+    // ✅ 현재 착용 캐릭터의 프레임 2~PLAYER_ANIMATION_FRAMES만 포어그라운드 로드
+    console.log(`
+📊 【로딩 전략】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎬 PHASE 1 - 포어그라운드 로드 (2~3초)
+  ├─ 배경 프레임: 2~47 (46개)
+  └─ 현재 캐릭터 (${currentAvatarKey}): 프레임 2~60 (59개)
+     총 105개 이미지
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🟡 PHASE 2 - 백그라운드 로드 (5~10초)
+  └─ 나머지 11개 캐릭터: 프레임 2~60 (649개)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    
+    const currentSpriteVersion = playerSpriteVersions[currentPlayerNum] || VERSION;
+    for (let i = 2; i <= PLAYER_ANIMATION_FRAMES; i += 1) {
+      this.load.image(
+        `player_${currentPlayerNum}_frame_${i}`,
+        `assets/images/player_${currentPlayerNum}_sprite/${i}.png${currentSpriteVersion}`,
+      );
     }
 
-    // (Optional) also make player_3_sprite available for sheet-based convenience.
-    // If you have a single sprite sheet `player_3_sprite` asset, load it here.
-    // this.load.image(
-    //   "player_3_sprite",
-    //   `assets/images/player_3_sprite.png${PLAYER3_SPRITE_VERSION}`,
-    // );
+    // 🟡 【백그라운드 로딩】나머지 캐릭터는 별도 타이머에서 병렬 로드
+    const loadRemainingCharacters = () => {
+      console.log(`
+🟡 PHASE 2 시작 (백그라운드)
+   나머지 11개 캐릭터 로드 시작...
+   (게임 진행 중 조용히 백그라운드 로드)`);
+      
+      // 나머지 캐릭터들 로드
+      for (const playerNum of VALID_PLAYER_NUMBERS) {
+        // 현재 착용 캐릭터는 이미 로드됨 - 스킵
+        if (playerNum === currentPlayerNum) {
+          continue;
+        }
+        
+        const spriteVersion = playerSpriteVersions[playerNum] || VERSION;
+        
+        // 프레임 2~PLAYER_ANIMATION_FRAMES 로드
+        for (let i = 2; i <= PLAYER_ANIMATION_FRAMES; i += 1) {
+          this.load.image(
+            `player_${playerNum}_frame_${i}`,
+            `assets/images/player_${playerNum}_sprite/${i}.png${spriteVersion}`,
+          );
+        }
+      }
+      
+      // 백그라운드 로드 시작
+      this.load.start();
+    };
     
+    // 🔴 현재 착용 캐릭터 로드 완료 후 백그라운드 로드 시작
     this.load.once("complete", () => {
+      console.log(`
+✅ PHASE 1 완료 (포어그라운드)
+   배경 프레임 2~47 + 현재 캐릭터 프레임 2~60 로드 완료
+   ↓ 게임 즉시 시작 가능! 🎮`);
+      
       // 🔴 [추가] 팁 타이머 정리
       if (this._tipRotationTimer) {
         this.time.removeEvent(this._tipRotationTimer);
@@ -3345,8 +3385,29 @@ class LobbyScene extends Phaser.Scene {
         }
       } catch (e) {
       }
+
+      // 🔴 【PHASE 2 시작】500ms 후 백그라운드 로드 시작
+      // (게임 화면이 렌더링되고 난 후 시작)
+      this.time.delayedCall(500, () => {
+        loadRemainingCharacters();
+      });
     });
 
+    // 🟡 백그라운드 로드 완료 이벤트 (별도)
+    // 이 이벤트는 나머지 캐릭터들이 다 로드되었을 때 발생
+    this._backgroundLoadComplete = false;
+    this.load.on("complete", () => {
+      if (!this._backgroundLoadComplete) {
+        this._backgroundLoadComplete = true;
+        console.log(`
+✅ PHASE 2 완료 (백그라운드)
+   나머지 11개 캐릭터 모든 프레임 로드 완료
+   이제 모든 캐릭터 사용 가능! ✨`);
+      }
+    });
+
+    // 🔴 【시작】현재 착용 캐릭터 로드 시작
+    console.log(`⏳ PHASE 1 로드 시작...`);
     this.load.start();
   }
 
