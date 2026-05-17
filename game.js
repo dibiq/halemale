@@ -3180,12 +3180,12 @@ class LobbyScene extends Phaser.Scene {
     const overlayBg = this.add
       .rectangle(0, 0, width, height, 0x000000, 0.7)
       .setOrigin(0)
-      .setDepth(10000)
+      .setDepth(99999)
       .setInteractive();
 
     const overlayContainer = this.add
       .container(0, 0)
-      .setDepth(10001);
+      .setDepth(100000);
 
     // 🔴 [수정] "추가 리소스 로딩중" 대신 팁 표시
     let currentTipIndex = 0;
