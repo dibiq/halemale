@@ -2509,6 +2509,12 @@ io.on("connection", (socket) => {
         timestamp: new Date().toISOString(),
       });
 
+      // 🔴 【중요】모든 플레이어에게 배수값 브로드캐스트 (동기화)
+      io.to(roomId).emit("gameMultiplierSet", {
+        gameMultiplier: room.gameMultiplier,
+        timestamp: Date.now(),
+      });
+
       if (typeof ack === "function") {
         ack({ ok: true, received: true, saved: true });
       }

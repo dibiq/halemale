@@ -1470,6 +1470,34 @@ class LobbyScene extends Phaser.Scene {
     const LAST_CLAIM_KEY = "lastAdRewardClaim";
     const COOLDOWN_HOURS = 0.5; // 디버그: 0으로 설정하면 쿨타임 없음
 
+    // 🔴 【중복 클릭 방지】광고가 이미 재생 중이면 return
+    if (this.isAdPlaying) {
+      console.warn("⚠️ 광고가 이미 재생 중입니다. 중복 클릭 방지됨.");
+      this.showToast("광고가 재생 중입니다. 기다려주세요.", "#f1c40f");
+      return;
+    }
+
+    // 🔴 0️⃣ 이전 광고 리스너 정리 (중요!)
+    // 광고 재생 중 플래그도 초기화
+    this.isAdRewardShowing = false;
+    
+    if (typeof this.unregisterAdRewardAd === "function") {
+      try {
+        this.unregisterAdRewardAd();
+        this.unregisterAdRewardAd = null;
+      } catch (e) {
+        console.warn("⚠️ 이전 광고 로더 정리 실패:", e.message);
+      }
+    }
+    if (typeof this.unregisterShowAdReward === "function") {
+      try {
+        this.unregisterShowAdReward();
+        this.unregisterShowAdReward = null;
+      } catch (e) {
+        console.warn("⚠️ 이전 광고 플레이어 정리 실패:", e.message);
+      }
+    }
+
     // 🔴 1️⃣ 쿨타임 확인
     const lastClaimTime = localStorage.getItem(LAST_CLAIM_KEY);
     if (lastClaimTime) {
@@ -1519,6 +1547,7 @@ class LobbyScene extends Phaser.Scene {
 
     // 🟢 3️⃣ 광고 로드 시작
     this.showToast("광고를 로딩 중입니다...", "#38bdf8");
+    this.isAdPlaying = true; // 🔴 광고 재생 시작 플래그
     const scene = this;
 
     this.unregisterAdRewardAd = loadFullScreenAd({
@@ -1531,7 +1560,15 @@ class LobbyScene extends Phaser.Scene {
       onEvent: (event) => {
 
         if (event.type === "loaded") {
-          // 🟢 4️⃣ 광고 로드 완료 → 즉시 재생
+          // � 로더 정리 (로드 완료 후 불필요)
+          if (typeof scene.unregisterAdRewardAd === "function") {
+            try {
+              scene.unregisterAdRewardAd();
+              scene.unregisterAdRewardAd = null;
+            } catch (e) {}
+          }
+          
+          // �🟢 4️⃣ 광고 로드 완료 → 즉시 재생
           scene.showToast("광고 준비 완료! 자동 재생 시작합니다.", "#FFD700");
 
           // 500ms 후 재생
@@ -1566,14 +1603,20 @@ class LobbyScene extends Phaser.Scene {
                     eventType === "dismissed" ||
                     eventType === "success"
                   ) {
+                    // � 광고 플레이어 리스너 정리 (즉시)
+                    scene.isAdRewardShowing = false;
+                    if (typeof scene.unregisterShowAdReward === "function") {
+                      try {
+                        scene.unregisterShowAdReward();
+                        scene.unregisterShowAdReward = null;
+                      } catch (e) {}
+                    }
+                    
                     // 🔇 광고 종료 - BGM 다시 재생
                     const bgmToResume = scene.sound.get("bgm");
                     if (bgmToResume && wasPlayingBgm && bgmToResume.isPaused) {
                       bgmToResume.resume();
                     }
-                    
-                    // 🔴 5️⃣ 광고 종료 → 서버에서 보상 처리
-                    scene.isAdRewardShowing = false;
                     scene.time.delayedCall(300, async () => {
                       try {
                         // 🟡 [임시] 로컬 UI에 먼저 코인 표시 (낙관적 업데이트)
@@ -1646,6 +1689,14 @@ class LobbyScene extends Phaser.Scene {
                 },
                 onError: (err) => {
                   scene.isAdRewardShowing = false;
+                  scene.isAdPlaying = false; // 🔴 광고 재생 종료 플래그
+                  // 🔴 에러 시에도 리스너 정리
+                  if (typeof scene.unregisterShowAdReward === "function") {
+                    try {
+                      scene.unregisterShowAdReward();
+                      scene.unregisterShowAdReward = null;
+                    } catch (e) {}
+                  }
                   scene.showToast("광고 재생 중 오류가 발생했습니다.", "#e74c3c");
                 },
               });
@@ -1654,6 +1705,14 @@ class LobbyScene extends Phaser.Scene {
         }
       },
       onError: (error) => {
+        // 🔴 로드 에러 시에도 리스너 정리
+        scene.isAdPlaying = false; // 🔴 광고 재생 종료 플래그
+        if (typeof scene.unregisterAdRewardAd === "function") {
+          try {
+            scene.unregisterAdRewardAd();
+            scene.unregisterAdRewardAd = null;
+          } catch (e) {}
+        }
         scene.showToast("광고 준비 실패. 다시 시도해주세요.", "#e74c3c");
       },
     });
@@ -5070,6 +5129,10 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     this.adRewardBadge = adRewardBadge;
     this.adRewardBadgeText = adRewardBadgeText;
     adRewardBtnImg.on("pointerdown", () => {
+      // 🔴 【중복 클릭 방지】광고가 재생 중이면 클릭 무시
+      if (this.isAdPlaying) {
+        return;
+      }
       this.sound.play("btn", { volume: 0.4 });
       buttonPress([adRewardBtnImg, adRewardBtnText], () => {
         this.playAdForCoinReward();
@@ -7957,8 +8020,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     }
 
     // 싱글플레이에서 사용하는 초기 카드 수 (이 값이 전체 카드 총합의 기준입니다)
-    // (디버깅용으로 6장으로 설정)
-    this.singleInitialCardCount = 6;
+    this.singleInitialCardCount = 10;
 
     const singleGameData = {
       roomId: "SINGLE",
@@ -7975,7 +8037,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         {
           id: myId,
           nickname: myNickname,
-          cards: 6,
+          cards: 10,
           isReady: true,
           openCard: null,
           openCardStack: [],
@@ -7983,7 +8045,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         {
           id: "AI_1",
           nickname: "초보 요리사",
-          cards: 6,
+          cards: 10,
           isReady: true,
           openCard: null,
           openCardStack: [],
@@ -7991,7 +8053,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         {
           id: "AI_2",
           nickname: "중급 요리사",
-          cards: 6,
+          cards: 10,
           isReady: true,
           openCard: null,
           openCardStack: [],
@@ -7999,7 +8061,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         {
           id: "AI_3",
           nickname: "천재 요리사",
-          cards: 6,
+          cards: 10,
           isReady: true,
           openCard: null,
           openCardStack: [],
@@ -13251,18 +13313,17 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       const emptyText = this.add
         .text(
           centerX,
-          centerY + height * 0.02,
-          "초대가능한 플레이어가 없습니다",
+          centerY,
+          "초대할 수 있는 유저가 없어요",
           {
             fontFamily: GAME_FONTS.main,
-            fontSize: `${width * 0.04}px`,
-            color: "#ffffff",
-            stroke: "#000000",
-            strokeThickness: 3,
+            fontSize: `${width * 0.05}px`,
+            color: "#6b0f0f",
+            align: "center",
           },
         )
         .setOrigin(0.5)
-        .setDepth(4002);
+        .setDepth(30003);
 
       allObjects.push(emptyText);
     }
@@ -15761,6 +15822,20 @@ class GameScene extends Phaser.Scene {
       this.sound.play("pass", { volume: 0.7 });
       this.showToast(data.message || "방장이 변경되었습니다.", "#f1c40f");
       if (this.resultContainer) this.showResultOverlay(data.players, true);
+    });
+
+    // 🔴 【배수 동기화】 서버에서 정해진 배수 값을 모든 클라이언트에게 전달
+    socket.off("gameMultiplierSet").on("gameMultiplierSet", (data) => {
+      if (data && typeof data.gameMultiplier === "number") {
+        console.log(`📊 배수 업데이트 수신: ${data.gameMultiplier}배`);
+        this.roundData.gameMultiplier = data.gameMultiplier;
+        
+        // 🔴 UI 텍스트 업데이트
+        if (this.multiplierDisplayTxt && typeof this.multiplierDisplayTxt.setText === "function") {
+          this.multiplierDisplayTxt.setText(`이번 게임은 ${data.gameMultiplier}배판!`);
+          console.log(`✅ 배수 텍스트 업데이트: 이번 게임은 ${data.gameMultiplier}배판!`);
+        }
+      }
     });
 
     socket.off("readyStatusUpdated").on("readyStatusUpdated", (data) => {
@@ -26357,6 +26432,11 @@ class GameScene extends Phaser.Scene {
 
     // 광고보상 버튼 클릭 이벤트
     adRewardBtn.on("pointerdown", () => {
+      // 🔴 【중복 클릭 방지】광고가 재생 중이면 클릭 무시
+      if (this.isAdPlaying) {
+        return;
+      }
+      
       // 🔴 [수정] 광고는 코인 업데이트와 무관하게 독립적으로 실행
       if (adRewardWatched) {
         this.sound.play("btn", { volume: 0.4 });
@@ -27490,6 +27570,20 @@ class GameScene extends Phaser.Scene {
   }
 
   showToast(message, color = "#ffffff") {
+    // 🔴 【중복 방지】이미 토스트가 열려있으면 기존 토스트를 즉시 닫고 새로운 토스트 생성
+    if (this.isToastOpen) {
+      // 기존 토스트들을 모두 제거
+      if (this.toastLayer && Array.isArray(this.toastLayer.list)) {
+        this.toastLayer.list.forEach(toast => {
+          try {
+            if (toast && toast.destroy) {
+              toast.destroy();
+            }
+          } catch (e) {}
+        });
+      }
+    }
+    
     this.isToastOpen = true;
 
     const { width, height } = this.cameras.main;
