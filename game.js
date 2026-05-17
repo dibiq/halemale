@@ -5510,8 +5510,8 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         const lastHeartbeat = socket._lastHeartbeat || 0;
         const elapsed = now - lastHeartbeat;
 
-        // 🔴 3초 이상 응답 없으면 강제 복귀
-        if (!isConnected || elapsed > 3000) {
+        // 🔴 30초 이상 응답 없으면 강제 복귀 (충분한 여유 제공)
+        if (!isConnected || elapsed > 30000) {
           clearInterval(backgroundConnectionMonitorTimer);
           backgroundConnectionMonitorTimer = null;
 
@@ -5550,19 +5550,14 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       // 🔺 포어그라운드로 복귀
       stopBackgroundConnectionMonitoring();
 
-      // 포어그라운드 복귀 시 최종 연결 확인
+      // 포어그라운드 복귀 시 연결 상태만 확인 (타임아웃 없음)
       const isConnected = socket && socket._stableConnected && socket.connected;
       const isGameScene = this.scene.key === "GameScene";
       
+      // 🔴 연결 되어있으면 게임 계속, 끊어져있으면 재로딩
       if (!isConnected && isGameScene) {
-        const now = Date.now();
-        const lastHeartbeat = socket._lastHeartbeat || 0;
-        const elapsed = now - lastHeartbeat;
-        
-        if (elapsed > 3000 || !socket.connected) {
-          this.cleanupGameSceneAndGoToLobby();
-          return;
-        }
+        this.cleanupGameSceneAndGoToLobby();
+        return;
       }
       
       // BGM 복구
@@ -10950,13 +10945,19 @@ if (this.isGameEnded || this.isResultOverlayActive) {
               return;
             }
 
+            // 🔴 "방 찾기" 탭을 이미 보고 있을 때 다시 누르면 새로고침만 (기존 방 리스트 유지)
+            if (tab.name === "browse" && currentTab === "browse") {
+              doRefresh();
+              return;
+            }
+
             this.sound.play("btn", { volume: 0.4 });
             allTabs.forEach((t) => {
               t.img.setTint(t.name === tab.name ? activeTabTint : 0x7f8c8d);
             });
             currentTab = tab.name;
             updateTabContent(tab.name);
-            // "방 찾기" 탭 클릭 시 자동 새로고침
+            // "방 찾기" 탭을 새로 클릭했을 때 자동 새로고침
             if (tab.name === "browse") {
               doRefresh();
             }
@@ -14882,13 +14883,18 @@ class GameScene extends Phaser.Scene {
         stopHeartbeatMonitoring();
       }
       
-      // 게임이 진행 중인 경우만 자동 재로드 (로비는 재연결 시도)
+      // 🔴 게임이 진행 중인 경우 안전하게 로비로 이동 (앱 리로드 대신)
       if (this.isGameStarted && !this.isGameEnded) {
-        console.log("🔴 게임 진행 중 연결 끊김 - 5초 후 앱 재로드");
-        setTimeout(() => {
-          console.log("⏱️ 연결 끊김 재로드 실행");
+        console.log("🔴 게임 진행 중 연결 끊김 - 로비로 안전하게 이동");
+        // window.location.reload() 대신 cleanupGameSceneAndGoToLobby() 호출
+        // 이렇게 하면 로비(홈 화면)로 이동하지, 방 대기실로 돌아가지 않음
+        if (typeof this.cleanupGameSceneAndGoToLobby === 'function') {
+          this.cleanupGameSceneAndGoToLobby();
+        } else {
+          // 폴백: 안전장치
+          console.warn("❌ cleanupGameSceneAndGoToLobby 호출 실패, 앱 리로드");
           window.location.reload();
-        }, 5000);
+        }
       }
     };
     socket.off("disconnect").on("disconnect", this._socketDisconnectHandler);
