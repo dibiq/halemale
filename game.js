@@ -3403,6 +3403,17 @@ class LobbyScene extends Phaser.Scene {
 ✅ PHASE 2 완료 (백그라운드)
    나머지 11개 캐릭터 모든 프레임 로드 완료
    이제 모든 캐릭터 사용 가능! ✨`);
+        
+        // 🔴 【중요】PHASE 2 완료 후 LobbyScene의 애니메이션 재시작
+        const lobbyScene = this.scene.get("LobbyScene");
+        if (lobbyScene && typeof lobbyScene._applyDeferredAnimations === "function") {
+          try {
+            lobbyScene._applyDeferredAnimations();
+            console.log(`🎬 LobbyScene 애니메이션 재시작 ✅`);
+          } catch (err) {
+            console.error(`❌ LobbyScene 애니메이션 재시작 실패:`, err);
+          }
+        }
       }
     });
 
