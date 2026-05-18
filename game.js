@@ -12720,253 +12720,192 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
             // � 출석 광고 보상 지급
             const applyDailyAdReward = async () => {
+              const REWARD_AMOUNT = 100;
+
               try {
-                scene.showToast("보상 처리 시작...", "#3498db");
-                
-                if (!scene) {
-                  return;
+                // 🔴 광고 리스너 정리 (즉시)
+                if (typeof scene.unregisterDailyAdLoader === "function") {
+                  try {
+                    scene.unregisterDailyAdLoader();
+                    scene.unregisterDailyAdLoader = null;
+                  } catch (e) {}
+                }
+                if (typeof scene.unregisterDailyAdPlayer === "function") {
+                  try {
+                    scene.unregisterDailyAdPlayer();
+                    scene.unregisterDailyAdPlayer = null;
+                  } catch (e) {}
                 }
 
-                // 광고 보상을 서버에 요청
-                // 일반 코인 보상과 동일한 방식으로 처리
-                scene.showToast("서버에 보상 요청 중...", "#9b59b6");
+                // 🟢 서버에 보상 요청
+                const result = await scene.emitServerCoinReward(
+                  REWARD_AMOUNT,
+                  "daily_ad_reward"
+                );
 
-                // 🔴 [수정] 출석 보상은 서버 응답을 기다린 후 적용
-                const result = await scene.emitServerDailyReward(100, {
-                  rewardType: "daily_ad_reward"
-                });
-
-                if (!result.success) {
-                  scene.showToast(`보상 저장 실패: ${result.error}`, "#e74c3c");
-                  scene.isDailyRewardClaimPending = false;
-                  return;
-                }
-                
-                // ✅ 성공: 서버가 주는 새로운 코인값으로 이미 업데이트됨
-
-                // 1. 코인 폭발 이펙트 표시 (일반 보상과 동일)
-                try {
-                  showCoinBurstEffect(scene, rowX, rowY, 100);
-                } catch (e) {
+                if (result.success) {
+                  // ✅ 성공
+                  scene.showToast(
+                    `🎉 광고보상 ${REWARD_AMOUNT} 코인 획득!`,
+                    "#2ecc71"
+                  );
+                } else {
+                  // ❌ 실패
+                  scene.showToast(
+                    `보상 저장 실패: ${result.error}`,
+                    "#e74c3c"
+                  );
                 }
 
-                // 2. "획득" 스탠프 표시 (일반 보상과 동일)
-                try {
-                  if (rowDateStr && scene.isWeeklyRewardPopupOpen) {
-                    scene.claimedDailyDates.add(rowDateStr);
-                    try {
-                      scene.markDailyRewardClaimed(rowDateStr);
-                    } catch (e) {
-                    }
-                    
-                    // 스탠프 생성
-                    const stamp = scene.add
-                      .text(rowX, rowY, "획득", {
-                        fontFamily:
-                          typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
-                        fontSize: `${width * 0.055}px`,
-                        color: "#ffffff",
-                        fontWeight: "bold",
-                        stroke: "#000000",
-                        strokeThickness: 4,
-                      })
-                      .setOrigin(0.5)
-                      .setDepth(4004)
-                      .setScale(0);
-                    stamp.setRotation(-0.3);
-                    stamps.push(stamp);
-                    scene.tweens.add({
-                      targets: stamp,
-                      scale: 1,
-                      duration: 450,
-                      ease: "Back.out",
-                    });
-                  }
-                } catch (e) {
-                }
-
-                // 3. 토스트 표시
-                if (typeof scene.showToast === 'function') {
-                  scene.showToast(`🎉 광고보상 100 코인 획득!`, "#FFD700");
-                }
-
-                // 광고 상태 초기화
-                if (typeof scene.unregisterAttendanceAd === "function") {
-                  scene.unregisterAttendanceAd();
-                  scene.unregisterAttendanceAd = null;
-                }
-                if (typeof scene.unregisterShowAd === "function") {
-                  scene.unregisterShowAd();
-                  scene.unregisterShowAd = null;
-                }
-
-                scene.isGameAdLoaded = false;
-                scene.isGameAdShowing = false;
-                scene.isGameAdLoading = false;
                 scene.isDailyRewardClaimPending = false;
-                scene.registry.set("gameAdLoaded", false);
-                scene.registry.set("gameAdShowing", false);
-                scene.registry.set("gameAdLoading", false);
-                
-                // 출석 체크 광고 상태도 초기화 (다음번 클릭 시 다시 로드 가능하게)
-                // gameAd를 사용하므로 gameAd 상태는 계속 유지됨
-                // 다음 광고 자동 미리 로드는 광고 종료 후 실행됨
-                
-              } catch (e) {
-                
-                // 에러 발생해도 반드시 상태 초기화
-                try {
-                  if (scene && typeof scene.unregisterGameAd === "function") {
-                    scene.unregisterGameAd();
-                    scene.unregisterGameAd = null;
-                  }
-                  if (scene && typeof scene.unregisterShowAd === "function") {
-                    scene.unregisterShowAd();
-                    scene.unregisterShowAd = null;
-                  }
-                  if (scene) {
-                    scene.isDailyRewardClaimPending = false;
-                    scene.registry.set("gameAdLoaded", false);
-                    scene.registry.set("gameAdShowing", false);
-                    scene.registry.set("gameAdLoading", false);
-                  }
-                } catch (cleanupError) {
-                }
+              } catch (err) {
+                console.error(`❌ [applyDailyAdReward] 오류:`, err);
+                scene.showToast("광고 보상 처리 중 오류 발생", "#e74c3c");
+                scene.isDailyRewardClaimPending = false;
               }
             };
 
-            // 광고 재생 중 상태 확인 (중복 클릭 방지)
-            const isGameAdShowing = scene.registry.get("gameAdShowing") || scene.isGameAdShowing;
-            if (isGameAdShowing) {
-              scene.showToast("광고 재생 중입니다. 잠시만 기다려주세요.", "#f1c40f");
+            // 🟢 출석 광고 보상 요청 핸들러
+            if (scene.isDailyAdPlaying) {
+              scene.showToast("광고가 재생 중입니다. 잠시만 기다려주세요.", "#f1c40f");
               return;
             }
 
-            // 광고 로드 상태 확인 (결과 화면과 동일한 gameAd 사용)
-            const isGameAdLoaded = scene.registry.get("gameAdLoaded") || scene.isGameAdLoaded;
-            const isGameAdLoading = scene.registry.get("gameAdLoading") || scene.isGameAdLoading;
+            // 🔴 이전 광고 리스너 정리 (중요!)
+            if (typeof scene.unregisterDailyAdLoader === "function") {
+              try {
+                scene.unregisterDailyAdLoader();
+                scene.unregisterDailyAdLoader = null;
+              } catch (e) {
+                console.warn("⚠️ 이전 광고 로더 정리 실패:", e.message);
+              }
+            }
+            if (typeof scene.unregisterDailyAdPlayer === "function") {
+              try {
+                scene.unregisterDailyAdPlayer();
+                scene.unregisterDailyAdPlayer = null;
+              } catch (e) {
+                console.warn("⚠️ 이전 광고 플레이어 정리 실패:", e.message);
+              }
+            }
 
-            // 광고가 이미 로드됨 - 바로 재생
-            if (isGameAdLoaded) {
-              scene.isDailyRewardClaimPending = true;
-              scene.registry.set("gameAdShowing", true);
-              // 토스트는 띄우지 않음
-              
-              // 만약 30초 후에도 이벤트가 감지되지 않으면 상태 초기화 (타임아웃)
-              const adTimeout = scene.time.delayedCall(30000, () => {
-                scene.registry.set("attendanceAdShowing", false);
-              });
-              
-              scene.unregisterShowAd = showFullScreenAd({
-                options: { adGroupId },
-                onEvent: (event) => {
-                  
-                  // 타임아웃 취소
-                  if (adTimeout) {
-                    adTimeout.remove();
-                  }
-                  
-                  // 모든 이벤트 타입 확인
-                  const eventType = String(event.type).toLowerCase();
-                  
-                  if (eventType === "closed" || eventType === "completed" || eventType === "dismissed" || eventType === "success") {
-                    scene.registry.set("gameAdShowing", false);
-                    scene.showToast("광고 종료됨! 보상 처리 중...", "#38bdf8");
-                    scene.time.delayedCall(500, async () => {
-                      await applyDailyAdReward();
-                      
-                      // 광고 종료 후 gameAd 상태 초기화 (다음 클릭 시 다시 로드 가능하게)
-                      scene.registry.set("gameAdLoaded", false);
-                      scene.registry.set("gameAdLoading", false);
-                      scene.registry.set("gameAdShowing", false);
-                    });
-                  } else {
-                    scene.showToast("⚠️ 예상치 못한 이벤트: " + eventType, "#f1c40f");
-                  }
-                },
-                onError: (error) => {
-                  if (adTimeout) {
-                    adTimeout.remove();
-                  }
-                  scene.showToast("광고 재생 오류", "#e74c3c");
-                  scene.registry.set("gameAdLoaded", false);
-                  scene.registry.set("gameAdShowing", false);
-                  scene.registry.set("gameAdLoading", false);
-                }
-              });
+            // 🟡 광고 지원 확인 (try-catch로 브라우저 환경 에러 방지)
+            try {
+              if (
+                !loadFullScreenAd ||
+                !showFullScreenAd ||
+                typeof loadFullScreenAd.isSupported !== "function" ||
+                typeof showFullScreenAd.isSupported !== "function" ||
+                !loadFullScreenAd.isSupported() ||
+                !showFullScreenAd.isSupported()
+              ) {
+                scene.showToast("광고를 지원하지 않는 환경입니다.", "#f1c40f");
+                return;
+              }
+            } catch (err) {
+              scene.showToast("📱 모바일 디바이스에서만 광고를 볼 수 있습니다.", "#f1c40f");
               return;
             }
 
-            // 광고 로드 중이면 자동 재생 플래그 설정
-            if (isGameAdLoading) {
-              scene.autoPlayDailyAd = true;  // 로드 완료 후 자동 재생
-              scene.showToast("광고를 로딩 중입니다...", "#f1c40f");
-              return;
-            }
-
-            // 광고가 없으면 미리 로드 요청 + 자동 재생 플래그
-            scene.autoPlayDailyAd = true;  // 로드 완료 후 자동 재생
+            // 🟢 광고 로드 시작
             scene.showToast("광고를 로딩 중입니다...", "#38bdf8");
-            
-            // 로드 상태 설정
-            scene.isGameAdLoading = true;
-            scene.registry.set("gameAdLoading", true);
-            
-            // 결과 화면과 동일한 방식으로 gameAd 로드
-            const adGroupId_attendance = (
-              window.__INTEGRATED_AD_GROUP_ID ||
-              localStorage.getItem("integratedAdGroupId") ||
-              "ait.v2.live.ff7f88183dfc4c3e"
-            );
-            
-            scene.unregisterGameAd = loadFullScreenAd({
-              options: { adGroupId: adGroupId_attendance },
+            scene.isDailyAdPlaying = true;
+            scene.isDailyRewardClaimPending = true;
+
+            scene.unregisterDailyAdLoader = loadFullScreenAd({
+              options: { adGroupId },
               onEvent: (event) => {
                 if (event.type === "loaded") {
-                  scene.isGameAdLoaded = true;
-                  scene.isGameAdLoading = false;
-                  scene.registry.set("gameAdLoaded", true);
-                  scene.registry.set("gameAdLoading", false);
-                  
-                  // 🔴 [추가] autoPlayDailyAd 플래그 확인 후 자동 재생
-                  if (scene.autoPlayDailyAd) {
-                    scene.autoPlayDailyAd = false;
-                    scene.showToast("광고 준비 완료! 자동 재생합니다.", "#FFD700");
-                    
-                    // 500ms 후 자동 재생
-                    scene.time.delayedCall(500, () => {
-                      // showFullScreenAd 직접 호출
-                      if (typeof showFullScreenAd === "function" && !scene.isGameAdShowing) {
-                        scene.isGameAdShowing = true;
-                        scene.registry.set("gameAdShowing", true);
-                        
-                        scene.unregisterShowAd = showFullScreenAd({
-                          options: { adGroupId: adGroupId_attendance },
-                          onEvent: (evt) => {
-                            const eventType = String(evt.type).toLowerCase();
-                            if (eventType === "closed" || eventType === "completed" || eventType === "dismissed" || eventType === "success") {
-                              scene.registry.set("gameAdShowing", false);
-                              scene.time.delayedCall(500, async () => {
-                                await applyDailyAdReward();
-                                scene.registry.set("gameAdLoaded", false);
-                              });
-                            }
-                          },
-                          onError: (err) => {
-                            scene.registry.set("gameAdShowing", false);
-                          }
-                        });
-                      }
-                    });
-                  } else {
-                    scene.showToast("광고 준비 완료! 클릭하면 재생됩니다.", "#FFD700");
+                  // 🔴 로더 정리 (로드 완료 후 불필요)
+                  if (typeof scene.unregisterDailyAdLoader === "function") {
+                    try {
+                      scene.unregisterDailyAdLoader();
+                      scene.unregisterDailyAdLoader = null;
+                    } catch (e) {}
                   }
+
+                  // 🟢 광고 로드 완료 → 즉시 재생
+                  scene.showToast("광고 준비 완료! 자동 재생 시작합니다.", "#FFD700");
+
+                  scene.time.delayedCall(500, () => {
+                    if (typeof showFullScreenAd === "function" && !scene.isDailyAdShowing) {
+                      scene.isDailyAdShowing = true;
+
+                      // 🔇 광고 시작 - BGM 일시정지
+                      const bgm = scene.sound.get("bgm");
+                      const wasPlayingBgm = bgm && bgm.isPlaying;
+                      if (bgm && bgm.isPlaying) {
+                        bgm.pause();
+                      }
+
+                      scene.unregisterDailyAdPlayer = showFullScreenAd({
+                        options: { adGroupId },
+                        onEvent: (evt) => {
+                          const eventType = String(evt.type).toLowerCase();
+
+                          if (
+                            eventType === "closed" ||
+                            eventType === "completed" ||
+                            eventType === "dismissed" ||
+                            eventType === "success"
+                          ) {
+                            // 🔴 광고 플레이어 리스너 정리 (즉시)
+                            scene.isDailyAdShowing = false;
+                            if (typeof scene.unregisterDailyAdPlayer === "function") {
+                              try {
+                                scene.unregisterDailyAdPlayer();
+                                scene.unregisterDailyAdPlayer = null;
+                              } catch (e) {}
+                            }
+
+                            // 🔇 광고 종료 - BGM 다시 재생
+                            const bgmToResume = scene.sound.get("bgm");
+                            if (bgmToResume && wasPlayingBgm && bgmToResume.isPaused) {
+                              bgmToResume.resume();
+                            }
+
+                            // 보상 처리
+                            scene.time.delayedCall(300, async () => {
+                              await applyDailyAdReward();
+
+                              // 2초 후 플래그 초기화 (다음 광고 로드 가능하게)
+                              scene.time.delayedCall(2000, () => {
+                                scene.isDailyAdPlaying = false;
+                              });
+                            });
+                          }
+                        },
+                        onError: (err) => {
+                          scene.isDailyAdShowing = false;
+                          scene.isDailyAdPlaying = false;
+                          // 🔴 에러 시에도 리스너 정리
+                          if (typeof scene.unregisterDailyAdPlayer === "function") {
+                            try {
+                              scene.unregisterDailyAdPlayer();
+                              scene.unregisterDailyAdPlayer = null;
+                            } catch (e) {}
+                          }
+                          scene.showToast(
+                            "광고 재생 중 오류가 발생했습니다.",
+                            "#e74c3c"
+                          );
+                        },
+                      });
+                    }
+                  });
                 }
               },
               onError: (error) => {
-                scene.showToast("광고 준비 실패", "#e74c3c");
-                scene.isGameAdLoading = false;
-                scene.registry.set("gameAdLoading", false);
+                // 🔴 로드 에러 시에도 리스너 정리
+                scene.isDailyAdPlaying = false;
+                scene.isDailyRewardClaimPending = false;
+                if (typeof scene.unregisterDailyAdLoader === "function") {
+                  try {
+                    scene.unregisterDailyAdLoader();
+                    scene.unregisterDailyAdLoader = null;
+                  } catch (e) {}
+                }
+                scene.showToast("광고 준비 실패. 다시 시도해주세요.", "#e74c3c");
               },
             });
             return;
