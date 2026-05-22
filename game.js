@@ -3629,11 +3629,18 @@ class LobbyScene extends Phaser.Scene {
             // myProfile 업데이트
             this.myProfile = this.myProfile || {};
             
-            // ⭐ [CRITICAL] 게임 종료 후 socket.finalProfile이 있으면 그 값을 우선 사용
-            // (서버에서 아직 업데이트가 반영되지 않은 구 데이터를 받을 수 있으므로)
-            this.myProfile.level = finalProfileFromGame?.level ?? Number(profile?.level) ?? this.myProfile.level ?? 1;
-            this.myProfile.coins = finalProfileFromGame?.coins ?? Number(profile?.coins) ?? this.myProfile.coins ?? 0;
+            // ⭐ [CRITICAL] 게임 종료 후 데이터 충돌 방지
+            // 게임 중에 로컬에서 업데이트한 값(예: 레벨업)이 더 최신이면 유지
+            
+            // 🔴 【레벨】로컬 업데이트가 더 크면 로컬값 유지 (레벨업은 단방향 증가만 가능)
+            const newLevel = finalProfileFromGame?.level ?? Number(profile?.level) ?? this.myProfile.level ?? 1;
+            this.myProfile.level = Math.max(Number(this.myProfile.level) || 1, newLevel);
+            
+            // 🔴 【경험치】게임에서 받은 경험치 사용 (정확한 서버값)
             this.myProfile.experience = finalProfileFromGame?.experience ?? Number(profile?.experience) ?? this.myProfile.experience ?? 0;
+            
+            // 🔴 【코인】게임에서 받은 코인 사용 (정확한 서버값)
+            this.myProfile.coins = finalProfileFromGame?.coins ?? Number(profile?.coins) ?? this.myProfile.coins ?? 0;
             
            
             if (profile?.nickname) this.myProfile.nickname = profile.nickname;
@@ -3804,7 +3811,7 @@ class LobbyScene extends Phaser.Scene {
     
     this.myProfile = {
       nickname: this.myNickname || savedNickname || "요리사",
-      level: finalProfileFromGame?.level || 1,
+      level: Math.max(Number(this.myProfile?.level) || 1, finalProfileFromGame?.level || 1),
       coins: finalProfileFromGame?.coins || 0,  // 서버로부터 받을 때까지 기본값 또는 게임 최종값
       experience: finalProfileFromGame?.experience || 0,
       owned_characters: initialOwnedCharacters,
