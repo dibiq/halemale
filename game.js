@@ -926,24 +926,36 @@ class LobbyScene extends Phaser.Scene {
   // 🔴 【안전한 씬 정리】게임씬 연결 끊김 후 로비로 안전하게 이동
   cleanupGameSceneAndGoToLobby() {
     try {
-      // 1️⃣ 모든 타이머 정리
+      // 1️⃣ BGM 정리
+      const bgm = this.sound.get("bgm");
+      if (bgm) {
+        try {
+          if (bgm.isPlaying || bgm.isPaused) {
+            bgm.stop();
+          }
+          bgm.destroy();
+        } catch (e) {}
+      }
+      this.isAdPlaying = false;
+      
+      // 2️⃣ 모든 타이머 정리
       if (this.time && typeof this.time.removeAllEvents === "function") {
         this.time.removeAllEvents();
       }
 
-      // 2️⃣ 모든 트윈 정리
+      // 3️⃣ 모든 트윈 정리
       if (this.tweens && typeof this.tweens.killAll === "function") {
         this.tweens.killAll();
       }
 
-      // 3️⃣ 모든 사운드 정리
+      // 4️⃣ 모든 사운드 정리
       try {
         if (this.sound && typeof this.sound.stopAll === "function") {
           this.sound.stopAll();
         }
       } catch (e) {}
 
-      // 4️⃣ visibilitychange 리스너 정리 (LobbyScene)
+      // 5️⃣ visibilitychange 리스너 정리 (LobbyScene)
       if (this._visibilityChangeHandler) {
         document.removeEventListener("visibilitychange", this._visibilityChangeHandler);
         this._visibilityChangeHandler = null;
@@ -1579,6 +1591,7 @@ class LobbyScene extends Phaser.Scene {
               !scene.isAdRewardShowing
             ) {
               scene.isAdRewardShowing = true;
+              scene.isAdPlaying = true; // 광고 재생 중 플래그
               
               // 🔇 광고 시작 - BGM 일시정지
               const bgm = scene.sound.get("bgm");
@@ -4071,7 +4084,7 @@ class LobbyScene extends Phaser.Scene {
         try {
           // guard against multiple instances – if bgm already playing, bail out
           const existing = this.sound.get("bgm");
-          if (existing && existing.isPlaying) return;
+          if (existing && (existing.isPlaying || existing.isPaused)) return;
           this.sound.play("bgm", { loop: true, volume: 0.2 });
         } catch (e) {
           // 실패 시 무시
@@ -5774,14 +5787,21 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     this.mainUIContainer.add([bgmBtn, this.dailyRewardBtn]);
     this.mainUIContainer.setDepth(100);
 
+    let bgmBtnClickLocked = false;
     bgmBtn.on("pointerdown", () => {
+      if (bgmBtnClickLocked) return; // 연속 클릭 방지
+      bgmBtnClickLocked = true;
+      
       bgmOn = !bgmOn;
       localStorage.setItem("bgmEnabled", bgmOn);
 
       // 🔁 버튼 이미지 교체
       bgmBtn.setTexture(bgmOn ? "soundon" : "soundoff");
 
-      if (!bgm) return;
+      if (!bgm) {
+        bgmBtnClickLocked = false;
+        return;
+      }
 
       if (bgmOn) {
         // BGM 재생
@@ -5792,13 +5812,15 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         }
       } else {
         // BGM 일시정지
-        if (bgm.isPlaying) {
+        if (bgm.isPlaying || bgm.isPaused) {
           bgm.pause();
         }
       }
 
       // 전체 사운드 mute 제어
       this.sound.mute = !bgmOn;
+      
+      bgmBtnClickLocked = false; // 클릭 해제
     });
 
     socket.off("gameStart").on("gameStart", (data) => {
@@ -13910,30 +13932,42 @@ class GameScene extends Phaser.Scene {
   // 🔴 【안전한 씬 정리】연결 끊김 후 로비로 안전하게 이동 (GameScene용)
   cleanupGameSceneAndGoToLobby() {
     try {
-      // 1️⃣ 모든 타이머 정리
+      // 1️⃣ BGM 정리
+      const bgm = this.sound.get("bgm");
+      if (bgm) {
+        try {
+          if (bgm.isPlaying || bgm.isPaused) {
+            bgm.stop();
+          }
+          bgm.destroy();
+        } catch (e) {}
+      }
+      this.isAdPlaying = false;
+      
+      // 2️⃣ 모든 타이머 정리
       if (this.time && typeof this.time.removeAllEvents === "function") {
         this.time.removeAllEvents();
       }
 
-      // 2️⃣ 모든 트윈 정리
+      // 3️⃣ 모든 트윈 정리
       if (this.tweens && typeof this.tweens.killAll === "function") {
         this.tweens.killAll();
       }
 
-      // 3️⃣ 모든 사운드 정리
+      // 4️⃣ 모든 사운드 정리
       try {
         if (this.sound && typeof this.sound.stopAll === "function") {
           this.sound.stopAll();
         }
       } catch (e) {}
 
-      // 4️⃣ visibilitychange 리스너 정리
+      // 5️⃣ visibilitychange 리스너 정리
       if (this._visibilityChangeHandler) {
         document.removeEventListener("visibilitychange", this._visibilityChangeHandler);
         this._visibilityChangeHandler = null;
       }
 
-      // 4️⃣-1 socket disconnect 리스너 정리 및 기존 핸들러 복원
+      // 6️⃣ socket disconnect 리스너 정리 및 기존 핸들러 복원
       if (this._socketDisconnectHandler) {
         socket.off("disconnect", this._socketDisconnectHandler);
         this._socketDisconnectHandler = null;
@@ -13947,7 +13981,7 @@ class GameScene extends Phaser.Scene {
         });
       }
 
-      // 5️⃣ socket 리스너 정리
+      // 7️⃣ socket 리스너 정리
       socket.off("playerJoined");
       socket.off("playerLeft");
       socket.off("hostChanged");
@@ -13956,10 +13990,10 @@ class GameScene extends Phaser.Scene {
       socket.off("bellResult");
       socket.off("gameEnded");
 
-      // 6️⃣ GameScene 강제 종료
+      // 8️⃣ GameScene 강제 종료
       this.scene.stop("GameScene");
 
-      // 7️⃣ 로비로 이동
+      // 9️⃣ 로비로 이동
       this.scene.start("LobbyScene", {
         fromGame: true,
         connectionLost: true,
@@ -14935,6 +14969,7 @@ class GameScene extends Phaser.Scene {
     // (LobbyScene에서 등록된 리스너는 LobbyScene stop 시 제거되므로, GameScene에서 다시 등록)
     let bgmOn = JSON.parse(localStorage.getItem("bgmEnabled")) !== false;
     const bgm = this.sound.get("bgm");
+    this.isAdPlaying = false; // 광고 재생 상태 플래그
     
     let backgroundConnectionMonitorTimer = null;
     let isAppInBackground = false;
@@ -14977,6 +15012,18 @@ class GameScene extends Phaser.Scene {
           console.log("⏸️ GameScene pause");
           this.scene.pause("GameScene");
           this._gameScenePausedAt = Date.now(); // 🔴 pause 시간 기록
+          
+          // 🔴 【핵심】서버에 백그라운드 진입 알림 (멀티플레이만)
+          if (socket && socket.connected && this.currentRoomNumber) {
+            socket.emit('playerBackgroundEntered', {
+              roomNumber: this.currentRoomNumber,
+              playerId: socket.id
+            });
+            console.log("📤 playerBackgroundEntered 전송:", {
+              roomNumber: this.currentRoomNumber,
+              playerId: socket.id
+            });
+          }
         }
         
         startBackgroundConnectionMonitoring();
@@ -15001,6 +15048,84 @@ class GameScene extends Phaser.Scene {
           this.scene.resume("GameScene");
           console.log("✅ GameScene resume 성공");
           this._gameScenePausedAt = null; // 초기화
+          
+          // 🔴 【핵심】서버에 포어그라운드 복귀 알림 + 게임 상태 동기화
+          if (socket && socket.connected && this.currentRoomNumber) {
+            let callbackReceived = false;
+            
+            // ⏱️ 타임아웃: 5초 내에 서버 응답이 없으면 강제 로비 이동
+            const timeoutId = setTimeout(() => {
+              if (!callbackReceived) {
+                console.error("❌ playerReturned 타임아웃 (5초): 서버 응답 없음");
+                this.cleanupGameSceneAndGoToLobby();
+              }
+            }, 5000);
+            
+            socket.emit('playerReturned', {
+              roomNumber: this.currentRoomNumber,
+              playerId: socket.id
+            }, (response) => {
+              callbackReceived = true;
+              clearTimeout(timeoutId);
+              
+              // 🟢 서버 응답 받기: 다른 유저들의 최신 게임 상태
+              if (response && response.success) {
+                console.log("🔄 게임 상태 동기화 (서버 응답):", response);
+                
+                // 🔴 【중요】플레이어 데이터 업데이트
+                if (response.players && Array.isArray(response.players)) {
+                  // roundData.players를 최신 상태로 업데이트
+                  this.roundData.players = response.players;
+                  
+                  // gameState 데이터도 반영
+                  if (response.gameState) {
+                    response.players.forEach(player => {
+                      if (response.gameState[player.id]) {
+                        const state = response.gameState[player.id];
+                        player.openStack = state.openStack || [];
+                        player.cards = state.cards || 0;
+                        player.isEliminated = state.isEliminated || false;
+                      }
+                    });
+                  }
+                  
+                  // UI 업데이트: 테이블 재렌더링 (모든 플레이어 정보 반영)
+                  console.log("🎨 테이블 재렌더링...");
+                  this.renderTable(this.roundData.players);
+                }
+                
+                // 벨/스페셜 상태 동기화
+                if (typeof response.bellPending !== 'undefined') {
+                  this.bellPending = response.bellPending;
+                }
+                if (typeof response.bellLocked !== 'undefined') {
+                  this.bellLocked = response.bellLocked;
+                }
+                if (typeof response.specialPauseUntil !== 'undefined') {
+                  this.specialPauseUntil = response.specialPauseUntil;
+                }
+                
+                // 턴 정보 동기화
+                if (typeof response.turnIndex !== 'undefined') {
+                  this.turnIndex = response.turnIndex;
+                  this.currentTurnIndex = response.turnIndex;
+                }
+              } else if (response && response.playerLeft) {
+                console.warn("⚠️ 플레이어가 게임에서 제거됨 (타임아웃 또는 이미 나감)");
+                this.cleanupGameSceneAndGoToLobby();
+              } else if (response && response.gameEnded) {
+                console.warn("⚠️ 게임이 이미 종료됨");
+                this.cleanupGameSceneAndGoToLobby();
+              } else {
+                console.error("❌ 예상치 못한 서버 응답:", response);
+                this.cleanupGameSceneAndGoToLobby();
+              }
+            });
+            console.log("📤 playerReturned 전송 (콜백 포함, 5초 타임아웃):", {
+              roomNumber: this.currentRoomNumber,
+              playerId: socket.id
+            });
+          }
         } catch (e) {
           console.error("❌ GameScene resume 실패:", e.message);
         }
@@ -15011,6 +15136,84 @@ class GameScene extends Phaser.Scene {
           this.scene.resume("GameScene");
           console.log("✅ GameScene resume 성공");
           this._gameScenePausedAt = null;
+          
+          // 🔴 【핵심】서버에 포어그라운드 복귀 알림 + 게임 상태 동기화
+          if (socket && socket.connected && this.currentRoomNumber) {
+            let callbackReceived = false;
+            
+            // ⏱️ 타임아웃: 5초 내에 서버 응답이 없으면 강제 로비 이동
+            const timeoutId = setTimeout(() => {
+              if (!callbackReceived) {
+                console.error("❌ playerReturned 타임아웃 (5초): 서버 응답 없음");
+                this.cleanupGameSceneAndGoToLobby();
+              }
+            }, 5000);
+            
+            socket.emit('playerReturned', {
+              roomNumber: this.currentRoomNumber,
+              playerId: socket.id
+            }, (response) => {
+              callbackReceived = true;
+              clearTimeout(timeoutId);
+              
+              // 🟢 서버 응답 받기: 다른 유저들의 최신 게임 상태
+              if (response && response.success) {
+                console.log("🔄 게임 상태 동기화 (서버 응답):", response);
+                
+                // 🔴 【중요】플레이어 데이터 업데이트
+                if (response.players && Array.isArray(response.players)) {
+                  // roundData.players를 최신 상태로 업데이트
+                  this.roundData.players = response.players;
+                  
+                  // gameState 데이터도 반영
+                  if (response.gameState) {
+                    response.players.forEach(player => {
+                      if (response.gameState[player.id]) {
+                        const state = response.gameState[player.id];
+                        player.openStack = state.openStack || [];
+                        player.cards = state.cards || 0;
+                        player.isEliminated = state.isEliminated || false;
+                      }
+                    });
+                  }
+                  
+                  // UI 업데이트: 테이블 재렌더링 (모든 플레이어 정보 반영)
+                  console.log("🎨 테이블 재렌더링...");
+                  this.renderTable(this.roundData.players);
+                }
+                
+                // 벨/스페셜 상태 동기화
+                if (typeof response.bellPending !== 'undefined') {
+                  this.bellPending = response.bellPending;
+                }
+                if (typeof response.bellLocked !== 'undefined') {
+                  this.bellLocked = response.bellLocked;
+                }
+                if (typeof response.specialPauseUntil !== 'undefined') {
+                  this.specialPauseUntil = response.specialPauseUntil;
+                }
+                
+                // 턴 정보 동기화
+                if (typeof response.turnIndex !== 'undefined') {
+                  this.turnIndex = response.turnIndex;
+                  this.currentTurnIndex = response.turnIndex;
+                }
+              } else if (response && response.playerLeft) {
+                console.warn("⚠️ 플레이어가 게임에서 제거됨");
+                this.cleanupGameSceneAndGoToLobby();
+              } else if (response && response.gameEnded) {
+                console.warn("⚠️ 게임이 이미 종료됨");
+                this.cleanupGameSceneAndGoToLobby();
+              } else {
+                console.error("❌ 예상치 못한 서버 응답:", response);
+                this.cleanupGameSceneAndGoToLobby();
+              }
+            });
+            console.log("📤 playerReturned 전송 (콜백 포함, 5초 타임아웃):", {
+              roomNumber: this.currentRoomNumber,
+              playerId: socket.id
+            });
+          }
         } catch (e) {
           console.error("❌ GameScene resume 실패:", e.message);
         }
@@ -15036,6 +15239,7 @@ class GameScene extends Phaser.Scene {
     
     // 씬 종료 시 리스너 정리
     this.events.once("shutdown", () => {
+      this.isAdPlaying = false; // 광고 상태 플래그 초기화
       if (this._gameSceneVisibilityChangeHandler) {
         document.removeEventListener("visibilitychange", this._gameSceneVisibilityChangeHandler);
         this._gameSceneVisibilityChangeHandler = null;

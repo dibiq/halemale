@@ -85,6 +85,10 @@ function getCharacterBonus(characterKey) {
   return CHARACTER_BONUSES[characterKey] || CHARACTER_BONUSES.player_1;
 }
 
+// ✅ 【멀티플레이 백그라운드 처리】타임아웃 설정
+const BACKGROUND_TIMEOUT_MS = 5 * 60 * 1000; // 5분 (300초)
+const BACKGROUND_CHECK_INTERVAL_MS = 30000; // 30초마다 체크
+
 // ✅ 【검증 함수】모든 곳에서 사용 - VALID_PLAYER_NUMBERS 변경만으로 자동 반영
 function isValidPlayerKey(value) {
   return typeof value === "string" && VALID_PLAYER_KEYS_PATTERN.test(value);
@@ -1174,6 +1178,16 @@ async function finalizeGame(room, io, { winner, sorted, message }) {
   clearAiTurnTimer(room);
   clearAiBellTimers(room);
   clearTurnMonitor(room);
+
+  // ✅ 게임 종료 시 모든 백그라운드 타이머 정리
+  clearAllBackgroundTimers(room);
+
+  // Clear background monitoring interval
+  if (room._backgroundCheckInterval) {
+    clearInterval(room._backgroundCheckInterval);
+    room._backgroundCheckInterval = null;
+  }
+
   room.isGameStarted = false;
 
   const beforeStateById = new Map(
@@ -1828,6 +1842,14 @@ function processSkipTurn(room, io) {
   );
   scheduleAiTurn(room, io);
 
+  // ✅ 【백그라운드 플레이어 자동 턴 처리】활성 플레이어가 백그라운드 상태면 자동 타이머 시작
+  if (activePlayer && activePlayer.isInBackground) {
+    console.log(
+      `🔫 [백그라운드 자동 처리] 플레이어 ${activePlayer.nickname}(${activePlayer.id})가 백그라운드 상태 - 자동 턴 스킵 예약`,
+    );
+    scheduleBackgroundPlayerAutoTurn(room, activePlayer.id, io);
+  }
+
   // 📊 방장이 턴 모니터링 시작 - AI 봇이 4초 이상 응답 없으면 자동 진행
   startTurnMonitoring(room, io);
   console.log(`[AI][DEBUG] processSkipTurn: scheduleAiTurn 호출 완료`);
@@ -2075,6 +2097,97 @@ function scheduleAiTurn(room, io) {
     } else {
     }
   }, 2200);
+}
+
+// ✅ 【백그라운드 플레이어 자동 턴 처리】게임 진행 중 백그라운드 플레이어는 자동으로 카드 제출
+function scheduleBackgroundPlayerAutoTurn(room, playerId, io) {
+  if (!room || !playerId) return;
+  if (!room.isGameStarted) return;
+
+  // ✅ 플레이어별 타이머 관리 초기화
+  if (!room._backgroundAutoTurnTimers) {
+    room._backgroundAutoTurnTimers = {};
+  }
+
+  // 같은 플레이어의 기존 타이머 제거 (중복 처리 방지)
+  if (room._backgroundAutoTurnTimers[playerId]) {
+    clearTimeout(room._backgroundAutoTurnTimers[playerId]);
+    delete room._backgroundAutoTurnTimers[playerId];
+  }
+
+  // ✅ 8초 후 자동으로 턴 스킵 (기존 타이머 시스템과 동일)
+  room._backgroundAutoTurnTimers[playerId] = setTimeout(() => {
+    const currentPlayer = room.players[room.turnIndex];
+
+    // ✅ 다중 조건 체크 (탈락, 플립, 벨, 스페셜)
+    const pauseRemaining = getSpecialPauseRemaining(room);
+    const bellActive = room.bellPending || room.bellLocked;
+    const isFlipping = room.isFlipping || false;
+    const isEliminated = currentPlayer && currentPlayer.isEliminated;
+    const playerStillExists = room.players.some((p) => p.id === playerId);
+
+    // 여전히 이 플레이어의 턴이고 백그라운드 상태이며 게임이 정상 진행 중인지 확인
+    if (
+      room.isGameStarted &&
+      currentPlayer &&
+      currentPlayer.id === playerId &&
+      currentPlayer.isInBackground &&
+      !isEliminated &&
+      !isFlipping &&
+      pauseRemaining <= 0 &&
+      !bellActive &&
+      playerStillExists
+    ) {
+      console.log(
+        `🔫 [백그라운드 자동 카드 제출] 플레이어 ${currentPlayer.nickname}(${playerId}) - 턴 스킵`,
+      );
+
+      // 자동으로 턴 스킵 (다음 플레이어로 이동)
+      processSkipTurn(room, io);
+    } else if (
+      room.isGameStarted &&
+      currentPlayer &&
+      currentPlayer.id === playerId &&
+      currentPlayer.isInBackground &&
+      (pauseRemaining > 0 || bellActive || isFlipping)
+    ) {
+      // ✅ 스페셜 상태가 진행 중이면 다시 스케줄링 (최대 3초 대기)
+      const nextCheckTime = Math.min(pauseRemaining + 100, 3000);
+      room._backgroundAutoTurnTimers[playerId] = setTimeout(() => {
+        scheduleBackgroundPlayerAutoTurn(room, playerId, io);
+      }, nextCheckTime);
+      return;
+    } else if (!playerStillExists) {
+      console.log(`🔴 [백그라운드 타이머] 플레이어 ${playerId}가 이미 제거됨`);
+    } else if (isEliminated) {
+      console.log(`⚠️ [백그라운드 타이머] 플레이어 ${playerId}가 이미 탈락함`);
+    }
+
+    if (room._backgroundAutoTurnTimers[playerId]) {
+      delete room._backgroundAutoTurnTimers[playerId];
+    }
+  }, 8000); // ✅ setTimeout 콜백 종료
+}
+
+// ✅ 백그라운드 플레이어 타이머 정리 헬퍼 함수
+function clearBackgroundPlayerTimer(room, playerId) {
+  if (!room || !playerId) return;
+  if (!room._backgroundAutoTurnTimers) return;
+
+  if (room._backgroundAutoTurnTimers[playerId]) {
+    clearTimeout(room._backgroundAutoTurnTimers[playerId]);
+    delete room._backgroundAutoTurnTimers[playerId];
+  }
+}
+
+// ✅ 모든 백그라운드 타이머 정리
+function clearAllBackgroundTimers(room) {
+  if (!room || !room._backgroundAutoTurnTimers) return;
+
+  Object.keys(room._backgroundAutoTurnTimers).forEach((playerId) => {
+    clearTimeout(room._backgroundAutoTurnTimers[playerId]);
+  });
+  room._backgroundAutoTurnTimers = {};
 }
 
 function scheduleAiBell(room, io) {
@@ -5655,6 +5768,176 @@ io.on("connection", (socket) => {
     }
   });
 
+  // ✅ 【게임 중 백그라운드 처리】플레이어가 백그라운드 진입을 알림
+  socket.on("playerBackgroundEntered", (data) => {
+    const roomId = data?.roomId || socket.roomId;
+    const room = roomId ? rooms[roomId] : null;
+
+    if (!room) return;
+
+    const player = room.players.find((p) => p.id === socket.id);
+    if (!player) return;
+
+    console.log(
+      `⏱️ [백그라운드] 플레이어 ${player.nickname}(${socket.id}) 백그라운드 진입`,
+    );
+    player.isInBackground = true;
+    player.backgroundEnteredAt = Date.now();
+
+    // ✅ 타임아웃 모니터링 시작 (게임 중일 때만)
+    if (room.isGameStarted) {
+      if (!room._backgroundCheckInterval) {
+        room._backgroundCheckInterval = setInterval(() => {
+          if (!room.isGameStarted) {
+            clearInterval(room._backgroundCheckInterval);
+            room._backgroundCheckInterval = null;
+            return;
+          }
+
+          const now = Date.now();
+          room.players.forEach((p) => {
+            if (p.isInBackground && p.backgroundEnteredAt) {
+              const timeInBackground = now - p.backgroundEnteredAt;
+
+              if (timeInBackground > BACKGROUND_TIMEOUT_MS) {
+                // ✅ 타임아웃 - 플레이어 제거
+                console.warn(
+                  `⏰ [백그라운드 타임아웃] 플레이어 ${p.nickname}(${p.id}) - ${Math.floor(timeInBackground / 1000)}초`,
+                );
+
+                // ✅ 백그라운드 타이머 정리
+                clearBackgroundPlayerTimer(room, p.id);
+
+                // 플레이어 제거 (게임 진행 중 강제 제거)
+                const playerIndex = room.players.indexOf(p);
+                if (playerIndex >= 0) {
+                  room.players.splice(playerIndex, 1);
+
+                  // 턴 인덱스 조정
+                  if (room.turnIndex >= room.players.length) {
+                    room.turnIndex = Math.max(0, room.players.length - 1);
+                  }
+                }
+
+                // 클라이언트에 방 강제 종료 알림
+                io.to(p.id).emit("roomForceClose", {
+                  reason: "BACKGROUND_TIMEOUT",
+                  message: "너무 오래 응답이 없어서 게임에서 나갔습니다.",
+                });
+
+                // 다른 플레이어들에게 플레이어 퇴장 알림
+                io.to(room.roomId).emit("playerLeft", {
+                  playerId: p.id,
+                  players: room.players,
+                  hostId: room.host,
+                  leftPlayerNickname: p.nickname || "누군가",
+                });
+              }
+            }
+          });
+        }, BACKGROUND_CHECK_INTERVAL_MS);
+      }
+    }
+  });
+
+  // ✅ 【게임 중 백그라운드 처리】플레이어가 포어그라운드 복귀를 알림
+  socket.on("playerReturned", (data, ack) => {
+    const roomId = data?.roomId || socket.roomId;
+    const room = roomId ? rooms[roomId] : null;
+    const playerId = data?.playerId || socket.id;
+
+    const respond =
+      typeof ack === "function"
+        ? (payload) => {
+            try {
+              ack(payload);
+            } catch (e) {}
+          }
+        : () => {};
+
+    if (!room) {
+      respond({ success: false, reason: "NO_ROOM" });
+      return;
+    }
+
+    const player = room.players.find((p) => p.id === playerId);
+    if (!player) {
+      respond({ success: false, reason: "PLAYER_NOT_FOUND", playerLeft: true });
+      return;
+    }
+
+    const timeInBackground = player.backgroundEnteredAt
+      ? Date.now() - player.backgroundEnteredAt
+      : 0;
+
+    console.log(
+      `🔄 [백그라운드 복귀] 플레이어 ${player.nickname}(${playerId}) - ${Math.floor(timeInBackground / 1000)}초 동안 백그라운드`,
+    );
+
+    // ✅ 게임 종료 후 복귀 체크
+    if (!room.isGameStarted) {
+      console.log(`⚠️ [백그라운드 복귀] 게임이 이미 끝남 - 로비로 복귀 유도`);
+      respond({
+        success: false,
+        reason: "GAME_ENDED",
+        gameEnded: true,
+      });
+      return;
+    }
+
+    // ✅ 타임아웃 체크
+    if (timeInBackground > BACKGROUND_TIMEOUT_MS) {
+      console.warn(
+        `⏰ [타임아웃 감지] 플레이어 ${player.nickname}이 이미 타임아웃됨 (${Math.floor(timeInBackground / 1000)}초)`,
+      );
+      respond({
+        success: false,
+        reason: "TIMEOUT",
+        playerLeft: true,
+        isPlayerRemoved: true,
+      });
+      return;
+    }
+
+    // 백그라운드 상태 해제
+    player.isInBackground = false;
+    player.backgroundEnteredAt = null;
+
+    // ✅ 플레이어별 백그라운드 타이머 정리 (신규 함수 사용)
+    clearBackgroundPlayerTimer(room, playerId);
+    console.log(
+      `🟢 [백그라운드 타이머 정리] 플레이어 ${player.nickname}(${playerId}) 복귀 - 타이머 취소`,
+    );
+
+    // 응답: 현재 게임 상태 전송 (플레이어별 카드 정보 포함)
+    respond({
+      success: true,
+      isGameStarted: room.isGameStarted,
+      players: room.players.map((p) => ({
+        id: p.id,
+        nickname: p.nickname,
+        isBot: p.isBot,
+        isInBackground: p.isInBackground,
+        isEliminated: p.isEliminated,
+        cards: p.myDeck ? p.myDeck.length : 0,
+      })),
+      turnIndex: room.turnIndex,
+      // ✅ 벨/스페셜 상태 포함
+      bellPending: room.bellPending || false,
+      bellLocked: room.bellLocked || false,
+      specialPauseUntil: room.specialPauseUntil || 0,
+      currentTime: Date.now(), // 클라이언트 시간 동기화
+      gameState: room.players.reduce((acc, p) => {
+        acc[p.id] = {
+          openStack: p.openStack || p.openCardStack || [],
+          cards: p.myDeck ? p.myDeck.length : 0,
+          isEliminated: p.isEliminated,
+        };
+        return acc;
+      }, {}),
+    });
+  });
+
   socket.on("leaveRoom", (data, ack) => {
     const payload = data && typeof data === "object" ? data : {};
     const roomId = payload.roomId || socket.roomId;
@@ -5759,6 +6042,46 @@ io.on("connection", (socket) => {
 
     broadcastPublicRooms();
     if (typeof ack === "function") ack({ ok: true });
+  });
+
+  // ✅ 【게임 중 카드 동기화】백그라운드 복귀 후 최신 게임 상태 요청
+  socket.on("getGameState", (data, ack) => {
+    const roomId = data?.roomId || socket.roomId;
+    const room = roomId ? rooms[roomId] : null;
+
+    const respond =
+      typeof ack === "function"
+        ? (payload) => {
+            try {
+              ack(payload);
+            } catch (e) {}
+          }
+        : () => {};
+
+    if (!room || !room.isGameStarted) {
+      respond({ success: false, reason: "NO_GAME" });
+      return;
+    }
+
+    // 최신 게임 상태 응답
+    respond({
+      success: true,
+      turnIndex: room.turnIndex,
+      gameState: room.players.reduce((acc, p) => {
+        acc[p.id] = {
+          openStack: p.openStack || p.openCardStack || [],
+          cards: p.myDeck ? p.myDeck.length : 0,
+          isEliminated: p.isEliminated,
+        };
+        return acc;
+      }, {}),
+      players: room.players.map((p) => ({
+        id: p.id,
+        nickname: p.nickname,
+        isEliminated: p.isEliminated,
+        cards: p.myDeck ? p.myDeck.length : 0,
+      })),
+    });
   });
 
   socket.on("getOnlineUsers", () => {
@@ -5909,23 +6232,32 @@ io.on("connection", (socket) => {
     });
   });
 
-  socket.on("startGameRequest", async (ack) => {
+  socket.on("startGameRequest", async (data, ack) => {
     console.log("[SERVER] startGameRequest received from", socket.id);
-    const respond =
-      typeof ack === "function"
-        ? (payload) => {
-            try {
-              ack(payload);
-            } catch (error) {
-              console.error("startGameRequest ack error:", error);
-            }
+
+    // ✅ 【백그라운드 상태 추출】클라이언트에서 보낸 백그라운드 플래그
+    const clientData = (typeof data === "object" && data) || {};
+    const requesterIsInBackground = Boolean(clientData.isInBackground);
+
+    // ✅ 콜백 함수 정리 (data가 객체이거나 함수일 수 있음)
+    let ackCallback = null;
+    if (typeof ack === "function") {
+      ackCallback = ack;
+    } else if (typeof data === "function") {
+      ackCallback = data;
+    }
+
+    const respond = ackCallback
+      ? (payload) => {
+          try {
+            ackCallback(payload);
+          } catch (error) {
+            console.error("startGameRequest ack error:", error);
           }
-        : () => {};
+        }
+      : () => {};
 
     const room = rooms[socket.roomId];
-    //if (!room || room.host !== socket.id || room.players.length < 2) return;
-    //if (!room.players.filter((p) => p.id !== room.host).every((p) => p.isReady))
-    // return;
 
     // 0. 방이 없으면 무시 (최소한의 안전장치)
     if (!room) {
@@ -5936,6 +6268,7 @@ io.on("connection", (socket) => {
     emitServerDebug(room, "startGameRequest.received", {
       requesterId: socket.id,
       requesterNickname: socket.nickname || null,
+      requesterIsInBackground: requesterIsInBackground,
       hostId: room.host,
       playerCount: room.players.length,
       players: room.players.map((p) => ({
@@ -5953,6 +6286,21 @@ io.on("connection", (socket) => {
     });
 
     syncRoomPlayersWithActiveSockets(room, io);
+
+    // ✅ 【백그라운드 플레이어 체크】게임 시작 전 백그라운드 상태 플레이어 마킹
+    // (각 플레이어가 현재 백그라운드에 있는지 확인 - 방장 요청 기준)
+    console.log(
+      `📋 [백그라운드 체크] 요청자(${socket.id}) isInBackground=${requesterIsInBackground}`,
+    );
+    room.players.forEach((p) => {
+      // 방장이 보낸 정보로 게임 시작 - 방장의 백그라운드 상태만 알려짐
+      // 다른 플레이어들은 기본적으로 준비 상태(온라인)로 가정
+      p.isInBackground = p.id === socket.id ? requesterIsInBackground : false;
+      p.backgroundEnteredAt = p.isInBackground ? Date.now() : null;
+      console.log(
+        `  └─ 플레이어 ${p.nickname}(${p.id}): isInBackground=${p.isInBackground}`,
+      );
+    });
 
     // 시작 직전에 room.players의 specialCards를 실시간 소켓과 동기화합니다.
     // (게임 시작 직후 공격이 들어오는 경우에 대비한 안전장치)
@@ -7473,7 +7821,12 @@ io.on("connection", (socket) => {
       // (setNickname 등에서 socket.nickname을 저장했다면 가능합니다)
       const leftPlayerNickname = socket.nickname || "누군가";
 
-      // 2. 플레이어 제거
+      // 2. 🔴 【백그라운드 중 disconnect 대비】 백그라운드 타이머 정리
+      if (room.isGameStarted) {
+        clearBackgroundPlayerTimer(room, socket.id);
+      }
+
+      // 3. 플레이어 제거
       room.players = room.players.filter((p) => p.id !== socket.id);
 
       const hasHumanPlayers = room.players.some((p) => p && !p.isBot);
