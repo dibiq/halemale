@@ -5690,69 +5690,29 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     };
 
     const handleVisibilityChange = () => {
+      // 🔴 【중요】GameScene이 활성화 상태면 LobbyScene에서는 처리하지 않음
+      // (GameScene의 handleVisibilityChange가 처리할 것임)
+      const isGameSceneActive = this.scene.isActive("GameScene");
+      if (isGameSceneActive) {
+        console.log("🎮 GameScene이 활성화 상태 - LobbyScene visibilitychange 무시");
+        return;
+      }
+      
       if (document.hidden) {
-        // 🔻 백그라운드로 진입 - 게임 씬을 나가지 말고 pause만 함
-        console.log("🔻 백그라운드 진입");
+        // 🔻 백그라운드로 진입
+        console.log("🔻 백그라운드 진입 (LobbyScene)");
         if (bgm && bgm.isPlaying) {
           bgm.pause();
         }
-        
-        // GameScene이 활성화되어 있으면 pause (stop 아님!)
-        const isGameScene = this.scene.key === "GameScene";
-        if (isGameScene && this.scene.isActive("GameScene")) {
-          console.log("⏸️ GameScene pause");
-          this.scene.pause("GameScene");
-        }
-        
         startBackgroundConnectionMonitoring();
         return;
       }
 
-      // 🔺 포어그라운드로 복귀
+      // 🔺 포어그라운드로 복귀 (LobbyScene)
       stopBackgroundConnectionMonitoring();
-
-      console.log("🔺 포어그라운드 복귀");
+      console.log("🔺 포어그라운드 복귀 (LobbyScene)");
       
-      // 🔴 【싱글플레이 체크】싱글플레이는 socket이 없으므로 별도 처리
-      const isSinglePlayGame = this.isSingle === true;
-      
-      // socket 상태 확인 (멀티플레이만 체크)
-      const isConnected = !isSinglePlayGame && socket && socket._stableConnected && socket.connected;
-      const isGameScene = this.scene.key === "GameScene";
-      const isGameSceneActive = this.scene.isActive("GameScene");
-      
-      console.log(`📊 상태: isSingle=${isSinglePlayGame}, isConnected=${isConnected}, isGameScene=${isGameScene}, isGameSceneActive=${isGameSceneActive}`);
-      
-      // ✅ GameScene이 pause 상태면 resume
-      if (isGameSceneActive === false && this.scene.isSleeping("GameScene")) {
-        console.log("▶️ GameScene resume");
-        this.scene.resume("GameScene");
-      } else if (!isGameSceneActive && this.scene.isActive("LobbyScene")) {
-        // GameScene이 완전히 종료되고 LobbyScene만 있으면, 연결 상태로 판단
-        if (!isConnected && !isSinglePlayGame) {
-          console.log("❌ GameScene 종료됨 + 연결 끊김 → 현재 상태 유지");
-          return;
-        }
-        
-        // 연결은 되어있는데 GameScene이 종료된 경우는 드물지만, 로비에 머무름
-        console.log("⚠️ GameScene 종료됨, LobbyScene에서 대기");
-        return;
-      }
-      
-      // 🔴 【싱글플레이 제외】연결 끊어졌고 GameScene이 활성화된 경우만 로비로 이동 (멀티플레이만)
-      if (!isConnected && isGameSceneActive && !isSinglePlayGame) {
-        console.log("❌ 연결 끊김 감지 - 로비로 이동");
-        this.cleanupGameSceneAndGoToLobby();
-        return;
-      }
-      
-      // socket 재연결 시도 (멀티플레이만)
-      if (!isConnected && socket && typeof socket.connect === 'function' && !isSinglePlayGame) {
-        console.log("🔄 socket 재연결 시도");
-        socket.connect();
-      }
-      
-      // 🔴 【BGM 복구 - 광고 중이 아닐 때만】광고 재생 중이면 BGM 중복 재생 방지
+      // 🔴 【BGM 복구 - 광고 중이 아닐 때만】
       if (bgm && !this.isAdPlaying) {
         if (bgm.isPaused && bgmOn) {
           bgm.resume();
@@ -15037,26 +14997,54 @@ class GameScene extends Phaser.Scene {
       const isConnected = socket && socket._stableConnected && socket.connected;
       const isGameScene = this.scene.key === "GameScene";
       const isGameSceneActive = this.scene.isActive("GameScene");
-      const isGameSceneSleeping = this.scene.isSleeping("GameScene"); // 🔴 추가 로그
+      const isGameSceneSleeping = this.scene.isSleeping("GameScene");
+      const isGameScenePaused = this.scene.isPaused("GameScene");
       
-      console.log(`📊 상태 (GameScene): isConnected=${isConnected}, isGameScene=${isGameScene}, isGameSceneActive=${isGameSceneActive}, isSleeping=${isGameSceneSleeping}`);
+      console.log(`📊 상태 (GameScene): isGameScene=${isGameScene}, isGameSceneActive=${isGameSceneActive}, isSleeping=${isGameSceneSleeping}, isPaused=${isGameScenePaused}, isConnected=${isConnected}`);
       
-      // ✅ GameScene이 pause 상태면 resume (더 강력한 로직)
-      if (isGameScene && this._gameScenePausedAt && !isGameSceneActive) {
-        console.log("▶️ GameScene resume 시도 (pause 기록 있음)");
+      // ✅ 【핵심】GameScene이 비활성화 상태면 반드시 활성화
+      // 조건: GameScene이 현재 활성화되지 않음 (pause든 shutdown이든 상관없음)
+      if (isGameScene && !isGameSceneActive) {
+        console.log("▶️ GameScene 활성화 시작");
         try {
-          this.scene.resume("GameScene");
-          console.log("✅ GameScene resume 성공");
-          this._gameScenePausedAt = null; // 초기화
+          // pause 상태면 resume, 아니면 wake 또는 start 시도
+          if (isGameSceneSleeping) {
+            console.log("  ↳ pause 상태 감지 → resume");
+            this.scene.resume("GameScene");
+          } else if (isGameScenePaused) {
+            console.log("  ↳ paused 상태 감지 → resume");
+            this.scene.resume("GameScene");
+          } else {
+            // shutdown 또는 stopped 상태 → wake 시도
+            console.log("  ↳ shutdown/stopped 상태 감지 → wake 시도");
+            this.scene.wake("GameScene");
+          }
+          console.log("✅ GameScene 활성화 성공");
           
-          // 🔴 【핵심】서버에 포어그라운드 복귀 알림 + 게임 상태 동기화
+          // 🔴 【핵심】Input 시스템 재활성화
+          // scene.pause()는 input을 비활성화하므로 명시적으로 다시 활성화해야 함
+          this.input.enabled = true;
+          console.log("✅ Input 시스템 활성화");
+          
+          // 게임 루프 타이머 상태 확인
+          if (this.time && this.time.paused) {
+            this.time.paused = false;
+            console.log("✅ 게임 타이머 재개");
+          }
+          
+          this._gameScenePausedAt = null;
+          
+          // 🔴 【핵심】포어그라운드 복귀 직후 무조건 서버 동기화 요청
+          // 멀티플레이 게임이고 연결 상태일 때만
           if (socket && socket.connected && this.currentRoomNumber) {
+            console.log("📡 playerReturned 이벤트 발송 시작");
+            
             let callbackReceived = false;
             
             // ⏱️ 타임아웃: 5초 내에 서버 응답이 없으면 강제 로비 이동
             const timeoutId = setTimeout(() => {
               if (!callbackReceived) {
-                console.error("❌ playerReturned 타임아웃 (5초): 서버 응답 없음");
+                console.error("❌ playerReturned 타임아웃 (5초): 서버 응답 없음 → 로비로 이동");
                 this.cleanupGameSceneAndGoToLobby();
               }
             }, 5000);
@@ -15068,13 +15056,14 @@ class GameScene extends Phaser.Scene {
               callbackReceived = true;
               clearTimeout(timeoutId);
               
+              console.log("✅ playerReturned 콜백 수신:", response);
+              
               // 🟢 서버 응답 받기: 다른 유저들의 최신 게임 상태
               if (response && response.success) {
-                console.log("🔄 게임 상태 동기화 (서버 응답):", response);
+                console.log("🔄 게임 상태 동기화 성공");
                 
                 // 🔴 【중요】플레이어 데이터 업데이트
                 if (response.players && Array.isArray(response.players)) {
-                  // roundData.players를 최신 상태로 업데이트
                   this.roundData.players = response.players;
                   
                   // gameState 데이터도 반영
@@ -15090,7 +15079,7 @@ class GameScene extends Phaser.Scene {
                   }
                   
                   // UI 업데이트: 테이블 재렌더링 (모든 플레이어 정보 반영)
-                  console.log("🎨 테이블 재렌더링...");
+                  console.log("🎨 테이블 재렌더링 실행");
                   this.renderTable(this.roundData.players);
                 }
                 
@@ -15110,6 +15099,8 @@ class GameScene extends Phaser.Scene {
                   this.turnIndex = response.turnIndex;
                   this.currentTurnIndex = response.turnIndex;
                 }
+                
+                console.log("✅ 게임 상태 동기화 완료");
               } else if (response && response.playerLeft) {
                 console.warn("⚠️ 플레이어가 게임에서 제거됨 (타임아웃 또는 이미 나감)");
                 this.cleanupGameSceneAndGoToLobby();
@@ -15117,116 +15108,35 @@ class GameScene extends Phaser.Scene {
                 console.warn("⚠️ 게임이 이미 종료됨");
                 this.cleanupGameSceneAndGoToLobby();
               } else {
-                console.error("❌ 예상치 못한 서버 응답:", response);
+                console.error("❌ 예상치 못한 서버 응답 - 로비로 이동:", response);
                 this.cleanupGameSceneAndGoToLobby();
               }
-            });
-            console.log("📤 playerReturned 전송 (콜백 포함, 5초 타임아웃):", {
-              roomNumber: this.currentRoomNumber,
-              playerId: socket.id
-            });
-          }
-        } catch (e) {
-          console.error("❌ GameScene resume 실패:", e.message);
-        }
-      } else if (isGameSceneActive === false && isGameSceneSleeping) {
-        // 기존 로직도 유지
-        console.log("▶️ GameScene resume (sleep 상태 감지)");
-        try {
-          this.scene.resume("GameScene");
-          console.log("✅ GameScene resume 성공");
-          this._gameScenePausedAt = null;
-          
-          // 🔴 【핵심】서버에 포어그라운드 복귀 알림 + 게임 상태 동기화
-          if (socket && socket.connected && this.currentRoomNumber) {
-            let callbackReceived = false;
-            
-            // ⏱️ 타임아웃: 5초 내에 서버 응답이 없으면 강제 로비 이동
-            const timeoutId = setTimeout(() => {
-              if (!callbackReceived) {
-                console.error("❌ playerReturned 타임아웃 (5초): 서버 응답 없음");
-                this.cleanupGameSceneAndGoToLobby();
-              }
-            }, 5000);
-            
-            socket.emit('playerReturned', {
-              roomNumber: this.currentRoomNumber,
-              playerId: socket.id
-            }, (response) => {
-              callbackReceived = true;
-              clearTimeout(timeoutId);
               
-              // 🟢 서버 응답 받기: 다른 유저들의 최신 게임 상태
+              // 🔴 【중요】콜백 이후 input 다시 확인
               if (response && response.success) {
-                console.log("🔄 게임 상태 동기화 (서버 응답):", response);
-                
-                // 🔴 【중요】플레이어 데이터 업데이트
-                if (response.players && Array.isArray(response.players)) {
-                  // roundData.players를 최신 상태로 업데이트
-                  this.roundData.players = response.players;
-                  
-                  // gameState 데이터도 반영
-                  if (response.gameState) {
-                    response.players.forEach(player => {
-                      if (response.gameState[player.id]) {
-                        const state = response.gameState[player.id];
-                        player.openStack = state.openStack || [];
-                        player.cards = state.cards || 0;
-                        player.isEliminated = state.isEliminated || false;
-                      }
-                    });
-                  }
-                  
-                  // UI 업데이트: 테이블 재렌더링 (모든 플레이어 정보 반영)
-                  console.log("🎨 테이블 재렌더링...");
-                  this.renderTable(this.roundData.players);
-                }
-                
-                // 벨/스페셜 상태 동기화
-                if (typeof response.bellPending !== 'undefined') {
-                  this.bellPending = response.bellPending;
-                }
-                if (typeof response.bellLocked !== 'undefined') {
-                  this.bellLocked = response.bellLocked;
-                }
-                if (typeof response.specialPauseUntil !== 'undefined') {
-                  this.specialPauseUntil = response.specialPauseUntil;
-                }
-                
-                // 턴 정보 동기화
-                if (typeof response.turnIndex !== 'undefined') {
-                  this.turnIndex = response.turnIndex;
-                  this.currentTurnIndex = response.turnIndex;
-                }
-              } else if (response && response.playerLeft) {
-                console.warn("⚠️ 플레이어가 게임에서 제거됨");
-                this.cleanupGameSceneAndGoToLobby();
-              } else if (response && response.gameEnded) {
-                console.warn("⚠️ 게임이 이미 종료됨");
-                this.cleanupGameSceneAndGoToLobby();
-              } else {
-                console.error("❌ 예상치 못한 서버 응답:", response);
-                this.cleanupGameSceneAndGoToLobby();
+                this.input.enabled = true;
+                console.log("✅ Input 재확인 활성화 (콜백 후)");
               }
             });
-            console.log("📤 playerReturned 전송 (콜백 포함, 5초 타임아웃):", {
-              roomNumber: this.currentRoomNumber,
-              playerId: socket.id
-            });
+            
+            console.log("📤 playerReturned 전송 (콜백 포함, 5초 타임아웃)");
+          } else {
+            // 싱글플레이 또는 연결 안 됨 상태 → 그냥 게임 계속
+            console.log("ℹ️ 싱글플레이 또는 연결 끊김 - 서버 동기화 스킵, 게임 계속");
           }
         } catch (e) {
           console.error("❌ GameScene resume 실패:", e.message);
         }
+        return; // 이후 로직 실행 안 함
       }
       
-      // socket 재연결 시도
-      if (!isConnected && socket && typeof socket.connect === 'function') {
-        console.log("🔄 socket 재연결 시도");
-        socket.connect();
+      // GameScene이 활성화된 상태에서는 그냥 BGM만 복구
+      if (isGameSceneActive) {
+        console.log("ℹ️ GameScene이 이미 활성화됨 - BGM만 복구");
       }
       
-      // BGM 복구
-      if (bgm) {
+      // 🔴 【BGM 복구 - 광고 중이 아닐 때만】
+      if (bgm && !this.isAdPlaying) {
         if (bgm.isPaused && bgmOn) {
           bgm.resume();
         }

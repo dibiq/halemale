@@ -150,5 +150,275 @@
         }, 1000);
       });
     </script>
+
+    <!-- 🔴 백그라운드 테스트 디버그 패널 -->
+    <script>
+      window.addEventListener("load", () => {
+        setTimeout(() => {
+          // 🧪 백그라운드 테스트 패널 UI 생성
+          const debugPanel = document.createElement("div");
+          debugPanel.id = "bg-test-panel";
+          Object.assign(debugPanel.style, {
+            position: "fixed",
+            bottom: "20px",
+            right: "20px",
+            background: "rgba(0, 0, 0, 0.9)",
+            border: "2px solid #10b981",
+            borderRadius: "12px",
+            padding: "15px",
+            color: "#fff",
+            fontFamily: "monospace",
+            fontSize: "12px",
+            zIndex: 999999,
+            maxWidth: "350px",
+            maxHeight: "400px",
+            overflowY: "auto",
+            boxShadow: "0 8px 32px rgba(16, 185, 129, 0.3)",
+          });
+
+          const title = document.createElement("div");
+          title.textContent = "🧪 백그라운드 테스트";
+          Object.assign(title.style, {
+            fontWeight: "bold",
+            marginBottom: "10px",
+            color: "#10b981",
+            fontSize: "14px",
+          });
+          debugPanel.appendChild(title);
+
+          // 상태 표시
+          const statusDiv = document.createElement("div");
+          statusDiv.id = "bg-status";
+          Object.assign(statusDiv.style, {
+            marginBottom: "10px",
+            padding: "8px",
+            background: "rgba(16, 185, 129, 0.1)",
+            borderRadius: "6px",
+          });
+          debugPanel.appendChild(statusDiv);
+
+          const updateStatus = () => {
+            const hidden = document.hidden;
+            const state = document.visibilityState;
+            statusDiv.innerHTML = `
+              <div>상태: <span style="color: ${hidden ? "#ef4444" : "#10b981"}">${hidden ? "백그라운드 🔴" : "포어그라운드 🟢"}</span></div>
+              <div>visibilityState: <span style="color: #60a5fa">"${state}"</span></div>
+            `;
+          };
+          updateStatus();
+
+          // 이벤트 로그
+          const logDiv = document.createElement("div");
+          logDiv.id = "bg-log";
+          Object.assign(logDiv.style, {
+            background: "rgba(0, 0, 0, 0.5)",
+            padding: "8px",
+            borderRadius: "6px",
+            maxHeight: "150px",
+            overflowY: "auto",
+            marginBottom: "10px",
+            fontSize: "11px",
+          });
+          debugPanel.appendChild(logDiv);
+
+          const addLog = (msg) => {
+            const logEntry = document.createElement("div");
+            const time = new Date().toLocaleTimeString();
+            logEntry.textContent = `[${time}] ${msg}`;
+            logDiv.insertBefore(logEntry, logDiv.firstChild);
+            while (logDiv.children.length > 10) {
+              logDiv.removeChild(logDiv.lastChild);
+            }
+          };
+
+          // 버튼 컨테이너
+          const buttonContainer = document.createElement("div");
+          Object.assign(buttonContainer.style, {
+            display: "flex",
+            gap: "8px",
+            flexDirection: "column",
+          });
+          debugPanel.appendChild(buttonContainer);
+
+          // 버튼 스타일
+          const btnStyle = {
+            padding: "8px 12px",
+            border: "1px solid #10b981",
+            borderRadius: "6px",
+            background: "rgba(16, 185, 129, 0.2)",
+            color: "#10b981",
+            cursor: "pointer",
+            fontSize: "12px",
+            fontFamily: "monospace",
+            fontWeight: "bold",
+            transition: "all 0.2s",
+            marginBottom: "5px",
+          };
+
+          // 백그라운드 시뮬레이션 버튼
+          const bgBtn = document.createElement("button");
+          bgBtn.textContent = "📱 백그라운드 진입 (수동)";
+          Object.assign(bgBtn.style, btnStyle);
+          bgBtn.onclick = () => {
+            addLog("🔴 백그라운드 시뮬레이션 시작");
+            // document.hidden을 직접 변경할 수는 없지만,
+            // 이벤트를 수동으로 트리거할 수 있음
+            const event = new Event("visibilitychange", { bubbles: true });
+            Object.defineProperty(document, "hidden", {
+              configurable: true,
+              get: () => true,
+            });
+            Object.defineProperty(document, "visibilityState", {
+              configurable: true,
+              get: () => "hidden",
+            });
+            document.dispatchEvent(event);
+            updateStatus();
+            console.log("🔴 백그라운드 이벤트 발생 (수동)");
+          };
+          buttonContainer.appendChild(bgBtn);
+
+          // 포어그라운드 시뮬레이션 버튼
+          const fgBtn = document.createElement("button");
+          fgBtn.textContent = "🟢 포어그라운드 복귀 (수동)";
+          Object.assign(fgBtn.style, btnStyle);
+          fgBtn.onclick = () => {
+            addLog("🟢 포어그라운드 복귀 시뮬레이션");
+            Object.defineProperty(document, "hidden", {
+              configurable: true,
+              get: () => false,
+            });
+            Object.defineProperty(document, "visibilityState", {
+              configurable: true,
+              get: () => "visible",
+            });
+            const event = new Event("visibilitychange", { bubbles: true });
+            document.dispatchEvent(event);
+            updateStatus();
+            console.log("🟢 포어그라운드 이벤트 발생 (수동)");
+          };
+          buttonContainer.appendChild(fgBtn);
+
+          // 상태 확인 버튼
+          const checkBtn = document.createElement("button");
+          checkBtn.textContent = "📊 현재 상태 확인";
+          Object.assign(checkBtn.style, {
+            ...btnStyle,
+            background: "rgba(59, 130, 246, 0.2)",
+            borderColor: "#3b82f6",
+            color: "#3b82f6",
+          });
+          checkBtn.onclick = () => {
+            const socket = window.socket;
+            const gameScene = window.game?.scene?.getScene("GameScene");
+            const inputEnabled = gameScene?.input?.enabled ?? "?";
+            const sceneActive = gameScene?.isActive?.() ?? false;
+            const scenePaused = gameScene?.isPaused?.() ?? false;
+            const sceneRunning = gameScene?.isRunning?.() ?? false;
+
+            const statusText = `
+📊 상세 상태:
+- hidden=${document.hidden}, visibilityState="${document.visibilityState}"
+- socket=${socket ? (socket.connected ? "✅" : "❌") : "없음"}
+- GameScene active=${sceneActive}, paused=${scenePaused}, running=${sceneRunning}
+- Input enabled=${inputEnabled}
+- 게임 루프: ${window.game?.isRunning ? "실행 중" : "중지"}
+            `;
+            addLog(statusText);
+            console.log("현재 상세 상태:", {
+              hidden: document.hidden,
+              visibilityState: document.visibilityState,
+              socketConnected: socket?.connected || false,
+              gameSceneActive: sceneActive,
+              gameScenePaused: scenePaused,
+              gameSceneRunning: sceneRunning,
+              inputEnabled: inputEnabled,
+              gameRunning: window.game?.isRunning || false,
+            });
+
+            // Input 비활성화 상태면 강제 활성화
+            if (gameScene && !inputEnabled) {
+              console.warn("⚠️ Input이 비활성화 상태! 강제 활성화 시도중...");
+              gameScene.input.enabled = true;
+              addLog("🔧 Input 강제 활성화 시도!");
+            }
+          };
+          buttonContainer.appendChild(checkBtn);
+
+          // 콘솔 명령어 안내
+          const helpBtn = document.createElement("button");
+          helpBtn.textContent = "💡 콘솔 명령어";
+          Object.assign(helpBtn.style, {
+            ...btnStyle,
+            background: "rgba(168, 85, 247, 0.2)",
+            borderColor: "#a855f7",
+            color: "#a855f7",
+          });
+          helpBtn.onclick = () => {
+            console.log(`
+🧪 백그라운드 테스트 콘솔 명령어:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1️⃣ 백그라운드 상태 확인:
+   console.log(document.hidden, document.visibilityState)
+
+2️⃣ visibilitychange 리스너 확인:
+   console.log(document._events?.visibilitychange)
+
+3️⃣ 현재 씬 확인:
+   window.game.scene.keys
+
+4️⃣ GameScene 상태:
+   const gs = window.game.scene.getScene("GameScene");
+   console.log(gs.isActive() ? "활성" : "비활성");
+
+5️⃣ Socket 연결 상태:
+   console.log(window.socket?.connected)
+
+6️⃣ playerReturned 이벤트 확인:
+   window.socket?.on("playerReturned", (data) => {
+     console.log("playerReturned 수신:", data);
+   });
+            `);
+          };
+          buttonContainer.appendChild(helpBtn);
+
+          // 패널 닫기 버튼
+          const closeBtn = document.createElement("button");
+          closeBtn.textContent = "✕";
+          Object.assign(closeBtn.style, {
+            position: "absolute",
+            top: "5px",
+            right: "5px",
+            width: "24px",
+            height: "24px",
+            padding: "0",
+            border: "none",
+            background: "rgba(239, 68, 68, 0.3)",
+            color: "#ef4444",
+            cursor: "pointer",
+            borderRadius: "4px",
+            fontSize: "16px",
+          });
+          closeBtn.onclick = () => {
+            debugPanel.style.display = "none";
+          };
+          debugPanel.appendChild(closeBtn);
+
+          document.body.appendChild(debugPanel);
+
+          // 실제 visibilitychange 이벤트 모니터링
+          document.addEventListener("visibilitychange", () => {
+            updateStatus();
+            addLog(
+              `visibilitychange: ${document.hidden ? "백그라운드" : "포어그라운드"}`,
+            );
+          });
+
+          console.log("🧪 백그라운드 테스트 디버그 패널 로드 완료");
+          console.log("우측 하단의 초록색 패널을 확인하세요!");
+        }, 2000);
+      });
+    </script>
   </body>
 </html>

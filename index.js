@@ -5784,6 +5784,14 @@ io.on("connection", (socket) => {
     player.isInBackground = true;
     player.backgroundEnteredAt = Date.now();
 
+    // 🔴 【중요】현재 턴이 이 플레이어인 경우 즉시 자동 턴 스킵 예약
+    if (room.isGameStarted && room.players[room.turnIndex]?.id === socket.id) {
+      console.log(
+        `🔫 [백그라운드 자동 처리] 플레이어 ${player.nickname}(${socket.id})가 백그라운드 진입 시 현재 턴 - 자동 턴 스킵 예약`,
+      );
+      scheduleBackgroundPlayerAutoTurn(room, socket.id, io);
+    }
+
     // ✅ 타임아웃 모니터링 시작 (게임 중일 때만)
     if (room.isGameStarted) {
       if (!room._backgroundCheckInterval) {
