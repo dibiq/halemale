@@ -5784,6 +5784,13 @@ io.on("connection", (socket) => {
     player.isInBackground = true;
     player.backgroundEnteredAt = Date.now();
 
+    // 🔴 【중요】모든 플레이어들에게 이 플레이어가 백그라운드에 있다는 것을 알림
+    io.to(room.roomId).emit("playerBackgroundStatus", {
+      playerId: socket.id,
+      isInBackground: true,
+      nickname: player.nickname,
+    });
+
     // 🔴 【중요】현재 턴이 이 플레이어인 경우 즉시 자동 턴 스킵 예약
     if (room.isGameStarted && room.players[room.turnIndex]?.id === socket.id) {
       console.log(

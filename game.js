@@ -966,12 +966,8 @@ class LobbyScene extends Phaser.Scene {
         this.scene.stop("GameScene");
       }
 
-      // 6️⃣ 로비로 이동
-      this.scene.start("LobbyScene", {
-        fromGame: true,
-        connectionLost: true,
-        skipLobbyLoading: true,
-      });
+      // 6️⃣ 🔴 【중요】홈으로 이동 (빈 대기실이 아니라 홈!)
+      this.scene.start("HomeScene");
     } catch (err) {
       // 최후의 수단: 하드 리셋
       try {
@@ -13949,16 +13945,15 @@ class GameScene extends Phaser.Scene {
       socket.off("cardFlipped");
       socket.off("bellResult");
       socket.off("gameEnded");
+      socket.off("roomForceClose");
+      socket.off("playerBackgroundStatus");
+      socket.off("turnChanged");
 
       // 8️⃣ GameScene 강제 종료
       this.scene.stop("GameScene");
 
-      // 9️⃣ 로비로 이동
-      this.scene.start("LobbyScene", {
-        fromGame: true,
-        connectionLost: true,
-        skipLobbyLoading: true,
-      });
+      // 9️⃣ 🔴 【중요】홈으로 이동 (빈 대기실이 아니라 홈!)
+      this.scene.start("HomeScene");
     } catch (err) {
       // 최후의 수단: 하드 리셋
       try {
@@ -14970,6 +14965,11 @@ class GameScene extends Phaser.Scene {
         const isGameScene = this.scene.key === "GameScene";
         if (isGameScene && this.scene.isActive("GameScene")) {
           console.log("⏸️ GameScene pause");
+          
+          // 🔴 【핵심】백그라운드 진입 시 클라이언트 타이머 취소 (서버가 8초 타이머를 관리함)
+          this.clearMyTurnTimer();
+          console.log("⏹️ 클라이언트 자동 제출 타이머 취소 (서버의 8초 타이머가 관리)");
+          
           this.scene.pause("GameScene");
           this._gameScenePausedAt = Date.now(); // 🔴 pause 시간 기록
           
@@ -16477,6 +16477,25 @@ class GameScene extends Phaser.Scene {
       this.pendingGameStartData = null;
     }
 
+    // 🔴 【핵심】플레이어 백그라운드 상태 업데이트
+    socket.off("playerBackgroundStatus").on("playerBackgroundStatus", (data) => {
+      const player = this.roundData.players.find((p) => p.id === data.playerId);
+      if (player) {
+        player.isInBackground = data.isInBackground;
+        console.log(
+          `📡 [백그라운드 상태] ${data.nickname}: ${data.isInBackground ? "백그라운드" : "포어그라운드"}`,
+        );
+        
+        // 현재 턴 플레이어가 백그라운드 상태라면 UI 업데이트
+        if (data.isInBackground && this.roundData.players[this.turnIndex]?.id === data.playerId) {
+          console.log(
+            `⏱️ [자동 제출] 현재 턴 플레이어 ${data.nickname}이 백그라운드 - 8초 후 자동 제출 대기`,
+          );
+          this.renderTable(this.roundData.players);
+        }
+      }
+    });
+
     socket.off("turnChanged").on("turnChanged", (data) => {
       const turnChangeTime = Date.now();
       const timeSinceBellResult = this.lastBellResultTime ? turnChangeTime - this.lastBellResultTime : 0;
@@ -17425,6 +17444,48 @@ class GameScene extends Phaser.Scene {
           }
         });
       });
+    });
+
+    // 🔴 【중요】방 강제 종료 처리 - 서버가 방을 닫으면 홈으로 이동
+    socket.off("roomForceClose").on("roomForceClose", (data) => {
+      console.error(
+        `🚫 [방 강제 종료] ${data?.reason || "알 수 없는 이유"}: ${data?.message || ""}`,
+      );
+      
+      // 알림 표시 (선택사항)
+      if (data?.message) {
+        alert(`게임이 종료되었습니다: ${data.message}`);
+      }
+      
+      // 홈으로 이동
+      if (typeof this.cleanupGameSceneAndGoToLobby === "function") {
+        this.cleanupGameSceneAndGoToLobby();
+      }
+    });
+
+    // 🔴 【중요】플레이어 퇴장 감지 - 내가 아닌 다른 플레이어가 나가면 추적
+    socket.off("playerLeft").on("playerLeft", (data) => {
+      const leftPlayerId = data?.playerId;
+      const myId = this.isSingle ? this.myId : socket.id;
+      
+      // 내가 나간 경우 (이미 cleanupGameSceneAndGoToLobby로 처리됨)
+      if (leftPlayerId === myId) {
+        console.log(`👋 [퇴장] 당신이 게임을 나갔습니다.`);
+        return;
+      }
+      
+      // 다른 플레이어가 나간 경우
+      if (data?.leftPlayerNickname) {
+        console.log(
+          `👋 [퇴장] 플레이어 ${data.leftPlayerNickname}이(가) 게임을 나갔습니다.`,
+        );
+      }
+      
+      // 플레이어 목록 업데이트
+      if (Array.isArray(data?.players)) {
+        this.roundData.players = data.players;
+        this.renderTable(this.roundData.players);
+      }
     });
 
     // Respond to server's request for a final profile sync (include experience)
