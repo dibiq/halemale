@@ -2096,7 +2096,7 @@ function scheduleAiTurn(room, io) {
       handleAiFlip(room, io, current.id);
     } else {
     }
-  }, 2200);
+  }, 1600);
 }
 
 // ✅ 【백그라운드 플레이어 자동 턴 처리】게임 진행 중 백그라운드 플레이어는 자동으로 카드 제출
@@ -2233,8 +2233,8 @@ function scheduleAiBell(room, io) {
     if (player.isEliminated) return;
     if (!player.myDeck || player.myDeck.length <= 0) return;
 
-    // 봇 벨 반응 딜레이를 2초(2000ms)로 조정
-    const delay = 1750;
+    // 봇 벨 반응 딜레이를 1400ms로 조정
+    const delay = 1400;
     room.aiTimers.bells[player.id] = setTimeout(() => {
       handleAiBell(room, io, player.id);
     }, delay);

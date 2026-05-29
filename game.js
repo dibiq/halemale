@@ -12075,7 +12075,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           {
             fontFamily: GAME_FONTS.main,
             color: "#fff",
-            fontSize: `${width * 0.03}px`,
+            fontSize: `${width * 0.04}px`,
             fontWeight: "bold",
           },
         )
