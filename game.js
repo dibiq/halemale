@@ -15834,6 +15834,11 @@ class GameScene extends Phaser.Scene {
           this.multiplierDisplayTxt.setText(`이번 게임은 ${data.gameMultiplier}배판!`);
           console.log(`✅ 배수 텍스트 업데이트: 이번 게임은 ${data.gameMultiplier}배판!`);
         }
+        
+        // 🔴 【중요】테이블 재렌더링 (모든 클라이언트가 배수를 동일하게 표시)
+        if (typeof this.renderTable === "function") {
+          this.renderTable(this.roundData.players);
+        }
       }
     });
 
@@ -16156,7 +16161,13 @@ class GameScene extends Phaser.Scene {
         }
         
         // 🔴 [배수 초기화] 새 게임은 배수 미정 (애니메이션에서 설정됨)
-        this.roundData.gameMultiplier = 1; // 기본값 (게임 시작 후 애니메이션에서 업데이트됨)
+        // 🔴 【중요】서버에서 gameStart와 함께 gameMultiplier를 받으면 사용 (동기화)
+        if (typeof data.gameMultiplier === "number" && data.gameMultiplier > 0) {
+          this.roundData.gameMultiplier = data.gameMultiplier;
+          console.log(`✅ [gameStart] 배수 수신: ${data.gameMultiplier}배`);
+        } else {
+          this.roundData.gameMultiplier = 1; // 기본값 (게임 시작 후 애니메이션에서 업데이트됨)
+        }
         // 🔴 [중요] 플래그도 반드시 초기화! 다음 게임에서 애니메이션이 실행되도록
         this._multiplierAnimationShown = false;
         this._multiplierAnimationPlaying = false;
@@ -24809,16 +24820,24 @@ class GameScene extends Phaser.Scene {
       
       // ✅ 【배수 선택 즉시 서버 전송】 "ready go"가 빠르게 나타나도록 지연 시간 단축
       // 배수 텍스트 표시 직후 즉시 서버 전송 (UI 사라짐은 나중에)
+      // 🔴 【중요】방장만 배수를 서버에 전송 (다른 클라이언트는 gameMultiplierSet 이벤트를 기다림)
+      const isHost = socket?.id === this.roundData?.hostId;
+      
       this.time.delayedCall(100, () => {
         try {
-          if (socket?.connected) {
+          if (isHost && socket?.connected) {
+            console.log(`🔴 [배수 동기화] 방장이 배수 ${finalMultiplier}배 서버에 전송`);
             socket.emit('setGameMultiplier', {
               roomId: this.currentRoomId,
               gameMultiplier: finalMultiplier,
               timestamp: Date.now(),
             });
+          } else if (!isHost) {
+            console.log(`⏳ [배수 동기화] 일반 유저 - gameMultiplierSet 이벤트 대기 중`);
           }
-        } catch (e) {}
+        } catch (e) {
+          console.warn(`❌ [배수 동기화] 에러: ${e.message}`);
+        }
       });
       
       // ✅ 【배수 텍스트 표시 시간 단축】 
