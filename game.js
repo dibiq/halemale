@@ -24695,14 +24695,18 @@ class GameScene extends Phaser.Scene {
     
     // 🎡 회전 애니메이션
     
-    // ✅ 애니메이션 시작 전 배수와 회전수 결정
-    let finalMultiplier;
-    const rand = Math.random() * 100;
-    if (rand < 1) finalMultiplier = 10;      // 1%
-    else if (rand < 4) finalMultiplier = 7;   // 3%
-    else if (rand < 10) finalMultiplier = 5;   // 6%
-    else if (rand < 50) finalMultiplier = 3;   // 40%
-    else finalMultiplier = 2;          // 50%
+    // 🔴 【중요 수정】서버에서 정해진 배수 사용 (클라이언트가 독립적으로 결정하면 안됨!)
+    // gameMultiplierSet 이벤트로 서버에서 이미 배수를 정해서 전달했음
+    let finalMultiplier = this.roundData.gameMultiplier;
+    
+    // ⚠️ 예외처리: 서버 배수가 설정되지 않았으면 기본값 사용 (덮어쓰지 않음)
+    if (!finalMultiplier || typeof finalMultiplier !== 'number') {
+      console.warn(`⚠️ 【배수 동기화 오류】 서버 배수 미설정 - 기본값 3배 사용`);
+      finalMultiplier = 3;
+      this.roundData.gameMultiplier = 3; // 기본값 설정
+    }
+    
+    console.log(`📊 【배수 확정】 이번 게임: ${finalMultiplier}배 (서버 지정)`);
     
     // 배수 인덱스와 목표 각도 계산
     const multiplierIndex = multipliers.indexOf(finalMultiplier);
@@ -24724,9 +24728,8 @@ class GameScene extends Phaser.Scene {
     // ✅ 【애니메이션 시간 고정】 항상 4500ms로 일정하게 유지 (randomRotations에 상관없이)
     // 이렇게 해야 ready go 타이밍이 항상 일정함
     const animationDuration = 4500;
-    
-    
-    this.roundData.gameMultiplier = finalMultiplier;
+    // 🔴 【버그 수정】배수는 서버에서 이미 결정됨 - 여기서 다시 설정하면 안됨
+    // (각 클라이언트가 독립적으로 다른 배수를 사용하던 불일치 문제 해결)
     const targetAngleNorm = ((targetAngle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
 
     for (let i = 0; i < multipliers.length; i++) {
