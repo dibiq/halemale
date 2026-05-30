@@ -2233,8 +2233,8 @@ function scheduleAiBell(room, io) {
     if (player.isEliminated) return;
     if (!player.myDeck || player.myDeck.length <= 0) return;
 
-    // 봇 벨 반응 딜레이를 600ms로 조정
-    const delay = 600;
+    // 봇 벨 반응 딜레이를 1000ms로 조정 (느리게)
+    const delay = 1000;
     room.aiTimers.bells[player.id] = setTimeout(() => {
       handleAiBell(room, io, player.id);
     }, delay);
