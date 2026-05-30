@@ -2077,7 +2077,7 @@ function scheduleAiTurn(room, io) {
   if (computeBellSuccessCondition(room)) {
     setTimeout(() => {
       handleAiBell(room, io, current.id);
-    }, 1759);
+    }, 2300);
     return;
   }
 
@@ -2096,7 +2096,7 @@ function scheduleAiTurn(room, io) {
       handleAiFlip(room, io, current.id);
     } else {
     }
-  }, 800);
+  }, 1200);
 }
 
 // ✅ 【백그라운드 플레이어 자동 턴 처리】게임 진행 중 백그라운드 플레이어는 자동으로 카드 제출
