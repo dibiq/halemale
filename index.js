@@ -2429,6 +2429,7 @@ function handleAiFlip(room, io, playerId) {
     openCardStack: p.openCardStack,
     nextTurnId: p.id,
     remainingCount: p.myDeck.length,
+    timestamp: Date.now(), // 🔴 【중요】서버 타임스탐프 추가 (모든 클라이언트가 동시에 애니메이션 시작하도록)
     isEliminated: p.isEliminated,
     coinReward,
     coinTotal,

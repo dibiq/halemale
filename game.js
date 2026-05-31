@@ -16703,8 +16703,27 @@ class GameScene extends Phaser.Scene {
         }
       } catch (e) {}
 
-      // 3. 애니메이션 및 테이블 갱신
-      this.playCardFlipAnimation(data);
+      // 🔴 【중요】Synchronized Timing: 모든 플레이어가 거의 동시에 애니메이션 시작
+      // 서버 타임스탐프를 기준으로 모든 클라이언트의 애니메이션 시작 시간을 동기화합니다.
+      const serverTime = data.timestamp || Date.now();
+      const clientTime = Date.now();
+      const networkDelay = Math.max(0, clientTime - serverTime);
+      
+      // 모든 클라이언트가 100ms 정도 대기한 후 애니메이션 시작 (네트워크 지연 고려)
+      const targetDelay = 100;
+      const startDelay = Math.max(0, targetDelay - networkDelay);
+      
+      if (startDelay > 5) {
+        // 지연이 필요하면 예약
+        this.time.delayedCall(startDelay, () => {
+          if (this.isGameStarted) {
+            this.playCardFlipAnimation(data);
+          }
+        });
+      } else {
+        // 지연이 없거나 매우 작으면 즉시 실행
+        this.playCardFlipAnimation(data);
+      }
     });
 
     // ✅ 【서버 동기화 오류 처리】 코인/경험치 저장 실패 시 클라이언트에 알림
@@ -28766,16 +28785,16 @@ try {
 }
 /* prettier-ignore-file */
 
-// 🎮 모바일에서 여백 없이 화면을 꽉 채우기
-// ENVELOP 모드: 화면을 완전히 채움 (콘텐츠 일부가 잘릴 수 있지만 여백 없음)
-// 이는 가로/세로 모드에서 모두 화면을 꽉 채움
-const initialMode = Phaser.Scale.ENVELOP;
+// 🎮 모든 기기에서 화면을 꽉 채우면서 콘텐츠가 잘리지 않도록 설정
+// SCALE_DOWN: 기기 화면에 맞춰서 자동으로 축소 (콘텐츠 손실 없음)
+// 기본 해상도를 크게 설정해서 가장 큰 화면(아이폰 Pro Max)도 모두 포함
+const initialMode = Phaser.Scale.SCALE_DOWN;
 
 const config = {
   type: Phaser.AUTO,
   parent: "game-container",
-  width: 1080,
-  height: 2160,  // ← 세로 길이를 1920에서 2160으로 증가 (16:9 비율)
+  width: 1440,  // ← 더 큰 너비 (모든 기기 커버)
+  height: 2880, // ← 더 큰 높이 (모든 기기 커버)
   backgroundColor: "#0f172a",
   scale: {
     mode: initialMode,
