@@ -4789,7 +4789,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     // create sprite at container origin (0,0)
     this.profileImage = this.add
       .sprite(0, 0, currentAvatarTexture)
-      .setScale(1); // 원본 크기로 표시
+      .setScale(1.5); // 🔴 1.5배 확대
     this.applyAvatarAnimation(this.profileImage, currentKey);
 
     const avatarLeftBtn = this.add
@@ -9077,7 +9077,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
           avatarSprite = this.add
             .sprite(0, height * 0.0, avatarTexture)
-            .setScale(1); // 원본 크기로 표시
+            .setScale(1.5); // 🔴 1.5배 확대
 
           const animKey = this.ensureAvatarAnimation(character.key);
           if (!animKey && (character.key === "player_3" || character.key === "player_4" || character.key === "player_5" || character.key === "player_6")) {
@@ -9170,7 +9170,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
         // 🎨 제목
         const nameText = this.add
-          .text(0, -250, "코인 충전하기", {
+          .text(0, -350, "코인 충전하기", {
             fontFamily: GAME_FONTS.main,
             fontSize: `${width * 0.06}px`,
             color: "#4B3621",
@@ -9180,7 +9180,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
         // 🎨 환불 불가 안내문
         const refundNoticeText = this.add
-          .text(0, -190, "(소모품 아이템으로 구매 후 환불불가)", {
+          .text(0, -260, "(소모품 아이템으로 구매 후 환불불가)", {
             fontFamily: GAME_FONTS.main,
             fontSize: `${width * 0.035}px`,
             color: "#4B3621",
@@ -9190,12 +9190,12 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
         // 🎨 코인 수량 섹션 (coinpack 이미지)
         const coinIconAmount = this.add
-          .image(0, -15, "coinpack")
+          .image(0, 20, "coinpack")
           .setDisplaySize(width * 0.3, width * 0.3)
           .setOrigin(0.5);
 
         const amountText = this.add
-          .text(0, 200, `💰${product.amount}`, {
+          .text(0, 300, `💰${product.amount}`, {
             fontFamily: GAME_FONTS.main,
             fontSize: `${width * 0.05}px`,
             color: "#DAA520",
@@ -9224,7 +9224,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         // 할인율이 0이 아닐 때만 표시
         if (discountPercentage > 0) {
           const discountText = this.add
-            .text(0, 290, `🔥 ${discountPercentage}% SALE! 🔥`, {
+            .text(0, 400, `🔥 ${discountPercentage}% SALE! 🔥`, {
               fontFamily: GAME_FONTS.main,
               fontSize: `${width * 0.055}px`,
               color: "#ff6b6b",
@@ -10429,14 +10429,14 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         // 3. 팝업 배경 이미지
         const popupBg = this.add
           .image(centerX, popupY, "multbg")
-          .setDisplaySize(width * 0.7, height * 0.5);
+          .setDisplaySize(width * 0.7, height * 0.4);
 
         // 4. 제목 텍스트
 
         // 5. 탭 버튼들 (3가지 선택) - popupbg 하단에 uibtn 이미지로 배치
         // popupbg 하단 = popupY + popupbg높이/2 부근
         const popupHalfH = (height * 0.6) / 2;
-        const tabY = popupY + popupHalfH - height * 0.075; // popupbg 하단 안쪽
+        const tabY = popupY + popupHalfH - height * 0.13; // popupbg 하단 안쪽
         const tabBtnW = width * 0.16;
         const tabBtnH = height * 0.05;
         const tabGap = width * 0.195;
@@ -10829,7 +10829,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           nameEl.value = createFormState.roomName;
           Object.assign(nameEl.style, {
             width: `${width * 0.45}px`,
-            height: "90px",
+            height: "110px",
             fontSize: "40px",
             fontFamily: "'Jua', sans-serif",
             textAlign: "center",
@@ -10889,7 +10889,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           pwEl.value = createFormState.password;
           Object.assign(pwEl.style, {
             width: `${width * 0.4}px`,
-            height: "65px",
+            height: "85px",
             fontSize: "38px",
             fontFamily: "'Jua', sans-serif",
             textAlign: "center",
@@ -11796,7 +11796,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
       const profileImg = this.add
         .sprite(profileX, pos.y - cardH * 0.0, avatarTextureKey)
-        .setScale(0.8); // ✅ 20% 축소 (80% 크기)
+        .setScale(1.2); // ✅ 1.5배 확대 (0.8 * 1.5 = 1.2)
       
       // 🔴 [디버그] sprite 생성 후 텍스처 확인
       
@@ -12523,7 +12523,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     const rowWidth = rowGap * 1.3; // enlarge panels
     const rowHeight = rowWidth * 0.8; // maintain aspect
     const cols = 4;
-    const hGap = rowGap * 0.12; // horizontal space between columns
+    const hGap = rowGap * 0.1; // horizontal space between columns
     const vGap = rowGap * 0.7; // increased vertical spacing
     const totalWidth = rowWidth * cols + (cols - 1) * hGap;
     const totalHeight = rowHeight * 2 + vGap;
@@ -12565,10 +12565,10 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         rowBg = this.add
           .image(rowX, rowY, "playerbg")
           .setDepth(4002)
-          .setDisplaySize(rowWidth, rowHeight * 1.4);
+          .setDisplaySize(rowWidth*0.9, rowHeight * 1.3);
       } else {
         rowBg = this.add
-          .rectangle(rowX, rowY, rowWidth, rowHeight * 1.4, 0x0f172a, 0.7)
+          .rectangle(rowX, rowY, rowWidth * 0.9, rowHeight * 1.3, 0x0f172a, 0.7)
           .setDepth(4002)
           .setStrokeStyle(1, 0x475569, 0.7);
       }
@@ -18453,7 +18453,7 @@ class GameScene extends Phaser.Scene {
 
     const barWidth = width * 0.2; // 5초이므로 가독성을 위해 조금 더 길게 설정
     const barHeight = height * 0.01;
-    const barY = layout.y + (layout.rotation === 180 ? -120 : 210);
+    const barY = layout.y + (layout.rotation === 180 ? -120 : 255);
 
     // 2. Progress Bar 생성 (처음에는 알파값 0으로 안 보이게 시작 가능)
     const bg = this.add
@@ -18527,7 +18527,7 @@ class GameScene extends Phaser.Scene {
     //const isEliminated = cardCount === 0;
     const isEliminated = p.isEliminated ?? false;
 
-    const nameOffset = 160;
+    const nameOffset = 200;
 
     // 1. 닉네임 텍스트 설정
     let displayNickname =
@@ -18693,7 +18693,7 @@ class GameScene extends Phaser.Scene {
     const { width, height } = this.cameras.main;
     
     // 타이머 바 아래에 배치 (Y 위치 조정)
-    const profileBaseY = this.myDeckSprite.y + 270;
+    const profileBaseY = this.myDeckSprite.y + 310;
     const profileX = this.myDeckSprite.x;
     
     // 패널 크기 및 위치 (더 작은 높이)
@@ -22034,7 +22034,7 @@ class GameScene extends Phaser.Scene {
     }
 
     const { width, height } = this.cameras.main;
-    const panelWidth = Math.min(width * 0.4, 400);
+    const panelWidth = Math.min(width * 0.7, 525);
     const rowHeight = Math.max(height * 0.05, 40);
     const padding = 16;
     const extraPadding = Math.max(12, rowHeight * 0.35);
@@ -22070,11 +22070,10 @@ class GameScene extends Phaser.Scene {
       const rowText = this.add
         .text(12, rowHeight / 2, "", {
           fontFamily: GAME_FONTS.main,
-          fontSize: `${Math.max(14, width * 0.03)}px`,
-          color: "#f8fafc",
+          fontSize: `${Math.max(15, width * 0.03)}px`,
+          color: "#6a400e",
         })
         .setOrigin(0, 0.5);
-      rowText.setStroke("#0f172a", 3);
       rowText.y = rowHeight * 0.38;
 
       const barWidth = rowWidth - 24;
@@ -22092,7 +22091,7 @@ class GameScene extends Phaser.Scene {
         .text(rowWidth - 12, barY, "0/0", {
           fontFamily: GAME_FONTS.main,
           fontSize: `${Math.max(12, width * 0.025)}px`,
-          color: "#f8fafc",
+          color: "#fcfcf8",
         })
         .setOrigin(1, 0.5);
       progressLabel.setStroke("#0f172a", 3);
@@ -22171,7 +22170,7 @@ class GameScene extends Phaser.Scene {
     if (!row || !state) return;
 
     row.text.setText(state.title);
-    row.text.setColor("#f8fafc");
+    row.text.setColor("#a53933");
     if (row.barLabel) {
       row.barLabel.setText(`${state.entry.count}/${state.target}`);
     }
