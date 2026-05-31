@@ -4067,6 +4067,8 @@ class LobbyScene extends Phaser.Scene {
     // 1. 먼저 컨테이너를 준비합니다.
     if (!this.mainUIContainer || !this.mainUIContainer.scene) {
       this.mainUIContainer = this.add.container(0, 0);
+      // 🔴 씬 전환 중에 UI가 잠깐 보이는 문제 해결: 처음에 숨김
+      this.mainUIContainer.setVisible(false);
     }
 
     const { width, height } = this.cameras.main;
@@ -5749,6 +5751,13 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     // [핵심] 생성한 모든 객체를 메인 컨테이너에 추가
     this.mainUIContainer.add([bgmBtn, this.dailyRewardBtn]);
     this.mainUIContainer.setDepth(10);
+
+    // 🔴 씬 전환 중에 UI가 잠깐 보이는 문제 해결: 300ms 후 UI 표시
+    this.time.delayedCall(300, () => {
+      if (this.mainUIContainer) {
+        this.mainUIContainer.setVisible(true);
+      }
+    });
 
     let bgmBtnClickLocked = false;
     bgmBtn.on("pointerdown", () => {
@@ -19173,15 +19182,20 @@ class GameScene extends Phaser.Scene {
     }
     const { players, prevPlayers, winnerId } = data;
 
-    // 💥 멀티플레이 정답 시 스펙타클한 이펙트
-    const successEffectStart = Date.now();
-    this.playSuccessEffect();
-
     const myId = this.isSingle ? this.myId || "PLAYER_ME" : socket.id;
     const myIndex = players.findIndex((p) => p.id === myId);
     const winIdx = players.findIndex((p) => p.id === winnerId);
 
     if (winIdx === -1) return;
+
+    // 정답 플레이어명 먼저 추출 (playSuccessEffect 호출 전에 필요)
+    const winnerPlayer = players[winIdx] || {};
+    const winnerName =
+      data.winnerNickname || winnerPlayer.nickname || winnerPlayer.name || "플레이어";
+
+    // 💥 멀티플레이 정답 시 스펙타클한 이펙트
+    const successEffectStart = Date.now();
+    this.playSuccessEffect(winnerName);
 
     const playerCount = players.length;
     const pos =
@@ -19205,11 +19219,6 @@ class GameScene extends Phaser.Scene {
 
     const relWinIdx = (winIdx - myIndex + players.length) % players.length;
     const targetPos = pos[relWinIdx];
-
-    // 정답 플레이어명 및 획득 카드 텍스트 표시
-    const winnerPlayer = players[winIdx] || {};
-    const winnerName =
-      data.winnerNickname || winnerPlayer.nickname || winnerPlayer.name || "플레이어";
     const gainedCards =
       typeof data.collectedCount === "number"
         ? data.collectedCount
@@ -21334,7 +21343,8 @@ class GameScene extends Phaser.Scene {
 
       if (successWindow) {
         // 💥 성공 시 스펙타클한 이펙트 추가
-        this.playSuccessEffect();
+        // 🔴 멀티플레이에서만 호출 (playWinAnimation에서 처리)
+        // this.playSuccessEffect();
 
         this.processSingleBell(this.myId || "PLAYER_ME");
       } else {
@@ -21364,7 +21374,8 @@ class GameScene extends Phaser.Scene {
         if (successWindow) {
           // 플레이어가 정답일 가능성이 높으므로 즉시 작은 성공 피드백만 재생합니다.
           // 전체 카드 획득 애니메이션은 서버의 `bellResult` 확정이 도착한 후에만 재생됩니다.
-          this.playSuccessEffect();
+          // 🔴 멀티플레이에서만 호출 (playWinAnimation에서 처리)
+          // this.playSuccessEffect();
           // lightweight local feedback for pressing the bell
           try {
             //this.showToast("종을 눌렀습니다. 결과를 기다리는 중...", "#f1c40f");
@@ -23599,7 +23610,8 @@ class GameScene extends Phaser.Scene {
     if (!successWindow) return;
 
     // 💥 AI도 정답 시 스펙타클한 이펙트
-    this.playSuccessEffect();
+    // 🔴 멀티플레이에서만 호출 (playWinAnimation에서 처리)
+    // this.playSuccessEffect();
 
     // 2. 사운드 재생 (캐시 확인 포함)
     if (this.cache.audio.exists("bell")) {
@@ -23612,10 +23624,10 @@ class GameScene extends Phaser.Scene {
   }
 
   // 💥 정답 시 스펙타클한 이펙트
-  playSuccessEffect() {
+  playSuccessEffect(winnerNickname = "성공") {
     if (!this.isMobileOptimized) {
       // 웹/PC 버전: 원래대로
-      return this._playSuccessEffectFull();
+      return this._playSuccessEffectFull(winnerNickname);
     }
     
     // 📱 모바일 최적화 버전
@@ -23640,14 +23652,15 @@ class GameScene extends Phaser.Scene {
     this.cameras.main.shake(250, 0.005); // 400, 0.01 → 250, 0.005
 
     // 3. 성공 텍스트 (간소화)
+    const successText = `${winnerNickname}님 카드획득!`;
     const perfectText = this.add
-      .text(centerX, centerY - height * 0.1, "성공!", {
+      .text(centerX, centerY - height * 0.1, successText, {
         fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.12}px`, // 0.15 → 0.12
+        fontSize: `${width * 0.06}px`, // 0.12 → 0.06 (50% 감소)
         color: "#FFD700",
         fontWeight: "bold",
         stroke: "#FF6B6B",
-        strokeThickness: 8, // 12 → 8
+        strokeThickness: 4, // 8 → 4
       })
       .setOrigin(0.5)
       .setDepth(10001)
@@ -23658,7 +23671,7 @@ class GameScene extends Phaser.Scene {
       targets: perfectText,
       scale: 1.1, // 1.2 → 1.1
       alpha: 1,
-      duration: 150, // 200 → 150ms
+      duration: 300, // 150 → 300ms (2배)
       ease: "Back.easeOut",
       onComplete: () => {
         this.tweens.add({
@@ -23666,22 +23679,22 @@ class GameScene extends Phaser.Scene {
           scale: 1.3,
           alpha: 0,
           y: centerY - height * 0.18,
-          duration: 300, // 400 → 300ms
-          delay: 200,
+          duration: 400, // 600 → 400ms
+          delay: 600, // 400 → 600ms (보여지는 시간 길게)
           ease: "Power2.easeIn",
           onComplete: () => perfectText.destroy(),
         });
       },
     });
 
-    // 4. 파티클 효과 (개수 감소)
-    const particleCount = Math.round(15 * this.particleCountMultiplier); // 30 → 15
+    // 4. 파티클 효과 (더 눈에 띄게)
+    const particleCount = Math.round(25 * this.particleCountMultiplier); // 15 → 25 (개수 증가)
     for (let i = 0; i < particleCount; i++) {
       const angle = (Math.PI * 2 * i) / particleCount;
-      const speed = 150 + Math.random() * 150; // 200 + 200 → 150 + 150
+      const speed = 150 + Math.random() * 150;
 
       const particle = this.add
-        .circle(centerX, centerY, width * 0.015, 0xffd700, 1) // 0.02 → 0.015
+        .circle(centerX, centerY, width * 0.025, 0xffd700, 1) // 0.015 → 0.025 (크기 증가)
         .setDepth(10002);
 
       const vx = Math.cos(angle) * speed;
@@ -23693,7 +23706,7 @@ class GameScene extends Phaser.Scene {
         y: centerY + vy,
         alpha: 0,
         scale: 0,
-        duration: 600, // 800 → 600ms
+        duration: 1000, // 1200 → 1000ms (더 빠르게 사라짐)
         ease: "Power2.easeOut",
         onComplete: () => particle.destroy(),
       });
@@ -23726,14 +23739,14 @@ class GameScene extends Phaser.Scene {
           alpha: 1,
           rotation: Math.PI * 2 + Math.random() * Math.PI,
           scale: 1 + Math.random() * 0.3, // 0.5 → 0.3
-          duration: 250 + Math.random() * 150, // 300 + 200 → 250 + 150
+          duration: 500 + Math.random() * 300, // 250 + 150 → 500 + 300 (2배)
           ease: "Power2.easeOut",
           onComplete: () => {
             this.tweens.add({
               targets: star,
               alpha: 0,
               scale: 0,
-              duration: 100, // 150 → 100
+              duration: 200, // 100 → 200 (2배)
               ease: "Power2.easeIn",
               onComplete: () => star.destroy(),
             });
@@ -23743,7 +23756,7 @@ class GameScene extends Phaser.Scene {
     }
   }
 
-  _playSuccessEffectFull() {
+  _playSuccessEffectFull(winnerNickname = "성공") {
     // 웹/PC 전체 효과 버전
     const { width, height } = this.cameras.main;
     const centerX = width / 2;
@@ -23757,7 +23770,7 @@ class GameScene extends Phaser.Scene {
     this.tweens.add({
       targets: flash,
       alpha: 0,
-      duration: 300,
+      duration: 600, // 300 → 600ms (2배)
       ease: "Power2",
       onComplete: () => flash.destroy(),
     });
@@ -23766,14 +23779,15 @@ class GameScene extends Phaser.Scene {
     this.cameras.main.shake(400, 0.01);
 
     // 3. 성공 텍스트
+    const successText = `${winnerNickname}님 카드획득!`;
     const perfectText = this.add
-      .text(centerX, centerY - height * 0.1, "성공!", {
+      .text(centerX, centerY - height * 0.1, successText, {
         fontFamily: GAME_FONTS.main,
-        fontSize: `${width * 0.15}px`,
+        fontSize: `${width * 0.075}px`, // 0.15 → 0.075 (50% 감소)
         color: "#FFD700",
         fontWeight: "bold",
         stroke: "#FF6B6B",
-        strokeThickness: 12,
+        strokeThickness: 6, // 12 → 6
       })
       .setOrigin(0.5)
       .setDepth(10001)
@@ -23784,7 +23798,7 @@ class GameScene extends Phaser.Scene {
       targets: perfectText,
       scale: 1.2,
       alpha: 1,
-      duration: 200,
+      duration: 400, // 200 → 400ms (2배)
       ease: "Back.easeOut",
       onComplete: () => {
         this.tweens.add({
@@ -23792,22 +23806,22 @@ class GameScene extends Phaser.Scene {
           scale: 1.3,
           alpha: 0,
           y: centerY - height * 0.18,
-          duration: 400,
-          delay: 200,
+          duration: 400, // 800 → 400ms
+          delay: 600, // 400 → 600ms (보여지는 시간 길게)
           ease: "Power2.easeIn",
           onComplete: () => perfectText.destroy(),
         });
       },
     });
 
-    // 4. 파티클 효과
-    const particleCount = 30;
+    // 4. 파티클 효과 (더 눈에 띄게)
+    const particleCount = 40; // 30 → 40 (개수 증가)
     for (let i = 0; i < particleCount; i++) {
       const angle = (Math.PI * 2 * i) / particleCount;
       const speed = 200 + Math.random() * 200;
 
       const particle = this.add
-        .circle(centerX, centerY, width * 0.02, 0xffd700, 1)
+        .circle(centerX, centerY, width * 0.025, 0xffd700, 1) // 0.02 → 0.025 (크기 증가)
         .setDepth(10002);
 
       const vx = Math.cos(angle) * speed;
@@ -23819,7 +23833,7 @@ class GameScene extends Phaser.Scene {
         y: centerY + vy,
         alpha: 0,
         scale: 0,
-        duration: 800,
+        duration: 1200, // 1600 → 1200ms (더 빠르게 사라짐)
         ease: "Power2.easeOut",
         onComplete: () => particle.destroy(),
       });
@@ -23827,7 +23841,7 @@ class GameScene extends Phaser.Scene {
 
     // 5. 별 이모지
     const bellY = height * 0.465;
-    const starCount = 20;
+    const starCount = 25; // 20 → 25 (개수 증가)
 
     for (let i = 0; i < starCount; i++) {
       const angle = (Math.PI * 2 * i) / starCount;
@@ -23852,14 +23866,14 @@ class GameScene extends Phaser.Scene {
           alpha: 1,
           rotation: Math.PI * 2 + Math.random() * Math.PI,
           scale: 1 + Math.random() * 0.5,
-          duration: 300 + Math.random() * 200,
+          duration: 600 + Math.random() * 400, // 300 + 200 → 600 + 400 (2배)
           ease: "Power2.easeOut",
           onComplete: () => {
             this.tweens.add({
               targets: star,
               alpha: 0,
               scale: 0,
-              duration: 150,
+              duration: 300, // 150 → 300ms (2배)
               ease: "Power2.easeIn",
               onComplete: () => star.destroy(),
             });
