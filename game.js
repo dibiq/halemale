@@ -5748,7 +5748,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
     // [핵심] 생성한 모든 객체를 메인 컨테이너에 추가
     this.mainUIContainer.add([bgmBtn, this.dailyRewardBtn]);
-    this.mainUIContainer.setDepth(100);
+    this.mainUIContainer.setDepth(10);
 
     let bgmBtnClickLocked = false;
     bgmBtn.on("pointerdown", () => {
@@ -16635,10 +16635,10 @@ class GameScene extends Phaser.Scene {
 
       // update local accuracy stat (correct / total) for this session
       if (!this.isSingle) {
-        // 게임 종료 / 종료 직후의 결과는 반영하지 않기
-        if (this.isGameEnded || this.isResultTextVisible || this.isResultOverlayActive) {
-          return;
-        }
+        // 게임 종료 / 종료 직후의 정확도 통계는 반영하지 않기 (경험치는 별도로 처리!)
+        const shouldSkipAccuracyStats = this.isGameEnded || this.isResultTextVisible || this.isResultOverlayActive;
+        
+        if (!shouldSkipAccuracyStats) {
           try {
             // Prefer server-provided counters when available to avoid double-counting.
             const myId = socket?.id;
@@ -16646,13 +16646,14 @@ class GameScene extends Phaser.Scene {
               !this.isSingle &&
               (data.winnerId === myId || data.penaltyId === myId);
 
-          if (data.success && data.winnerId === socket.id) {
+            if (data.success && data.winnerId === socket.id) {
             this.updateBellAccuracy({ correct: 1, total: 1 });
-          } else if (!data.success && data.penaltyId === socket.id) {
-            this.updateBellAccuracy({ correct: 0, total: 1 });
+            } else if (!data.success && data.penaltyId === socket.id) {
+              this.updateBellAccuracy({ correct: 0, total: 1 });
+            }
+          } catch (e) {
+            /* ignore */
           }
-        } catch (e) {
-          /* ignore */
         }
       }
 
@@ -16717,6 +16718,58 @@ class GameScene extends Phaser.Scene {
         // ✅ 【캐릭터 애니메이션 조건】 획득 카드가 4장 이상일 때 재생
         const shouldPlayCharacterAnim = data.collectedCount >= 4;
         const winEventKey = `${data.winnerId}_${Date.now()}`; // 중복 호출 방지 키
+        
+        // ✅ 핵심 수정: 경험치는 콜백을 기다리지 말고 즉시 지급 (신뢰성 개선)
+        try {
+          const expEventKey = `${data.winnerId}_collected${data.collectedCount}`;
+          
+          console.log(`🔍【경험치 지급 검증 (사전)】`, {
+            isSingle: this.isSingle,
+            success: data.success,
+            winnerId: data.winnerId,
+            socketId: socket.id,
+            collectedCount: data.collectedCount,
+            lastExpEventKey: this._lastWinExpEventKey,
+            currentExpEventKey: expEventKey,
+          });
+          
+          // 중복 호출 방지: 같은 이벤트는 한 번만 처리
+          if (!this._lastWinExpEventKey || this._lastWinExpEventKey !== expEventKey) {
+            this._lastWinExpEventKey = expEventKey;
+            
+            if (
+              !this.isSingle &&
+              data.success &&
+              data.winnerId === socket.id &&
+              Number.isFinite(Number(data.collectedCount)) &&
+              Number(data.collectedCount) > 0
+            ) {
+              const baseGained = Number(data.collectedCount) || 0;
+              const multiplier = this.roundData?.gameMultiplier || 1;
+              const gained = baseGained * multiplier;
+              
+              console.log(`✅【경험치 즉시 지급】 baseGained: ${baseGained}, multiplier: ${multiplier}배, gained: ${gained}`);
+              
+              if (typeof this.awardExperience === "function") {
+                this.awardExperience(gained);
+              } else {
+                console.warn(`❌【경험치 지급 실패】 awardExperience 함수 없음`);
+              }
+            } else {
+              console.warn(`⚠️【경험치 지급 조건 불만족】`, {
+                isSingle: this.isSingle,
+                success: data.success,
+                isWinner: data.winnerId === socket.id,
+                hasCollected: Number.isFinite(Number(data.collectedCount)) && Number(data.collectedCount) > 0,
+              });
+            }
+          } else {
+            console.log(`⏭️【경험치 중복 호출 방지】 이미 지급함`);
+          }
+        } catch (e) {
+          console.error(`❌【경험치 지급 에러 (사전)】`, e);
+        }
+        
         const callbackStartTime = Date.now();
         this.playWinAnimation({
           winnerId: data.winnerId, // 서버에서 승자 ID를 보내준다고 가정
@@ -16732,33 +16785,6 @@ class GameScene extends Phaser.Scene {
           // winner case - just update players immediately
           const updatePlayersStart = Date.now();
           this.roundData.players = updatedPlayers;
-
-          // 멀티플레이: 로컬 플레이어가 카드를 획득했으면 즉시 경험치 지급 (중복 호출 방지)
-          try {
-            // ✅ 플래그로 중복 호출 방지 - winnerId + collectedCount + roundIndex로 정확한 추적
-            const expEventKey = `${data.winnerId}_collected${data.collectedCount}`;
-            if (!this._lastWinExpEventKey || this._lastWinExpEventKey !== expEventKey) {
-              this._lastWinExpEventKey = expEventKey;
-              
-              if (
-                !this.isSingle &&
-                data.success &&
-                data.winnerId === socket.id &&
-                Number.isFinite(Number(data.collectedCount)) &&
-                Number(data.collectedCount) > 0
-              ) {
-                const expStart = Date.now();
-                const baseGained = Number(data.collectedCount) || 0;
-                const multiplier = this.roundData?.gameMultiplier || 1;
-                const gained = baseGained * multiplier; // 배수 적용
-                if (typeof this.awardExperience === "function") {
-                  this.awardExperience(gained);
-                }
-              }
-            } else {
-            }
-          } catch (e) {
-          }
           
         });
       } else {
@@ -22217,6 +22243,7 @@ class GameScene extends Phaser.Scene {
   awardExperience(amount) {
     try {
       if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) {
+        console.warn(`⚠️ 【경험치 무효】 amount: ${amount}`);
         return;
       }
       if (!this.myProfile) this.myProfile = {};
@@ -22226,6 +22253,7 @@ class GameScene extends Phaser.Scene {
       let newTotal = prevExpTotal + xpGain;
       let leveled = false;
 
+      console.log(`📊【경험치 처리 시작】 prevExp: ${prevExpTotal}, gain: ${xpGain}, newExp: ${newTotal}`);
 
       // 처리: 레벨업이 발생하면 레벨 증가 및 경험치 롤오버
       let levelUpsCount = 0;
@@ -22236,18 +22264,28 @@ class GameScene extends Phaser.Scene {
         leveled = true;
       }
       
+      console.log(`📊【경험치 최종】 newExp: ${newTotal}, newLevel: ${this.myProfile.level}, levelUp: ${leveled}`);
       
       this.myProfile.experience = newTotal;
 
       // 로그: 갱신된 값
 
       // UI 즉시 갱신
+      console.log(`🎨【UI 업데이트 시도】 updateMyProfileUI 함수 존재: ${typeof this.updateMyProfileUI === "function"}`);
       if (typeof this.updateMyProfileUI === "function") {
-        this.updateMyProfileUI();
+        try {
+          this.updateMyProfileUI();
+          console.log(`✅【UI 업데이트 성공】 myProfile.experience: ${this.myProfile.experience}`);
+        } catch (uiErr) {
+          console.error(`❌【UI 업데이트 실패】`, uiErr);
+        }
+      } else {
+        console.warn(`⚠️【UI 업데이트 불가】 updateMyProfileUI 함수 없음`);
       }
 
       // 경험치 획득 애니메이션 (progress bar + floating text)
       // 항상 트윈/텍스트를 시도해서 보이지 않는 경우가 없도록 함.
+      console.log(`🎬【애니메이션 시도】 playExpGainAnimation: ${typeof this.playExpGainAnimation === "function"}`);
       this.playExpGainAnimation(xpGain);
 
       // 효과음: bubble
@@ -22264,9 +22302,11 @@ class GameScene extends Phaser.Scene {
           level: Number(this.myProfile.level) || prevLevel,
         };
 
-        this.safeSyncInventory("experienceGain", syncPayload);
+        console.log(`📤【서버 동기화 시도】 syncPayload:`, syncPayload);
+        const syncResult = this.safeSyncInventory("experienceGain", syncPayload);
+        console.log(`📥【서버 동기화 결과】`, syncResult);
       } catch (e) {
-        console.warn(`⚠️ [awardExperience] sync 실패:`, e);
+        console.error(`❌【서버 동기화 실패】`, e);
       }
 
       // 레벨업 효과 애니메이션
@@ -24695,18 +24735,48 @@ class GameScene extends Phaser.Scene {
     
     // 🎡 회전 애니메이션
     
-    // 🔴 【중요 수정】서버에서 정해진 배수 사용 (클라이언트가 독립적으로 결정하면 안됨!)
-    // gameMultiplierSet 이벤트로 서버에서 이미 배수를 정해서 전달했음
-    let finalMultiplier = this.roundData.gameMultiplier;
+    // ✅ 【중요】모든 클라이언트가 같은 배수를 사용하도록 시드 기반 난수 생성
+    // 시드: 방장 ID + 라운드 ID + 턴 카운트 (매 게임마다 다르지만, 모든 클라이언트에서 동일)
+    const hostId = this.roundData.hostId || "unknown";
+    const roomId = this.roundData.roomId || this.roundData.gameId || "unknown";
+    const turnCount = this.roundData.turnCount || this.turnIndex || 0;  // 턴 번호 (매 게임마다 증가)
     
-    // ⚠️ 예외처리: 서버 배수가 설정되지 않았으면 기본값 사용 (덮어쓰지 않음)
-    if (!finalMultiplier || typeof finalMultiplier !== 'number') {
-      console.warn(`⚠️ 【배수 동기화 오류】 서버 배수 미설정 - 기본값 3배 사용`);
-      finalMultiplier = 3;
-      this.roundData.gameMultiplier = 3; // 기본값 설정
-    }
+    console.log(`🔍【roundData 전체】`, JSON.stringify(this.roundData, null, 2));
+    console.log(`🔍【디버깅】hostId: ${hostId}, roomId: ${roomId}, turnCount: ${turnCount}`);
     
-    console.log(`📊 【배수 확정】 이번 게임: ${finalMultiplier}배 (서버 지정)`);
+    // 시드 기반 해시 값 생성 (seeded random)
+    const seedHash = (str) => {
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32bit integer
+      }
+      return Math.abs(hash);
+    };
+    
+    // 🔴 【중요】turnCount를 시드에 포함시켜 매 게임마다 다른 배수 생성
+    const seed = seedHash(`${roomId}:turn${turnCount}`);
+    
+    // 시드로부터 0~1 사이의 재현 가능한 난수 생성
+    const seededRandom = (seed) => {
+      const x = Math.sin(seed) * 10000;
+      return x - Math.floor(x);
+    };
+    const rand = seededRandom(seed) * 100;
+    
+    console.log(`🔍【시드 정보】seed: ${seed}, rand: ${rand.toFixed(2)}`);
+    
+    // 🔴 【배수 결정】모든 클라이언트에서 동일한 난수 사용
+    let finalMultiplier;
+    if (rand < 1) finalMultiplier = 10;      // 1%
+    else if (rand < 4) finalMultiplier = 7;   // 3%
+    else if (rand < 10) finalMultiplier = 5;   // 6%
+    else if (rand < 50) finalMultiplier = 3;   // 40%
+    else finalMultiplier = 2;          // 50%
+    
+    console.log(`📊 【배수 결정 (시드 기반)】 ${finalMultiplier}배 - room: ${roomId}, turn: ${turnCount}, socket.id: ${socket.id}`);
+    this.roundData.gameMultiplier = finalMultiplier;
     
     // 배수 인덱스와 목표 각도 계산
     const multiplierIndex = multipliers.indexOf(finalMultiplier);
@@ -26960,15 +27030,30 @@ class GameScene extends Phaser.Scene {
       
       // ✅ 【멀티플레이】server에서 받은 earnedCoins (배수 적용됨) 사용
       // ✅ 【싱글플레이】client에서 계산한 값 사용
+      // 🔴 [중요] 서버 earnedCoins가 신뢰할 수 없으면 클라이언트 계산만 사용하도록 강제 가능
+      const useServerEarnedCoins = false; // ← 문제 발생 시 true → false로 변경
+      
       const rankRewardCoins = rankedPlayers.map((player, idx) => {
         // 멀티플레이이고 earnedCoins가 있으면 그 값 사용 (server에서 배수 적용됨)
-        if (!this.isSingle && player && typeof player.earnedCoins === 'number') {
+        if (!this.isSingle && useServerEarnedCoins && player && typeof player.earnedCoins === 'number') {
+          console.log(`💰【등수별 코인 (서버)】idx: ${idx}, earnedCoins: ${player.earnedCoins}, playerName: ${player.nickname}`);
           return player.earnedCoins;
         }
         // 그 외: client에서 계산 (싱글플레이 또는 earnedCoins 없음)
         const multiplier = this.roundData?.gameMultiplier || 1;
-        return Math.floor((baseRankRewardCoins[idx] || 0) * multiplier);
+        const computed = Math.floor((baseRankRewardCoins[idx] || 0) * multiplier);
+        console.log(`💰【등수별 코인 (클라이언트)】idx: ${idx}, base: ${baseRankRewardCoins[idx]}, multiplier: ${multiplier}배, computed: ${computed}, playerName: ${player?.nickname}`);
+        return computed;
       });
+      
+      console.log(`📊【코인 지급 테이블 검증】 rankedPlayers 수: ${rankedPlayers.length}, rankRewardCoins:`, rankRewardCoins);
+      console.log(`📊【플레이어 순위 데이터】`, rankedPlayers.map((p, i) => ({ 
+        rank: i + 1, 
+        nickname: p?.nickname, 
+        currentCoins: p?.coins, 
+        earnedCoins: p?.earnedCoins,
+        playerId: p?.id
+      })));
       
       const totalRankCoins = rankedPlayers.reduce(
         (sum, _, idx) => sum + (baseRankRewardCoins[idx] || 0),
@@ -27886,7 +27971,7 @@ class GameScene extends Phaser.Scene {
       .text(centerX, height * 0.46, message, {
         fontFamily: GAME_FONTS.main,
         fontSize: `${width * 0.055}px`,
-        color: "#ffffff",
+        color: "#4B3621",
         align: "center",
         wordWrap: { width: width * 0.6 },
       })
