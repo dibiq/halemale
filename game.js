@@ -10644,11 +10644,11 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
               const roomNo = i + 1;
               const publicTag = room.isPublic === false ? "🔒" : "🌐";
-              const modeTag = room.gameMode === "timeattack" ? "⏱️" : "💰";
+              const modeTag = room.gameMode === "timeattack" ? "[타임제한]" : "[무제한]";
               const playingTag = isPlaying ? " 🎮플레이중" : "";
               const roomTitle = room.roomName || `${room.hostNickname}의 방`;
-              const itemTag = room.itemMode === false ? "⚡ " : "💎 ";
-              const roomInfo = `${roomNo}. ${publicTag} ${modeTag} ${itemTag}${roomTitle}${playingTag}  (${room.playerCount}/${room.maxPlayers})`;
+              const itemTag = room.itemMode === false ? "[노템] " : "[아이템] ";
+              const roomInfo = `${roomNo}. ${publicTag}${modeTag}${itemTag}${roomTitle}${playingTag}  (${room.playerCount}/${room.maxPlayers})`;
               const roomText = this.add
                 .text(-listWidth * 0.4, itemY, roomInfo, {
                   fontFamily: "Jua",
@@ -11622,10 +11622,10 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       .setDepth(0);
     this.lobbyUIContainer.add(bg);
 
-    const itemLabel = this.currentItemMode === false ? "⚡" : "💎";
+    const itemLabel = this.currentItemMode === false ? "[노템]" : "[아이템]";
     const modeLabel =
-      this.currentGameMode === "timeattack" ? "⏱️" : "💰";
-    const modePrefix = `${itemLabel} ${modeLabel} `;
+      this.currentGameMode === "timeattack" ? "[타임어택]" : "[올인]";
+    const modePrefix = `${modeLabel}${itemLabel}`;
     const roomDisplayName = `${modePrefix}${roomName}`;
     const roomHeaderText =
       typeof roomNumber === "number"
