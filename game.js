@@ -5636,18 +5636,33 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     // ======================================
     let bgmOn = localStorage.getItem("bgmEnabled") !== "false";
 
-    // BGM 인스턴스 만들기 (한 번만)
+    // 🔴 【중요】기존 BGM 인스턴스 정리 (중복 재생 방지)
     let bgm = this.sound.get("bgm");
-    if (!bgm) {
-      bgm = this.sound.add("bgm", { loop: true, volume: 0.2 });
+    if (bgm) {
+      try {
+        if (bgm.isPlaying || bgm.isPaused) {
+          bgm.stop();
+        }
+        bgm.destroy();
+      } catch (e) {}
     }
 
-    // 사운드 전체 mute 상태 초기화
+    // BGM 인스턴스 새로 만들기
+    bgm = this.sound.add("bgm", { loop: true, volume: 0.2 });
+
+    // 🔴 【중요】사운드 전체 mute 상태 초기화 (bgmOn 기반)
     this.sound.mute = !bgmOn;
 
-    // BGM 재생
-    if (bgmOn && !bgm.isPlaying) {
-      bgm.play();
+    // 🔴 【중요】BGM 재생 시도 (bgmOn이 true일 때만)
+    if (bgmOn) {
+      try {
+        if (!bgm.isPlaying) {
+          bgm.play();
+          console.log("✅ BGM 재생 시작 (LobbyScene)");
+        }
+      } catch (e) {
+        console.error("❌ BGM 재생 실패:", e);
+      }
     }
 
     // ======================================
@@ -5668,10 +5683,10 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       backgroundConnectionMonitorTimer = setInterval(() => {
         const isConnected = socket && socket._stableConnected && socket.connected;
         
-        // 🔴 연결이 끊어졌을 때만 알림 (게임은 pause 상태 유지)
+        // 🔴 【중요】연결이 끊어졌을 때 플래그 설정 (포어그라운드 복귀 시 사용)
         if (!isConnected) {
-          console.log("❌ 백그라운드 중 연결 끊김 감지");
-          // 게임 씬을 stop하지 않고, 포어그라운드에서 재연결 시도하도록 함
+          console.log("❌ 백그라운드 중 연결 끊김 감지 - 복귀 시 재로딩 예정");
+          wasDisconnectedInBackground = true; // 🔴 중요: 이 플래그를 복귀 시 확인
           clearInterval(backgroundConnectionMonitorTimer);
           backgroundConnectionMonitorTimer = null;
         }
@@ -5684,7 +5699,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         backgroundConnectionMonitorTimer = null;
       }
       isAppInBackground = false; // ✅ 포어그라운드 복귀 플래그
-      console.log("🔺 포어그라운드 복귀 상태 플래그: false");
+      console.log("🔺 포어그라운드 복귀 상태 플래그: false (LobbyScene)");
     };
 
     const handleVisibilityChange = () => {
@@ -5710,18 +5725,47 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       stopBackgroundConnectionMonitoring();
       console.log("🔺 포어그라운드 복귀 (LobbyScene)");
       
-      // 🔴 【중요】서버 연결이 끊겨있으면 재로딩
-      if (!socket || !socket.connected) {
+      // 🔴 【중요】서버 연결 상태 확인 (3가지 방식으로 검증)
+      const hasDisconnectedFlag = wasDisconnectedInBackground;
+      const socketNotConnected = !socket || !socket._stableConnected || !socket.connected;
+      
+      console.log(`[연결 상태] 백그라운드 끊김 플래그: ${hasDisconnectedFlag}, socket 연결: ${!socketNotConnected}`);
+      
+      // 💡 백그라운드 중에 끊어졌거나 현재 연결이 없으면 재로딩
+      if (hasDisconnectedFlag || socketNotConnected) {
         console.log("❌ 서버 연결 끊김 상태로 복귀 - 앱 재로딩");
+        wasDisconnectedInBackground = false; // 플래그 초기화
         window.location.reload();
         return;
       }
       
+      // 플래그 초기화
+      wasDisconnectedInBackground = false;
+      
       // 🔴 【BGM 복구 - 광고 중이 아닐 때만】
-      if (bgm && !this.isAdPlaying) {
-        if (bgm.isPaused && bgmOn) {
-          bgm.resume();
+      try {
+        const currentBgm = this.sound.get("bgm");
+        if (bgmOn && !this.isAdPlaying) {
+          if (!currentBgm) {
+            // BGM이 없으면 새로 생성
+            console.log("⚠️ BGM 인스턴스 없음 - 새로 생성");
+            const newBgm = this.sound.add("bgm", { loop: true, volume: 0.2 });
+            newBgm.play();
+            console.log("✅ BGM 새로 생성 및 재생");
+          } else if (currentBgm.isPaused) {
+            // BGM이 일시정지 상태면 재개
+            currentBgm.resume();
+            console.log("✅ BGM 재개");
+          } else if (!currentBgm.isPlaying) {
+            // BGM이 정지 상태면 재생
+            currentBgm.play();
+            console.log("✅ BGM 재생");
+          }
+        } else if (this.isAdPlaying) {
+          console.log("⚠️ 광고 재생 중 - BGM 복구 지연");
         }
+      } catch (e) {
+        console.error("❌ BGM 복구 실패:", e);
       }
     };
 
@@ -5759,6 +5803,9 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       }
     });
 
+    // 🔴 【중요】백그라운드 연결 끊김 감지 플래그
+    let wasDisconnectedInBackground = false;
+    
     let bgmBtnClickLocked = false;
     bgmBtn.on("pointerdown", () => {
       if (bgmBtnClickLocked) return; // 연속 클릭 방지
@@ -5770,27 +5817,32 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       // 🔁 버튼 이미지 교체
       bgmBtn.setTexture(bgmOn ? "soundon" : "soundoff");
 
-      if (!bgm) {
-        bgmBtnClickLocked = false;
-        return;
-      }
-
-      if (bgmOn) {
-        // BGM 재생
-        if (bgm.isPaused) {
-          bgm.resume();
-        } else if (!bgm.isPlaying) {
-          bgm.play();
-        }
-      } else {
-        // BGM 일시정지
-        if (bgm.isPlaying || bgm.isPaused) {
-          bgm.pause();
-        }
-      }
-
-      // 전체 사운드 mute 제어
+      // 🔴 【중요】사운드 mute 상태 즉시 업데이트
       this.sound.mute = !bgmOn;
+
+      try {
+        if (!bgm) {
+          bgmBtnClickLocked = false;
+          return;
+        }
+
+        if (bgmOn) {
+          // 🔴 【중요】BGM 재생 (기존 상태와 관계없이 새로 시작)
+          if (bgm.isPlaying || bgm.isPaused) {
+            bgm.stop(); // 먼저 정지
+          }
+          bgm.play(); // 새로 재생
+          console.log("✅ BGM 토글 ON - 재생");
+        } else {
+          // BGM 일시정지
+          if (bgm.isPlaying || bgm.isPaused) {
+            bgm.stop(); // pause 대신 stop으로 정리
+          }
+          console.log("✅ BGM 토글 OFF - 정지");
+        }
+      } catch (e) {
+        console.error("❌ BGM 토글 실패:", e);
+      }
       
       bgmBtnClickLocked = false; // 클릭 해제
     });
@@ -10592,10 +10644,10 @@ if (this.isGameEnded || this.isResultOverlayActive) {
 
               const roomNo = i + 1;
               const publicTag = room.isPublic === false ? "🔒" : "🌐";
-              const modeTag = room.gameMode === "timeattack" ? "⏱️" : "🎴";
+              const modeTag = room.gameMode === "timeattack" ? "⏱️" : "💰";
               const playingTag = isPlaying ? " 🎮플레이중" : "";
               const roomTitle = room.roomName || `${room.hostNickname}의 방`;
-              const itemTag = room.itemMode === false ? "(노템) " : "(아이템) ";
+              const itemTag = room.itemMode === false ? "⚡ " : "💎 ";
               const roomInfo = `${roomNo}. ${publicTag} ${modeTag} ${itemTag}${roomTitle}${playingTag}  (${room.playerCount}/${room.maxPlayers})`;
               const roomText = this.add
                 .text(-listWidth * 0.4, itemY, roomInfo, {
@@ -10894,7 +10946,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
             .text(
               -btnGapX,
               itemToggleY,
-              isItemMode ? "🎯 아이템전" : "🚫 노템전",
+              isItemMode ? "💎 아이템전" : "⚡ 노템전",
               {
                 fontFamily: "Jua",
                 fontSize: `${width * 0.03}px`,
@@ -10907,7 +10959,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           const updateItemToggle = () => {
             createFormState.isItemMode = isItemMode;
             itemToggleImg.setTint(isItemMode ? 0x2ecc71 : 0x7f8c8d);
-            itemToggleText.setText(isItemMode ? "🎯 아이템전" : "🚫 노템전");
+            itemToggleText.setText(isItemMode ? "💎 아이템전" : "⚡ 노템전");
           };
 
           itemToggleImg.on("pointerdown", () => {
@@ -11570,10 +11622,10 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       .setDepth(0);
     this.lobbyUIContainer.add(bg);
 
-    const itemLabel = this.currentItemMode === false ? "노템전" : "아이템전";
+    const itemLabel = this.currentItemMode === false ? "⚡" : "💎";
     const modeLabel =
-      this.currentGameMode === "timeattack" ? "타임어택" : "올인";
-    const modePrefix = `(${itemLabel}) (${modeLabel}) `;
+      this.currentGameMode === "timeattack" ? "⏱️" : "💰";
+    const modePrefix = `${itemLabel} ${modeLabel} `;
     const roomDisplayName = `${modePrefix}${roomName}`;
     const roomHeaderText =
       typeof roomNumber === "number"
@@ -14947,8 +14999,40 @@ class GameScene extends Phaser.Scene {
     // 🔴 【백그라운드 처리】GameScene에서도 visibilitychange 리스너 등록
     // (LobbyScene에서 등록된 리스너는 LobbyScene stop 시 제거되므로, GameScene에서 다시 등록)
     let bgmOn = JSON.parse(localStorage.getItem("bgmEnabled")) !== false;
-    const bgm = this.sound.get("bgm");
+    
+    // 🔴 【중요】기존 BGM 인스턴스 정리 (GameScene 시작 시 중복 재생 방지)
+    let bgm = this.sound.get("bgm");
+    if (bgm) {
+      try {
+        if (bgm.isPlaying || bgm.isPaused) {
+          bgm.stop();
+        }
+        bgm.destroy();
+      } catch (e) {}
+    }
+    
+    // BGM 인스턴스 새로 만들기
+    bgm = this.sound.add("bgm", { loop: true, volume: 0.2 });
+    
+    // 🔴 【중요】사운드 전체 mute 상태 초기화
+    this.sound.mute = !bgmOn;
+    
+    // 🔴 【중요】BGM 재생 (bgmOn이 true일 때만)
+    if (bgmOn) {
+      try {
+        if (!bgm.isPlaying) {
+          bgm.play();
+          console.log("✅ BGM 재생 시작 (GameScene)");
+        }
+      } catch (e) {
+        console.error("❌ BGM 재생 실패 (GameScene):", e);
+      }
+    }
+    
     this.isAdPlaying = false; // 광고 재생 상태 플래그
+    
+    // 🔴 【중요】백그라운드 연결 끊김 감지 플래그 (GameScene용)
+    let wasDisconnectedInBackground = false;
     
     let backgroundConnectionMonitorTimer = null;
     let isAppInBackground = false;
@@ -14957,13 +15041,15 @@ class GameScene extends Phaser.Scene {
       if (backgroundConnectionMonitorTimer) return;
       
       isAppInBackground = true;
-      console.log("🔻 백그라운드 진입 상태 플래그: true");
+      console.log("🔻 백그라운드 진입 상태 플래그: true (GameScene)");
       
       backgroundConnectionMonitorTimer = setInterval(() => {
         const isConnected = socket && socket._stableConnected && socket.connected;
         
+        // 🔴 【중요】연결이 끊어졌을 때 플래그 설정
         if (!isConnected) {
-          console.log("❌ 백그라운드 중 연결 끊김 감지");
+          console.log("❌ 백그라운드 중 연결 끊김 감지 - 복귀 시 재로딩 예정 (GameScene)");
+          wasDisconnectedInBackground = true; // 🔴 중요: 이 플래그를 복귀 시 확인
           clearInterval(backgroundConnectionMonitorTimer);
           backgroundConnectionMonitorTimer = null;
         }
@@ -14976,7 +15062,7 @@ class GameScene extends Phaser.Scene {
         backgroundConnectionMonitorTimer = null;
       }
       isAppInBackground = false;
-      console.log("🔺 포어그라운드 복귀 상태 플래그: false");
+      console.log("🔺 포어그라운드 복귀 상태 플래그: false (GameScene)");
     };
     
     const handleVisibilityChange = () => {
@@ -14984,9 +15070,12 @@ class GameScene extends Phaser.Scene {
         // 🔴 【백그라운드 진입】게임 시작 후라면 앱 재로딩
         console.log("🔻 백그라운드 진입 (GameScene)");
         
-        if (bgm && bgm.isPlaying) {
-          bgm.pause();
-        }
+        try {
+          if (bgm && (bgm.isPlaying || bgm.isPaused)) {
+            bgm.pause();
+            console.log("⏸️ BGM 일시정지 (백그라운드)");
+          }
+        } catch (e) {}
         
         // 🔴 게임이 이미 시작되었다면 앱 재로딩
         if (this.isGameStarted) {
@@ -14997,20 +15086,54 @@ class GameScene extends Phaser.Scene {
         return;
       }
       
-      // BGM 복구 (게임 시작 전이면 그대로 유지)
+      // 🔺 포어그라운드 복귀 (GameScene)
       console.log("🔺 포어그라운드 복귀 (GameScene)");
       
-      // 🔴 【중요】서버 연결이 끊겨있으면 재로딩
-      if (!socket || !socket.connected) {
-        console.log("❌ 서버 연결 끊김 상태로 복귀 - 앱 재로딩");
+      // 🔴 【중요】서버 연결 상태 확인 (3가지 방식으로 검증)
+      const hasDisconnectedFlag = wasDisconnectedInBackground;
+      const socketNotConnected = !socket || !socket._stableConnected || !socket.connected;
+      
+      console.log(`[GameScene 연결 상태] 백그라운드 끊김 플래그: ${hasDisconnectedFlag}, socket 연결: ${!socketNotConnected}`);
+      
+      // 💡 백그라운드 중에 끊어졌거나 현재 연결이 없으면 재로딩
+      if (hasDisconnectedFlag || socketNotConnected) {
+        console.log("❌ 서버 연결 끊김 상태로 복귀 - 앱 재로딩 (GameScene)");
+        wasDisconnectedInBackground = false; // 플래그 초기화
         window.location.reload();
         return;
       }
       
-      if (bgm && !this.isAdPlaying) {
-        if (bgm.isPaused && bgmOn) {
-          bgm.resume();
+      // 플래그 초기화
+      wasDisconnectedInBackground = false;
+      
+      // 🔴 【BGM 복구 로직 강화】광고 중이 아니고 bgmOn이 true일 때만
+      try {
+        const currentBgm = this.sound.get("bgm");
+        if (bgmOn && !this.isAdPlaying) {
+          if (!currentBgm) {
+            // BGM이 없으면 새로 생성 (광고 후 복귀 시 발생)
+            console.log("⚠️ GameScene: BGM 인스턴스 없음 - 새로 생성");
+            const newBgm = this.sound.add("bgm", { loop: true, volume: 0.2 });
+            bgm = newBgm;
+            newBgm.play();
+            console.log("✅ GameScene: BGM 새로 생성 및 재생");
+          } else if (currentBgm.isPaused) {
+            // BGM이 일시정지 상태면 재개
+            currentBgm.resume();
+            console.log("✅ GameScene: BGM 재개");
+          } else if (!currentBgm.isPlaying) {
+            // BGM이 정지 상태면 재생
+            currentBgm.play();
+            console.log("✅ GameScene: BGM 재생");
+          } else {
+            // 이미 재생 중
+            console.log("✅ GameScene: BGM 이미 재생 중");
+          }
+        } else if (this.isAdPlaying) {
+          console.log("⚠️ GameScene: 광고 재생 중 - BGM 복구 지연");
         }
+      } catch (e) {
+        console.error("❌ GameScene: BGM 복구 실패:", e);
       }
     };
     
@@ -17622,7 +17745,8 @@ class GameScene extends Phaser.Scene {
     // 🔴 【중요】Capacitor appStateChange 이벤트 리스너 (모바일 홈키 감지)
     // 모바일에서 홈키를 누르면 visibilitychange보다 먼저 appStateChange가 발생
     try {
-      this._appStateChangeListener = App.addListener("appStateChange", (state) => {
+      // App.addListener는 Promise를 반환하므로 .then()으로 처리
+      App.addListener("appStateChange", (state) => {
         console.log(
           `📱 [모바일 앱 상태] isActive=${state.isActive}`,
         );
@@ -17658,6 +17782,12 @@ class GameScene extends Phaser.Scene {
             }
           }
         }
+      }).then((listener) => {
+        // listener 객체 저장 (나중에 remove() 호출 가능)
+        this._appStateChangeListener = listener;
+        console.log("✅ Capacitor appStateChange 리스너 등록 완료");
+      }).catch((e) => {
+        console.warn("⚠️ Capacitor App 이벤트 리스너 등록 실패:", e.message);
       });
     } catch (e) {
       console.warn("⚠️ Capacitor App 이벤트 리스너 등록 실패 (웹 환경이거나 모바일 아님):", e.message);
@@ -17667,13 +17797,21 @@ class GameScene extends Phaser.Scene {
     this.events.once("shutdown", () => {
       stopGameSceneBackgroundMonitoring();
 
-      // 🔴 【중요】Capacitor 리스너 정리
-      if (this._appStateChangeListener) {
+      // 🔴 【중요】Capacitor 리스너 정리 (Promise rejection 처리)
+      if (this._appStateChangeListener && typeof this._appStateChangeListener.remove === 'function') {
         try {
-          this._appStateChangeListener.remove();
-        } catch (e) {}
-        this._appStateChangeListener = null;
+          const removePromise = this._appStateChangeListener.remove();
+          // remove()가 Promise를 반환할 수 있으므로 .catch() 추가
+          if (removePromise && typeof removePromise.catch === 'function') {
+            removePromise.catch((e) => {
+              console.warn("⚠️ Capacitor appStateChangeListener 정리 중 에러:", e);
+            });
+          }
+        } catch (e) {
+          console.warn("⚠️ Capacitor appStateChangeListener 정리 실패:", e);
+        }
       }
+      this._appStateChangeListener = null;
     });
   }
 
@@ -20972,7 +21110,7 @@ class GameScene extends Phaser.Scene {
     // 기존 결과창이 있다면 제거
     if (this.resultContainer) this.resultContainer.destroy();
 
-    this.resultContainer = this.add.container(0, -height).setDepth(3000);
+    this.resultContainer = this.add.container(0, -height).setDepth(50000);
     const container = this.resultContainer;
 
     // 배경 (이미지 키 'resultbg' 사용)
@@ -26284,9 +26422,9 @@ class GameScene extends Phaser.Scene {
       this.resultContainer.destroy();
       this.resultContainer = this.add
         .container(0, isUpdate ? prevY : -height)
-        .setDepth(3000);
+        .setDepth(50000);
     } else {
-      this.resultContainer = this.add.container(0, -height).setDepth(3000);
+      this.resultContainer = this.add.container(0, -height).setDepth(50000);
     }
 
     const container = this.resultContainer;
