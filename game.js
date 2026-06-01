@@ -12993,113 +12993,133 @@ if (this.isGameEnded || this.isResultOverlayActive) {
           // 🟢 일반 보상 처리 (다른 요일 클릭, canClaim=true인 경우)
           if (canClaim) {
             scene.sound.play("btn", { volume: 0.4 });
-            scene.isDailyRewardClaimPending = true;
             
-            // 🔴 [중요] 서버 기반 출석 보상 (await로 결과 대기)
-            if (scene && scene.myProfile && socket && socket.connected) {
-              const originalCoins = Number(scene.myProfile.coins) || 0;
-              const dailyRewardAmount = Number(scene.dailyRewardAmount) || 50;
+            // 1️⃣ 즉시 스탠프 생성 + 애니메이션
+            let createdStamp = null;
+            if (rowDateStr && scene.isWeeklyRewardPopupOpen) {
+              scene.claimedDailyDates.add(rowDateStr);
+              try {
+                scene.markDailyRewardClaimed(rowDateStr);
+              } catch (e) {}
               
-              // 낙관적 업데이트: 즉시 UI에 반영
-              scene.myProfile.coins = originalCoins + dailyRewardAmount;
+              createdStamp = scene.add
+                .text(rowX, rowY, "획득", {
+                  fontFamily:
+                    typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
+                  fontSize: `${width * 0.055}px`,
+                  color: "#ffffff",
+                  fontWeight: "bold",
+                  stroke: "#000000",
+                  strokeThickness: 4,
+                })
+                .setOrigin(0.5)
+                .setDepth(4004)
+                .setScale(0);
+              createdStamp.setRotation(-0.3);
+              stamps.push(createdStamp);
+              scene.tweens.add({
+                targets: createdStamp,
+                scale: 1,
+                duration: 450,
+                ease: "Back.out",
+              });
+            }
+            
+            // 2️⃣ 즉시 코인 업데이트
+            const originalCoins = Number(scene.myProfile?.coins) || 0;
+            const rewardAmount = Number(scene.dailyRewardAmount) || 50;
+            
+            if (scene && scene.myProfile) {
+              scene.myProfile.coins = originalCoins + rewardAmount;
               if (typeof scene.updateMyProfileUI === "function") {
                 scene.updateMyProfileUI(scene.myProfile);
               }
-              
-              // 코인 폭발 이펙트 표시
               try {
-                showCoinBurstEffect(scene, rowX, rowY, dailyRewardAmount);
-              } catch (e) {
-              }
-              
-              // 서버 응답 대기 (async 콜백 내에서)
-              try {
-                const result = await new Promise((resolve) => {
-                  const timeout = setTimeout(() => {
-                    resolve({ success: false, error: "서버 응답 시간 초과" });
-                  }, 5000);
-                  
-                  socket.once("claimDailyRewardSuccess", (data) => {
-                    clearTimeout(timeout);
-                    resolve({ success: true, data });
-                  });
-                  
-                  socket.once("claimDailyRewardError", (error) => {
-                    clearTimeout(timeout);
-                    resolve({ success: false, error });
-                  });
-                  
-                  socket.emit("claimDailyReward");
-                });
-                
-                if (!result.success) {
-                  // 롤백: 서버 실패 시 이전 코인으로 복원
-                  scene.myProfile.coins = originalCoins;
-                  if (typeof scene.updateMyProfileUI === "function") {
-                    scene.updateMyProfileUI(scene.myProfile);
-                  }
-                  scene.showToast(result.error || "보상 처리 실패", "#e74c3c");
-                  scene.isDailyRewardClaimPending = false;
-                  if (typeof scene.updateDailyRewardButtonState === "function") {
-                    scene.updateDailyRewardButtonState();
-                  }
-                }
-              } catch (e) {
-                // 예외 발생: 롤백
-                scene.myProfile.coins = originalCoins;
-                if (typeof scene.updateMyProfileUI === "function") {
-                  scene.updateMyProfileUI(scene.myProfile);
-                }
-                scene.isDailyRewardClaimPending = false;
-                if (typeof scene.updateDailyRewardButtonState === "function") {
-                  scene.updateDailyRewardButtonState();
-                }
-              }
-            } else {
-              // 싱글플레이나 오프라인: 로컬만 업데이트
-              if (scene && scene.myProfile) {
-                const dailyRewardAmount = Number(scene.dailyRewardAmount) || 50;
-                scene.myProfile.coins = (Number(scene.myProfile.coins) || 0) + dailyRewardAmount;
-                if (typeof scene.updateMyProfileUI === "function") {
-                  scene.updateMyProfileUI(scene.myProfile);
-                }
-              }
-              
-              try {
-                showCoinBurstEffect(scene, rowX, rowY, 50);
-              } catch (e) {
-              }
+                showCoinBurstEffect(scene, rowX, rowY, rewardAmount);
+              } catch (e) {}
             }
             
-            // 스탠프 생성
-            if (rowDateStr && scene.isWeeklyRewardPopupOpen) {
-              try {
-                scene.claimedDailyDates.add(rowDateStr);
-                scene.markDailyRewardClaimed(rowDateStr);
-                
-                const stamp = scene.add
-                  .text(rowX, rowY, "획득", {
-                    fontFamily:
-                      typeof GAME_FONTS !== "undefined" ? GAME_FONTS.main : "Arial",
-                    fontSize: `${width * 0.055}px`,
-                    color: "#ffffff",
-                    fontWeight: "bold",
-                    stroke: "#000000",
-                    strokeThickness: 4,
-                  })
-                  .setOrigin(0.5)
-                  .setDepth(4004)
-                  .setScale(0);
-                stamp.setRotation(-0.3);
-                stamps.push(stamp);
-                scene.tweens.add({
-                  targets: stamp,
-                  scale: 1,
-                  duration: 450,
-                  ease: "Back.out",
-                });
-              } catch (e) {
-              }
+            // 3️⃣ 비동기로 서버 요청 + 결과 처리
+            if (socket && socket.connected) {
+              // 비동기 처리 (응답 대기 없음)
+              (async () => {
+                try {
+                  const result = await new Promise((resolve) => {
+                    const timeout = setTimeout(() => {
+                      resolve({ success: false, error: "서버 응답 시간 초과" });
+                    }, 5000);
+                    
+                    socket.once("claimDailyRewardSuccess", (data) => {
+                      clearTimeout(timeout);
+                      resolve({ success: true, data });
+                    });
+                    
+                    socket.once("claimDailyRewardError", (error) => {
+                      clearTimeout(timeout);
+                      resolve({ success: false, error });
+                    });
+                    
+                    socket.emit("claimDailyReward");
+                  });
+                  
+                  // 결과 처리
+                  if (!result.success) {
+                    // ❌ 실패: 롤백
+                    if (scene && scene.myProfile) {
+                      scene.myProfile.coins = originalCoins;
+                      if (typeof scene.updateMyProfileUI === "function") {
+                        scene.updateMyProfileUI(scene.myProfile);
+                      }
+                    }
+                    
+                    // 스탠프 제거
+                    if (createdStamp && createdStamp.active) {
+                      scene.tweens.add({
+                        targets: createdStamp,
+                        scale: 0,
+                        duration: 300,
+                        ease: "Back.in",
+                        onComplete: () => {
+                          if (createdStamp && createdStamp.active) {
+                            createdStamp.destroy();
+                          }
+                        }
+                      });
+                    }
+                    
+                    // 클레임 상태 취소
+                    if (rowDateStr) {
+                      scene.claimedDailyDates.delete(rowDateStr);
+                    }
+                    
+                    scene.showToast(result.error || "보상 처리 실패", "#e74c3c");
+                  } else {
+                    // ✅ 성공: 유지
+                    scene.showToast("✅ 출석 보상 획득!", "#27ae60");
+                  }
+                } catch (e) {
+                  console.error("출석 보상 처리 중 오류:", e);
+                  // 예외 발생: 롤백
+                  if (scene && scene.myProfile) {
+                    scene.myProfile.coins = originalCoins;
+                    if (typeof scene.updateMyProfileUI === "function") {
+                      scene.updateMyProfileUI(scene.myProfile);
+                    }
+                  }
+                  if (createdStamp && createdStamp.active) {
+                    createdStamp.destroy();
+                  }
+                  if (rowDateStr) {
+                    scene.claimedDailyDates.delete(rowDateStr);
+                  }
+                  scene.showToast("출석 보상 처리 중 오류 발생", "#e74c3c");
+                }
+              })();
+            }
+            
+            scene.isDailyRewardClaimPending = false;
+            if (typeof scene.updateDailyRewardButtonState === "function") {
+              scene.updateDailyRewardButtonState();
             }
           }
         });
