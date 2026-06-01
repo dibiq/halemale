@@ -479,6 +479,11 @@ const startHeartbeatMonitoring = () => {
       socket._isHeartbeatPending = false;
     }
 
+    // 🔴 【iOS 호환성】socket 존재 여부 확인
+    if (!socket || !socket.connected) {
+      return;
+    }
+
     // 2️⃣ 새로운 heartbeat 전송
     socket._isHeartbeatPending = true;
     socket._lastHeartbeatSent = now;
@@ -877,6 +882,7 @@ function showCoinBurstEffect(scene, targetX, targetY, amount = 0) {
 }
 
 let bgmEnabled = localStorage.getItem("bgmEnabled") !== "false";
+let bgm = null;  // ✅ 【전역 BGM 인스턴스】모든 씬에서 공유 - iOS 중복 재생 방지
 
 class LobbyScene extends Phaser.Scene {
   constructor() {
@@ -4074,33 +4080,46 @@ class LobbyScene extends Phaser.Scene {
     const { width, height } = this.cameras.main;
     const centerX = width / 2;
 
-    // BGM: 브라우저 정책상 유저 제스처 이후에만 재생 가능하므로
-    // 사운드가 준비되었고 BGM 사용 설정이 켜져 있으면
-    // 최초 유저 인터랙션 시점에 한 번 재생을 시도합니다.
-    if (!this.sound.get("bgm") && bgmEnabled) {
-      const tryPlayBgm = () => {
-        try {
-          // guard against multiple instances – if bgm already playing, bail out
-          const existing = this.sound.get("bgm");
-          if (existing && (existing.isPlaying || existing.isPaused)) return;
-          this.sound.play("bgm", { loop: true, volume: 0.2 });
-        } catch (e) {
-          // 실패 시 무시
+    // ✅ 【iOS/Android 호환성】BGM 초기화
+    if (!bgm && bgmEnabled) {
+      try {
+        // AudioContext가 suspended 상태면 resume
+        const audioCtx = this.sound && this.sound.context;
+        if (audioCtx && typeof audioCtx.resume === "function") {
+          audioCtx.resume().catch(() => {});
         }
-      };
-
-      const audioCtx = this.sound && this.sound.context;
-      if (audioCtx && audioCtx.state === "suspended") {
-        const resumeAndPlay = () => {
-          if (audioCtx && typeof audioCtx.resume === "function") {
-            audioCtx.resume().catch(() => {});
+        
+        // 전역 bgm 인스턴스 생성 (한 번만)
+        bgm = this.sound.add("bgm", { loop: true, volume: 0.2 });
+        if (bgmEnabled && !bgm.isPlaying) {
+          bgm.play();
+          console.log("✅ BGM 즉시 생성 및 재생 (LobbyScene - Android)");
+        }
+      } catch (e) {
+        console.error("❌ BGM 초기화 실패:", e);
+        // iOS 호환: 첫 터치 시 재시도
+        const initializeBgm = () => {
+          try {
+            if (bgm) return;
+            const audioCtx = this.sound && this.sound.context;
+            if (audioCtx && typeof audioCtx.resume === "function") {
+              audioCtx.resume().catch(() => {});
+            }
+            bgm = this.sound.add("bgm", { loop: true, volume: 0.2 });
+            if (bgmEnabled && !bgm.isPlaying) {
+              bgm.play();
+              console.log("✅ BGM 생성 및 재생 (LobbyScene - iOS 첫 터치)");
+            }
+          } catch (e2) {
+            console.error("❌ BGM 재시도 실패:", e2);
           }
-          tryPlayBgm();
         };
-        this.input.once("pointerdown", resumeAndPlay);
-      } else {
-        tryPlayBgm();
+        this.input.once("pointerdown", initializeBgm);
       }
+    } else if (bgm && bgmEnabled && !bgm.isPlaying) {
+      // BGM이 이미 있는데 정지 상태면 재개
+      bgm.play();
+      console.log("✅ BGM 재개 (LobbyScene)");
     }
 
     const totalBgW = width;
@@ -5636,19 +5655,7 @@ if (this.isGameEnded || this.isResultOverlayActive) {
     // ======================================
     let bgmOn = localStorage.getItem("bgmEnabled") !== "false";
 
-    // 🔴 【중요】기존 BGM 인스턴스 정리 (중복 재생 방지)
-    let bgm = this.sound.get("bgm");
-    if (bgm) {
-      try {
-        if (bgm.isPlaying || bgm.isPaused) {
-          bgm.stop();
-        }
-        bgm.destroy();
-      } catch (e) {}
-    }
-
-    // BGM 인스턴스 새로 만들기
-    bgm = this.sound.add("bgm", { loop: true, volume: 0.2 });
+    // ✅ 【iOS 호환성】전역 bgm 인스턴스 재사용 - LobbyScene visibilitychange에서도 동일
 
     // 🔴 【중요】사운드 전체 mute 상태 초기화 (bgmOn 기반)
     this.sound.mute = !bgmOn;
@@ -5744,21 +5751,25 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       
       // 🔴 【BGM 복구 - 광고 중이 아닐 때만】
       try {
-        const currentBgm = this.sound.get("bgm");
+        // ✅ 전역 bgm 변수 사용 (LobbyScene 로컬 변수 아님)
         if (bgmOn && !this.isAdPlaying) {
-          if (!currentBgm) {
+          if (!bgm) {
             // BGM이 없으면 새로 생성
             console.log("⚠️ BGM 인스턴스 없음 - 새로 생성");
-            const newBgm = this.sound.add("bgm", { loop: true, volume: 0.2 });
-            newBgm.play();
+            const audioCtx = this.sound && this.sound.context;
+            if (audioCtx && typeof audioCtx.resume === "function") {
+              audioCtx.resume().catch(() => {});
+            }
+            bgm = this.sound.add("bgm", { loop: true, volume: 0.2 });
+            bgm.play();
             console.log("✅ BGM 새로 생성 및 재생");
-          } else if (currentBgm.isPaused) {
+          } else if (bgm.isPaused) {
             // BGM이 일시정지 상태면 재개
-            currentBgm.resume();
+            bgm.resume();
             console.log("✅ BGM 재개");
-          } else if (!currentBgm.isPlaying) {
+          } else if (!bgm.isPlaying) {
             // BGM이 정지 상태면 재생
-            currentBgm.play();
+            bgm.play();
             console.log("✅ BGM 재생");
           }
         } else if (this.isAdPlaying) {
@@ -5769,7 +5780,6 @@ if (this.isGameEnded || this.isResultOverlayActive) {
       }
     };
 
-    // visibilitychange 리스너 등록
     this._visibilityChangeHandler = handleVisibilityChange.bind(this);
     document.addEventListener("visibilitychange", this._visibilityChangeHandler);
 
@@ -5827,18 +5837,34 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         }
 
         if (bgmOn) {
-          // 🔴 【중요】BGM 재생 (기존 상태와 관계없이 새로 시작)
-          if (bgm.isPlaying || bgm.isPaused) {
-            bgm.stop(); // 먼저 정지
+          // ✅ 【iOS 호환성】BGM이 없으면 생성, 있으면 재개
+          if (!bgm) {
+            const audioCtx = this.sound && this.sound.context;
+            if (audioCtx && typeof audioCtx.resume === "function") {
+              audioCtx.resume().catch(() => {});
+            }
+            bgm = this.sound.add("bgm", { loop: true, volume: 0.2 });
+            console.log("⚠️ BGM 인스턴스 없음 - 새로 생성");
           }
-          bgm.play(); // 새로 재생
-          console.log("✅ BGM 토글 ON - 재생");
+          
+          if (bgm.isPlaying) {
+            // 이미 재생 중이면 그대로
+            console.log("✅ BGM 이미 재생 중");
+          } else if (bgm.isPaused) {
+            // 일시정지 상태면 재개
+            bgm.resume();
+            console.log("✅ BGM 토글 ON - 재개");
+          } else {
+            // 정지 상태면 재생
+            bgm.play();
+            console.log("✅ BGM 토글 ON - 재생");
+          }
         } else {
-          // BGM 일시정지
-          if (bgm.isPlaying || bgm.isPaused) {
-            bgm.stop(); // pause 대신 stop으로 정리
+          // BGM 토글 OFF
+          if (bgm && (bgm.isPlaying || bgm.isPaused)) {
+            bgm.pause(); // stop 대신 pause로 상태 유지
+            console.log("✅ BGM 토글 OFF - 일시정지");
           }
-          console.log("✅ BGM 토글 OFF - 정지");
         }
       } catch (e) {
         console.error("❌ BGM 토글 실패:", e);
@@ -10429,14 +10455,14 @@ if (this.isGameEnded || this.isResultOverlayActive) {
         // 3. 팝업 배경 이미지
         const popupBg = this.add
           .image(centerX, popupY, "multbg")
-          .setDisplaySize(width * 0.7, height * 0.4);
+          .setDisplaySize(width * 0.7, height * 0.5);
 
         // 4. 제목 텍스트
 
         // 5. 탭 버튼들 (3가지 선택) - popupbg 하단에 uibtn 이미지로 배치
         // popupbg 하단 = popupY + popupbg높이/2 부근
         const popupHalfH = (height * 0.6) / 2;
-        const tabY = popupY + popupHalfH - height * 0.13; // popupbg 하단 안쪽
+        const tabY = popupY + popupHalfH - height * 0.07; // popupbg 하단 안쪽
         const tabBtnW = width * 0.16;
         const tabBtnH = height * 0.05;
         const tabGap = width * 0.195;
@@ -14998,21 +15024,23 @@ class GameScene extends Phaser.Scene {
 
     // 🔴 【백그라운드 처리】GameScene에서도 visibilitychange 리스너 등록
     // (LobbyScene에서 등록된 리스너는 LobbyScene stop 시 제거되므로, GameScene에서 다시 등록)
-    let bgmOn = JSON.parse(localStorage.getItem("bgmEnabled")) !== false;
+    let bgmOn = localStorage.getItem("bgmEnabled") !== "false";  // ✅ LobbyScene과 동일하게 문자열 비교
     
     // 🔴 【중요】기존 BGM 인스턴스 정리 (GameScene 시작 시 중복 재생 방지)
-    let bgm = this.sound.get("bgm");
-    if (bgm) {
+    // ✅ 【iOS 호환성】전역 bgm 인스턴스 재사용
+    // GameScene 시작 시 새로 생성하지 말고 기존 인스턴스 사용
+    if (!bgm) {
       try {
-        if (bgm.isPlaying || bgm.isPaused) {
-          bgm.stop();
+        const audioCtx = this.sound && this.sound.context;
+        if (audioCtx && typeof audioCtx.resume === "function") {
+          audioCtx.resume().catch(() => {});
         }
-        bgm.destroy();
-      } catch (e) {}
+        bgm = this.sound.add("bgm", { loop: true, volume: 0.2 });
+        console.log("⚠️ GameScene: BGM 인스턴스 없음 - 새로 생성");
+      } catch (e) {
+        console.error("❌ GameScene: BGM 생성 실패:", e);
+      }
     }
-    
-    // BGM 인스턴스 새로 만들기
-    bgm = this.sound.add("bgm", { loop: true, volume: 0.2 });
     
     // 🔴 【중요】사운드 전체 mute 상태 초기화
     this.sound.mute = !bgmOn;
@@ -15020,7 +15048,7 @@ class GameScene extends Phaser.Scene {
     // 🔴 【중요】BGM 재생 (bgmOn이 true일 때만)
     if (bgmOn) {
       try {
-        if (!bgm.isPlaying) {
+        if (bgm && !bgm.isPlaying) {
           bgm.play();
           console.log("✅ BGM 재생 시작 (GameScene)");
         }
@@ -15108,22 +15136,25 @@ class GameScene extends Phaser.Scene {
       
       // 🔴 【BGM 복구 로직 강화】광고 중이 아니고 bgmOn이 true일 때만
       try {
-        const currentBgm = this.sound.get("bgm");
+        // ✅ 전역 bgm 변수 사용 (GameScene 로컬 변수 아님)
         if (bgmOn && !this.isAdPlaying) {
-          if (!currentBgm) {
+          if (!bgm) {
             // BGM이 없으면 새로 생성 (광고 후 복귀 시 발생)
             console.log("⚠️ GameScene: BGM 인스턴스 없음 - 새로 생성");
-            const newBgm = this.sound.add("bgm", { loop: true, volume: 0.2 });
-            bgm = newBgm;
-            newBgm.play();
+            const audioCtx = this.sound && this.sound.context;
+            if (audioCtx && typeof audioCtx.resume === "function") {
+              audioCtx.resume().catch(() => {});
+            }
+            bgm = this.sound.add("bgm", { loop: true, volume: 0.2 });
+            bgm.play();
             console.log("✅ GameScene: BGM 새로 생성 및 재생");
-          } else if (currentBgm.isPaused) {
+          } else if (bgm.isPaused) {
             // BGM이 일시정지 상태면 재개
-            currentBgm.resume();
+            bgm.resume();
             console.log("✅ GameScene: BGM 재개");
-          } else if (!currentBgm.isPlaying) {
+          } else if (!bgm.isPlaying) {
             // BGM이 정지 상태면 재생
-            currentBgm.play();
+            bgm.play();
             console.log("✅ GameScene: BGM 재생");
           } else {
             // 이미 재생 중
@@ -17851,9 +17882,9 @@ class GameScene extends Phaser.Scene {
 
   // 3. 로그 화면 갱신 함수 (GameScene 클래스 내부에 추가)
   updateLogDisplay() {
-    const startX = 20; // 왼쪽 여백
+    const startX = 40; // 왼쪽 여백
     const startY = 300; // 상단 여백 (상태바 아래)
-    const lineSpacing = 47; // 줄 간격
+    const lineSpacing = 55; // 줄 간격
 
     // 기존 텍스트 객체 삭제
     this.logTexts.forEach((txt) => txt.destroy());
@@ -17864,7 +17895,7 @@ class GameScene extends Phaser.Scene {
       const logTxt = this.add
         .text(startX, startY + index * lineSpacing, log.message, {
           fontFamily: "Jua",
-          fontSize: "33px",
+          fontSize: "45px",
           color: log.color,
           stroke: "#000000",
           strokeThickness: 2,
@@ -18693,7 +18724,7 @@ class GameScene extends Phaser.Scene {
     const { width, height } = this.cameras.main;
     
     // 타이머 바 아래에 배치 (Y 위치 조정)
-    const profileBaseY = this.myDeckSprite.y + 310;
+    const profileBaseY = this.myDeckSprite.y + 350;  // ✅ 310 → 350 (아래로 이동)
     const profileX = this.myDeckSprite.x;
     
     // 패널 크기 및 위치 (더 작은 높이)
@@ -26514,9 +26545,9 @@ class GameScene extends Phaser.Scene {
 
     const rankedPlayers = Array.isArray(players) ? players.slice(0, 3) : [];
     const podiumPositions = [
-      { x: width * 0.5, y: height * 0.63 },
-      { x: width * 0.20, y: height * 0.71 },
-      { x: width * 0.82, y: height * 0.73 },
+      { x: width * 0.5, y: height * 0.635 },   // ✅ 0.58 → 0.60 (조금 내림)
+      { x: width * 0.20, y: height * 0.70 },  // ✅ 0.66 → 0.68 (조금 내림)
+      { x: width * 0.82, y: height * 0.715 },  // ✅ 0.68 → 0.70 (조금 내림)
     ];
 
     const resultOverlayBaselineCoins =
